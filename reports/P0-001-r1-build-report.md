@@ -3,7 +3,7 @@
 **Brief revision implemented:** 1
 **Engineering status:** IMPLEMENTED
 **Branch:** `brief/p0-001-shared-morning-routine`
-**Commits:** Pending at report authoring; see final handoff for commit SHA(s).
+**Commits:** `63a5b08` — P0-001: implement shared Morning Routine evaluation build
 **Pull request:** N/A (not opened)
 
 ## What changed

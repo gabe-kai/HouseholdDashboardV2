@@ -1,7 +1,7 @@
 # BRIEF P0-001 - Shared Morning Routine
 
 **Revision:** 1
-**Status:** READY
+**Status:** IMPLEMENTED
 
 Recommended lifecycle: DRAFT -> IN REVIEW -> READY -> IMPLEMENTING -> IMPLEMENTED -> ACCEPTED
 

@@ -27,6 +27,17 @@ async function main() {
   const { app } = await buildApp(config);
   await app.listen({ host: config.host, port: config.port });
   console.log(`E2E server ready on http://${config.host}:${config.port}`);
+
+  const shutdown = async (signal: string) => {
+    console.log(`E2E server shutting down (${signal})`);
+    try {
+      await app.close();
+    } finally {
+      process.exit(0);
+    }
+  };
+  process.on("SIGINT", () => void shutdown("SIGINT"));
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
 }
 
 main().catch((err) => {

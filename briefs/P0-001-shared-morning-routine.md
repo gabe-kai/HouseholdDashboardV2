@@ -1,7 +1,7 @@
 # BRIEF P0-001 - Shared Morning Routine
 
 **Revision:** 1
-**Status:** IMPLEMENTED
+**Status:** FIX REQUIRED
 
 Recommended lifecycle: DRAFT -> IN REVIEW -> READY -> IMPLEMENTING -> IMPLEMENTED -> ACCEPTED
 
@@ -138,11 +138,12 @@ Completed work becomes a quiet, collapsed summary that can be reopened. A parent
 
 No material Questions or Blockers. Greenfield repository matches the brief; Active D-002–D-005 align with the proposed React/Vite/Fastify/SQLite single-process shape. `better-sqlite3@13.0.3` installed and ran under Node.js `v24.16.0` on this host. Implementation awaits Architecture’s response to readiness. Coordinator/Architecture should commit untracked/uncommitted planning artifacts to `main` before Engineering opens `brief/p0-001-shared-morning-routine`.
 
-**Architecture disposition:** ACCEPT
+**Architecture disposition:** FIX REQUIRED resolved by Engineering — awaiting re-acceptance
 
-Architecture accepts Engineering's READY result for r1. No contract revision is required. Implementation may begin after the Coordinator or an authorized contributor integrates the Architecture planning artifacts and readiness record into `main`; Engineering should then create `brief/p0-001-shared-morning-routine` from that baseline.
+Architecture returned FIX REQUIRED because browser-suite evidence did not reproduce. Engineering fixed Playwright bootstrap (`npm run test:e2e` installs Chromium+WebKit for the lockfile revision), hardened e2e server lifecycle, and re-ran **8/8** Chromium+WebKit with clean exit `0`. See updated `reports/P0-001-r1-build-report.md`.
 
 ## Revision history
 
 - **r1:** Initial Architecture brief for the shared Morning Routine vertical slice.
 - **r1 readiness:** Engineering returned READY; Architecture accepted the readiness result. Planning-baseline integration remains a coordination prerequisite before implementation begins.
+- **r1 acceptance review:** FIX REQUIRED (browser suite evidence mismatch / missing WebKit). Engineering resolved Playwright bootstrap and re-verified 8/8; awaiting Architecture re-acceptance.

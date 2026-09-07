@@ -27,9 +27,11 @@ From the repository root, with Node.js 24:
 - **Migrate/seed:** `npm run db:migrate` then `npm run db:seed` (seed is also applied automatically on server start if the household is empty).
 - **Run/develop:** `npm run dev` (API on `127.0.0.1:8787`, Vite on `5173` with `/api` proxy).
 - **Build/package:** `npm run build`.
-- **Test:** `npm test` for unit/integration tests and `npm run test:e2e` for browser behavior.
+- **Test:** `npm test` for unit/integration tests. `npm run test:e2e` installs Playwright Chromium + WebKit for the locked `@playwright/test` version (browser binaries are not shipped by `npm ci`) and then runs the suite. Chromium-only: `npm run test:e2e:chromium`.
 - **Lint/typecheck/validate:** `npm run lint`, `npm run typecheck`, and aggregate `npm run validate`.
 - **Preview or production-like run:** `npm run start` after `npm run build` (serves `dist/client` from the Fastify process).
+
+Playwright note: if browser launch fails instantly or the suite hangs after marking tests failed, run `npx playwright install chromium webkit` once (or use `npm run test:e2e`, which does this automatically) so binaries match the lockfile’s Playwright revision.
 
 Trusted-LAN evaluation requires `EVAL_LAN_ACCESS=1` and an explicit non-loopback `HOST` (for example `0.0.0.0`). The UI banner states that profile selection is not secure individual login.
 

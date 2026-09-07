@@ -3,7 +3,7 @@
 **Brief revision implemented:** 1
 **Engineering status:** IMPLEMENTED (FIX REQUIRED resolved)
 **Branch:** `brief/p0-001-shared-morning-routine`
-**Commits:** see branch tip after this fix commit
+**Commits:** `85ad30f` (FIX REQUIRED Playwright bootstrap); prior `63a5b08` / `8fb6fd6`
 **Pull request:** N/A (not opened)
 
 ## What changed

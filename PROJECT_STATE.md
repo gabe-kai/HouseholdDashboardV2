@@ -19,14 +19,14 @@
 
 ## Current focus
 
-Implement `P0-002 r1 - Authenticated Household Authority` is complete on the implementation branch (provider-neutral). Architecture review of the Build Report is next; hosted family-evaluation evidence remains blocked on an authorized HTTPS host.
+P0-002 r1 is implemented provider-neutrally but returned to Engineering for same-revision fixes and evidence completion. Hosted family-evaluation evidence remains blocked on an authorized HTTPS host.
 
 ## Internal work status
 
 | Work | Revision | State | Current team | Branch / PR | Waiting on |
 | --- | ---: | --- | --- | --- | --- |
 | P0-001 - Shared Morning Routine | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #1 | Product acceptance/evaluation |
-| P0-002 - Authenticated Household Authority | r1 | IMPLEMENTED | Architecture | `brief/p0-002-authenticated-household-authority` | Architecture acceptance of Build Report; Project Lead HTTPS host for acceptance tests 20–21 |
+| P0-002 - Authenticated Household Authority | r1 | FIX REQUIRED | Engineering | `brief/p0-002-authenticated-household-authority` | Origin enforcement, unique migration backfill, restored P0-001 regression coverage, focused partial-scenario evidence; HTTPS host for acceptance tests 20–21 |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -47,7 +47,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Architecture reviews `reports/P0-002-r1-build-report.md` for P0-002 r1. Hosted acceptance tests 20–21 remain NOT RUN until the Project Lead authorizes an HTTPS host.
+Engineering returns an updated Build Report for exactly P0-002 r1 after the listed fixes and evidence additions. Architecture then reassesses; hosted acceptance tests 20–21 remain NOT RUN until the Project Lead authorizes an HTTPS host.
 
 ## Notes for all teams
 

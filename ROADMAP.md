@@ -21,6 +21,7 @@ Goal: prove that a real recurring household routine can be used quickly on a pho
 - [ ] **Outcome:** A parent can define one recurring Morning Routine in a local evaluation build; each selected child gets a dated occurrence, can act on its checklist immediately, and another household view receives committed progress without future edits rewriting history.
   - **Learning question:** Does the versioned-definition, snapshotted-occurrence, and optimistic synchronization model make one real Morning Routine understandable and responsive enough to justify extending it?
   - **Brief:** `P0-001 r1 - Shared Morning Routine` (`briefs/P0-001-shared-morning-routine.md`)
+  - **Implementation status:** Technically accepted; Project Lead/product evaluation is pending.
 
 ### LIKELY NEXT
 

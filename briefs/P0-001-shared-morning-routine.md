@@ -1,7 +1,7 @@
 # BRIEF P0-001 - Shared Morning Routine
 
 **Revision:** 1
-**Status:** FIX REQUIRED
+**Status:** ACCEPTED
 
 Recommended lifecycle: DRAFT -> IN REVIEW -> READY -> IMPLEMENTING -> IMPLEMENTED -> ACCEPTED
 
@@ -138,12 +138,15 @@ Completed work becomes a quiet, collapsed summary that can be reopened. A parent
 
 No material Questions or Blockers. Greenfield repository matches the brief; Active D-002–D-005 align with the proposed React/Vite/Fastify/SQLite single-process shape. `better-sqlite3@13.0.3` installed and ran under Node.js `v24.16.0` on this host. Implementation awaits Architecture’s response to readiness. Coordinator/Architecture should commit untracked/uncommitted planning artifacts to `main` before Engineering opens `brief/p0-001-shared-morning-routine`.
 
-**Architecture disposition:** FIX REQUIRED resolved by Engineering — awaiting re-acceptance
+**Architecture disposition:** ACCEPTED
 
-Architecture returned FIX REQUIRED because browser-suite evidence did not reproduce. Engineering fixed Playwright bootstrap (`npm run test:e2e` installs Chromium+WebKit for the lockfile revision), hardened e2e server lifecycle, and re-ran **8/8** Chromium+WebKit with clean exit `0`. See updated `reports/P0-001-r1-build-report.md`.
+Architecture accepts P0-001 r1 against the updated Build Report. Engineering fixed Playwright bootstrap (`npm run test:e2e` installs Chromium+WebKit for the lockfile revision), hardened e2e server lifecycle, and reported **8/8** Chromium+WebKit tests with clean exit `0`. The local Architecture checkout could not independently complete the browser download because the install remained network-bound in the sandbox; this is recorded as an environment limitation, not a contradictory application result. `npm run validate` and `npm run build` pass locally.
+
+The physical-device check remains NOT RUN because no iOS or Android device was available. This is permitted by the brief and is not a technical acceptance blocker. Technical acceptance does not constitute Project Lead/product acceptance; the supplied hands-on usability observations should now return to Planning & Design.
 
 ## Revision history
 
 - **r1:** Initial Architecture brief for the shared Morning Routine vertical slice.
 - **r1 readiness:** Engineering returned READY; Architecture accepted the readiness result. Planning-baseline integration remains a coordination prerequisite before implementation begins.
 - **r1 acceptance review:** FIX REQUIRED (browser suite evidence mismatch / missing WebKit). Engineering resolved Playwright bootstrap and re-verified 8/8; awaiting Architecture re-acceptance.
+- **r1 re-acceptance:** ACCEPTED. Engineering corrected reproducible browser setup and reported 8/8 Chromium + WebKit with clean exit; physical-device evidence remains not run.

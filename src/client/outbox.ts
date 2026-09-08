@@ -11,44 +11,56 @@ export type OutboxItem = {
   errorMessage?: string;
 };
 
-const KEY = "hd-outbox-v1";
-
-export async function readOutbox(): Promise<OutboxItem[]> {
-  return (await get<OutboxItem[]>(KEY)) ?? [];
+function keyForMembership(membershipId: string): string {
+  return `hd-outbox-v1:${membershipId}`;
 }
 
-export async function writeOutbox(items: OutboxItem[]): Promise<void> {
-  await set(KEY, items);
+export async function readOutbox(membershipId: string): Promise<OutboxItem[]> {
+  return (await get<OutboxItem[]>(keyForMembership(membershipId))) ?? [];
 }
 
-export async function enqueueOutbox(item: OutboxItem): Promise<OutboxItem[]> {
+export async function writeOutbox(
+  membershipId: string,
+  items: OutboxItem[],
+): Promise<void> {
+  await set(keyForMembership(membershipId), items);
+}
+
+export async function enqueueOutbox(
+  membershipId: string,
+  item: OutboxItem,
+): Promise<OutboxItem[]> {
   let next: OutboxItem[] = [];
-  await update<OutboxItem[]>(KEY, (current) => {
+  await update<OutboxItem[]>(keyForMembership(membershipId), (current) => {
     next = [...(current ?? []), item];
     return next;
   });
   return next;
 }
 
-export async function removeOutboxItem(mutationId: string): Promise<OutboxItem[]> {
+export async function removeOutboxItem(
+  membershipId: string,
+  mutationId: string,
+): Promise<OutboxItem[]> {
   let next: OutboxItem[] = [];
-  await update<OutboxItem[]>(KEY, (current) => {
+  await update<OutboxItem[]>(keyForMembership(membershipId), (current) => {
     next = (current ?? []).filter((i) => i.mutationId !== mutationId);
     return next;
   });
   return next;
 }
 
-export async function clearOutbox(): Promise<void> {
-  await del(KEY);
+export async function clearMembershipOutbox(membershipId: string): Promise<void> {
+  await del(keyForMembership(membershipId));
 }
 
 export async function patchOutboxItem(
+  membershipId: string,
   mutationId: string,
   patch: Partial<OutboxItem>,
 ): Promise<OutboxItem[]> {
   let next: OutboxItem[] = [];
-  await update<OutboxItem[]>(KEY, (current) => {
+  await update<OutboxItem[]>(keyForMembership(membershipId), (current) => {
     next = (current ?? []).map((i) => (i.mutationId === mutationId ? { ...i, ...patch } : i));
     return next;
   });

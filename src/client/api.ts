@@ -1,4 +1,6 @@
 import type {
+  Grant,
+  GrantPreset,
   MemberPublic,
   OccurrenceView,
   ObligationMeaning,
@@ -6,97 +8,233 @@ import type {
   SyncNotification,
 } from "../shared/schemas";
 
+let csrfToken = "";
+
+export type ApiError = Error & { code?: string; requestId?: string };
+
 export type SessionInfo = {
-  member: MemberPublic;
+  member: { id: string; displayName: string };
+  grants: Grant[];
+  csrfToken: string;
   householdTimezone: string;
-  evaluationMode: boolean;
-  householdDate?: string;
+  householdDate: string;
+};
+
+export type RoutineStep = {
+  text: string;
+  obligation: ObligationMeaning;
+  position: number;
+  logicalItemId: string;
+};
+
+export type Routine = {
+  id: string;
+  kind: "morning";
+  revisions: Array<{
+    id: string;
+    effectiveDate: string;
+    title: string;
+    weekdays: number[];
+    createdAt: string;
+    steps: RoutineStep[];
+    assigneeMemberIds: string[];
+  }>;
+};
+
+export type PersonalAddition = {
+  id: string;
+  position: number;
+  text: string;
+  obligation: ObligationMeaning;
+  anchorLogicalItemId: string | null;
+  place: "before" | "after" | "end";
+};
+
+export type PersonalLayer = {
+  id: string;
+  membershipId: string;
+  definitionId: string;
+  effectiveDate: string;
+  createdAt: string;
+  additions: PersonalAddition[];
+};
+
+export type RoutinePreview = {
+  householdDate: string;
+  membershipId: string;
+  definitionId: string;
+  revisionId: string;
+  personalRevisionId: string | null;
+  title: string;
+  weekdays: number[];
+  steps: Array<{
+    position: number;
+    text: string;
+    obligation: ObligationMeaning;
+    source: "shared" | "personal";
+    logicalItemId: string;
+  }>;
+};
+
+export type Proposal = {
+  id: string;
+  householdId: string;
+  membershipId: string;
+  text: string;
+  obligation: ObligationMeaning;
+  anchorLogicalItemId: string | null;
+  place: "before" | "after" | "end";
+  status: "pending" | "approved" | "rejected";
+  proposedAt: string;
+  decidedAt: string | null;
+  deciderMembershipId: string | null;
+  personalRevisionId: string | null;
+};
+
+export type PersonalTask = {
+  id: string;
+  householdId: string;
+  ownerMembershipId: string;
+  title: string;
+  visibility: "private" | "household";
+  status: "open" | "completed";
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+};
+
+type AdditionInput = {
+  id?: string;
+  text: string;
+  obligation: ObligationMeaning;
+  anchorLogicalItemId?: string | null;
+  place: "before" | "after" | "end";
 };
 
 async function parseJson<T>(res: Response): Promise<T> {
-  const data = (await res.json()) as T & { code?: string; message?: string };
+  const data = (await res.json()) as T & {
+    code?: string;
+    message?: string;
+    requestId?: string;
+  };
   if (!res.ok) {
-    const err = new Error(data.message ?? res.statusText);
-    (err as Error & { code?: string }).code = data.code;
-    throw err;
+    const error = new Error(data.message ?? res.statusText) as ApiError;
+    error.code = data.code;
+    error.requestId = data.requestId;
+    throw error;
   }
   return data;
 }
 
+async function request<T>(
+  path: string,
+  init: RequestInit = {},
+  mutationDelayMs?: number,
+): Promise<T> {
+  const method = (init.method ?? "GET").toUpperCase();
+  const mutating = !["GET", "HEAD", "OPTIONS"].includes(method);
+  const headers = new Headers(init.headers);
+  if (init.body !== undefined) headers.set("Content-Type", "application/json");
+  if (mutating) headers.set("x-csrf-token", csrfToken);
+  if (mutationDelayMs && mutationDelayMs > 0) {
+    headers.set("x-mutation-delay-ms", String(mutationDelayMs));
+  }
+  return parseJson<T>(
+    await fetch(path, {
+      ...init,
+      headers,
+      credentials: "include",
+    }),
+  );
+}
+
+function retainSessionToken(session: SessionInfo): SessionInfo {
+  csrfToken = session.csrfToken;
+  return session;
+}
+
 export async function fetchMeta() {
-  const res = await fetch("/api/v1/meta");
-  return parseJson<{ evaluationMode: boolean; banner: string; allowLan: boolean }>(res);
+  return request<{ evaluationMode: boolean; banner: string; profile: string }>(
+    "/api/v1/meta",
+  );
 }
 
-export async function fetchMembers() {
-  const res = await fetch("/api/v1/members");
-  return parseJson<{ members: MemberPublic[] }>(res);
+export async function login(loginName: string, passphrase: string) {
+  return retainSessionToken(
+    await request<SessionInfo>("/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ loginName, passphrase }),
+    }),
+  );
 }
 
-export async function createSession(memberId: string) {
-  const res = await fetch("/api/v1/session", {
+export async function claim(body: {
+  token: string;
+  loginName: string;
+  passphrase: string;
+  displayName: string;
+}) {
+  const { token, ...account } = body;
+  return retainSessionToken(
+    await request<SessionInfo>("/api/v1/auth/claim", {
+      method: "POST",
+      body: JSON.stringify({ ...account, claimToken: token }),
+    }),
+  );
+}
+
+export async function logout(): Promise<void> {
+  try {
+    await request<{ ok: true }>("/api/v1/auth/logout", { method: "POST" });
+  } finally {
+    csrfToken = "";
+  }
+}
+
+export async function fetchSession(): Promise<SessionInfo | null> {
+  const res = await fetch("/api/v1/auth/session", { credentials: "include" });
+  if (res.status === 401) {
+    csrfToken = "";
+    return null;
+  }
+  return retainSessionToken(await parseJson<SessionInfo>(res));
+}
+
+export async function issueEnrollmentClaim(body: {
+  membershipId?: string;
+  displayName?: string;
+  preset: GrantPreset;
+}) {
+  return request<{
+    claim: { token: string; expiresAt: string; membershipId: string };
+  }>("/api/v1/enrollment/claims", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ memberId }),
+    body: JSON.stringify(body),
   });
-  return parseJson<SessionInfo>(res);
 }
 
-export async function fetchSession() {
-  const res = await fetch("/api/v1/session");
-  if (res.status === 401) return null;
-  return parseJson<SessionInfo>(res);
-}
-
-export async function clearSession() {
-  await fetch("/api/v1/session", { method: "DELETE" });
-}
-
-export async function fetchToday(date?: string) {
-  const q = date ? `?date=${encodeURIComponent(date)}` : "";
-  const res = await fetch(`/api/v1/today${q}`);
-  return parseJson<{
-    householdDate: string;
-    householdTimezone: string;
-    occurrences: OccurrenceView[];
-  }>(res);
-}
-
-export async function fetchHistory(date: string) {
-  const res = await fetch(`/api/v1/history?date=${encodeURIComponent(date)}`);
-  return parseJson<{ householdDate: string; occurrences: OccurrenceView[] }>(res);
+export async function fetchMemberships() {
+  return request<{ memberships: MemberPublic[] }>("/api/v1/memberships");
 }
 
 export async function fetchRoutine() {
-  const res = await fetch("/api/v1/routines");
-  return parseJson<{
-    routine: null | {
-      id: string;
-      kind: string;
-      revisions: Array<{
-        id: string;
-        effectiveDate: string;
-        title: string;
-        weekdays: number[];
-        steps: Array<{ text: string; obligation: ObligationMeaning; position: number }>;
-        assigneeMemberIds: string[];
-      }>;
-    };
-  }>(res);
+  return request<{ routine: Routine | null }>("/api/v1/routines");
 }
 
 export async function createRoutine(body: {
   title: string;
   assigneeMemberIds: string[];
   weekdays: number[];
-  steps: Array<{ text: string; obligation: ObligationMeaning }>;
+  steps: Array<{
+    text: string;
+    obligation: ObligationMeaning;
+    logicalItemId?: string;
+  }>;
 }) {
-  const res = await fetch("/api/v1/routines", {
+  return request<{ routine: Routine }>("/api/v1/routines", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  return parseJson<{ routine: unknown }>(res);
 }
 
 export async function createRevision(
@@ -105,16 +243,33 @@ export async function createRevision(
     title: string;
     assigneeMemberIds: string[];
     weekdays: number[];
-    steps: Array<{ text: string; obligation: ObligationMeaning }>;
+    steps: Array<{
+      text: string;
+      obligation: ObligationMeaning;
+      logicalItemId?: string;
+    }>;
     effectiveDate?: string;
   },
 ) {
-  const res = await fetch(`/api/v1/routines/${definitionId}/revisions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  return parseJson<{ routine: unknown }>(res);
+  return request<{ routine: Routine }>(
+    `/api/v1/routines/${encodeURIComponent(definitionId)}/revisions`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+export async function fetchToday(date?: string) {
+  const query = date ? `?date=${encodeURIComponent(date)}` : "";
+  return request<{
+    householdDate: string;
+    householdTimezone: string;
+    occurrences: OccurrenceView[];
+  }>(`/api/v1/today${query}`);
+}
+
+export async function fetchHistory(date: string) {
+  return request<{ householdDate: string; occurrences: OccurrenceView[] }>(
+    `/api/v1/history?date=${encodeURIComponent(date)}`,
+  );
 }
 
 export async function setStepStatus(
@@ -123,27 +278,87 @@ export async function setStepStatus(
   body: { mutationId: string; status: StepStatus; performedAt: string },
   options?: { delayMs?: number },
 ) {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (options?.delayMs) {
-    headers["x-mutation-delay-ms"] = String(options.delayMs);
-  }
-  const res = await fetch(`/api/v1/occurrences/${occurrenceId}/steps/${stepId}/status`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  });
-  return parseJson<{ occurrence: OccurrenceView; report: unknown }>(res);
+  return request<{ occurrence: OccurrenceView; report: unknown }>(
+    `/api/v1/occurrences/${encodeURIComponent(occurrenceId)}/steps/${encodeURIComponent(stepId)}/status`,
+    { method: "POST", body: JSON.stringify(body) },
+    options?.delayMs,
+  );
 }
 
-export function connectSync(onMessage: (n: SyncNotification) => void): () => void {
-  const proto = location.protocol === "https:" ? "wss" : "ws";
-  const ws = new WebSocket(`${proto}://${location.host}/api/v1/sync`);
-  ws.onmessage = (ev) => {
+export async function savePersonalLayer(additions: AdditionInput[]) {
+  return request<{ layer: PersonalLayer }>("/api/v1/personal-layer", {
+    method: "PUT",
+    body: JSON.stringify({ additions }),
+  });
+}
+
+export async function fetchPreview(membershipId?: string, date?: string) {
+  const params = new URLSearchParams();
+  if (membershipId) params.set("membershipId", membershipId);
+  if (date) params.set("date", date);
+  const query = params.size ? `?${params.toString()}` : "";
+  return request<{ preview: RoutinePreview }>(
+    `/api/v1/personal-layer/preview${query}`,
+  );
+}
+
+export async function createProposal(body: Omit<AdditionInput, "id">) {
+  return request<{ proposal: Proposal }>("/api/v1/proposals", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function fetchProposals() {
+  return request<{ proposals: Proposal[] }>("/api/v1/proposals");
+}
+
+export async function decideProposal(
+  proposalId: string,
+  decision: "approved" | "rejected",
+) {
+  return request<{ proposal: Proposal }>(
+    `/api/v1/proposals/${encodeURIComponent(proposalId)}/decide`,
+    { method: "POST", body: JSON.stringify({ decision }) },
+  );
+}
+
+export async function createPersonalTask(
+  title: string,
+  visibility: "private" | "household",
+) {
+  return request<{ task: PersonalTask }>("/api/v1/personal-tasks", {
+    method: "POST",
+    body: JSON.stringify({ title, visibility }),
+  });
+}
+
+export async function fetchPersonalTasks() {
+  return request<{ tasks: PersonalTask[] }>("/api/v1/personal-tasks");
+}
+
+export async function setPersonalTaskStatus(
+  taskId: string,
+  status: "open" | "completed",
+) {
+  return request<{ task: PersonalTask }>(
+    `/api/v1/personal-tasks/${encodeURIComponent(taskId)}/status`,
+    {
+      method: "POST",
+      body: JSON.stringify({ mutationId: crypto.randomUUID(), status }),
+    },
+  );
+}
+
+export function connectSync(onMessage: (notification: SyncNotification) => void): () => void {
+  const protocol = location.protocol === "https:" ? "wss" : "ws";
+  const socket = new WebSocket(`${protocol}://${location.host}/api/v1/sync`);
+  socket.onmessage = (event) => {
     try {
-      onMessage(JSON.parse(String(ev.data)) as SyncNotification);
+      onMessage(JSON.parse(String(event.data)) as SyncNotification);
     } catch {
-      /* ignore */
+      // Invalid notifications are ignored; authoritative reads remain the source of truth.
     }
   };
-  return () => ws.close();
+  return () => socket.close();
 }

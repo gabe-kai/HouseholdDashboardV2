@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
+import { backfillAuthenticatedAuthority } from "./backfill.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");
@@ -48,5 +49,22 @@ export function migrate(db: Database.Database): void {
       );
     });
     tx();
+    if (file.startsWith("002_")) {
+      backfillAuthenticatedAuthority(db);
+    }
+  }
+
+  const has002 = (db.prepare("SELECT 1 AS ok FROM schema_migrations WHERE id = ?").get(
+    "002_authenticated_authority.sql",
+  ) as { ok: number } | undefined);
+  if (has002) {
+    const missing = db
+      .prepare(
+        "SELECT COUNT(*) AS c FROM revision_steps WHERE logical_item_id IS NULL OR logical_item_id = ''",
+      )
+      .get() as { c: number };
+    if (missing.c > 0) {
+      backfillAuthenticatedAuthority(db);
+    }
   }
 }

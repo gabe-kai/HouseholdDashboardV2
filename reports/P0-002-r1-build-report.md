@@ -3,7 +3,7 @@
 **Brief revision implemented:** 1  
 **Engineering status:** IMPLEMENTED (provider-neutral; hosted evidence incomplete)  
 **Branch:** `brief/p0-002-authenticated-household-authority`  
-**Commits:** prior implementation `c96133a` …; FIX REQUIRED follow-up commits listed at bottom after Engineering commit  
+**Commits:** `c96133a` (initial implementation); `361be83` (FIX REQUIRED response); intervening report/metadata commits on branch  
 **Pull request:** N/A (not opened)  
 **Architecture disposition addressed:** FIX REQUIRED (2026-09-08)
 

@@ -2,7 +2,18 @@ import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import { mapLegacyCapabilities } from "../shared/grants.js";
 
-/** Post-SQL backfill for P0-002: grants + stable logical item IDs. */
+function stepKey(text: string, obligation: string): string {
+  return `${text}\0${obligation}`;
+}
+
+/**
+ * Post-SQL backfill for P0-002: grants + stable logical item IDs.
+ *
+ * Each checklist row receives a unique logical ID. Continuity across revisions
+ * is one-to-one: for matching text+obligation, IDs are reused in appearance
+ * order (FIFO) so duplicate rows never share an ID. Extra or reordered rows
+ * get new IDs deterministically when no unused prior match remains.
+ */
 export function backfillAuthenticatedAuthority(db: Database.Database): void {
   const members = db
     .prepare("SELECT id, capabilities_json FROM members")
@@ -27,7 +38,7 @@ export function backfillAuthenticatedAuthority(db: Database.Database): void {
       )
       .all(def.id) as Array<{ id: string }>;
 
-    let prevByKey = new Map<string, string>();
+    let prevQueues = new Map<string, string[]>();
     for (const rev of revisions) {
       const steps = db
         .prepare(
@@ -41,20 +52,34 @@ export function backfillAuthenticatedAuthority(db: Database.Database): void {
         logical_item_id: string | null;
       }>;
 
-      const nextByKey = new Map<string, string>();
+      const nextQueues = new Map<string, string[]>();
+      const usedInRevision = new Set<string>();
+
       for (const step of steps) {
-        const key = `${step.text}\0${step.obligation}`;
+        const key = stepKey(step.text, step.obligation);
         let logicalId = step.logical_item_id;
+
         if (!logicalId) {
-          logicalId = prevByKey.get(key) ?? randomUUID();
+          const queue = prevQueues.get(key);
+          const candidate = queue?.shift();
+          if (candidate && !usedInRevision.has(candidate)) {
+            logicalId = candidate;
+          } else {
+            logicalId = randomUUID();
+          }
           db.prepare("UPDATE revision_steps SET logical_item_id = ? WHERE id = ?").run(
             logicalId,
             step.id,
           );
         }
-        nextByKey.set(key, logicalId);
+
+        usedInRevision.add(logicalId);
+        const next = nextQueues.get(key) ?? [];
+        next.push(logicalId);
+        nextQueues.set(key, next);
       }
-      prevByKey = nextByKey;
+
+      prevQueues = nextQueues;
     }
   }
 }

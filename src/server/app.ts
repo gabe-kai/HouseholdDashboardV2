@@ -38,6 +38,11 @@ const CSRF_EXEMPT = new Set([
   "/api/v1/meta",
   "/api/v1/test/bootstrap-claim",
 ]);
+/** CSRF-exempt auth entry points still require an allowed Origin. */
+const AUTH_ORIGIN_REQUIRED = new Set([
+  "/api/v1/auth/login",
+  "/api/v1/auth/claim",
+]);
 
 function errorBody(code: string, message: string, requestId: string) {
   return { code, message, requestId };
@@ -95,7 +100,7 @@ export async function buildApp(config: AppConfig) {
   await app.register(helmet, { contentSecurityPolicy: false });
   await app.register(rateLimit, {
     global: true,
-    max: 120,
+    max: config.profile === "test" ? 10_000 : 120,
     timeWindow: "1 minute",
   });
 
@@ -182,7 +187,18 @@ export async function buildApp(config: AppConfig) {
   app.addHook("preHandler", async (request, reply) => {
     const routePath = request.routeOptions.url;
     if (!routePath) return;
-    if (!UNSAFE_METHODS.has(request.method) || CSRF_EXEMPT.has(routePath)) return;
+    if (!UNSAFE_METHODS.has(request.method)) return;
+
+    if (AUTH_ORIGIN_REQUIRED.has(routePath)) {
+      if (!config.publicOrigin || !originAllowed(request)) {
+        return reply
+          .code(403)
+          .send(errorBody("ORIGIN", "Request origin is not allowed", request.id));
+      }
+      return;
+    }
+
+    if (CSRF_EXEMPT.has(routePath)) return;
 
     const session = requireSession(request, reply);
     if (!session) return reply;
@@ -222,9 +238,18 @@ export async function buildApp(config: AppConfig) {
     profile: config.profile,
   }));
 
+  const authRateLimit =
+    config.profile === "test"
+      ? { max: 1_000, timeWindow: "1 minute" as const }
+      : { max: 10, timeWindow: "1 minute" as const };
+  const claimRateLimit =
+    config.profile === "test"
+      ? { max: 1_000, timeWindow: "1 minute" as const }
+      : { max: 5, timeWindow: "1 minute" as const };
+
   app.post(
     "/api/v1/auth/login",
-    { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
+    { config: { rateLimit: authRateLimit } },
     async (request, reply) => {
       const parsed = LoginSchema.safeParse(request.body);
       if (!parsed.success) {
@@ -252,7 +277,7 @@ export async function buildApp(config: AppConfig) {
 
   app.post(
     "/api/v1/auth/claim",
-    { config: { rateLimit: { max: 5, timeWindow: "1 minute" } } },
+    { config: { rateLimit: claimRateLimit } },
     async (request, reply) => {
       const parsed = ClaimSchema.safeParse(request.body);
       if (!parsed.success) {

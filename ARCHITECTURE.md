@@ -8,15 +8,31 @@ If this document disagrees with the repository about what exists, the repository
 
 ## Technical overview
 
-- **Current repository truth:** P0-001 implements a single-package TypeScript application: React/Vite client, Fastify HTTP/WebSocket server, and SQLite via `better-sqlite3`. Studio process documents remain at the repository root. Validated local toolchain during implementation: Node.js 24.16.0, npm 12.0.2, `better-sqlite3@13.0.3`.
-- **Project type:** Mobile-first, responsive household web application (local evaluation build).
+- **Current repository truth:** Merged P0-001 implements a single-package TypeScript application: React/Vite client, Fastify HTTP/WebSocket server, and SQLite via `better-sqlite3`. It includes ordered migrations, fictional evaluation seeds, shared boundary schemas, domain modules, an IndexedDB mutation outbox, integration tests, and Playwright Chromium/WebKit coverage. Validated implementation toolchain: Node.js 24.16.0, npm 12.0.2, `better-sqlite3@13.0.3`.
+- **Project type:** Mobile-first, responsive household web application. The current build is local/trusted-LAN evaluation software; P0-002 targets one securely hosted family-evaluation deployment.
 - **Languages/runtimes:** TypeScript throughout on the Node.js 24 LTS line (`engines.node`: `>=24 <25`, `.nvmrc` pins `24`); browser-delivered HTML and CSS.
 - **Frameworks/toolchain:** React + Vite client; Fastify server with `@fastify/websocket`, `@fastify/cookie`, `@fastify/static`; Zod boundary validation; Vitest unit/integration; Playwright Chromium + WebKit e2e. Exact versions are in `package.json` / `package-lock.json`.
-- **Delivery model:** One Node.js process serves the built client, versioned JSON API, and household synchronization channel. P0-001 is a local/trusted-network evaluation build, not an internet-ready deployment.
+- **Delivery model:** One Node.js application process serves the built client, versioned JSON API, and household synchronization channel. P0-002 retains that shape behind an HTTPS reverse proxy on one persistent host; it does not introduce independently deployable application services.
 - **Primary interfaces:** Phone-first browser UI; JSON API; WebSocket change stream; local seed/setup command.
 - **Persistence/data stores:** Server-owned SQLite database plus browser IndexedDB (`idb-keyval`) for a durable pending-mutation outbox. The server database is authoritative.
-- **External integrations:** None for P0-001.
-- **Deployment/execution environments:** Local development and trusted-LAN evaluation for P0-001. Internet hosting, production identity, TLS termination, and managed persistence are TBD and are not implied by the pilot architecture.
+- **External integrations:** None in the application runtime. P0-002 requires host-provided TLS termination, persistent disk, process restart, and backup/snapshot capability but remains provider-neutral.
+- **Deployment/execution environments:** Local development remains loopback by default. P0-002's evaluation environment is one Node.js 24 application instance plus one SQLite volume behind a same-origin HTTPS endpoint with WebSocket forwarding. The specific provider/account/public origin is TBD pending Project Lead authorization.
+
+## P0-002 target architecture (approved shape, not current implementation)
+
+P0-002 deepens the merged Morning Routine rather than generalizing the product. Its smallest useful technical outcome is one real household in which six distinct accounts exercise two personal-authority paths while P0-001 execution and history continue to work.
+
+- **Identity boundary:** `User` represents a sign-in identity independently of a household. `HouseholdMembership` links a user to one household and owns the household display name, status, and normalized capability grants. Pending enrollment may exist before a user claims a membership. P0-002 signs a user directly into their sole active membership; multi-household switching remains unimplemented.
+- **Credential boundary:** Use local login-name/passphrase credentials because children need accounts without email and no external identity account has been authorized. Store Argon2id PHC hashes using a maintained Node-24-compatible library; never store or log passphrases. A manager creates a one-time, expiring enrollment token whose digest—not plaintext—is stored. A one-time operator bootstrap claim establishes the first manager without enabling open registration.
+- **Session boundary:** The browser receives a 256-bit opaque token in a host-only `Secure`, `HttpOnly`, `SameSite=Strict` cookie in the hosted environment. SQLite stores only a SHA-256 token digest, user reference, timestamps, and revocation state. Enforce a seven-day idle timeout and 30-day absolute timeout server-side, rotate on authentication/privilege change, revoke on logout, and require a per-session CSRF header plus allowed-origin validation for mutations. Local HTTP development uses a distinctly named non-secure cookie and startup warning; production must fail closed when its HTTPS/public-origin configuration is absent.
+- **Authority boundary:** Capabilities are independent grants on membership: `household.member.enroll`, `routine.shared.manage`, `routine.personalize.direct`, `routine.personalize.propose`, `routine.proposal.decide`, `routine.execute.own`, and `personal_task.create`. The P0-002 UI may offer functional grant presets (manager, direct personalizer, proposal personalizer), but age is not stored as policy and no universal permission editor is introduced. Every active household membership may read household Morning Routine status and household-visible personal tasks; private personal tasks remain owner-only.
+- **Routine composition:** Shared routine revisions remain append-only. Shared checklist items gain stable logical IDs across revisions. A member's personal routine layer is separately append-only and household-date-effective; it references stable shared items and snapshots only personal additions/order metadata. Materialization composes the shared revision and that membership's effective personal layer, then snapshots the complete result and provenance into the occurrence. The layer does not clone shared item content.
+- **Personal authority in this slice:** Direct personalizers may add and reorder their own personal additions around inherited shared items. Proposal personalizers may request one addition; a manager may approve or reject it. Approval transactionally creates the future-effective personal change and retains proposer, decider, proposal/decision times, and decision state. Inherited shared items cannot be edited, reordered, or removed by either child path in P0-002; a future removable-item policy remains compatible with stable item IDs but is not implemented.
+- **Personal work:** A personal task is a separate, owner-scoped one-off record with title, `private|household` visibility, open/completed state, and creation/completion timestamps. It has no recurrence, due date, reminder, checklist, or project model in P0-002. Visibility and ownership are separate fields and are enforced on every server read.
+- **Evaluation path:** Prospective edits report their household effective date and lead to a read-only preview of the next applicable composed Morning Routine. This supplies evidence without generalized date editing or materializing executable future occurrences.
+- **Deployment boundary:** Package the existing application for a provider-neutral single Linux host/container with a mounted SQLite/backup directory. The host must supply HTTPS, WebSocket upgrade forwarding, restricted persistent storage, restart behavior, and recoverable off-host/provider snapshots. No paid service, account, domain, or provider is selected or authorized by this decision.
+
+Security parameters follow current primary guidance: [OWASP password storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html), [OWASP session management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html), [OWASP authentication](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html), and [NIST SP 800-63B](https://pages.nist.gov/800-63-4/sp800-63b.html). P0-002 passphrases are 15–128 Unicode characters, normalized with NFC, checked against a locally available common-password blocklist, accepted without composition rules, and compatible with paste/autofill. Authentication errors are generic and failed login attempts are throttled without permanent lockout.
 
 ## Working commands
 
@@ -37,12 +53,12 @@ Trusted-LAN evaluation requires `EVAL_LAN_ACCESS=1` and an explicit non-loopback
 
 ## Repository map
 
-The current root contains only studio documentation. P0-001 should introduce a single-package application with these boundaries unless Engineering finds a concrete reason to propose a smaller equivalent structure during readiness review:
+The merged repository uses this single-package layout:
 
 ```text
 src/
   client/       # React UI, optimistic view state, IndexedDB outbox, sync client
-  server/       # Fastify composition, HTTP/WebSocket adapters, sessions
+  server/       # Fastify composition, HTTP/WebSocket adapters, sessions, migrations/seeds
   domain/       # Framework-independent recurrence, occurrence, and completion rules
   shared/       # API schemas and cross-boundary value types
 db/
@@ -55,7 +71,7 @@ briefs/         # One authoritative file per implementation brief
 reports/        # Engineering, QA, and acceptance evidence
 ```
 
-Do not introduce workspaces or independently deployable services for the first slice.
+P0-002 should add cohesive server modules for authentication/membership, authorization, personalization/proposals, and personal tasks within these boundaries. Do not introduce workspaces or independently deployable application services.
 
 ## System context and boundaries
 
@@ -63,7 +79,9 @@ Household members use one or more phone or desktop browsers. The browser communi
 
 The client is untrusted. Actor identity, household membership, authorization, timestamps of record, and completion rules must not be accepted merely because the browser supplied them.
 
-P0-001 uses a conspicuously labeled evaluation identity selector backed by a server session. It is not individual authentication. The pilot must bind to loopback by default and may be exposed only deliberately on a trusted LAN for evaluation. Internet exposure and real family use beyond that context require a later authenticated deployment outcome.
+P0-001 currently uses a conspicuously labeled evaluation identity selector backed by a server session. It is not individual authentication. The current pilot must bind to loopback by default and may be exposed only deliberately on a trusted LAN for evaluation.
+
+P0-002 replaces that boundary for normal use: credentials establish a `User`; the server resolves the user's active `HouseholdMembership` and current grants on each request; and all resource reads, writes, WebSocket subscriptions, proposal decisions, and visibility filters are scoped from that server context. Actor, owner, household, capability, and visibility values supplied by a client are references to validate, never authority. Test-only fixtures or shortcuts must be impossible to enable in the hosted production profile.
 
 Third-party calendars, notification providers, school systems, cross-household sharing, and external identity providers are outside the current system.
 
@@ -76,6 +94,10 @@ Third-party calendars, notification providers, school systems, cross-household s
 5. **Mutation processor:** Applies idempotent set-state commands transactionally, records actor/performed/recorded facts separately, and returns the committed occurrence version.
 6. **Synchronization gateway:** Broadcasts small committed-change notifications to connected members of the same household. A notification prompts authoritative reconciliation; it is not itself the source of truth.
 7. **Persistence adapter:** Runs tracked migrations and stores household, member, definition revision, occurrence snapshot, execution report, session, and mutation-deduplication records in SQLite.
+8. **Authentication and membership service (P0-002 target):** Claims one-time bootstrap/enrollment tokens, verifies passphrases, creates/revokes hashed sessions, resolves the sole active membership, and evaluates current grants. It is the only normal entry to authenticated actor context.
+9. **Personal routine service (P0-002 target):** Appends effective-dated personal layers, validates direct authority, records proposals and decisions, and composes shared plus personal definitions for preview/materialization without mutating existing occurrences.
+10. **Personal task service (P0-002 target):** Owns one-off task lifecycle and filters reads by owner, household, and visibility.
+11. **Hosted edge (P0-002 target):** Terminates TLS, redirects HTTP to HTTPS, forwards same-origin HTTP/WebSocket traffic, and mounts durable application/backup storage. It does not make authorization decisions.
 
 Primary flow:
 
@@ -85,40 +107,49 @@ Checklist intent -> optimistic UI + durable outbox -> idempotent API command
 API commit -> SQLite transaction -> response + household change notification
 Other client/reconnect -> fetch authoritative occurrence -> reconcile pending local intent
 Routine edit -> append future-effective definition revision -> existing occurrences unchanged
+Authenticated request -> verify hashed session -> resolve active membership/grants -> authorize resource scope
+Personal change -> append future-effective member layer directly or after approval -> preview composition
+Occurrence materialization -> select shared revision + member layer -> snapshot composed steps/provenance
 ```
 
 ## Interfaces and contracts
 
-- **User interfaces:** Phone-first Today, minimal parent routine editor, occurrence history, evaluation profile selector, and visible connection/pending state. Touch targets and status communication must remain usable without color as the sole cue.
+- **User interfaces:** The current app provides phone-first Today, minimal parent routine editor, occurrence history, an evaluation profile selector, and visible connection/pending state. P0-002 replaces the selector with sign-in/sign-out and adds narrow member enrollment, personal routine settings/preview, personal-task creation, household status, and pending approvals. Touch targets and status communication must remain usable without color as the sole cue.
 - **APIs/events/files:** JSON endpoints live under `/api/v1`. The synchronization endpoint lives under `/api/v1/sync`. Request and response schemas are defined once in `src/shared` and validated at the server boundary.
 - **Mutation semantics:** Checklist writes are idempotent `set status` commands, never retry-sensitive toggles. Every client mutation has a globally unique mutation ID. Replaying the same ID returns the original committed result without creating a second execution record.
 - **Event semantics:** WebSocket events identify the changed household resource and committed version; clients fetch or accept an authoritative snapshot and reconcile. Reconnect always includes a normal read path, so missed events do not lose state.
 - **Error semantics:** API errors use a stable machine-readable code, a safe human message, and a request ID. Validation, authorization, conflict, and unavailable states must be distinguishable without exposing stack traces.
 - **CLI or automation interfaces:** Database migration/seed scripts operate only on an explicitly configured local database path. They must not embed personal household data.
-- **Integration contracts:** None for P0-001.
+- **Authentication/CSRF contracts (P0-002 target):** Normal API and WebSocket access use only the server session cookie. State-changing HTTP requests also require a per-session CSRF value in a custom header and an allowed `Origin`; WebSocket handshakes require an allowed origin. CORS is not opened to arbitrary origins. Login/claim endpoints validate their own origin and never accept a caller-selected actor or household as authority.
+- **Authorization contracts (P0-002 target):** Resource services receive an authenticated membership context and perform capability, ownership, household, proposal-state, and visibility checks before reading or mutating. UI visibility is only a usability projection of the same server policy.
+- **Integration contracts:** No application-level third-party integration is required. The hosted runtime depends only on the documented TLS/persistence/backup host contract.
 
 ## Data, state, and configuration
 
 - **Sources of truth:** SQLite is authoritative for shared household state. Browser state is a projection plus pending user intent. WebSocket messages are notifications, not durable records.
-- **Core records:** `Household`, `Member`, `RoutineDefinition`, immutable `RoutineRevision`, ordered revision checklist templates, `Occurrence`, occurrence assignment snapshot, ordered occurrence step snapshots, step execution/status reports, mutation receipts, and sessions.
+- **Current core records:** `Household`, `Member`, `RoutineDefinition`, immutable `RoutineRevision`, ordered revision checklist templates, `Occurrence`, occurrence assignment snapshot, ordered occurrence step snapshots, step execution/status reports, mutation receipts, and evaluation sessions.
+- **P0-002 target records:** `User`, password credential, `HouseholdMembership`, membership capability grant, one-time bootstrap/enrollment claim, hashed authenticated session, stable shared routine item identity, immutable personal routine revision/addition/order records, routine change proposal/decision audit, composed occurrence-step provenance, and personal task. Technical table names may differ but these boundaries may not be collapsed.
 - **Definition/occurrence boundary:** A definition has a stable identity and append-only revisions with household-local effective dates. An occurrence references the selected revision and snapshots its title, schedule context, accountable member, and checklist semantics. Editing a definition never rewrites an existing occurrence.
+- **Shared/personal composition (P0-002 target):** Each shared checklist item has a stable logical ID preserved when that item survives a revision. A personal layer contains only member-owned additions and their anchor/order metadata. For a household date, composition selects the effective shared revision and effective layer for the accountable membership, validates referenced items, inserts personal additions deterministically, and snapshots the full ordered result plus `shared|personal` provenance. A missing/retired anchor falls back to the end of the inherited list in stable personal order. Existing occurrences are never recomposed.
 - **Checklist meanings:** Template and occurrence steps use the closed P0-001 set `required`, `as_needed`, and `optional`. `required` must be complete; `as_needed` must be complete or explicitly marked not needed; `optional` never blocks occurrence completion.
 - **Assignment/execution facts:** The occurrence stores the originally accountable member. A step report stores the acting member, claimed performance instant, server record instant, and resulting state separately. P0-001 exposes only self-execution, but the representation must not collapse these facts.
 - **Scheduling:** P0-001 supports selected ISO weekdays for one Morning time anchor. The rule is stored on each routine revision. A household date must never be inferred from the viewer device's timezone.
 - **Time:** Every household has one explicit IANA timezone. Calendar dates use `YYYY-MM-DD`; instants cross boundaries as UTC ISO-8601 strings ending in `Z`. Time calculations live behind one domain module and are covered around midnight and daylight-saving transitions.
 - **State ownership:** The server assigns occurrence versions and `recordedAt`. The client may supply `performedAt` for queued work, but the server validates shape and retains its independent record time.
 - **Persistence/retention:** P0-001 retains all definition revisions, occurrences, and execution reports. Deletion/retention policy and household export are TBD. Chore debt is not generated.
-- **Migration/compatibility:** Schema changes use ordered, committed, forward migrations. Seed data is disposable; user-created database migration/backup guarantees remain TBD until deployment is selected.
-- **Environment/configuration:** Host, port, database path, evaluation mode, optional LAN access gate, and seed household timezone are environment configuration with documented placeholders. The server binds loopback by default.
-- **Secrets/credentials:** Real secrets never enter source control or client bundles. P0-001 has no individual credentials. Any shared LAN evaluation access value remains local and is not represented as production authentication.
+- **Personal task retention (P0-002 target):** Completing a personal task records state/timestamps rather than deleting it. Private tasks are queryable only by their owner; household-visible tasks are queryable only by active members of that household. Household departure/export/deletion behavior remains TBD.
+- **Migration/compatibility:** Schema changes use ordered, committed, forward migrations. P0-002 must migrate an existing P0-001 database without replacing member IDs, routine revisions, occurrences, step reports, or mutation receipts. Existing evaluation sessions are revoked. Existing members become pending/claimable memberships until bound to users; migration may not infer additional authority from names or presumed ages. Production startup never inserts evaluation identities automatically.
+- **Environment/configuration:** Current P0-001 host, port, database path, evaluation mode, LAN gate, and seed timezone are documented in `.env.example`. P0-002 adds an explicit runtime profile, canonical public HTTPS origin, session lifetime, bootstrap/backup paths, and trusted-proxy configuration. The server binds loopback by default outside an explicitly configured container/host profile and fails closed on incomplete production security configuration.
+- **Secrets/credentials:** Real secrets never enter source control, client bundles, URLs, logs, reports, or committed fixtures. One-time bootstrap/enrollment values are shown only at creation, stored only as digests, expire, and are single-use. Password hashes and hashed session tokens remain server-side. `.env.example` contains placeholders only.
 
 ## Identity, permissions, privacy, and security
 
-- **Authentication/identity:** P0-001 issues an opaque server session after explicit evaluation-profile selection. This establishes actor context for testing only; it does not authenticate the human. Production authentication remains required before non-local deployment.
-- **Authorization/roles:** The pilot has two server-enforced capability sets: `manage_routine` for the evaluation parent and `execute_own_occurrence` for members. These are capabilities, not an age-derived permission matrix. All writes derive actor and household from the server session rather than request payload fields.
+- **Authentication/identity:** P0-001 currently issues an opaque evaluation session after caller-selected profile choice; it does not authenticate the human. P0-002 replaces that normal-use endpoint/UI with login-name/passphrase authentication, claimed household enrollment, and persistent revocable sessions. Open self-registration, email delivery, social identity, MFA policy, and self-service recovery are not included.
+- **Authorization/roles:** The current pilot has `manage_routine` and `execute_own_occurrence`. P0-002 migrates to normalized membership grants named in the target architecture above. Functional enrollment presets are grant bundles, not persisted age-derived roles. Services derive current user, membership, household, and grants from the session on each request so revoked membership or changed authority takes effect without trusting stale client claims.
 - **Sensitive data:** Household membership, children's names, routine content, and execution history are private family data. Committed seeds use fictional names and no real household details.
-- **Threat or abuse considerations:** Profile impersonation is deliberately possible in evaluation mode and must be visibly disclosed. LAN exposure is opt-in. Cross-household access, session fixation, injection, XSS, CSRF, and accidental sensitive logging remain relevant even in a local build.
-- **Required controls:** Parameterized SQL; schema validation; output escaping through normal React rendering; HttpOnly, SameSite session cookies; capability checks on every write/read scope; request size limits; no sensitive payload logging; and no stack traces in browser responses.
+- **Threat or abuse considerations:** Current evaluation-profile impersonation is deliberately possible and confines P0-001 to local/trusted-LAN use. P0-002 must address credential guessing/enumeration, stolen or fixed sessions, CSRF, cross-household IDOR, stale grants, WebSocket origin/scope errors, shared-device data leakage, injection, XSS, and sensitive logging. It does not claim enterprise identity assurance or protection from a fully compromised family device.
+- **Required controls:** Parameterized SQL; boundary schema validation; normal React output escaping; Argon2id credential hashing; generic and throttled login failures; cryptographically random one-time/session tokens stored only as digests; server-enforced idle/absolute expiry and revocation; production `Secure`/`HttpOnly`/`SameSite=Strict` host-only cookie; CSRF token and origin validation; WebSocket origin and household checks; capability/ownership/visibility checks on every resource; request size limits; security headers; no sensitive payload logging; and no stack traces in browser responses.
+- **Shared-device client state:** Cached authenticated data and live subscriptions are cleared when identity changes. Pending outbox commands are namespaced by membership and are never replayed as another signed-in user. Explicit logout must warn about/discard that membership's still-pending commands; an expired session may retain them only for replay after the same user reauthenticates.
 
 ## Reliability and operations
 
@@ -126,7 +157,7 @@ Routine edit -> append future-effective definition revision -> existing occurren
 - **Idempotency/retries:** Client mutation IDs plus server receipts make retries safe. Materialization is protected by a unique occurrence key and transaction so refreshes or concurrent reads cannot duplicate occurrences.
 - **Conflict policy:** For the same step, the last command committed by the server is authoritative. Responses/events include the resulting occurrence version. A client overlays its still-pending local commands after applying a server snapshot.
 - **Observability:** Structured server logs include request/event IDs, route, result code, and latency without routine text, member names, access values, or session tokens. Client connection/pending state is visible in the UI. Metrics/hosted telemetry are TBD.
-- **Backups/rollback:** Evaluation seeds may be recreated. Backup, restore, and production rollback guarantees are TBD and block production hosting, not P0-001 local evaluation.
+- **Backups/rollback:** Evaluation seeds may be recreated. Before P0-002 family deployment, the app must expose documented consistent SQLite backup/restore commands and take a pre-migration backup. The selected host must retain recoverable off-host or provider snapshots of the mounted data/backup volume, and one restore rehearsal is required as deployment evidence. Retention duration remains a Project Lead/host choice and must be recorded before real data is entered.
 - **Support/ownership:** Engineering owns implementation evidence; Architecture accepts against the brief; the Project Lead evaluates usefulness.
 
 ## Testing and verification strategy
@@ -134,24 +165,26 @@ Routine edit -> append future-effective definition revision -> existing occurren
 - Unit-test completion semantics, definition-revision selection, household-local date resolution, DST/midnight boundaries, and optimistic reconciliation.
 - Integration-test migrations against temporary SQLite databases, idempotent occurrence materialization, mutation replay, capability enforcement, and the invariant that future-effective edits leave current/historical snapshots unchanged.
 - Browser-test phone-sized Chromium and WebKit flows with Playwright, including three rapid step actions, delayed responses, a transient disconnect/reconnect, and two independent browser contexts receiving shared updates.
+- P0-002 adds integration coverage for credential hashing/login throttling, bootstrap/enrollment single use, hashed session expiry/revocation/CSRF, household isolation, every capability path, personal-layer composition, proposal decision idempotency/audit, personal-task visibility, migration of a populated P0-001 fixture, and client-outbox identity isolation.
+- P0-002 browser evidence uses six distinct accounts and at least two concurrent contexts; it covers direct personalization, restricted proposal/approval, prospective preview, parent navigation, private/household personal tasks, and direct-API authorization failures without relying on hidden controls.
 - Validate keyboard operation, accessible names, focus visibility, status text, and non-color state cues for the primary checklist flow.
 - Run `npm run validate`, `npm run build`, and `npm run test:e2e` before a Build Report claims completion.
-- Perform a focused trusted-LAN manual check on at least one iOS or Android phone when available. If unavailable, report that exact gap; desktop emulation is not evidence of physical-device behavior.
+- P0-002 hosted acceptance requires focused use on at least two physical phones against the same HTTPS origin, including separate sign-in, persistent reload, checklist propagation, and proposal approval. Desktop emulation remains useful automated evidence but is not a substitute for this deployment check.
 
 ## Performance, scale, and environment constraints
 
 - Primary layouts target narrow phone viewports first and then expand responsively.
 - A checklist tap must update the local visible state in the same interaction turn, without waiting for network completion, reload, dialog, spinner, or animation.
 - Under ordinary local/trusted-LAN conditions, another connected client should display a committed checklist change within two seconds.
-- P0-001 targets one household and ordinary family interaction volume. SQLite and a single Node process are intentional; no horizontal scaling is required.
+- P0-001 and P0-002 target one household and ordinary family interaction volume. SQLite and a single Node application process are intentional; no horizontal scaling is required. The hosted edge may be a separate reverse-proxy process supplied by the host.
 - Transient offline execution is supported after the app has loaded. Fully offline first load, installability, push notifications, and background sync after the browser is closed are not P0-001 requirements.
 
 ## Dependencies, services, assets, and licensing
 
-- **Runtime dependencies:** React, Fastify, SQLite through a current Node-24-compatible `better-sqlite3` release, a WebSocket adapter, runtime schema validation, and a small IndexedDB helper if Engineering determines the native API would add correctness risk.
+- **Runtime dependencies:** Current dependencies are React, Fastify, `better-sqlite3`, `@fastify/websocket`, `@fastify/cookie`, `@fastify/static`, Zod, and `idb-keyval`. P0-002 adds `@node-rs/argon2` (or a readiness-proven equivalent implementing the exact Argon2id contract) and may add one small Fastify-compatible rate-limit/security-header package if that is clearer than local middleware. All additions must support Node 24 and the deployment CPU/OS.
 - **Development dependencies:** Vite, TypeScript, ESLint, Vitest, Playwright, and type packages required by the selected runtime versions.
-- **External services/accounts:** None for P0-001.
-- **Paid or metered resources:** None.
+- **External services/accounts:** None in application behavior. P0-002 deployment requires a Project Lead-authorized host/public HTTPS origin with persistent storage and snapshots; provider is TBD.
+- **Paid or metered resources:** None authorized yet. A host may introduce cost only after Project Lead approval.
 - **Assets/models/datasets and provenance:** No external assets are required. Use system fonts and simple CSS/HTML UI assets.
 - **Licensing/attribution:** Engineering records dependency licenses and must not add an incompatible or unclear license.
 
@@ -163,27 +196,29 @@ Routine edit -> append future-effective definition revision -> existing occurren
 - **Dates and times:** Use explicit household-local dates, IANA timezone IDs, and UTC instants as defined above. Do not use device-local `Date` defaults in domain rules.
 - **Schema evolution:** Append definition revisions and migrate storage forward. Do not mutate historical structure in place.
 - **Commands:** Prefer desired-state commands (`set completed`) over toggles so retries are idempotent.
-- **Authority:** Model capabilities independently from age, household membership, and assignment, even while P0-001 exposes only two fixed capability sets.
+- **Authority:** Model capabilities as explicit grants on household membership, independently from age and assignment. P0-001's two embedded capability sets are a migration source, not the target representation.
 - **Truth boundaries:** Shared server state is authoritative; client outbox entries are pending intent; sync events are invalidation/reconciliation hints.
+- **Identity model:** A login user and a household membership are different IDs. Household display name, authority, assignment, and personal routine ownership refer to membership; credential/session lifecycle refers to user.
+- **Personalization:** Shared item IDs are stable logical references; revision rows and occurrence-step rows are snapshots. Personal additions have their own stable IDs and must not duplicate shared item content into a detached full routine.
+- **Security configuration:** Hosted mode is fail-closed. Development/test authentication conveniences use explicit profiles and may not be enabled by production environment variables alone.
 
 ## Known technical debt
 
-- P0-001 evaluation identity does not authenticate a person and cannot be used for internet deployment.
-- SQLite backup/restore and production migration guarantees are not yet defined.
+- P0-001 evaluation identity does not authenticate a person and cannot be used for internet deployment; P0-002 is the approved replacement target.
+- SQLite backup/restore commands and a hosted restore rehearsal are not yet implemented; P0-002 must close this gap before family deployment.
 - The initial weekly Morning schedule is deliberately narrower than the contextual schedule model Product anticipates.
 - P0-001 supports transient disconnection after load, not a fully offline-installable application.
 
 ## Proposed future architecture
 
-- Replace evaluation profile selection with authenticated household membership while preserving server-session-derived actor identity.
-- Add capability policies and approval requests without encoding age as authority.
 - Extend the schedule-rule union and resolver for contextual anchors, exceptions, and contextual additions; do not add global weekday/weekend flags.
 - Add additional responsibility types and Today sections through the same versioned-definition and snapshotted-occurrence model.
 - Revisit SQLite and single-process hosting only when deployment, backup, or measured concurrency evidence requires it.
+- Add self-service recovery, invitation delivery, multi-household selection, membership departure/export, and configurable removable-item policy only after P0-002 evaluation establishes their actual workflows.
 
 ## Architecture questions
 
-- Which credential and account-recovery experience should Product approve for adults and children before authenticated household use?
-- Which hosting and durable-backup model should support the first non-local deployment?
-- Should personal tasks follow the household timezone, viewer timezone, or an item-specific timezone? Product has left this TBD.
+- Which Project Lead-authorized provider/public origin and snapshot retention policy will satisfy the P0-002 single-host deployment contract?
+- Which self-service account-recovery experience should follow the operator-assisted P0-002 evaluation path?
+- If personal tasks later gain due dates or recurrence, should they follow household, viewer, or item-specific timezone?
 - What exact product term should replace the technical `as_needed` state and any future critical/non-skippable classification?

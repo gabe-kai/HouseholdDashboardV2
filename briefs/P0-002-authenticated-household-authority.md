@@ -1,7 +1,7 @@
 # BRIEF P0-002 - Authenticated Household Authority
 
 **Revision:** 1
-**Status:** IN REVIEW
+**Status:** READY
 
 Recommended lifecycle: DRAFT -> IN REVIEW -> READY -> IMPLEMENTING -> IMPLEMENTED -> ACCEPTED
 
@@ -176,6 +176,8 @@ The shared routine remains the inherited base. Personal changes apply prospectiv
 **Review round:** Initial consolidated pass (2026-09-07). Full write-up: `reports/P0-002-r1-engineering-readiness.md`.
 
 No material Questions or Blockers. Merged P0-001 on `main` (`8004959`) matches the brief’s Current system. `@node-rs/argon2@2.2.0` installed and verified Argon2id (19 MiB / 2 iterations / parallelism 1) under Node.js `v24.16.0` on this Windows host; Linux live probe deferred to Build Report when an authorized host exists. Hosted HTTPS provider remains an acceptance gap only. Implementation awaits Architecture’s response. Coordinator/Architecture should commit untracked/uncommitted P0-002 planning artifacts to `main` before Engineering opens `brief/p0-002-authenticated-household-authority`.
+
+**Architecture disposition:** ACCEPT (2026-09-07). The readiness findings require no r1 contract change. Planning artifacts and the readiness report were committed to `main` in `eb8647e`; Engineering is authorized to create `brief/p0-002-authenticated-household-authority` from this planning baseline and implement P0-002 r1. Provider-neutral implementation may proceed before a host is selected, but acceptance tests 20 and the hosted portions of 21 remain required before Architecture can mark the full brief technically `ACCEPTED`.
 
 ## Revision history
 

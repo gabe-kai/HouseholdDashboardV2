@@ -8,29 +8,32 @@ If this document disagrees with the repository about what exists, the repository
 
 ## Technical overview
 
-- **Current repository truth:** The repository contains the AI Development Studio Template documents only. There is no application source, package manifest, installed project dependency, database, migration, test suite, or runnable product as of 2026-09-06.
-- **Project type:** Proposed mobile-first, responsive household web application.
-- **Languages/runtimes:** Proposed TypeScript throughout, running on the Node.js 24 LTS line; browser-delivered HTML and CSS. The local planning environment currently has Node.js 24.16.0 and npm 12.0.2, but the repository does not yet pin a toolchain.
-- **Frameworks/toolchain:** Proposed React client built by Vite, Fastify HTTP/WebSocket server, SQLite persistence, npm, Vitest, and Playwright. Exact compatible package versions become repository truth only when Engineering records them in `package.json` and `package-lock.json`.
+- **Current repository truth:** P0-001 implements a single-package TypeScript application: React/Vite client, Fastify HTTP/WebSocket server, and SQLite via `better-sqlite3`. Studio process documents remain at the repository root. Validated local toolchain during implementation: Node.js 24.16.0, npm 12.0.2, `better-sqlite3@13.0.3`.
+- **Project type:** Mobile-first, responsive household web application (local evaluation build).
+- **Languages/runtimes:** TypeScript throughout on the Node.js 24 LTS line (`engines.node`: `>=24 <25`, `.nvmrc` pins `24`); browser-delivered HTML and CSS.
+- **Frameworks/toolchain:** React + Vite client; Fastify server with `@fastify/websocket`, `@fastify/cookie`, `@fastify/static`; Zod boundary validation; Vitest unit/integration; Playwright Chromium + WebKit e2e. Exact versions are in `package.json` / `package-lock.json`.
 - **Delivery model:** One Node.js process serves the built client, versioned JSON API, and household synchronization channel. P0-001 is a local/trusted-network evaluation build, not an internet-ready deployment.
 - **Primary interfaces:** Phone-first browser UI; JSON API; WebSocket change stream; local seed/setup command.
-- **Persistence/data stores:** Proposed server-owned SQLite database plus browser IndexedDB for a durable pending-mutation outbox. The server database is authoritative.
+- **Persistence/data stores:** Server-owned SQLite database plus browser IndexedDB (`idb-keyval`) for a durable pending-mutation outbox. The server database is authoritative.
 - **External integrations:** None for P0-001.
 - **Deployment/execution environments:** Local development and trusted-LAN evaluation for P0-001. Internet hosting, production identity, TLS termination, and managed persistence are TBD and are not implied by the pilot architecture.
 
 ## Working commands
 
-No application commands exist yet. P0-001 establishes the following command contract from the repository root:
+From the repository root, with Node.js 24:
 
-- **Install/setup:** `npm ci` after the initial lockfile exists.
-- **Run/develop:** `npm run dev`.
+- **Install/setup:** `npm ci` (requires the committed lockfile).
+- **Local configuration:** copy `.env.example` values into the environment as needed (`DB_PATH`, `HOUSEHOLD_TIMEZONE`, `HOST`, `PORT`, `EVAL_LAN_ACCESS`).
+- **Migrate/seed:** `npm run db:migrate` then `npm run db:seed` (seed is also applied automatically on server start if the household is empty).
+- **Run/develop:** `npm run dev` (API on `127.0.0.1:8787`, Vite on `5173` with `/api` proxy).
 - **Build/package:** `npm run build`.
-- **Test:** `npm test` for unit/integration tests and `npm run test:e2e` for browser behavior.
-- **Lint/typecheck/validate:** `npm run lint`, `npm run typecheck`, and an aggregate `npm run validate`.
-- **Seed local evaluation data:** `npm run db:seed` using explicit non-secret evaluation configuration.
-- **Preview or production-like run:** `npm run start` after `npm run build`.
+- **Test:** `npm test` for unit/integration tests. `npm run test:e2e` installs Playwright Chromium + WebKit for the locked `@playwright/test` version (browser binaries are not shipped by `npm ci`) and then runs the suite. Chromium-only: `npm run test:e2e:chromium`.
+- **Lint/typecheck/validate:** `npm run lint`, `npm run typecheck`, and aggregate `npm run validate`.
+- **Preview or production-like run:** `npm run start` after `npm run build` (serves `dist/client` from the Fastify process).
 
-Engineering may choose equivalent script internals, but these public repository commands are part of the P0-001 implementation contract. The validated Node version must be pinned in repository configuration and documented during implementation.
+Playwright note: if browser launch fails instantly or the suite hangs after marking tests failed, run `npx playwright install chromium webkit` once (or use `npm run test:e2e`, which does this automatically) so binaries match the lockfile’s Playwright revision.
+
+Trusted-LAN evaluation requires `EVAL_LAN_ACCESS=1` and an explicit non-loopback `HOST` (for example `0.0.0.0`). The UI banner states that profile selection is not secure individual login.
 
 ## Repository map
 

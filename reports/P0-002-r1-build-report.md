@@ -3,7 +3,7 @@
 **Brief revision implemented:** 1  
 **Engineering status:** IMPLEMENTED (provider-neutral; hosted evidence incomplete)  
 **Branch:** `brief/p0-002-authenticated-household-authority`  
-**Commits:** `c96133a`  
+**Commits:** `c96133a` (implementation); `f0964a9` (build-report SHA note)  
 **Pull request:** N/A (not opened)  
 **Project card:** “Use Morning Routine as a real household” — transition Up Next → In Progress when implementation began.
 

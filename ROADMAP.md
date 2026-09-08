@@ -14,26 +14,32 @@ A roadmap item is not an implementation contract. Normally only CURRENT should r
 
 ## Milestone 0 - First Useful Release
 
-Goal: prove that a real recurring household routine can be used quickly on a phone while its shared state and history remain trustworthy.
+Goal: prove that a real recurring household routine can be used quickly by six distinct people on phones while authority, shared state, and history remain trustworthy.
+
+### RECENTLY DELIVERED
+
+- [x] **P0-001 — Shared Morning Routine:** A parent can define one Morning Routine; selected children receive dated snapshotted occurrences, can act on checklists immediately, and another household view receives committed progress without future edits rewriting history.
+  - **Brief:** `P0-001 r1 - Shared Morning Routine` (`briefs/P0-001-shared-morning-routine.md`)
+  - **Result:** Technically accepted and merged to `main`; Project Lead product evaluation remains separate.
 
 ### CURRENT
 
-- [ ] **Outcome:** A parent can define one recurring Morning Routine in a local evaluation build; each selected child gets a dated occurrence, can act on its checklist immediately, and another household view receives committed progress without future edits rewriting history.
-  - **Learning question:** Does the versioned-definition, snapshotted-occurrence, and optimistic synchronization model make one real Morning Routine understandable and responsive enough to justify extending it?
-  - **Brief:** `P0-001 r1 - Shared Morning Routine` (`briefs/P0-001-shared-morning-routine.md`)
-  - **Implementation status:** Technically accepted; Project Lead/product evaluation is pending.
+- [ ] **Outcome:** Six real household members can authenticate as themselves and use the shared Morning Routine according to capability-based authority: selected members customize their future routine directly, restricted members propose additions for approval, every member can create thin personal work, and history/responsiveness/shared state remain trustworthy.
+  - **Learning question:** Can one shared routine support distinct identities and progressively granted personal control without becoming confusing, slow, or historically unreliable?
+  - **Brief:** `P0-002 r1 - Authenticated Household Authority` (`briefs/P0-002-authenticated-household-authority.md`)
+  - **Implementation status:** Architecture brief in Engineering review. Secure hosted acceptance depends on a Project Lead-authorized HTTPS host with persistent storage and backups.
 
 ### LIKELY NEXT
 
-- [ ] **Outcome:** A household can replace the evaluation identity harness with an approved authenticated setup, and children can make or request a minimal set of personal routine changes under server-enforced capabilities.
-  - **Why likely:** This completes the identity and progressive-authority evidence intentionally deferred from the first technical slice.
-  - **Do not over-specify yet:** Credential/recovery UX, detailed permission matrices, and the exact approval interaction should respond to P0-001 evaluation and Product direction.
+- [ ] **Outcome:** Today can coordinate several real household responsibilities—initially examples such as Kitchen, Cats, and Bathroom—with a clear completed/current/later hierarchy and a mix of timed and untimed work.
+  - **Why likely:** Once identity and authority are credible, multiple responsibilities are the next product pressure needed to determine whether the Morning Routine model generalizes.
+  - **Do not over-specify yet:** Exact schedules, assignment patterns, contextual deep-clean additions, and rotation should respond to P0-002 family evaluation.
 
 ### LATER
 
-- [ ] Expand Today from one Morning Routine to multiple timed and untimed responsibilities, with completed/current/later hierarchy and contextual additions.
-- [ ] Add retrospective completion, cover/reassignment, and explicit credit while retaining the original assignment.
-- [ ] Support contextual schedule exceptions and concrete schedule previews without a global weekday/weekend classification.
+- [ ] Add prospective assignment patterns and only the rotation/eligibility needed by proven household examples.
+- [ ] Add retrospective completion, helper/cover/reassignment, and explicit credit while retaining the original assignment.
+- [ ] Support household exception days and contextual schedule additions/previews without a global weekday/weekend classification.
 
 ## Milestone 1 - Core Value
 
@@ -48,7 +54,7 @@ Goal: prove that a real recurring household routine can be used quickly on a pho
 
 ## Milestone 3 - Reliability and Refinement
 
-- [ ] Establish production hosting, backup/restore, recovery, privacy, accessibility, and operational evidence for broader household use.
+- [ ] Harden hosting, automated backup/restore, account recovery, privacy, accessibility, and operational evidence beyond the P0-002 family-evaluation deployment.
 - [ ] Refine offline behavior and notifications based on observed connectivity and reminder needs.
 
 ## Later / Parking Lot

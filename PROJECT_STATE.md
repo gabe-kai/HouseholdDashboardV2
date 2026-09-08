@@ -19,14 +19,14 @@
 
 ## Current focus
 
-Implement `P0-002 r1 - Authenticated Household Authority`: replace evaluation profiles with six real household identities, add membership capabilities, future-effective personal routine layers and one approval flow, preserve P0-001 execution/history behavior, add thin personal tasks, and make the application deployable behind HTTPS for real-phone evaluation.
+Implement `P0-002 r1 - Authenticated Household Authority` is complete on the implementation branch (provider-neutral). Architecture review of the Build Report is next; hosted family-evaluation evidence remains blocked on an authorized HTTPS host.
 
 ## Internal work status
 
 | Work | Revision | State | Current team | Branch / PR | Waiting on |
 | --- | ---: | --- | --- | --- | --- |
 | P0-001 - Shared Morning Routine | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #1 | Product acceptance/evaluation |
-| P0-002 - Authenticated Household Authority | r1 | READY | Engineering | No branch yet; authorized `brief/p0-002-authenticated-household-authority` | Engineering implementation and Build Report; Project Lead authorization/provisioning for the HTTPS host before deployed acceptance |
+| P0-002 - Authenticated Household Authority | r1 | IMPLEMENTED | Architecture | `brief/p0-002-authenticated-household-authority` | Architecture acceptance of Build Report; Project Lead HTTPS host for acceptance tests 20–21 |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -47,7 +47,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Engineering implementation of exactly `P0-002 r1` on `brief/p0-002-authenticated-household-authority`, followed by a Build Report returning the same revision to Architecture for technical acceptance.
+Architecture reviews `reports/P0-002-r1-build-report.md` for P0-002 r1. Hosted acceptance tests 20–21 remain NOT RUN until the Project Lead authorizes an HTTPS host.
 
 ## Notes for all teams
 

@@ -39,17 +39,19 @@ Security parameters follow current primary guidance: [OWASP password storage](ht
 From the repository root, with Node.js 24:
 
 - **Install/setup:** `npm ci` (requires the committed lockfile).
-- **Local configuration:** copy `.env.example` values into the environment as needed (`DB_PATH`, `HOUSEHOLD_TIMEZONE`, `HOST`, `PORT`, `EVAL_LAN_ACCESS`).
-- **Migrate/seed:** `npm run db:migrate` then `npm run db:seed` (seed is also applied automatically on server start if the household is empty).
+- **Local configuration:** copy `.env.example` values into the environment as needed (`DB_PATH`, `BACKUP_DIR`, `HOUSEHOLD_TIMEZONE`, `HOST`, `PORT`, `APP_PROFILE`, `PUBLIC_ORIGIN`, `AUTO_SEED`, `EVAL_LAN_ACCESS`).
+- **Migrate/seed:** `npm run db:migrate` then `npm run db:seed` (seed creates pending fictional memberships only; hosted profile forbids `AUTO_SEED`).
+- **Bootstrap:** `npm run auth:bootstrap` issues one single-use manager claim token (shown once).
+- **Backup/restore:** `npm run db:backup`; `npm run db:restore -- path/to/backup.sqlite`. Run backup before applying migrations on populated data.
 - **Run/develop:** `npm run dev` (API on `127.0.0.1:8787`, Vite on `5173` with `/api` proxy).
 - **Build/package:** `npm run build`.
-- **Test:** `npm test` for unit/integration tests. `npm run test:e2e` installs Playwright Chromium + WebKit for the locked `@playwright/test` version (browser binaries are not shipped by `npm ci`) and then runs the suite. Chromium-only: `npm run test:e2e:chromium`.
+- **Test:** `npm test` for unit/integration tests. `npm run test:e2e` installs Playwright Chromium + WebKit for the locked `@playwright/test` version (browser binaries are not shipped by `npm ci`) and then runs the suite against isolated Chromium/WebKit servers. Chromium-only: `npm run test:e2e:chromium`.
 - **Lint/typecheck/validate:** `npm run lint`, `npm run typecheck`, and aggregate `npm run validate`.
-- **Preview or production-like run:** `npm run start` after `npm run build` (serves `dist/client` from the Fastify process).
+- **Preview or production-like run:** `npm run start` after `npm run build` (serves `dist/client` from the Fastify process). Hosted packaging notes: `docs/ops-deploy.md`.
 
 Playwright note: if browser launch fails instantly or the suite hangs after marking tests failed, run `npx playwright install chromium webkit` once (or use `npm run test:e2e`, which does this automatically) so binaries match the lockfile’s Playwright revision.
 
-Trusted-LAN evaluation requires `EVAL_LAN_ACCESS=1` and an explicit non-loopback `HOST` (for example `0.0.0.0`). The UI banner states that profile selection is not secure individual login.
+Local development uses `APP_PROFILE=development` with authentication enabled and pending seeded memberships that must still be claimed. Hosted mode (`APP_PROFILE=hosted`) requires `PUBLIC_ORIGIN=https://…`, persistent `DB_PATH`/`BACKUP_DIR`, and rejects evaluation bypass flags.
 
 ## Repository map
 
@@ -79,9 +81,7 @@ Household members use one or more phone or desktop browsers. The browser communi
 
 The client is untrusted. Actor identity, household membership, authorization, timestamps of record, and completion rules must not be accepted merely because the browser supplied them.
 
-P0-001 currently uses a conspicuously labeled evaluation identity selector backed by a server session. It is not individual authentication. The current pilot must bind to loopback by default and may be exposed only deliberately on a trusted LAN for evaluation.
-
-P0-002 replaces that boundary for normal use: credentials establish a `User`; the server resolves the user's active `HouseholdMembership` and current grants on each request; and all resource reads, writes, WebSocket subscriptions, proposal decisions, and visibility filters are scoped from that server context. Actor, owner, household, capability, and visibility values supplied by a client are references to validate, never authority. Test-only fixtures or shortcuts must be impossible to enable in the hosted production profile.
+P0-001’s evaluation identity selector is retired for normal use. P0-002 authenticates a `User`, resolves the active `HouseholdMembership` and grants server-side, and scopes all resource access from that context. Local development still binds to loopback by default; hosted mode requires an HTTPS public origin and forbids evaluation bypasses.
 
 Third-party calendars, notification providers, school systems, cross-household sharing, and external identity providers are outside the current system.
 
@@ -181,7 +181,7 @@ Occurrence materialization -> select shared revision + member layer -> snapshot 
 
 ## Dependencies, services, assets, and licensing
 
-- **Runtime dependencies:** Current dependencies are React, Fastify, `better-sqlite3`, `@fastify/websocket`, `@fastify/cookie`, `@fastify/static`, Zod, and `idb-keyval`. P0-002 adds `@node-rs/argon2` (or a readiness-proven equivalent implementing the exact Argon2id contract) and may add one small Fastify-compatible rate-limit/security-header package if that is clearer than local middleware. All additions must support Node 24 and the deployment CPU/OS.
+- **Runtime dependencies:** Current dependencies are React, Fastify, `better-sqlite3`, `@fastify/websocket`, `@fastify/cookie`, `@fastify/static`, `@fastify/helmet`, `@fastify/rate-limit`, `@node-rs/argon2@2.2.0`, Zod, and `idb-keyval`. All additions support Node 24 on the Windows development host; Linux hosted verification remains gated on an authorized HTTPS host.
 - **Development dependencies:** Vite, TypeScript, ESLint, Vitest, Playwright, and type packages required by the selected runtime versions.
 - **External services/accounts:** None in application behavior. P0-002 deployment requires a Project Lead-authorized host/public HTTPS origin with persistent storage and snapshots; provider is TBD.
 - **Paid or metered resources:** None authorized yet. A host may introduce cost only after Project Lead approval.

@@ -19,22 +19,36 @@ export const InstantSchema = z
 
 export const UuidSchema = z.string().uuid();
 
-export const CapabilitySchema = z.enum(["manage_routine", "execute_own_occurrence"]);
-export type Capability = z.infer<typeof CapabilitySchema>;
+export const GrantSchema = z.enum([
+  "household.member.enroll",
+  "routine.shared.manage",
+  "routine.personalize.direct",
+  "routine.personalize.propose",
+  "routine.proposal.decide",
+  "routine.execute.own",
+  "personal_task.create",
+]);
+export type Grant = z.infer<typeof GrantSchema>;
 
-export const MemberPublicSchema = z.object({
-  id: UuidSchema,
-  displayName: z.string().min(1),
-  capabilities: z.array(CapabilitySchema),
-});
+export const GrantPresetSchema = z.enum([
+  "manager",
+  "direct_personalizer",
+  "proposal_personalizer",
+]);
+export type GrantPreset = z.infer<typeof GrantPresetSchema>;
 
-export const CreateSessionSchema = z.object({
-  memberId: UuidSchema,
-});
+export const LoginNameSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(/^[a-z0-9][a-z0-9._-]{2,63}$/, "Invalid login name");
+
+export const PassphraseSchema = z.string().min(15).max(128);
 
 export const ChecklistStepInputSchema = z.object({
   text: z.string().trim().min(1),
   obligation: ObligationMeaningSchema,
+  logicalItemId: UuidSchema.optional(),
 });
 
 export const CreateRoutineSchema = z.object({
@@ -44,11 +58,7 @@ export const CreateRoutineSchema = z.object({
   steps: z.array(ChecklistStepInputSchema).min(1),
 });
 
-export const CreateRevisionSchema = z.object({
-  title: z.string().trim().min(1),
-  assigneeMemberIds: z.array(UuidSchema).min(1),
-  weekdays: z.array(IsoWeekdaySchema).min(1),
-  steps: z.array(ChecklistStepInputSchema).min(1),
+export const CreateRevisionSchema = CreateRoutineSchema.extend({
   effectiveDate: HouseholdDateSchema.optional(),
 });
 
@@ -58,13 +68,64 @@ export const SetStepStatusSchema = z.object({
   performedAt: InstantSchema,
 });
 
-export const ApiErrorSchema = z.object({
-  code: z.string(),
-  message: z.string(),
-  requestId: z.string(),
+export const LoginSchema = z.object({
+  loginName: LoginNameSchema,
+  passphrase: z.string().min(1).max(128),
 });
 
-export type MemberPublic = z.infer<typeof MemberPublicSchema>;
+export const ClaimSchema = z.object({
+  claimToken: z.string().min(16).max(256),
+  loginName: LoginNameSchema,
+  passphrase: PassphraseSchema,
+  displayName: z.string().trim().min(1).max(80),
+});
+
+export const IssueEnrollmentSchema = z.object({
+  membershipId: UuidSchema.optional(),
+  displayName: z.string().trim().min(1).max(80).optional(),
+  preset: GrantPresetSchema,
+});
+
+export const PersonalAdditionSchema = z.object({
+  text: z.string().trim().min(1),
+  obligation: ObligationMeaningSchema,
+  anchorLogicalItemId: UuidSchema.nullable().optional(),
+  place: z.enum(["before", "after", "end"]).default("end"),
+});
+
+export const SavePersonalLayerSchema = z.object({
+  additions: z.array(
+    z.object({
+      id: UuidSchema.optional(),
+      text: z.string().trim().min(1),
+      obligation: ObligationMeaningSchema,
+      anchorLogicalItemId: UuidSchema.nullable().optional(),
+      place: z.enum(["before", "after", "end"]).default("end"),
+    }),
+  ),
+  effectiveDate: HouseholdDateSchema.optional(),
+});
+
+export const CreateProposalSchema = z.object({
+  text: z.string().trim().min(1),
+  obligation: ObligationMeaningSchema,
+  anchorLogicalItemId: UuidSchema.nullable().optional(),
+  place: z.enum(["before", "after", "end"]).default("end"),
+});
+
+export const DecideProposalSchema = z.object({
+  decision: z.enum(["approved", "rejected"]),
+});
+
+export const CreatePersonalTaskSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  visibility: z.enum(["private", "household"]),
+});
+
+export const SetPersonalTaskStatusSchema = z.object({
+  mutationId: UuidSchema,
+  status: z.enum(["open", "completed"]),
+});
 
 export type OccurrenceStepView = {
   id: string;
@@ -72,6 +133,8 @@ export type OccurrenceStepView = {
   text: string;
   obligation: ObligationMeaning;
   status: StepStatus;
+  source: "shared" | "personal";
+  logicalItemId: string | null;
 };
 
 export type OccurrenceView = {
@@ -91,8 +154,15 @@ export type OccurrenceView = {
 export type SyncNotification = {
   type: "household_change";
   householdId: string;
-  resource: "occurrence" | "routine";
+  resource: "occurrence" | "routine" | "proposal" | "personal_task" | "membership";
   resourceId: string;
   version?: number;
   at: string;
+};
+
+export type MemberPublic = {
+  id: string;
+  displayName: string;
+  grants: Grant[];
+  status: "active" | "pending";
 };

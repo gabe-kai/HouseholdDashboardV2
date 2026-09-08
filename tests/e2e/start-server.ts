@@ -6,17 +6,22 @@ import { buildApp } from "../../src/server/app.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const dbPath = path.resolve(root, process.env.DB_PATH ?? "runtime/e2e.sqlite");
+const port = process.env.PORT ?? "8790";
 
 async function main() {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   if (fs.existsSync(dbPath)) fs.rmSync(dbPath);
 
   process.env.NODE_ENV = "production";
+  process.env.APP_PROFILE = "test";
+  process.env.AUTO_SEED = "1";
   process.env.DB_PATH = dbPath;
+  process.env.BACKUP_DIR = path.resolve(root, "runtime/backups");
   process.env.HOUSEHOLD_TIMEZONE = process.env.HOUSEHOLD_TIMEZONE ?? "America/New_York";
   process.env.HOST = process.env.HOST ?? "127.0.0.1";
-  process.env.PORT = process.env.PORT ?? "8790";
-  process.env.EVAL_LAN_ACCESS = process.env.EVAL_LAN_ACCESS ?? "0";
+  process.env.PORT = port;
+  process.env.PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN ?? `http://127.0.0.1:${port}`;
+  process.env.EVAL_LAN_ACCESS = "0";
 
   if (!fs.existsSync(path.resolve(root, "dist/client/index.html"))) {
     console.error("dist/client missing — run npm run build first.");

@@ -1,138 +1,305 @@
 import fs from "node:fs";
-import Fastify from "fastify";
+import { randomUUID } from "node:crypto";
 import cookie from "@fastify/cookie";
+import helmet from "@fastify/helmet";
+import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
 import websocket from "@fastify/websocket";
-import { randomUUID } from "node:crypto";
+import Fastify, {
+  type FastifyReply,
+  type FastifyRequest,
+} from "fastify";
+import { nowUtcIso } from "../domain/time.js";
 import {
+  ClaimSchema,
+  CreatePersonalTaskSchema,
+  CreateProposalSchema,
   CreateRevisionSchema,
   CreateRoutineSchema,
-  CreateSessionSchema,
+  DecideProposalSchema,
   HouseholdDateSchema,
+  IssueEnrollmentSchema,
+  LoginSchema,
+  SavePersonalLayerSchema,
+  SetPersonalTaskStatusSchema,
   SetStepStatusSchema,
 } from "../shared/schemas.js";
-import { nowUtcIso } from "../domain/time.js";
 import type { AppConfig } from "./config.js";
+import { digestEquals, sha256Hex } from "./crypto.js";
 import { migrate, openDatabase, resolveDbPath } from "./db.js";
-import { AppStore } from "./store.js";
+import { AppStore, type AuthContext } from "./store.js";
 import { SyncHub } from "./sync-hub.js";
 
-const SESSION_COOKIE = "hd_eval_session";
+const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+const CSRF_EXEMPT = new Set([
+  "/api/v1/auth/login",
+  "/api/v1/auth/claim",
+  "/api/v1/health",
+  "/api/v1/meta",
+  "/api/v1/test/bootstrap-claim",
+]);
 
 function errorBody(code: string, message: string, requestId: string) {
   return { code, message, requestId };
 }
 
 function statusForCode(code: string): number {
-  if (code === "FORBIDDEN") return 403;
-  if (code === "NOT_FOUND") return 404;
-  if (code === "CONFLICT") return 409;
-  if (code === "UNAUTHORIZED") return 401;
-  return 400;
+  switch (code) {
+    case "UNAUTHORIZED":
+      return 401;
+    case "FORBIDDEN":
+    case "CSRF":
+    case "ORIGIN":
+      return 403;
+    case "NOT_FOUND":
+      return 404;
+    case "CONFLICT":
+      return 409;
+    case "THROTTLED":
+      return 429;
+    case "VALIDATION":
+      return 400;
+    default:
+      return 500;
+  }
 }
 
 export async function buildApp(config: AppConfig) {
   const db = openDatabase(resolveDbPath(config.dbPath));
   migrate(db);
   const store = new AppStore(db);
-  store.seed(config.householdTimezone);
+  if (config.autoSeed) store.seed(config.householdTimezone);
   const sync = new SyncHub();
+  const requestSessions = new WeakMap<object, AuthContext>();
 
   const app = Fastify({
     logger: {
       level: "info",
-      redact: ["req.headers.cookie"],
+      redact: {
+        paths: [
+          "req.headers.cookie",
+          "req.headers.authorization",
+          "req.headers['x-csrf-token']",
+          "res.headers['set-cookie']",
+        ],
+        censor: "[REDACTED]",
+      },
     },
     genReqId: () => randomUUID(),
     bodyLimit: 64 * 1024,
+    trustProxy: config.trustedProxy,
   });
 
   await app.register(cookie);
   await app.register(websocket);
+  await app.register(helmet, { contentSecurityPolicy: false });
+  await app.register(rateLimit, {
+    global: true,
+    max: 120,
+    timeWindow: "1 minute",
+  });
+
+  function sessionFromRequest(request: FastifyRequest): AuthContext | null {
+    const cached = requestSessions.get(request);
+    if (cached) return cached;
+    const rawToken = request.cookies[config.cookieName];
+    if (!rawToken) return null;
+    const session = store.getSessionByTokenDigest(sha256Hex(rawToken));
+    if (session) requestSessions.set(request, session);
+    return session;
+  }
+
+  function requireSession(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): AuthContext | null {
+    const session = sessionFromRequest(request);
+    if (session) return session;
+    void reply
+      .code(401)
+      .send(errorBody("UNAUTHORIZED", "Authentication required", request.id));
+    return null;
+  }
+
+  function originAllowed(request: FastifyRequest): boolean {
+    const origin = request.headers.origin;
+    return typeof origin === "string" &&
+      (!config.publicOrigin || origin === config.publicOrigin);
+  }
+
+  function setSessionCookie(reply: FastifyReply, token: string): void {
+    reply.setCookie(config.cookieName, token, {
+      httpOnly: true,
+      sameSite: "strict",
+      secure: config.cookieSecure,
+      path: "/",
+    });
+  }
+
+  function clearSessionCookie(reply: FastifyReply): void {
+    reply.clearCookie(config.cookieName, {
+      httpOnly: true,
+      sameSite: "strict",
+      secure: config.cookieSecure,
+      path: "/",
+    });
+  }
+
+  function sessionBody(session: AuthContext, csrfToken: string) {
+    return {
+      member: {
+        id: session.membershipId,
+        displayName: session.displayName,
+      },
+      grants: session.grants,
+      csrfToken,
+      householdTimezone: session.timezone,
+      householdDate: store.householdDateNow(session),
+    };
+  }
+
+  function broadcast(
+    session: AuthContext,
+    resource: "occurrence" | "routine" | "proposal" | "personal_task" | "membership",
+    resourceId: string,
+    version?: number,
+  ): void {
+    sync.broadcast({
+      type: "household_change",
+      householdId: session.householdId,
+      resource,
+      resourceId,
+      ...(version === undefined ? {} : { version }),
+      at: nowUtcIso(),
+    });
+  }
 
   app.addHook("onSend", async (request, reply, payload) => {
     reply.header("X-Request-Id", request.id);
     return payload;
   });
 
+  app.addHook("preHandler", async (request, reply) => {
+    const routePath = request.routeOptions.url;
+    if (!routePath) return;
+    if (!UNSAFE_METHODS.has(request.method) || CSRF_EXEMPT.has(routePath)) return;
+
+    const session = requireSession(request, reply);
+    if (!session) return reply;
+    if (config.publicOrigin && !originAllowed(request)) {
+      return reply
+        .code(403)
+        .send(errorBody("ORIGIN", "Request origin is not allowed", request.id));
+    }
+
+    const token = request.headers["x-csrf-token"];
+    const tokenMatches =
+      typeof token === "string" &&
+      digestEquals(sha256Hex(token), sha256Hex(session.csrfSecret));
+    if (!tokenMatches) {
+      return reply
+        .code(403)
+        .send(errorBody("CSRF", "CSRF token is invalid", request.id));
+    }
+  });
+
+  app.setErrorHandler((error, request, reply) => {
+    if (reply.sent) return;
+    return sendStoreError(reply, request.id, error);
+  });
+
   app.get("/api/v1/health", async () => ({
     ok: true,
-    evaluationMode: true,
-    allowLan: config.allowLan,
+    evaluationMode: false,
   }));
 
   app.get("/api/v1/meta", async () => ({
-    evaluationMode: true,
+    evaluationMode: false,
     banner:
-      "EVALUATION BUILD — profile selection is not secure individual login. Trusted-LAN only when explicitly enabled.",
-    allowLan: config.allowLan,
-    bindHost: config.host,
+      config.profile === "hosted"
+        ? "Authentication is required. Use your household account to continue."
+        : "LOCAL DEVELOPMENT — authentication is enabled; seeded accounts must still be claimed.",
+    profile: config.profile,
   }));
 
-  app.get("/api/v1/members", async () => ({ members: store.listMembers() }));
+  app.post(
+    "/api/v1/auth/login",
+    { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
+    async (request, reply) => {
+      const parsed = LoginSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid login payload", request.id));
+      }
+      const result = await store.login(parsed.data.loginName, parsed.data.passphrase);
+      if ("error" in result) {
+        if (result.error === "throttled") {
+          const retryAfter = result.retryAfterSec ?? 60;
+          reply.header("Retry-After", retryAfter);
+          return reply
+            .code(429)
+            .send(errorBody("THROTTLED", "Authentication temporarily unavailable", request.id));
+        }
+        return reply
+          .code(401)
+          .send(errorBody("UNAUTHORIZED", "Invalid login or passphrase", request.id));
+      }
+      setSessionCookie(reply, result.token);
+      return sessionBody(result.context, result.csrfSecret);
+    },
+  );
 
-  app.post("/api/v1/session", async (request, reply) => {
-    const parsed = CreateSessionSchema.safeParse(request.body);
-    if (!parsed.success) {
-      return reply.code(400).send(errorBody("VALIDATION", "Invalid session payload", request.id));
-    }
-    try {
-      const session = store.createSession(parsed.data.memberId);
-      reply.setCookie(SESSION_COOKIE, session.sessionId, {
-        path: "/",
-        httpOnly: true,
-        sameSite: "lax",
-        secure: config.cookieSecure,
-      });
-      return {
-        member: {
-          id: session.memberId,
-          displayName: session.displayName,
-          capabilities: session.capabilities,
-        },
-        householdTimezone: session.timezone,
-        evaluationMode: true,
-      };
-    } catch (err) {
-      return sendStoreError(reply, request.id, err);
-    }
-  });
+  app.post(
+    "/api/v1/auth/claim",
+    { config: { rateLimit: { max: 5, timeWindow: "1 minute" } } },
+    async (request, reply) => {
+      const parsed = ClaimSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid claim payload", request.id));
+      }
+      const result = await store.claim(parsed.data);
+      setSessionCookie(reply, result.token);
+      broadcast(result.context, "membership", result.context.membershipId);
+      return sessionBody(result.context, result.csrfSecret);
+    },
+  );
 
-  app.get("/api/v1/session", async (request, reply) => {
-    const session = store.getSession(request.cookies[SESSION_COOKIE]);
-    if (!session) {
-      return reply.code(401).send(errorBody("UNAUTHORIZED", "No evaluation session", request.id));
-    }
-    return {
-      member: {
-        id: session.memberId,
-        displayName: session.displayName,
-        capabilities: session.capabilities,
-      },
-      householdTimezone: session.timezone,
-      evaluationMode: true,
-      householdDate: store.householdDateNow(session),
-    };
-  });
-
-  app.delete("/api/v1/session", async (request, reply) => {
-    const id = request.cookies[SESSION_COOKIE];
-    if (id) store.deleteSession(id);
-    reply.clearCookie(SESSION_COOKIE, { path: "/" });
+  app.post("/api/v1/auth/logout", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    store.revokeSession(session.sessionId);
+    clearSessionCookie(reply);
     return { ok: true };
   });
 
-  function requireSession(
-    request: { cookies: Record<string, string | undefined>; id: string },
-    reply: { code: (n: number) => { send: (b: unknown) => unknown } },
-  ) {
-    const session = store.getSession(request.cookies[SESSION_COOKIE]);
-    if (!session) {
-      reply.code(401).send(errorBody("UNAUTHORIZED", "No evaluation session", request.id));
-      return null;
+  app.get("/api/v1/auth/session", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    return sessionBody(session, session.csrfSecret);
+  });
+
+  app.post("/api/v1/enrollment/claims", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const parsed = IssueEnrollmentSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid enrollment claim", request.id));
     }
-    return session;
-  }
+    const claim = store.issueEnrollmentClaim(session, parsed.data);
+    broadcast(session, "membership", claim.membershipId);
+    return { claim };
+  });
+
+  app.get("/api/v1/memberships", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    return { memberships: store.listMemberships(session.householdId) };
+  });
 
   app.get("/api/v1/routines", async (request, reply) => {
     const session = requireSession(request, reply);
@@ -145,44 +312,28 @@ export async function buildApp(config: AppConfig) {
     if (!session) return;
     const parsed = CreateRoutineSchema.safeParse(request.body);
     if (!parsed.success) {
-      return reply.code(400).send(errorBody("VALIDATION", "Invalid routine", request.id));
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid routine", request.id));
     }
-    try {
-      const routine = store.createRoutine(session, parsed.data);
-      sync.broadcast({
-        type: "household_change",
-        householdId: session.householdId,
-        resource: "routine",
-        resourceId: routine!.id,
-        at: nowUtcIso(),
-      });
-      return { routine };
-    } catch (err) {
-      return sendStoreError(reply, request.id, err);
-    }
+    const routine = store.createRoutine(session, parsed.data);
+    broadcast(session, "routine", routine!.id);
+    return { routine };
   });
 
   app.post("/api/v1/routines/:definitionId/revisions", async (request, reply) => {
     const session = requireSession(request, reply);
     if (!session) return;
-    const params = request.params as { definitionId: string };
+    const { definitionId } = request.params as { definitionId: string };
     const parsed = CreateRevisionSchema.safeParse(request.body);
     if (!parsed.success) {
-      return reply.code(400).send(errorBody("VALIDATION", "Invalid revision", request.id));
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid revision", request.id));
     }
-    try {
-      const routine = store.createRevision(session, params.definitionId, parsed.data);
-      sync.broadcast({
-        type: "household_change",
-        householdId: session.householdId,
-        resource: "routine",
-        resourceId: params.definitionId,
-        at: nowUtcIso(),
-      });
-      return { routine };
-    } catch (err) {
-      return sendStoreError(reply, request.id, err);
-    }
+    const routine = store.createRevision(session, definitionId, parsed.data);
+    broadcast(session, "routine", definitionId);
+    return { routine };
   });
 
   app.get("/api/v1/today", async (request, reply) => {
@@ -193,15 +344,16 @@ export async function buildApp(config: AppConfig) {
     if (query.date) {
       const parsed = HouseholdDateSchema.safeParse(query.date);
       if (!parsed.success) {
-        return reply.code(400).send(errorBody("VALIDATION", "Invalid date", request.id));
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid date", request.id));
       }
       date = parsed.data;
     }
-    const occurrences = store.materializeForDate(session, date);
     return {
       householdDate: date,
       householdTimezone: session.timezone,
-      occurrences,
+      occurrences: store.materializeForDate(session, date),
     };
   });
 
@@ -213,50 +365,163 @@ export async function buildApp(config: AppConfig) {
     if (query.date) {
       const parsed = HouseholdDateSchema.safeParse(query.date);
       if (!parsed.success) {
-        return reply.code(400).send(errorBody("VALIDATION", "Invalid date", request.id));
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid date", request.id));
       }
       date = parsed.data;
     }
-    try {
-      const occurrences = store.historyForDate(session, date);
-      return { householdDate: date, occurrences };
-    } catch (err) {
-      return sendStoreError(reply, request.id, err);
-    }
+    return {
+      householdDate: date,
+      occurrences: store.historyForDate(session, date),
+    };
   });
 
-  app.post("/api/v1/occurrences/:occurrenceId/steps/:stepId/status", async (request, reply) => {
+  app.post(
+    "/api/v1/occurrences/:occurrenceId/steps/:stepId/status",
+    async (request, reply) => {
+      const session = requireSession(request, reply);
+      if (!session) return;
+      const params = request.params as { occurrenceId: string; stepId: string };
+      const parsed = SetStepStatusSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid status payload", request.id));
+      }
+
+      const delayMs = Number(request.headers["x-mutation-delay-ms"] ?? 0);
+      if (config.profile !== "hosted" && delayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, Math.min(delayMs, 10_000)));
+      }
+
+      const result = store.setStepStatus(
+        session,
+        params.occurrenceId,
+        params.stepId,
+        parsed.data,
+      );
+      broadcast(
+        session,
+        "occurrence",
+        params.occurrenceId,
+        result.occurrence.version,
+      );
+      return result;
+    },
+  );
+
+  app.put("/api/v1/personal-layer", async (request, reply) => {
     const session = requireSession(request, reply);
     if (!session) return;
-    const params = request.params as { occurrenceId: string; stepId: string };
-    const parsed = SetStepStatusSchema.safeParse(request.body);
+    const parsed = SavePersonalLayerSchema.safeParse(request.body);
     if (!parsed.success) {
-      return reply.code(400).send(errorBody("VALIDATION", "Invalid status payload", request.id));
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid personal layer", request.id));
     }
+    const layer = store.savePersonalLayer(session, parsed.data);
+    broadcast(session, "routine", layer.definitionId);
+    return { layer };
+  });
 
-    const delayMs = Number(request.headers["x-mutation-delay-ms"] ?? 0);
-    if (delayMs > 0) {
-      await new Promise((r) => setTimeout(r, delayMs));
+  app.get("/api/v1/personal-layer/preview", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const query = request.query as { membershipId?: string; date?: string };
+    const membershipId = query.membershipId ?? session.membershipId;
+    const parsedDate = HouseholdDateSchema.safeParse(
+      query.date ?? store.householdDateNow(session),
+    );
+    if (!parsedDate.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid preview date", request.id));
     }
+    return {
+      preview: store.previewComposition(session, membershipId, parsedDate.data),
+    };
+  });
 
-    try {
-      const result = store.setStepStatus(session, params.occurrenceId, params.stepId, parsed.data);
-      sync.broadcast({
-        type: "household_change",
-        householdId: session.householdId,
-        resource: "occurrence",
-        resourceId: params.occurrenceId,
-        version: result.occurrence.version,
-        at: nowUtcIso(),
-      });
-      return result;
-    } catch (err) {
-      return sendStoreError(reply, request.id, err);
+  app.post("/api/v1/proposals", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const parsed = CreateProposalSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid proposal", request.id));
     }
+    const proposal = store.createProposal(session, parsed.data);
+    broadcast(session, "proposal", proposal.id);
+    return { proposal };
+  });
+
+  app.get("/api/v1/proposals", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    return { proposals: store.listProposals(session) };
+  });
+
+  app.post("/api/v1/proposals/:proposalId/decide", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const { proposalId } = request.params as { proposalId: string };
+    const parsed = DecideProposalSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid proposal decision", request.id));
+    }
+    const proposal = store.decideProposal(session, proposalId, parsed.data);
+    broadcast(session, "proposal", proposal.id);
+    if (proposal.personalRevisionId) {
+      broadcast(session, "routine", proposal.personalRevisionId);
+    }
+    return { proposal };
+  });
+
+  app.post("/api/v1/personal-tasks", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const parsed = CreatePersonalTaskSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid personal task", request.id));
+    }
+    const task = store.createTask(session, parsed.data);
+    broadcast(session, "personal_task", task.id);
+    return { task };
+  });
+
+  app.get("/api/v1/personal-tasks", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    return { tasks: store.listTasks(session) };
+  });
+
+  app.post("/api/v1/personal-tasks/:taskId/status", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const { taskId } = request.params as { taskId: string };
+    const parsed = SetPersonalTaskStatusSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid task status", request.id));
+    }
+    const task = store.setTaskStatus(session, taskId, parsed.data);
+    broadcast(session, "personal_task", task!.id);
+    return { task };
   });
 
   app.get("/api/v1/sync", { websocket: true }, (socket, request) => {
-    const session = store.getSession(request.cookies[SESSION_COOKIE]);
+    if (!originAllowed(request)) {
+      socket.close(4403, "origin rejected");
+      return;
+    }
+    const session = sessionFromRequest(request);
     if (!session) {
       socket.close(4401, "unauthorized");
       return;
@@ -273,18 +538,37 @@ export async function buildApp(config: AppConfig) {
     );
   });
 
-  if (config.isProduction && fs.existsSync(config.clientDist)) {
+  if (config.profile === "development" || config.profile === "test") {
+    app.post("/api/v1/test/bootstrap-claim", async (request, reply) => {
+      try {
+        const issued = store.issueBootstrapClaim();
+        return { token: issued.token, expiresAt: issued.expiresAt };
+      } catch (err) {
+        return sendStoreError(reply, request.id, err);
+      }
+    });
+  }
+
+  if ((config.isProduction || config.profile === "hosted") && fs.existsSync(config.clientDist)) {
     await app.register(fastifyStatic, {
       root: config.clientDist,
       wildcard: false,
     });
-    app.setNotFoundHandler((request, reply) => {
-      if (request.method === "GET" && !request.url.startsWith("/api/")) {
-        return reply.sendFile("index.html");
-      }
-      return reply.code(404).send(errorBody("NOT_FOUND", "Not found", request.id));
-    });
   }
+
+  app.setNotFoundHandler((request, reply) => {
+    if (
+      (config.isProduction || config.profile === "hosted") &&
+      fs.existsSync(config.clientDist) &&
+      request.method === "GET" &&
+      !request.url.startsWith("/api/")
+    ) {
+      return reply.sendFile("index.html");
+    }
+    return reply
+      .code(404)
+      .send(errorBody("NOT_FOUND", "Not found", request.id));
+  });
 
   app.addHook("onClose", async () => {
     db.close();
@@ -294,11 +578,40 @@ export async function buildApp(config: AppConfig) {
 }
 
 function sendStoreError(
-  reply: { code: (n: number) => { send: (b: unknown) => unknown } },
+  reply: FastifyReply,
   requestId: string,
-  err: unknown,
+  error: unknown,
 ) {
-  const code = (err as { code?: string }).code ?? "ERROR";
-  const message = err instanceof Error ? err.message : "Error";
-  return reply.code(statusForCode(code)).send(errorBody(code, message, requestId));
+  const candidate = error as {
+    code?: string;
+    retryAfterSec?: number;
+    statusCode?: number;
+  };
+  const rateLimited =
+    candidate.statusCode === 429 || candidate.code === "FST_ERR_RATE_LIMIT";
+  const knownCode =
+    typeof candidate.code === "string" &&
+    [
+      "VALIDATION",
+      "FORBIDDEN",
+      "NOT_FOUND",
+      "CONFLICT",
+      "UNAUTHORIZED",
+      "THROTTLED",
+      "CSRF",
+      "ORIGIN",
+    ].includes(candidate.code);
+  const code = rateLimited ? "THROTTLED" : knownCode ? candidate.code! : "INTERNAL";
+  const message =
+    rateLimited
+      ? "Request rate limit exceeded"
+      : knownCode && error instanceof Error
+      ? error.message
+      : "An unexpected error occurred";
+  if (code === "THROTTLED" && candidate.retryAfterSec) {
+    reply.header("Retry-After", candidate.retryAfterSec);
+  }
+  return reply
+    .code(statusForCode(code))
+    .send(errorBody(code, message, requestId));
 }

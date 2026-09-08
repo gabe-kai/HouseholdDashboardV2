@@ -19,14 +19,14 @@
 
 ## Current focus
 
-Prepare `P0-002 r1 - Authenticated Household Authority` for Engineering readiness: replace evaluation profiles with six real household identities, add membership capabilities, future-effective personal routine layers and one approval flow, preserve P0-001 execution/history behavior, add thin personal tasks, and make the application deployable behind HTTPS for real-phone evaluation.
+Implement `P0-002 r1 - Authenticated Household Authority`: replace evaluation profiles with six real household identities, add membership capabilities, future-effective personal routine layers and one approval flow, preserve P0-001 execution/history behavior, add thin personal tasks, and make the application deployable behind HTTPS for real-phone evaluation.
 
 ## Internal work status
 
 | Work | Revision | State | Current team | Branch / PR | Waiting on |
 | --- | ---: | --- | --- | --- | --- |
 | P0-001 - Shared Morning Routine | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #1 | Product acceptance/evaluation |
-| P0-002 - Authenticated Household Authority | r1 | IN REVIEW | Engineering | No branch yet; planned `brief/p0-002-authenticated-household-authority` | Engineering readiness; Project Lead authorization/provisioning for the HTTPS host before deployed acceptance |
+| P0-002 - Authenticated Household Authority | r1 | READY | Engineering | No branch yet; authorized `brief/p0-002-authenticated-household-authority` | Engineering implementation and Build Report; Project Lead authorization/provisioning for the HTTPS host before deployed acceptance |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -47,7 +47,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Engineering readiness review for exactly `P0-002 r1` in `briefs/P0-002-authenticated-household-authority.md`, followed by Architecture disposition before implementation begins.
+Engineering implementation of exactly `P0-002 r1` on `brief/p0-002-authenticated-household-authority`, followed by a Build Report returning the same revision to Architecture for technical acceptance.
 
 ## Notes for all teams
 

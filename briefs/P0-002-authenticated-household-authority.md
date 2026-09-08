@@ -1,7 +1,7 @@
 # BRIEF P0-002 - Authenticated Household Authority
 
 **Revision:** 1
-**Status:** READY
+**Status:** FIX REQUIRED
 
 Recommended lifecycle: DRAFT -> IN REVIEW -> READY -> IMPLEMENTING -> IMPLEMENTED -> ACCEPTED
 
@@ -178,6 +178,15 @@ The shared routine remains the inherited base. Personal changes apply prospectiv
 No material Questions or Blockers. Merged P0-001 on `main` (`8004959`) matches the brief’s Current system. `@node-rs/argon2@2.2.0` installed and verified Argon2id (19 MiB / 2 iterations / parallelism 1) under Node.js `v24.16.0` on this Windows host; Linux live probe deferred to Build Report when an authorized host exists. Hosted HTTPS provider remains an acceptance gap only. Implementation awaits Architecture’s response. Coordinator/Architecture should commit untracked/uncommitted P0-002 planning artifacts to `main` before Engineering opens `brief/p0-002-authenticated-household-authority`.
 
 **Architecture disposition:** ACCEPT (2026-09-07). The readiness findings require no r1 contract change. Planning artifacts and the readiness report were committed to `main` in `eb8647e`; Engineering is authorized to create `brief/p0-002-authenticated-household-authority` from this planning baseline and implement P0-002 r1. Provider-neutral implementation may proceed before a host is selected, but acceptance tests 20 and the hosted portions of 21 remain required before Architecture can mark the full brief technically `ACCEPTED`.
+
+**Architecture acceptance disposition:** FIX REQUIRED (2026-09-08). This is a same-revision fix loop; no contract change or readiness re-review is required after the fixes. The Build Report demonstrates substantial implementation progress, but r1 cannot be technically accepted yet for the following reasons:
+
+- **Security contract defect:** `/api/v1/auth/login` and `/api/v1/auth/claim` are CSRF-exempt but do not independently enforce the required allowed-origin check. The brief requires login and claim endpoints to validate their own origin; add the check and direct HTTP tests for absent, foreign, and allowed origins. Keep the test-only bootstrap shortcut unavailable in hosted mode.
+- **Migration contract defect:** `src/server/backfill.ts` carries logical IDs by a single `text + obligation` map. Duplicate checklist rows can therefore receive the same logical ID, contradicting stable unique item identity and making anchors ambiguous. Backfill must assign one unique ID per row, match prior identities one-to-one where evidence supports continuity, and test duplicate/reordered legacy steps.
+- **Protected regression evidence was removed/reduced:** The implementation branch deletes the existing `tests/integration/p0-001.test.ts` and reduces the prior e2e coverage to three P0-002 tests. Restore or port equivalent regression coverage for P0-001 materialized-occurrence idempotency, assignment/execution separation, future-history integrity, household-timezone behavior, pending outbox through reload/interruption, dual-context synchronization/reconnect, and accessibility basics. Do not claim the protected P0-001 behavior is covered solely because the new suite passes.
+- **Required evidence gaps:** Add focused automated evidence for the brief’s partial scenarios: full HTTP route and WebSocket cross-household isolation, exhaustive grant/API matrix, shared-base change after personalization, required-item UI/API denial, effective-date preview behavior, shared-browser identity switch/outbox safety, and two-context synchronization. These may be implemented as integration or e2e tests, but each must be traceable to the corresponding r1 acceptance test.
+
+Acceptance tests 20 and the hosted portions of 21 remain **NOT RUN**, not Engineering defects: they require the Project Lead-authorized HTTPS host, persistent storage/snapshots, and physical phones. After the code/evidence fixes, return the same r1 with an updated Build Report. Architecture will then reassess the implementation; hosted evidence will still be required before full technical acceptance.
 
 ## Revision history
 

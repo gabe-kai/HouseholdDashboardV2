@@ -10,16 +10,16 @@ async function main() {
     {
       host: config.host,
       port: config.port,
-      allowLan: config.allowLan,
-      evaluationMode: true,
+      profile: config.profile,
     },
-    config.allowLan
-      ? "EVALUATION BUILD listening with LAN exposure enabled — not secure individual login"
-      : "EVALUATION BUILD listening on loopback",
+    config.profile === "hosted"
+      ? "Authenticated household server listening behind configured HTTPS proxy"
+      : "Authenticated household server listening for local development",
   );
 }
 
 main().catch((err) => {
-  console.error(err);
+  const message = err instanceof Error ? err.message : "Server startup failed";
+  console.error(message);
   process.exit(1);
 });

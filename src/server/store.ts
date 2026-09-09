@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import { isOccurrenceComplete, assertStatusAllowed } from "../domain/completion.js";
+import { composeMorningRoutine } from "../domain/compose.js";
 import {
   isDateApplicable,
   selectRevisionForDate,
@@ -13,507 +14,732 @@ import {
   nowUtcIso,
   type HouseholdDate,
 } from "../domain/time.js";
+import { GRANT_PRESETS } from "../shared/grants.js";
 import type {
-  Capability,
+  Grant,
+  GrantPreset,
+  MemberPublic,
   ObligationMeaning,
   OccurrenceView,
   StepStatus,
 } from "../shared/schemas.js";
+import {
+  digestEquals,
+  hashPassphrase,
+  randomToken,
+  sha256Hex,
+  verifyPassphrase,
+} from "./crypto.js";
+import { isCommonPassphrase } from "./password-blocklist.js";
 import { SEED } from "./seeds/evaluation.js";
 
-type MemberRow = {
-  id: string;
-  household_id: string;
-  display_name: string;
-  capabilities_json: string;
-};
-
-export type SessionContext = {
+export type AuthContext = {
   sessionId: string;
+  userId: string;
+  membershipId: string;
   householdId: string;
-  memberId: string;
   displayName: string;
-  capabilities: Capability[];
+  grants: Grant[];
   timezone: string;
+  csrfSecret: string;
 };
 
-function parseCapabilities(json: string): Capability[] {
-  return JSON.parse(json) as Capability[];
+type StoreErrorCode =
+  | "VALIDATION"
+  | "FORBIDDEN"
+  | "NOT_FOUND"
+  | "CONFLICT"
+  | "UNAUTHORIZED"
+  | "THROTTLED";
+
+type RoutineStepInput = {
+  text: string;
+  obligation: ObligationMeaning;
+  logicalItemId?: string;
+};
+
+type RoutineInput = {
+  title: string;
+  assigneeMemberIds: string[];
+  weekdays: number[];
+  steps: RoutineStepInput[];
+};
+
+type PersonalAdditionInput = {
+  id?: string;
+  text: string;
+  obligation: ObligationMeaning;
+  anchorLogicalItemId?: string | null;
+  place: "before" | "after" | "end";
+};
+
+type PersonalLayer = {
+  id: string;
+  membershipId: string;
+  definitionId: string;
+  effectiveDate: string;
+  createdAt: string;
+  additions: Array<{
+    id: string;
+    position: number;
+    text: string;
+    obligation: ObligationMeaning;
+    anchorLogicalItemId: string | null;
+    place: "before" | "after" | "end";
+  }>;
+};
+
+const LOGIN_RE = /^[a-z0-9][a-z0-9._-]{2,63}$/;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const IDLE_MS = 7 * 24 * 60 * 60 * 1_000;
+const ABSOLUTE_MS = 30 * 24 * 60 * 60 * 1_000;
+const CLAIM_MS = 24 * 60 * 60 * 1_000;
+const LOGIN_WINDOW_MS = 15 * 60 * 1_000;
+const LOGIN_BLOCK_MS = 60 * 1_000;
+
+const FIXTURE_MEMBERS = [
+  {
+    id: "22222222-2222-4222-8222-222222222201",
+    displayName: "Morgan Reed",
+    preset: "manager" as const,
+  },
+  {
+    id: "22222222-2222-4222-8222-222222222202",
+    displayName: "Avery Reed",
+    preset: "direct_personalizer" as const,
+  },
+  {
+    id: "22222222-2222-4222-8222-222222222203",
+    displayName: "Jordan Reed",
+    preset: "direct_personalizer" as const,
+  },
+  {
+    id: "22222222-2222-4222-8222-222222222204",
+    displayName: "Casey Reed",
+    preset: "proposal_personalizer" as const,
+  },
+  {
+    id: "22222222-2222-4222-8222-222222222205",
+    displayName: "Taylor Reed",
+    preset: "proposal_personalizer" as const,
+  },
+  {
+    id: "22222222-2222-4222-8222-222222222206",
+    displayName: "Rowan Reed",
+    preset: "proposal_personalizer" as const,
+  },
+] as const;
+
+function fail(code: StoreErrorCode, message: string, extra?: Record<string, unknown>): never {
+  throw Object.assign(new Error(message), { code, ...extra });
 }
 
-function hasCapability(ctx: SessionContext, cap: Capability): boolean {
-  return ctx.capabilities.includes(cap);
+function normalizedLogin(loginName: string): string {
+  return loginName.trim().toLowerCase();
+}
+
+function legacyCapabilities(grants: Grant[]): string {
+  return JSON.stringify(
+    grants.includes("routine.shared.manage")
+      ? ["manage_routine", "execute_own_occurrence"]
+      : ["execute_own_occurrence"],
+  );
+}
+
+function isValidHouseholdDate(value: string): boolean {
+  if (!DATE_RE.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
+function isoAt(date: Date): string {
+  return date.toISOString();
 }
 
 export class AppStore {
   constructor(private readonly db: Database.Database) {}
 
+  hasGrant(ctx: AuthContext, grant: Grant): boolean {
+    return ctx.grants.includes(grant);
+  }
+
   seed(timezone: string): void {
-    const existing = this.db.prepare("SELECT id FROM households LIMIT 1").get();
-    if (existing) return;
+    if (this.db.prepare("SELECT 1 FROM households LIMIT 1").get()) return;
 
-    const insertHousehold = this.db.prepare(
-      "INSERT INTO households (id, name, timezone) VALUES (?, ?, ?)",
-    );
-    const insertMember = this.db.prepare(
-      "INSERT INTO members (id, household_id, display_name, capabilities_json) VALUES (?, ?, ?, ?)",
-    );
-
+    const createdAt = nowUtcIso();
     const tx = this.db.transaction(() => {
-      insertHousehold.run(SEED.household.id, SEED.household.name, timezone);
-      for (const m of SEED.members) {
+      this.db
+        .prepare("INSERT INTO households (id, name, timezone) VALUES (?, ?, ?)")
+        .run(SEED.household.id, "Reed Household", timezone);
+
+      const insertMember = this.db.prepare(
+        `INSERT INTO members (id, household_id, display_name, capabilities_json)
+         VALUES (?, ?, ?, ?)`,
+      );
+      const insertMembership = this.db.prepare(
+        `INSERT INTO household_memberships
+         (id, household_id, user_id, display_name, status, created_at)
+         VALUES (?, ?, NULL, ?, 'pending', ?)`,
+      );
+      const insertGrant = this.db.prepare(
+        "INSERT INTO membership_grants (membership_id, grant_name) VALUES (?, ?)",
+      );
+      for (const member of FIXTURE_MEMBERS) {
+        const grants = GRANT_PRESETS[member.preset];
         insertMember.run(
-          m.id,
+          member.id,
           SEED.household.id,
-          m.displayName,
-          JSON.stringify([...m.capabilities]),
+          member.displayName,
+          legacyCapabilities(grants),
         );
+        insertMembership.run(member.id, SEED.household.id, member.displayName, createdAt);
+        for (const grant of grants) insertGrant.run(member.id, grant);
       }
     });
     tx();
   }
 
-  listMembers(): Array<{ id: string; displayName: string; capabilities: Capability[] }> {
-    const rows = this.db
-      .prepare("SELECT id, display_name, capabilities_json FROM members ORDER BY display_name")
-      .all() as MemberRow[];
-    return rows.map((r) => ({
-      id: r.id,
-      displayName: r.display_name,
-      capabilities: parseCapabilities(r.capabilities_json),
-    }));
-  }
-
-  createSession(memberId: string): SessionContext {
-    const member = this.db
-      .prepare("SELECT * FROM members WHERE id = ?")
-      .get(memberId) as MemberRow | undefined;
-    if (!member) {
-      throw Object.assign(new Error("Unknown member"), { code: "NOT_FOUND" });
-    }
-    const household = this.db
-      .prepare("SELECT timezone FROM households WHERE id = ?")
-      .get(member.household_id) as { timezone: string };
-
-    // One active session token per browser selection; rotate id.
-    const sessionId = randomUUID();
-    this.db
-      .prepare("INSERT INTO sessions (id, household_id, member_id, created_at) VALUES (?, ?, ?, ?)")
-      .run(sessionId, member.household_id, member.id, nowUtcIso());
-
-    return {
-      sessionId,
-      householdId: member.household_id,
-      memberId: member.id,
-      displayName: member.display_name,
-      capabilities: parseCapabilities(member.capabilities_json),
-      timezone: household.timezone,
-    };
-  }
-
-  getSession(sessionId: string | undefined): SessionContext | null {
-    if (!sessionId) return null;
+  getSessionByTokenDigest(digest: string): AuthContext | null {
     const row = this.db
       .prepare(
-        `SELECT s.id as session_id, s.household_id, s.member_id, m.display_name, m.capabilities_json, h.timezone
-         FROM sessions s
-         JOIN members m ON m.id = s.member_id
-         JOIN households h ON h.id = s.household_id
-         WHERE s.id = ?`,
+        `SELECT s.id session_id, s.user_id, s.membership_id, s.csrf_secret,
+                s.created_at, s.last_seen_at, s.absolute_expires_at,
+                hm.household_id, hm.display_name, h.timezone
+         FROM auth_sessions s
+         JOIN users u ON u.id = s.user_id AND u.disabled = 0
+         JOIN household_memberships hm
+           ON hm.id = s.membership_id AND hm.user_id = s.user_id AND hm.status = 'active'
+         JOIN households h ON h.id = hm.household_id
+         WHERE s.token_digest = ? AND s.revoked_at IS NULL`,
       )
-      .get(sessionId) as
+      .get(digest) as
       | {
           session_id: string;
+          user_id: string;
+          membership_id: string;
+          csrf_secret: string;
+          created_at: string;
+          last_seen_at: string;
+          absolute_expires_at: string;
           household_id: string;
-          member_id: string;
           display_name: string;
-          capabilities_json: string;
           timezone: string;
         }
       | undefined;
     if (!row) return null;
+
+    const now = new Date();
+    const idleExpired = now.getTime() - new Date(row.last_seen_at).getTime() > IDLE_MS;
+    const absoluteExpired = now >= new Date(row.absolute_expires_at);
+    if (idleExpired || absoluteExpired) {
+      this.db
+        .prepare("UPDATE auth_sessions SET revoked_at = ? WHERE id = ?")
+        .run(isoAt(now), row.session_id);
+      return null;
+    }
+
+    this.db
+      .prepare("UPDATE auth_sessions SET last_seen_at = ? WHERE id = ?")
+      .run(isoAt(now), row.session_id);
+    return this.authContextFromRow(row);
+  }
+
+  createSession(
+    userId: string,
+    membershipId: string,
+  ): { token: string; csrfSecret: string; context: AuthContext } {
+    const row = this.db
+      .prepare(
+        `SELECT hm.household_id, hm.display_name, h.timezone
+         FROM household_memberships hm
+         JOIN users u ON u.id = hm.user_id AND u.disabled = 0
+         JOIN households h ON h.id = hm.household_id
+         WHERE hm.id = ? AND hm.user_id = ? AND hm.status = 'active'`,
+      )
+      .get(membershipId, userId) as
+      | { household_id: string; display_name: string; timezone: string }
+      | undefined;
+    if (!row) fail("UNAUTHORIZED", "Authentication required");
+
+    const token = randomToken();
+    const csrfSecret = randomToken();
+    const sessionId = randomUUID();
+    const now = new Date();
+    this.db
+      .prepare(
+        `INSERT INTO auth_sessions
+         (id, user_id, membership_id, token_digest, csrf_secret, created_at,
+          last_seen_at, absolute_expires_at, revoked_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+      )
+      .run(
+        sessionId,
+        userId,
+        membershipId,
+        sha256Hex(token),
+        csrfSecret,
+        isoAt(now),
+        isoAt(now),
+        isoAt(new Date(now.getTime() + ABSOLUTE_MS)),
+      );
+
     return {
-      sessionId: row.session_id,
-      householdId: row.household_id,
-      memberId: row.member_id,
-      displayName: row.display_name,
-      capabilities: parseCapabilities(row.capabilities_json),
-      timezone: row.timezone,
+      token,
+      csrfSecret,
+      context: {
+        sessionId,
+        userId,
+        membershipId,
+        householdId: row.household_id,
+        displayName: row.display_name,
+        grants: this.grantsForMembership(membershipId),
+        timezone: row.timezone,
+        csrfSecret,
+      },
     };
   }
 
-  deleteSession(sessionId: string): void {
-    this.db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
+  revokeSession(sessionId: string): void {
+    this.db
+      .prepare("UPDATE auth_sessions SET revoked_at = COALESCE(revoked_at, ?) WHERE id = ?")
+      .run(nowUtcIso(), sessionId);
   }
 
-  householdDateNow(ctx: SessionContext, now = new Date()): HouseholdDate {
+  revokeUserSessions(userId: string): void {
+    this.db
+      .prepare(
+        "UPDATE auth_sessions SET revoked_at = COALESCE(revoked_at, ?) WHERE user_id = ?",
+      )
+      .run(nowUtcIso(), userId);
+  }
+
+  async login(
+    loginName: string,
+    passphrase: string,
+    now = new Date(),
+  ): Promise<
+    | { token: string; csrfSecret: string; context: AuthContext }
+    | { error: "auth" | "throttled"; retryAfterSec?: number }
+  > {
+    const key = normalizedLogin(loginName);
+    const throttle = this.loginThrottle(key, now);
+    if (throttle > 0) return { error: "throttled", retryAfterSec: throttle };
+
+    const user = this.db
+      .prepare(
+        `SELECT u.id, u.disabled, c.passphrase_phc
+         FROM users u
+         JOIN user_credentials c ON c.user_id = u.id
+         WHERE u.login_name = ?`,
+      )
+      .get(key) as
+      | { id: string; disabled: number; passphrase_phc: string }
+      | undefined;
+    const valid =
+      !!user &&
+      user.disabled === 0 &&
+      (await verifyPassphrase(user.passphrase_phc, passphrase));
+    if (!valid || !user) {
+      const retryAfterSec = this.recordLoginFailure(key, now);
+      return retryAfterSec
+        ? { error: "throttled", retryAfterSec }
+        : { error: "auth" };
+    }
+
+    const memberships = this.db
+      .prepare(
+        `SELECT id FROM household_memberships
+         WHERE user_id = ? AND status = 'active' ORDER BY created_at`,
+      )
+      .all(user.id) as Array<{ id: string }>;
+    if (memberships.length !== 1) {
+      const retryAfterSec = this.recordLoginFailure(key, now);
+      return retryAfterSec
+        ? { error: "throttled", retryAfterSec }
+        : { error: "auth" };
+    }
+
+    this.db.prepare("DELETE FROM login_throttle WHERE key = ?").run(key);
+    return this.createSession(user.id, memberships[0].id);
+  }
+
+  async claim(input: {
+    claimToken: string;
+    loginName: string;
+    passphrase: string;
+    displayName: string;
+  }): Promise<{ token: string; csrfSecret: string; context: AuthContext }> {
+    const loginName = normalizedLogin(input.loginName);
+    if (!LOGIN_RE.test(loginName)) fail("VALIDATION", "Invalid login name");
+    const policy = this.validatePassphrasePolicy(input.passphrase);
+    if (!policy.ok) fail("VALIDATION", policy.message ?? "Invalid passphrase");
+    const displayName = input.displayName.trim();
+    if (!displayName || displayName.length > 80) {
+      fail("VALIDATION", "Display name must be between 1 and 80 characters");
+    }
+
+    const digest = sha256Hex(input.claimToken);
+    const claim = this.db
+      .prepare(
+        `SELECT * FROM enrollment_claims
+         WHERE token_digest = ? AND consumed_at IS NULL`,
+      )
+      .get(digest) as
+      | {
+          id: string;
+          household_id: string;
+          membership_id: string | null;
+          token_digest: string;
+          preset: GrantPreset;
+          expires_at: string;
+        }
+      | undefined;
+    if (
+      !claim ||
+      !digestEquals(claim.token_digest, digest) ||
+      new Date(claim.expires_at) <= new Date()
+    ) {
+      fail("UNAUTHORIZED", "Claim is invalid or expired");
+    }
+
+    const existingUser = this.db
+      .prepare("SELECT 1 FROM users WHERE login_name = ?")
+      .get(loginName);
+    if (existingUser) fail("UNAUTHORIZED", "Claim could not be completed");
+
+    const passphrasePhc = await hashPassphrase(input.passphrase);
+    const userId = randomUUID();
+    const membershipId = claim.membership_id ?? randomUUID();
+    const createdAt = nowUtcIso();
+    const grants = GRANT_PRESETS[claim.preset];
+
+    const tx = this.db.transaction(() => {
+      const fresh = this.db
+        .prepare(
+          "SELECT consumed_at, expires_at FROM enrollment_claims WHERE id = ?",
+        )
+        .get(claim.id) as { consumed_at: string | null; expires_at: string };
+      if (fresh.consumed_at || new Date(fresh.expires_at) <= new Date()) {
+        fail("UNAUTHORIZED", "Claim is invalid or expired");
+      }
+
+      this.db
+        .prepare("INSERT INTO users (id, login_name, created_at, disabled) VALUES (?, ?, ?, 0)")
+        .run(userId, loginName, createdAt);
+      this.db
+        .prepare(
+          "INSERT INTO user_credentials (user_id, passphrase_phc, updated_at) VALUES (?, ?, ?)",
+        )
+        .run(userId, passphrasePhc, createdAt);
+
+      const existingMembership = this.db
+        .prepare(
+          `SELECT id FROM household_memberships
+           WHERE id = ? AND household_id = ? AND user_id IS NULL AND status = 'pending'`,
+        )
+        .get(membershipId, claim.household_id);
+      if (claim.membership_id && !existingMembership) {
+        fail("CONFLICT", "Membership is no longer claimable");
+      }
+      if (existingMembership) {
+        this.db
+          .prepare(
+            `UPDATE household_memberships
+             SET user_id = ?, display_name = ?, status = 'active' WHERE id = ?`,
+          )
+          .run(userId, displayName, membershipId);
+        this.db
+          .prepare(
+            "UPDATE members SET display_name = ?, capabilities_json = ? WHERE id = ?",
+          )
+          .run(displayName, legacyCapabilities(grants), membershipId);
+      } else {
+        this.insertCompatibleMembership(
+          membershipId,
+          claim.household_id,
+          userId,
+          displayName,
+          "active",
+          createdAt,
+          grants,
+        );
+      }
+
+      this.replaceGrants(membershipId, grants);
+      this.db
+        .prepare("UPDATE enrollment_claims SET consumed_at = ? WHERE id = ?")
+        .run(createdAt, claim.id);
+    });
+    tx();
+    return this.createSession(userId, membershipId);
+  }
+
+  issueBootstrapClaim(): { token: string; expiresAt: string } {
+    const activeManager = this.db
+      .prepare(
+        `SELECT 1
+         FROM household_memberships hm
+         JOIN membership_grants mg ON mg.membership_id = hm.id
+         JOIN users u ON u.id = hm.user_id AND u.disabled = 0
+         WHERE hm.status = 'active' AND mg.grant_name = 'household.member.enroll'
+         LIMIT 1`,
+      )
+      .get();
+    if (activeManager) fail("CONFLICT", "An active manager already exists");
+
+    let household = this.db
+      .prepare("SELECT id FROM households ORDER BY id LIMIT 1")
+      .get() as { id: string } | undefined;
+    if (!household) {
+      this.seed("UTC");
+      household = { id: SEED.household.id };
+    }
+    const manager = this.db
+      .prepare(
+        `SELECT hm.id
+         FROM household_memberships hm
+         JOIN membership_grants mg ON mg.membership_id = hm.id
+         WHERE hm.household_id = ? AND hm.status = 'pending'
+           AND mg.grant_name = 'household.member.enroll'
+         ORDER BY hm.created_at LIMIT 1`,
+      )
+      .get(household.id) as { id: string } | undefined;
+
+    this.db
+      .prepare(
+        `UPDATE enrollment_claims SET consumed_at = ?
+         WHERE kind = 'bootstrap' AND consumed_at IS NULL`,
+      )
+      .run(nowUtcIso());
+    return this.insertClaim({
+      householdId: household.id,
+      membershipId: manager?.id ?? null,
+      displayName: null,
+      preset: "manager",
+      creatorMembershipId: null,
+      kind: "bootstrap",
+    });
+  }
+
+  issueEnrollmentClaim(
+    ctx: AuthContext,
+    input: { membershipId?: string; displayName?: string; preset: GrantPreset },
+  ): { token: string; expiresAt: string; membershipId: string } {
+    this.requireGrant(ctx, "household.member.enroll");
+    if (!GRANT_PRESETS[input.preset]) fail("VALIDATION", "Invalid grant preset");
+    if (!input.membershipId && !input.displayName?.trim()) {
+      fail("VALIDATION", "A display name is required for a new membership");
+    }
+
+    const createdAt = nowUtcIso();
+    const membershipId = input.membershipId ?? randomUUID();
+    const tx = this.db.transaction(() => {
+      if (input.membershipId) {
+        const membership = this.db
+          .prepare(
+            `SELECT id FROM household_memberships
+             WHERE id = ? AND household_id = ? AND status = 'pending' AND user_id IS NULL`,
+          )
+          .get(input.membershipId, ctx.householdId);
+        if (!membership) fail("NOT_FOUND", "Membership not found");
+        this.replaceGrants(membershipId, GRANT_PRESETS[input.preset]);
+      } else {
+        this.insertCompatibleMembership(
+          membershipId,
+          ctx.householdId,
+          null,
+          input.displayName!.trim(),
+          "pending",
+          createdAt,
+          GRANT_PRESETS[input.preset],
+        );
+      }
+    });
+    tx();
+
+    const issued = this.insertClaim({
+      householdId: ctx.householdId,
+      membershipId,
+      displayName: input.displayName?.trim() ?? null,
+      preset: input.preset,
+      creatorMembershipId: ctx.membershipId,
+      kind: "enrollment",
+    });
+    return { ...issued, membershipId };
+  }
+
+  validatePassphrasePolicy(passphrase: string): { ok: boolean; message?: string } {
+    const normalized = passphrase.normalize("NFC");
+    const length = [...normalized].length;
+    if (length < 15 || length > 128) {
+      return { ok: false, message: "Passphrase must be between 15 and 128 characters" };
+    }
+    if (isCommonPassphrase(normalized)) {
+      return { ok: false, message: "Choose a less common passphrase" };
+    }
+    return { ok: true };
+  }
+
+  householdDateNow(ctx: AuthContext, now = new Date()): HouseholdDate {
     return householdDateFromInstant(now, ctx.timezone);
   }
 
-  getRoutine(householdId: string) {
-    const def = this.db
-      .prepare("SELECT * FROM routine_definitions WHERE household_id = ?")
-      .get(householdId) as { id: string; kind: string } | undefined;
-    if (!def) return null;
+  listMemberships(householdId: string): MemberPublic[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, display_name, status FROM household_memberships
+         WHERE household_id = ? ORDER BY display_name`,
+      )
+      .all(householdId) as Array<{
+      id: string;
+      display_name: string;
+      status: "active" | "pending";
+    }>;
+    return rows.map((row) => ({
+      id: row.id,
+      displayName: row.display_name,
+      status: row.status,
+      grants: this.grantsForMembership(row.id),
+    }));
+  }
 
+  getRoutine(householdId: string) {
+    const definition = this.db
+      .prepare("SELECT id, kind FROM routine_definitions WHERE household_id = ?")
+      .get(householdId) as { id: string; kind: "morning" } | undefined;
+    if (!definition) return null;
     const revisions = this.db
       .prepare(
-        "SELECT id, effective_date, title, weekdays_json, created_at FROM routine_revisions WHERE definition_id = ? ORDER BY effective_date",
+        `SELECT id, effective_date, title, weekdays_json, created_at
+         FROM routine_revisions WHERE definition_id = ? ORDER BY effective_date`,
       )
-      .all(def.id) as Array<{
+      .all(definition.id) as Array<{
       id: string;
       effective_date: string;
       title: string;
       weekdays_json: string;
       created_at: string;
     }>;
-
     return {
-      id: def.id,
-      kind: def.kind as "morning",
-      revisions: revisions.map((r) => ({
-        id: r.id,
-        effectiveDate: r.effective_date,
-        title: r.title,
-        weekdays: JSON.parse(r.weekdays_json) as number[],
-        createdAt: r.created_at,
-        steps: this.revisionSteps(r.id),
-        assigneeMemberIds: this.revisionAssignees(r.id),
+      id: definition.id,
+      kind: definition.kind,
+      revisions: revisions.map((revision) => ({
+        id: revision.id,
+        effectiveDate: revision.effective_date,
+        title: revision.title,
+        weekdays: JSON.parse(revision.weekdays_json) as number[],
+        createdAt: revision.created_at,
+        steps: this.revisionSteps(revision.id),
+        assigneeMemberIds: this.revisionAssignees(revision.id),
       })),
     };
   }
 
-  private revisionSteps(revisionId: string) {
-    return (
-      this.db
-        .prepare(
-          "SELECT id, position, text, obligation FROM revision_steps WHERE revision_id = ? ORDER BY position",
-        )
-        .all(revisionId) as Array<{
-        id: string;
-        position: number;
-        text: string;
-        obligation: ObligationMeaning;
-      }>
-    ).map((s) => ({
-      id: s.id,
-      position: s.position,
-      text: s.text,
-      obligation: s.obligation,
-    }));
-  }
-
-  private revisionAssignees(revisionId: string): string[] {
-    return (
-      this.db
-        .prepare("SELECT member_id FROM revision_assignees WHERE revision_id = ?")
-        .all(revisionId) as Array<{ member_id: string }>
-    ).map((r) => r.member_id);
-  }
-
-  createRoutine(
-    ctx: SessionContext,
-    input: {
-      title: string;
-      assigneeMemberIds: string[];
-      weekdays: number[];
-      steps: Array<{ text: string; obligation: ObligationMeaning }>;
-    },
-  ) {
-    if (!hasCapability(ctx, "manage_routine")) {
-      throw Object.assign(new Error("Parent capability required"), { code: "FORBIDDEN" });
-    }
-    const stepCheck = validateRoutineSteps(input.steps);
-    if (!stepCheck.ok) {
-      throw Object.assign(new Error(stepCheck.message), { code: "VALIDATION" });
-    }
+  createRoutine(ctx: AuthContext, input: RoutineInput) {
+    this.requireGrant(ctx, "routine.shared.manage");
+    this.validateRoutineInput(ctx, input);
     if (this.getRoutine(ctx.householdId)) {
-      throw Object.assign(new Error("Household already has a Morning Routine"), {
-        code: "CONFLICT",
-      });
+      fail("CONFLICT", "Household already has a Morning Routine");
     }
-
-    const today = this.householdDateNow(ctx);
     const definitionId = randomUUID();
-    const revisionId = randomUUID();
-
     const tx = this.db.transaction(() => {
       this.db
-        .prepare("INSERT INTO routine_definitions (id, household_id, kind) VALUES (?, ?, 'morning')")
+        .prepare(
+          "INSERT INTO routine_definitions (id, household_id, kind) VALUES (?, ?, 'morning')",
+        )
         .run(definitionId, ctx.householdId);
-      this.insertRevision(revisionId, definitionId, today, input);
+      this.insertRevision(randomUUID(), definitionId, this.householdDateNow(ctx), input);
     });
     tx();
     return this.getRoutine(ctx.householdId);
   }
 
   createRevision(
-    ctx: SessionContext,
+    ctx: AuthContext,
     definitionId: string,
-    input: {
-      title: string;
-      assigneeMemberIds: string[];
-      weekdays: number[];
-      steps: Array<{ text: string; obligation: ObligationMeaning }>;
-      effectiveDate?: string;
-    },
+    input: RoutineInput & { effectiveDate?: string },
   ) {
-    if (!hasCapability(ctx, "manage_routine")) {
-      throw Object.assign(new Error("Parent capability required"), { code: "FORBIDDEN" });
+    this.requireGrant(ctx, "routine.shared.manage");
+    this.validateRoutineInput(ctx, input);
+    if (
+      !this.db
+        .prepare("SELECT 1 FROM routine_definitions WHERE id = ? AND household_id = ?")
+        .get(definitionId, ctx.householdId)
+    ) {
+      fail("NOT_FOUND", "Routine not found");
     }
-    const stepCheck = validateRoutineSteps(input.steps);
-    if (!stepCheck.ok) {
-      throw Object.assign(new Error(stepCheck.message), { code: "VALIDATION" });
+    const minimum = addHouseholdDays(this.householdDateNow(ctx), 1);
+    const effectiveDate = input.effectiveDate ?? minimum;
+    if (
+      !isValidHouseholdDate(effectiveDate) ||
+      compareHouseholdDates(effectiveDate, minimum) < 0
+    ) {
+      fail("VALIDATION", "Revision must be effective no earlier than the next household day");
     }
-
-    const def = this.db
-      .prepare("SELECT * FROM routine_definitions WHERE id = ? AND household_id = ?")
-      .get(definitionId, ctx.householdId) as { id: string } | undefined;
-    if (!def) {
-      throw Object.assign(new Error("Routine not found"), { code: "NOT_FOUND" });
-    }
-
-    const today = this.householdDateNow(ctx);
-    const minEffective = addHouseholdDays(today, 1);
-    const effectiveDate = input.effectiveDate ?? minEffective;
-    if (compareHouseholdDates(effectiveDate, minEffective) < 0) {
-      throw Object.assign(new Error("Revision must be effective no earlier than the next household day"), {
-        code: "VALIDATION",
-      });
-    }
-
-    const revisionId = randomUUID();
     try {
-      this.insertRevision(revisionId, definitionId, effectiveDate, input);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (message.includes("UNIQUE")) {
-        throw Object.assign(new Error("A revision already exists for that effective date"), {
-          code: "CONFLICT",
-        });
+      this.insertRevision(randomUUID(), definitionId, effectiveDate, input);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("UNIQUE")) {
+        fail("CONFLICT", "A revision already exists for that effective date");
       }
-      throw err;
+      throw error;
     }
     return this.getRoutine(ctx.householdId);
   }
 
-  private insertRevision(
-    revisionId: string,
-    definitionId: string,
-    effectiveDate: string,
-    input: {
-      title: string;
-      assigneeMemberIds: string[];
-      weekdays: number[];
-      steps: Array<{ text: string; obligation: ObligationMeaning }>;
-    },
-  ) {
-    this.db
-      .prepare(
-        `INSERT INTO routine_revisions (id, definition_id, effective_date, title, weekdays_json, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        revisionId,
-        definitionId,
-        effectiveDate,
-        input.title,
-        JSON.stringify(input.weekdays),
-        nowUtcIso(),
-      );
-
-    const insertStep = this.db.prepare(
-      `INSERT INTO revision_steps (id, revision_id, position, text, obligation) VALUES (?, ?, ?, ?, ?)`,
-    );
-    input.steps.forEach((step, index) => {
-      insertStep.run(randomUUID(), revisionId, index, step.text.trim(), step.obligation);
-    });
-
-    const insertAssignee = this.db.prepare(
-      `INSERT INTO revision_assignees (revision_id, member_id) VALUES (?, ?)`,
-    );
-    for (const memberId of input.assigneeMemberIds) {
-      insertAssignee.run(revisionId, memberId);
-    }
-  }
-
-  materializeForDate(ctx: SessionContext, householdDate: HouseholdDate): OccurrenceView[] {
+  materializeForDate(ctx: AuthContext, householdDate: HouseholdDate): OccurrenceView[] {
+    if (!isValidHouseholdDate(householdDate)) fail("VALIDATION", "Invalid household date");
     const routine = this.getRoutine(ctx.householdId);
     if (!routine) return [];
+    const revision = selectRevisionForDate(routine.revisions, householdDate);
+    if (!revision || !isDateApplicable(householdDate, revision.weekdays)) return [];
 
-    const revision = selectRevisionForDate(
-      routine.revisions.map((r) => ({
-        id: r.id,
-        effectiveDate: r.effectiveDate,
-        weekdays: r.weekdays,
-        title: r.title,
-        steps: r.steps,
-        assigneeMemberIds: r.assigneeMemberIds,
-      })),
-      householdDate,
-    );
-    if (!revision || !isDateApplicable(householdDate, revision.weekdays)) {
-      return [];
-    }
-
-    const fullRevision = routine.revisions.find((r) => r.id === revision.id)!;
     const results: OccurrenceView[] = [];
-
     const tx = this.db.transaction(() => {
-      for (const memberId of fullRevision.assigneeMemberIds) {
-        results.push(this.ensureOccurrence(ctx.householdId, routine.id, fullRevision, householdDate, memberId));
+      for (const membershipId of revision.assigneeMemberIds) {
+        results.push(
+          this.ensureOccurrence(
+            ctx.householdId,
+            routine.id,
+            revision,
+            householdDate,
+            membershipId,
+          ),
+        );
       }
     });
     tx();
-
-    if (hasCapability(ctx, "manage_routine")) {
-      return results;
-    }
-    return results.filter((o) => o.accountableMemberId === ctx.memberId);
-  }
-
-  private ensureOccurrence(
-    householdId: string,
-    definitionId: string,
-    revision: {
-      id: string;
-      title: string;
-      steps: Array<{ text: string; obligation: ObligationMeaning; position: number }>;
-    },
-    householdDate: HouseholdDate,
-    accountableMemberId: string,
-  ): OccurrenceView {
-    const existing = this.db
-      .prepare(
-        `SELECT id FROM occurrences
-         WHERE definition_id = ? AND household_date = ? AND accountable_member_id = ?`,
-      )
-      .get(definitionId, householdDate, accountableMemberId) as { id: string } | undefined;
-
-    if (!existing) {
-      const occurrenceId = randomUUID();
-      this.db
-        .prepare(
-          `INSERT INTO occurrences
-           (id, household_id, definition_id, revision_id, household_date, accountable_member_id, title, schedule_anchor, version)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'morning', 1)`,
-        )
-        .run(
-          occurrenceId,
-          householdId,
-          definitionId,
-          revision.id,
-          householdDate,
-          accountableMemberId,
-          revision.title,
-        );
-
-      const insertStep = this.db.prepare(
-        `INSERT INTO occurrence_steps (id, occurrence_id, position, text, obligation, status)
-         VALUES (?, ?, ?, ?, ?, 'open')`,
-      );
-      revision.steps.forEach((step, index) => {
-        insertStep.run(randomUUID(), occurrenceId, index, step.text, step.obligation);
-      });
-    }
-
-    return this.getOccurrenceView(
-      definitionId,
-      householdDate,
-      accountableMemberId,
-    )!;
-  }
-
-  private getOccurrenceView(
-    definitionId: string,
-    householdDate: string,
-    accountableMemberId: string,
-  ): OccurrenceView | null {
-    const row = this.db
-      .prepare(
-        `SELECT o.*, m.display_name
-         FROM occurrences o
-         JOIN members m ON m.id = o.accountable_member_id
-         WHERE o.definition_id = ? AND o.household_date = ? AND o.accountable_member_id = ?`,
-      )
-      .get(definitionId, householdDate, accountableMemberId) as
-      | {
-          id: string;
-          definition_id: string;
-          revision_id: string;
-          household_date: string;
-          title: string;
-          accountable_member_id: string;
-          display_name: string;
-          version: number;
-        }
-      | undefined;
-    if (!row) return null;
-
-    const steps = this.db
-      .prepare(
-        `SELECT id, position, text, obligation, status FROM occurrence_steps
-         WHERE occurrence_id = ? ORDER BY position`,
-      )
-      .all(row.id) as Array<{
-      id: string;
-      position: number;
-      text: string;
-      obligation: ObligationMeaning;
-      status: StepStatus;
-    }>;
-
-    return {
-      id: row.id,
-      definitionId: row.definition_id,
-      revisionId: row.revision_id,
-      householdDate: row.household_date,
-      title: row.title,
-      scheduleAnchor: "morning",
-      accountableMemberId: row.accountable_member_id,
-      accountableMemberName: row.display_name,
-      version: row.version,
-      completed: isOccurrenceComplete(steps),
-      steps: steps.map((s) => ({
-        id: s.id,
-        position: s.position,
-        text: s.text,
-        obligation: s.obligation,
-        status: s.status,
-      })),
-    };
-  }
-
-  getOccurrenceById(occurrenceId: string): OccurrenceView | null {
-    const row = this.db
-      .prepare(
-        `SELECT o.*, m.display_name
-         FROM occurrences o
-         JOIN members m ON m.id = o.accountable_member_id
-         WHERE o.id = ?`,
-      )
-      .get(occurrenceId) as
-      | {
-          id: string;
-          definition_id: string;
-          revision_id: string;
-          household_date: string;
-          title: string;
-          accountable_member_id: string;
-          display_name: string;
-          version: number;
-        }
-      | undefined;
-    if (!row) return null;
-    return this.getOccurrenceView(row.definition_id, row.household_date, row.accountable_member_id);
+    if (this.hasGrant(ctx, "routine.shared.manage")) return results;
+    if (!this.hasGrant(ctx, "routine.execute.own")) return [];
+    return results.filter((item) => item.accountableMemberId === ctx.membershipId);
   }
 
   setStepStatus(
-    ctx: SessionContext,
+    ctx: AuthContext,
     occurrenceId: string,
     stepId: string,
     input: { mutationId: string; status: StepStatus; performedAt: string },
   ) {
+    const occurrence = this.db
+      .prepare(
+        `SELECT id, household_id, accountable_member_id
+         FROM occurrences WHERE id = ?`,
+      )
+      .get(occurrenceId) as
+      | { id: string; household_id: string; accountable_member_id: string }
+      | undefined;
+    if (!occurrence || occurrence.household_id !== ctx.householdId) {
+      fail("NOT_FOUND", "Occurrence not found");
+    }
+    this.requireGrant(ctx, "routine.execute.own");
+    if (occurrence.accountable_member_id !== ctx.membershipId) {
+      fail("FORBIDDEN", "Cannot modify another member's occurrence");
+    }
     const receipt = this.db
       .prepare("SELECT response_json FROM mutation_receipts WHERE mutation_id = ?")
       .get(input.mutationId) as { response_json: string } | undefined;
@@ -523,59 +749,25 @@ export class AppStore {
         report: Record<string, unknown>;
       };
     }
-
-    const occurrence = this.db
-      .prepare("SELECT * FROM occurrences WHERE id = ?")
-      .get(occurrenceId) as
-      | {
-          id: string;
-          household_id: string;
-          accountable_member_id: string;
-          version: number;
-        }
-      | undefined;
-    if (!occurrence || occurrence.household_id !== ctx.householdId) {
-      throw Object.assign(new Error("Occurrence not found"), { code: "NOT_FOUND" });
-    }
-
-    if (hasCapability(ctx, "manage_routine") && !hasCapability(ctx, "execute_own_occurrence")) {
-      throw Object.assign(new Error("Parents observe; they do not complete child work in this slice"), {
-        code: "FORBIDDEN",
-      });
-    }
-    if (!hasCapability(ctx, "execute_own_occurrence")) {
-      throw Object.assign(new Error("Execution capability required"), { code: "FORBIDDEN" });
-    }
-    if (occurrence.accountable_member_id !== ctx.memberId) {
-      throw Object.assign(new Error("Cannot modify another member's occurrence"), {
-        code: "FORBIDDEN",
-      });
-    }
-
     const step = this.db
-      .prepare("SELECT * FROM occurrence_steps WHERE id = ? AND occurrence_id = ?")
+      .prepare(
+        "SELECT id, obligation FROM occurrence_steps WHERE id = ? AND occurrence_id = ?",
+      )
       .get(stepId, occurrenceId) as
-      | {
-          id: string;
-          obligation: ObligationMeaning;
-          status: StepStatus;
-        }
+      | { id: string; obligation: ObligationMeaning }
       | undefined;
-    if (!step) {
-      throw Object.assign(new Error("Step not found"), { code: "NOT_FOUND" });
-    }
-
+    if (!step) fail("NOT_FOUND", "Step not found");
     try {
       assertStatusAllowed(step.obligation, input.status);
     } catch {
-      throw Object.assign(new Error("Status not allowed for this obligation"), {
-        code: "VALIDATION",
-      });
+      fail("VALIDATION", "Status not allowed for this obligation");
+    }
+    if (Number.isNaN(new Date(input.performedAt).getTime()) || !input.performedAt.endsWith("Z")) {
+      fail("VALIDATION", "Invalid performed instant");
     }
 
     const recordedAt = nowUtcIso();
     const reportId = randomUUID();
-
     const tx = this.db.transaction(() => {
       this.db
         .prepare("UPDATE occurrence_steps SET status = ? WHERE id = ?")
@@ -586,7 +778,8 @@ export class AppStore {
       this.db
         .prepare(
           `INSERT INTO step_reports
-           (id, mutation_id, occurrence_id, occurrence_step_id, accountable_member_id, acting_member_id, performed_at, recorded_at, resulting_state)
+           (id, mutation_id, occurrence_id, occurrence_step_id, accountable_member_id,
+            acting_member_id, performed_at, recorded_at, resulting_state)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
@@ -595,22 +788,20 @@ export class AppStore {
           occurrenceId,
           stepId,
           occurrence.accountable_member_id,
-          ctx.memberId,
+          ctx.membershipId,
           input.performedAt,
           recordedAt,
           input.status,
         );
-
-      const view = this.getOccurrenceById(occurrenceId)!;
       const payload = {
-        occurrence: view,
+        occurrence: this.getOccurrenceById(occurrenceId)!,
         report: {
           id: reportId,
           mutationId: input.mutationId,
           occurrenceId,
           occurrenceStepId: stepId,
           accountableMemberId: occurrence.accountable_member_id,
-          actingMemberId: ctx.memberId,
+          actingMemberId: ctx.membershipId,
           performedAt: input.performedAt,
           recordedAt,
           resultingState: input.status,
@@ -623,46 +814,941 @@ export class AppStore {
         .run(input.mutationId, JSON.stringify(payload), recordedAt);
       return payload;
     });
-
     return tx();
   }
 
-  countStepReports(mutationId: string): number {
-    const row = this.db
-      .prepare("SELECT COUNT(*) as c FROM step_reports WHERE mutation_id = ?")
-      .get(mutationId) as { c: number };
-    return row.c;
-  }
-
-  historyForDate(ctx: SessionContext, householdDate: HouseholdDate): OccurrenceView[] {
-    if (!hasCapability(ctx, "manage_routine")) {
-      throw Object.assign(new Error("Parent capability required"), { code: "FORBIDDEN" });
-    }
+  historyForDate(ctx: AuthContext, householdDate: HouseholdDate): OccurrenceView[] {
+    this.requireGrant(ctx, "routine.shared.manage");
     return this.materializeForDate(ctx, householdDate);
   }
 
   occurrenceSnapshotStructure(occurrenceId: string) {
-    const occ = this.db
+    const occurrence = this.db
       .prepare(
         `SELECT id, revision_id, title, schedule_anchor, accountable_member_id, household_date
          FROM occurrences WHERE id = ?`,
       )
-      .get(occurrenceId) as
-      | {
-          id: string;
-          revision_id: string;
-          title: string;
-          schedule_anchor: string;
-          accountable_member_id: string;
-          household_date: string;
-        }
-      | undefined;
-    if (!occ) return null;
+      .get(occurrenceId);
+    if (!occurrence) return null;
     const steps = this.db
       .prepare(
-        `SELECT position, text, obligation FROM occurrence_steps WHERE occurrence_id = ? ORDER BY position`,
+        `SELECT position, text, obligation, source, logical_item_id
+         FROM occurrence_steps WHERE occurrence_id = ? ORDER BY position`,
       )
       .all(occurrenceId);
-    return { ...occ, steps };
+    return { ...(occurrence as object), steps };
+  }
+
+  countStepReports(mutationId: string): number {
+    return (
+      this.db
+        .prepare("SELECT COUNT(*) count FROM step_reports WHERE mutation_id = ?")
+        .get(mutationId) as { count: number }
+    ).count;
+  }
+
+  getOccurrenceById(occurrenceId: string): OccurrenceView | null {
+    const row = this.db
+      .prepare(
+        `SELECT definition_id, household_date, accountable_member_id
+         FROM occurrences WHERE id = ?`,
+      )
+      .get(occurrenceId) as
+      | {
+          definition_id: string;
+          household_date: string;
+          accountable_member_id: string;
+        }
+      | undefined;
+    return row
+      ? this.getOccurrenceView(
+          row.definition_id,
+          row.household_date,
+          row.accountable_member_id,
+        )
+      : null;
+  }
+
+  savePersonalLayer(
+    ctx: AuthContext,
+    input: { additions: PersonalAdditionInput[]; effectiveDate?: string },
+  ): PersonalLayer {
+    this.requireGrant(ctx, "routine.personalize.direct");
+    const routine = this.getRoutine(ctx.householdId);
+    if (!routine) fail("NOT_FOUND", "Routine not found");
+    const minimum = addHouseholdDays(this.householdDateNow(ctx), 1);
+    const effectiveDate = input.effectiveDate ?? minimum;
+    if (
+      !isValidHouseholdDate(effectiveDate) ||
+      compareHouseholdDates(effectiveDate, minimum) < 0
+    ) {
+      fail("VALIDATION", "Personal changes must be effective no earlier than tomorrow");
+    }
+    this.validatePersonalAdditions(input.additions);
+    return this.insertPersonalLayer(
+      ctx.membershipId,
+      routine.id,
+      effectiveDate,
+      input.additions,
+    );
+  }
+
+  getPersonalLayer(membershipId: string, date: string): PersonalLayer | null {
+    const row = this.db
+      .prepare(
+        `SELECT id, membership_id, definition_id, effective_date, created_at
+         FROM personal_routine_revisions
+         WHERE membership_id = ? AND effective_date <= ?
+         ORDER BY effective_date DESC LIMIT 1`,
+      )
+      .get(membershipId, date) as
+      | {
+          id: string;
+          membership_id: string;
+          definition_id: string;
+          effective_date: string;
+          created_at: string;
+        }
+      | undefined;
+    if (!row) return null;
+    const additions = this.db
+      .prepare(
+        `SELECT id, position, text, obligation, anchor_logical_item_id, place
+         FROM personal_additions WHERE personal_revision_id = ? ORDER BY position`,
+      )
+      .all(row.id) as Array<{
+      id: string;
+      position: number;
+      text: string;
+      obligation: ObligationMeaning;
+      anchor_logical_item_id: string | null;
+      place: "before" | "after" | "end";
+    }>;
+    return {
+      id: row.id,
+      membershipId: row.membership_id,
+      definitionId: row.definition_id,
+      effectiveDate: row.effective_date,
+      createdAt: row.created_at,
+      additions: additions.map((addition) => ({
+        id: addition.id,
+        position: addition.position,
+        text: addition.text,
+        obligation: addition.obligation,
+        anchorLogicalItemId: addition.anchor_logical_item_id,
+        place: addition.place,
+      })),
+    };
+  }
+
+  previewComposition(ctx: AuthContext, membershipId: string, date: string) {
+    this.authorizeMembershipView(ctx, membershipId);
+    const routine = this.getRoutine(ctx.householdId);
+    if (!routine) fail("NOT_FOUND", "Routine not found");
+    const revision = selectRevisionForDate(routine.revisions, date);
+    if (!revision) fail("NOT_FOUND", "No routine revision applies");
+    const layer = this.getPersonalLayer(membershipId, date);
+    return {
+      householdDate: date,
+      membershipId,
+      definitionId: routine.id,
+      revisionId: revision.id,
+      personalRevisionId: layer?.id ?? null,
+      title: revision.title,
+      weekdays: revision.weekdays,
+      steps: composeMorningRoutine(
+        revision.steps.map((step) => ({
+          logicalItemId: step.logicalItemId,
+          text: step.text,
+          obligation: step.obligation,
+        })),
+        layer?.additions.map((addition) => ({
+          id: addition.id,
+          text: addition.text,
+          obligation: addition.obligation,
+          anchorLogicalItemId: addition.anchorLogicalItemId,
+          place: addition.place,
+        })) ?? [],
+      ).map((step, position) => ({ ...step, position })),
+    };
+  }
+
+  createProposal(
+    ctx: AuthContext,
+    input: Omit<PersonalAdditionInput, "id">,
+  ) {
+    this.requireGrant(ctx, "routine.personalize.propose");
+    this.validatePersonalAdditions([input]);
+    const id = randomUUID();
+    const proposedAt = nowUtcIso();
+    this.db
+      .prepare(
+        `INSERT INTO routine_proposals
+         (id, household_id, membership_id, text, obligation, anchor_logical_item_id,
+          place, status, proposed_at, decided_at, decider_membership_id, personal_revision_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, NULL, NULL, NULL)`,
+      )
+      .run(
+        id,
+        ctx.householdId,
+        ctx.membershipId,
+        input.text.trim(),
+        input.obligation,
+        input.anchorLogicalItemId ?? null,
+        input.place,
+        proposedAt,
+      );
+    return this.getProposal(id)!;
+  }
+
+  listProposals(ctx: AuthContext) {
+    const rows = this.hasGrant(ctx, "routine.proposal.decide")
+      ? this.db
+          .prepare(
+            "SELECT id FROM routine_proposals WHERE household_id = ? ORDER BY proposed_at DESC",
+          )
+          .all(ctx.householdId)
+      : this.db
+          .prepare(
+            `SELECT id FROM routine_proposals
+             WHERE household_id = ? AND membership_id = ? ORDER BY proposed_at DESC`,
+          )
+          .all(ctx.householdId, ctx.membershipId);
+    return (rows as Array<{ id: string }>).map((row) => this.getProposal(row.id)!);
+  }
+
+  decideProposal(
+    ctx: AuthContext,
+    proposalId: string,
+    input: { decision: "approved" | "rejected" },
+  ) {
+    this.requireGrant(ctx, "routine.proposal.decide");
+    const proposal = this.getProposal(proposalId);
+    if (!proposal || proposal.householdId !== ctx.householdId) {
+      fail("NOT_FOUND", "Proposal not found");
+    }
+    if (proposal.status !== "pending") {
+      if (proposal.status === input.decision) return proposal;
+      fail("CONFLICT", "Proposal has already been decided");
+    }
+
+    const decidedAt = nowUtcIso();
+    const routine = this.getRoutine(ctx.householdId);
+    if (!routine) fail("NOT_FOUND", "Routine not found");
+    let personalRevisionId: string | null = null;
+    const tx = this.db.transaction(() => {
+      const current = this.getProposal(proposalId)!;
+      if (current.status !== "pending") {
+        if (current.status === input.decision) return;
+        fail("CONFLICT", "Proposal has already been decided");
+      }
+      if (input.decision === "approved") {
+        let effectiveDate = addHouseholdDays(this.householdDateNow(ctx), 1);
+        while (
+          this.db
+            .prepare(
+              `SELECT 1 FROM personal_routine_revisions
+               WHERE membership_id = ? AND effective_date = ?`,
+            )
+            .get(proposal.membershipId, effectiveDate)
+        ) {
+          effectiveDate = addHouseholdDays(effectiveDate, 1);
+        }
+        const prior = this.getPersonalLayer(proposal.membershipId, effectiveDate);
+        const layer = this.insertPersonalLayer(
+          proposal.membershipId,
+          routine.id,
+          effectiveDate,
+          [
+            ...(prior?.additions ?? []),
+            {
+              id: randomUUID(),
+              text: proposal.text,
+              obligation: proposal.obligation,
+              anchorLogicalItemId: proposal.anchorLogicalItemId,
+              place: proposal.place,
+            },
+          ],
+        );
+        personalRevisionId = layer.id;
+      }
+      this.db
+        .prepare(
+          `UPDATE routine_proposals
+           SET status = ?, decided_at = ?, decider_membership_id = ?, personal_revision_id = ?
+           WHERE id = ? AND status = 'pending'`,
+        )
+        .run(input.decision, decidedAt, ctx.membershipId, personalRevisionId, proposalId);
+    });
+    tx();
+    return this.getProposal(proposalId)!;
+  }
+
+  createTask(
+    ctx: AuthContext,
+    input: { title: string; visibility: "private" | "household" },
+  ) {
+    this.requireGrant(ctx, "personal_task.create");
+    const title = input.title.trim();
+    if (!title || title.length > 200) fail("VALIDATION", "Invalid task title");
+    if (input.visibility !== "private" && input.visibility !== "household") {
+      fail("VALIDATION", "Invalid task visibility");
+    }
+    const id = randomUUID();
+    const createdAt = nowUtcIso();
+    this.db
+      .prepare(
+        `INSERT INTO personal_tasks
+         (id, household_id, owner_membership_id, title, visibility, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 'open', ?, ?)`,
+      )
+      .run(
+        id,
+        ctx.householdId,
+        ctx.membershipId,
+        title,
+        input.visibility,
+        createdAt,
+        createdAt,
+      );
+    return this.getTask(id)!;
+  }
+
+  listTasks(ctx: AuthContext) {
+    const rows = this.db
+      .prepare(
+        `SELECT id FROM personal_tasks
+         WHERE household_id = ?
+           AND (owner_membership_id = ? OR visibility = 'household')
+         ORDER BY created_at DESC`,
+      )
+      .all(ctx.householdId, ctx.membershipId) as Array<{ id: string }>;
+    return rows.map((row) => this.getTask(row.id)!);
+  }
+
+  setTaskStatus(
+    ctx: AuthContext,
+    taskId: string,
+    input: { mutationId: string; status: "open" | "completed" },
+  ) {
+    const task = this.getTask(taskId);
+    if (!task || task.householdId !== ctx.householdId) fail("NOT_FOUND", "Task not found");
+    if (task.ownerMembershipId !== ctx.membershipId) {
+      fail("FORBIDDEN", "Only the task owner may change it");
+    }
+    const receipt = this.db
+      .prepare("SELECT response_json FROM personal_task_mutations WHERE mutation_id = ?")
+      .get(input.mutationId) as { response_json: string } | undefined;
+    if (receipt) return JSON.parse(receipt.response_json) as ReturnType<AppStore["getTask"]>;
+    if (input.status !== "open" && input.status !== "completed") {
+      fail("VALIDATION", "Invalid task status");
+    }
+    const updatedAt = nowUtcIso();
+    const tx = this.db.transaction(() => {
+      this.db
+        .prepare("UPDATE personal_tasks SET status = ?, updated_at = ? WHERE id = ?")
+        .run(input.status, updatedAt, taskId);
+      const response = this.getTask(taskId)!;
+      this.db
+        .prepare(
+          `INSERT INTO personal_task_mutations
+           (mutation_id, task_id, response_json, created_at) VALUES (?, ?, ?, ?)`,
+        )
+        .run(input.mutationId, taskId, JSON.stringify(response), updatedAt);
+      return response;
+    });
+    return tx();
+  }
+
+  private authContextFromRow(row: {
+    session_id: string;
+    user_id: string;
+    membership_id: string;
+    household_id: string;
+    display_name: string;
+    timezone: string;
+    csrf_secret: string;
+  }): AuthContext {
+    return {
+      sessionId: row.session_id,
+      userId: row.user_id,
+      membershipId: row.membership_id,
+      householdId: row.household_id,
+      displayName: row.display_name,
+      grants: this.grantsForMembership(row.membership_id),
+      timezone: row.timezone,
+      csrfSecret: row.csrf_secret,
+    };
+  }
+
+  private grantsForMembership(membershipId: string): Grant[] {
+    return (
+      this.db
+        .prepare(
+          "SELECT grant_name FROM membership_grants WHERE membership_id = ? ORDER BY grant_name",
+        )
+        .all(membershipId) as Array<{ grant_name: Grant }>
+    ).map((row) => row.grant_name);
+  }
+
+  private requireGrant(ctx: AuthContext, grant: Grant): void {
+    if (!this.hasGrant(ctx, grant)) fail("FORBIDDEN", "Required authority is missing");
+  }
+
+  private replaceGrants(membershipId: string, grants: readonly Grant[]): void {
+    this.db
+      .prepare("DELETE FROM membership_grants WHERE membership_id = ?")
+      .run(membershipId);
+    const insert = this.db.prepare(
+      "INSERT INTO membership_grants (membership_id, grant_name) VALUES (?, ?)",
+    );
+    for (const grant of grants) insert.run(membershipId, grant);
+  }
+
+  private insertCompatibleMembership(
+    id: string,
+    householdId: string,
+    userId: string | null,
+    displayName: string,
+    status: "active" | "pending",
+    createdAt: string,
+    grants: readonly Grant[],
+  ): void {
+    this.db
+      .prepare(
+        `INSERT INTO members (id, household_id, display_name, capabilities_json)
+         VALUES (?, ?, ?, ?)`,
+      )
+      .run(id, householdId, displayName, legacyCapabilities([...grants]));
+    this.db
+      .prepare(
+        `INSERT INTO household_memberships
+         (id, household_id, user_id, display_name, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(id, householdId, userId, displayName, status, createdAt);
+    this.replaceGrants(id, grants);
+  }
+
+  private insertClaim(input: {
+    householdId: string;
+    membershipId: string | null;
+    displayName: string | null;
+    preset: GrantPreset;
+    creatorMembershipId: string | null;
+    kind: "bootstrap" | "enrollment";
+  }): { token: string; expiresAt: string } {
+    const token = randomToken();
+    const now = new Date();
+    const expiresAt = isoAt(new Date(now.getTime() + CLAIM_MS));
+    this.db
+      .prepare(
+        `INSERT INTO enrollment_claims
+         (id, household_id, membership_id, token_digest, preset, display_name,
+          created_by_membership_id, created_at, expires_at, consumed_at, kind)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+      )
+      .run(
+        randomUUID(),
+        input.householdId,
+        input.membershipId,
+        sha256Hex(token),
+        input.preset,
+        input.displayName,
+        input.creatorMembershipId,
+        isoAt(now),
+        expiresAt,
+        input.kind,
+      );
+    return { token, expiresAt };
+  }
+
+  private loginThrottle(key: string, now: Date): number {
+    const row = this.db
+      .prepare("SELECT blocked_until FROM login_throttle WHERE key = ?")
+      .get(key) as { blocked_until: string | null } | undefined;
+    if (!row?.blocked_until) return 0;
+    const remaining = new Date(row.blocked_until).getTime() - now.getTime();
+    return remaining > 0 ? Math.ceil(remaining / 1_000) : 0;
+  }
+
+  private recordLoginFailure(key: string, now: Date): number {
+    const row = this.db
+      .prepare(
+        "SELECT fail_count, window_started_at FROM login_throttle WHERE key = ?",
+      )
+      .get(key) as
+      | { fail_count: number; window_started_at: string }
+      | undefined;
+    const windowExpired =
+      !row ||
+      now.getTime() - new Date(row.window_started_at).getTime() >= LOGIN_WINDOW_MS;
+    const count = windowExpired ? 1 : row.fail_count + 1;
+    const windowStartedAt = windowExpired ? isoAt(now) : row.window_started_at;
+    const blockedUntil =
+      count >= 5 ? isoAt(new Date(now.getTime() + LOGIN_BLOCK_MS)) : null;
+    this.db
+      .prepare(
+        `INSERT INTO login_throttle (key, fail_count, window_started_at, blocked_until)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET
+           fail_count = excluded.fail_count,
+           window_started_at = excluded.window_started_at,
+           blocked_until = excluded.blocked_until`,
+      )
+      .run(key, count, windowStartedAt, blockedUntil);
+    return blockedUntil ? Math.ceil(LOGIN_BLOCK_MS / 1_000) : 0;
+  }
+
+  private revisionSteps(revisionId: string) {
+    return (
+      this.db
+        .prepare(
+          `SELECT id, logical_item_id, position, text, obligation
+           FROM revision_steps WHERE revision_id = ? ORDER BY position`,
+        )
+        .all(revisionId) as Array<{
+        id: string;
+        logical_item_id: string | null;
+        position: number;
+        text: string;
+        obligation: ObligationMeaning;
+      }>
+    ).map((step) => ({
+      id: step.id,
+      logicalItemId: step.logical_item_id ?? step.id,
+      position: step.position,
+      text: step.text,
+      obligation: step.obligation,
+    }));
+  }
+
+  private revisionAssignees(revisionId: string): string[] {
+    return (
+      this.db
+        .prepare(
+          "SELECT member_id FROM revision_assignees WHERE revision_id = ? ORDER BY member_id",
+        )
+        .all(revisionId) as Array<{ member_id: string }>
+    ).map((row) => row.member_id);
+  }
+
+  private validateRoutineInput(ctx: AuthContext, input: RoutineInput): void {
+    const check = validateRoutineSteps(input.steps);
+    if (!check.ok) fail("VALIDATION", check.message);
+    if (!input.title.trim()) fail("VALIDATION", "Routine title is required");
+    if (
+      input.weekdays.length === 0 ||
+      input.weekdays.some((day) => !Number.isInteger(day) || day < 1 || day > 7)
+    ) {
+      fail("VALIDATION", "At least one valid weekday is required");
+    }
+    if (new Set(input.weekdays).size !== input.weekdays.length) {
+      fail("VALIDATION", "Weekdays must be unique");
+    }
+    if (input.assigneeMemberIds.length === 0) {
+      fail("VALIDATION", "At least one assignee is required");
+    }
+    const uniqueAssignees = new Set(input.assigneeMemberIds);
+    if (uniqueAssignees.size !== input.assigneeMemberIds.length) {
+      fail("VALIDATION", "Assignees must be unique");
+    }
+    for (const membershipId of uniqueAssignees) {
+      if (
+        !this.db
+          .prepare(
+            "SELECT 1 FROM household_memberships WHERE id = ? AND household_id = ?",
+          )
+          .get(membershipId, ctx.householdId)
+      ) {
+        fail("VALIDATION", "An assignee is not a household membership");
+      }
+    }
+    const logicalIds = input.steps
+      .map((step) => step.logicalItemId)
+      .filter((id): id is string => !!id);
+    if (new Set(logicalIds).size !== logicalIds.length) {
+      fail("VALIDATION", "Shared logical item IDs must be unique");
+    }
+  }
+
+  private insertRevision(
+    revisionId: string,
+    definitionId: string,
+    effectiveDate: string,
+    input: RoutineInput,
+  ): void {
+    const previousRevision = this.db
+      .prepare(
+        `SELECT id FROM routine_revisions
+         WHERE definition_id = ? AND effective_date < ?
+         ORDER BY effective_date DESC LIMIT 1`,
+      )
+      .get(definitionId, effectiveDate) as { id: string } | undefined;
+    const previousSteps = previousRevision
+      ? this.revisionSteps(previousRevision.id)
+      : [];
+    const usedLogicalIds = new Set(
+      input.steps.map((step) => step.logicalItemId).filter((id): id is string => !!id),
+    );
+    const logicalIds = input.steps.map((step, position) => {
+      if (step.logicalItemId) return step.logicalItemId;
+      const samePosition = previousSteps[position];
+      if (
+        samePosition &&
+        samePosition.text === step.text.trim() &&
+        samePosition.obligation === step.obligation &&
+        !usedLogicalIds.has(samePosition.logicalItemId)
+      ) {
+        usedLogicalIds.add(samePosition.logicalItemId);
+        return samePosition.logicalItemId;
+      }
+      const sameContent = previousSteps.find(
+        (candidate) =>
+          candidate.text === step.text.trim() &&
+          candidate.obligation === step.obligation &&
+          !usedLogicalIds.has(candidate.logicalItemId),
+      );
+      const logicalId = sameContent?.logicalItemId ?? randomUUID();
+      usedLogicalIds.add(logicalId);
+      return logicalId;
+    });
+    const tx = this.db.transaction(() => {
+      this.db
+        .prepare(
+          `INSERT INTO routine_revisions
+           (id, definition_id, effective_date, title, weekdays_json, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          revisionId,
+          definitionId,
+          effectiveDate,
+          input.title.trim(),
+          JSON.stringify(input.weekdays),
+          nowUtcIso(),
+        );
+      const insertStep = this.db.prepare(
+        `INSERT INTO revision_steps
+         (id, revision_id, position, text, obligation, logical_item_id)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      );
+      input.steps.forEach((step, position) => {
+        const rowId = randomUUID();
+        insertStep.run(
+          rowId,
+          revisionId,
+          position,
+          step.text.trim(),
+          step.obligation,
+          logicalIds[position],
+        );
+      });
+      const insertAssignee = this.db.prepare(
+        "INSERT INTO revision_assignees (revision_id, member_id) VALUES (?, ?)",
+      );
+      for (const memberId of input.assigneeMemberIds) {
+        insertAssignee.run(revisionId, memberId);
+      }
+    });
+    tx();
+  }
+
+  private ensureOccurrence(
+    householdId: string,
+    definitionId: string,
+    revision: {
+      id: string;
+      title: string;
+      steps: Array<{
+        logicalItemId: string;
+        text: string;
+        obligation: ObligationMeaning;
+      }>;
+    },
+    householdDate: string,
+    membershipId: string,
+  ): OccurrenceView {
+    let occurrence = this.db
+      .prepare(
+        `SELECT id FROM occurrences
+         WHERE definition_id = ? AND household_date = ? AND accountable_member_id = ?`,
+      )
+      .get(definitionId, householdDate, membershipId) as { id: string } | undefined;
+    if (!occurrence) {
+      const occurrenceId = randomUUID();
+      this.db
+        .prepare(
+          `INSERT INTO occurrences
+           (id, household_id, definition_id, revision_id, household_date,
+            accountable_member_id, title, schedule_anchor, version)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'morning', 1)`,
+        )
+        .run(
+          occurrenceId,
+          householdId,
+          definitionId,
+          revision.id,
+          householdDate,
+          membershipId,
+          revision.title,
+        );
+      const personal = this.getPersonalLayer(membershipId, householdDate);
+      const composed = composeMorningRoutine(
+        revision.steps.map((step) => ({
+          logicalItemId: step.logicalItemId,
+          text: step.text,
+          obligation: step.obligation,
+        })),
+        personal?.additions.map((addition) => ({
+          id: addition.id,
+          text: addition.text,
+          obligation: addition.obligation,
+          anchorLogicalItemId: addition.anchorLogicalItemId,
+          place: addition.place,
+        })) ?? [],
+      );
+      const insert = this.db.prepare(
+        `INSERT INTO occurrence_steps
+         (id, occurrence_id, position, text, obligation, status, source, logical_item_id)
+         VALUES (?, ?, ?, ?, ?, 'open', ?, ?)`,
+      );
+      composed.forEach((step, position) => {
+        insert.run(
+          randomUUID(),
+          occurrenceId,
+          position,
+          step.text,
+          step.obligation,
+          step.source,
+          step.logicalItemId,
+        );
+      });
+      occurrence = { id: occurrenceId };
+    }
+    return this.getOccurrenceById(occurrence.id)!;
+  }
+
+  private getOccurrenceView(
+    definitionId: string,
+    householdDate: string,
+    membershipId: string,
+  ): OccurrenceView | null {
+    const row = this.db
+      .prepare(
+        `SELECT o.id, o.definition_id, o.revision_id, o.household_date, o.title,
+                o.accountable_member_id, o.version, hm.display_name
+         FROM occurrences o
+         JOIN household_memberships hm ON hm.id = o.accountable_member_id
+         WHERE o.definition_id = ? AND o.household_date = ?
+           AND o.accountable_member_id = ?`,
+      )
+      .get(definitionId, householdDate, membershipId) as
+      | {
+          id: string;
+          definition_id: string;
+          revision_id: string;
+          household_date: string;
+          title: string;
+          accountable_member_id: string;
+          version: number;
+          display_name: string;
+        }
+      | undefined;
+    if (!row) return null;
+    const steps = this.db
+      .prepare(
+        `SELECT id, position, text, obligation, status, source, logical_item_id
+         FROM occurrence_steps WHERE occurrence_id = ? ORDER BY position`,
+      )
+      .all(row.id) as Array<{
+      id: string;
+      position: number;
+      text: string;
+      obligation: ObligationMeaning;
+      status: StepStatus;
+      source: "shared" | "personal";
+      logical_item_id: string | null;
+    }>;
+    return {
+      id: row.id,
+      definitionId: row.definition_id,
+      revisionId: row.revision_id,
+      householdDate: row.household_date,
+      title: row.title,
+      scheduleAnchor: "morning",
+      accountableMemberId: row.accountable_member_id,
+      accountableMemberName: row.display_name,
+      version: row.version,
+      completed: isOccurrenceComplete(steps),
+      steps: steps.map((step) => ({
+        id: step.id,
+        position: step.position,
+        text: step.text,
+        obligation: step.obligation,
+        status: step.status,
+        source: step.source,
+        logicalItemId: step.logical_item_id,
+      })),
+    };
+  }
+
+  private validatePersonalAdditions(additions: PersonalAdditionInput[]): void {
+    const ids = additions.map((addition) => addition.id).filter((id): id is string => !!id);
+    if (new Set(ids).size !== ids.length) fail("VALIDATION", "Addition IDs must be unique");
+    for (const addition of additions) {
+      if (!addition.text.trim()) fail("VALIDATION", "Personal item text is required");
+      if (!["required", "as_needed", "optional"].includes(addition.obligation)) {
+        fail("VALIDATION", "Invalid personal item obligation");
+      }
+      if (!["before", "after", "end"].includes(addition.place)) {
+        fail("VALIDATION", "Invalid personal item placement");
+      }
+    }
+  }
+
+  private insertPersonalLayer(
+    membershipId: string,
+    definitionId: string,
+    effectiveDate: string,
+    additions: PersonalAdditionInput[],
+  ): PersonalLayer {
+    const existing = this.getPersonalLayer(membershipId, effectiveDate);
+    if (existing?.effectiveDate === effectiveDate) {
+      const same =
+        existing.definitionId === definitionId &&
+        existing.additions.length === additions.length &&
+        existing.additions.every((saved, position) => {
+          const requested = additions[position];
+          return (
+            (!requested.id || requested.id === saved.id) &&
+            requested.text.trim() === saved.text &&
+            requested.obligation === saved.obligation &&
+            (requested.anchorLogicalItemId ?? null) === saved.anchorLogicalItemId &&
+            requested.place === saved.place
+          );
+        });
+      if (same) return existing;
+      fail("CONFLICT", "A personal revision already exists for that effective date");
+    }
+    const revisionId = randomUUID();
+    const createdAt = nowUtcIso();
+    const tx = this.db.transaction(() => {
+      this.db
+        .prepare(
+          `INSERT INTO personal_routine_revisions
+           (id, membership_id, definition_id, effective_date, created_at)
+           VALUES (?, ?, ?, ?, ?)`,
+        )
+        .run(revisionId, membershipId, definitionId, effectiveDate, createdAt);
+      const insert = this.db.prepare(
+        `INSERT INTO personal_additions
+         (id, personal_revision_id, position, text, obligation,
+          anchor_logical_item_id, place)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      );
+      additions.forEach((addition, position) => {
+        insert.run(
+          addition.id ?? randomUUID(),
+          revisionId,
+          position,
+          addition.text.trim(),
+          addition.obligation,
+          addition.anchorLogicalItemId ?? null,
+          addition.place,
+        );
+      });
+    });
+    try {
+      tx();
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("UNIQUE")) {
+        fail("CONFLICT", "A personal revision already exists for that effective date");
+      }
+      throw error;
+    }
+    return this.getPersonalLayer(membershipId, effectiveDate)!;
+  }
+
+  private authorizeMembershipView(ctx: AuthContext, membershipId: string): void {
+    const membership = this.db
+      .prepare("SELECT household_id FROM household_memberships WHERE id = ?")
+      .get(membershipId) as { household_id: string } | undefined;
+    if (!membership || membership.household_id !== ctx.householdId) {
+      fail("NOT_FOUND", "Membership not found");
+    }
+    if (
+      membershipId !== ctx.membershipId &&
+      !this.hasGrant(ctx, "routine.shared.manage")
+    ) {
+      fail("FORBIDDEN", "Cannot preview another member's routine");
+    }
+  }
+
+  private getProposal(id: string) {
+    const row = this.db
+      .prepare("SELECT * FROM routine_proposals WHERE id = ?")
+      .get(id) as
+      | {
+          id: string;
+          household_id: string;
+          membership_id: string;
+          text: string;
+          obligation: ObligationMeaning;
+          anchor_logical_item_id: string | null;
+          place: "before" | "after" | "end";
+          status: "pending" | "approved" | "rejected";
+          proposed_at: string;
+          decided_at: string | null;
+          decider_membership_id: string | null;
+          personal_revision_id: string | null;
+        }
+      | undefined;
+    return row
+      ? {
+          id: row.id,
+          householdId: row.household_id,
+          membershipId: row.membership_id,
+          text: row.text,
+          obligation: row.obligation,
+          anchorLogicalItemId: row.anchor_logical_item_id,
+          place: row.place,
+          status: row.status,
+          proposedAt: row.proposed_at,
+          decidedAt: row.decided_at,
+          deciderMembershipId: row.decider_membership_id,
+          personalRevisionId: row.personal_revision_id,
+        }
+      : null;
+  }
+
+  private getTask(id: string) {
+    const row = this.db
+      .prepare("SELECT * FROM personal_tasks WHERE id = ?")
+      .get(id) as
+      | {
+          id: string;
+          household_id: string;
+          owner_membership_id: string;
+          title: string;
+          visibility: "private" | "household";
+          status: "open" | "completed";
+          created_at: string;
+          updated_at: string;
+        }
+      | undefined;
+    return row
+      ? {
+          id: row.id,
+          householdId: row.household_id,
+          ownerMembershipId: row.owner_membership_id,
+          title: row.title,
+          visibility: row.visibility,
+          status: row.status,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          completedAt: row.status === "completed" ? row.updated_at : null,
+        }
+      : null;
   }
 }

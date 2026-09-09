@@ -86,9 +86,12 @@ async function claimChild(
   membershipId: string,
   loginName: string,
   displayName: string,
+  options?: { ensureRoutine?: boolean },
 ) {
   await ensureManagerSession(request);
-  await ensureSharedRoutine(request);
+  if (options?.ensureRoutine !== false) {
+    await ensureSharedRoutine(request);
+  }
   const enroll = await request.post("/api/v1/enrollment/claims", {
     headers: await mutatingHeaders(request),
     data: { membershipId, preset: "direct_personalizer" },
@@ -171,6 +174,59 @@ async function ensureStepOpen(page: Page, stepName: string) {
 }
 
 test.describe("P0-002 authenticated household", () => {
+  test("newly assigned routine checklist syncs both ways without manual refresh", async ({
+    browser,
+  }: {
+    browser: Browser;
+  }) => {
+    const managerContext = await browser.newContext();
+    const childContext = await browser.newContext();
+    const manager = await managerContext.newPage();
+    const child = await childContext.newPage();
+
+    await ensureManagerSession(manager.request);
+    await claimChild(child.request, AVERY_ID, AVERY_LOGIN, "Avery Reed", {
+      ensureRoutine: false,
+    });
+
+    await child.goto("/");
+    await expect(child.locator(".topbar")).toContainText("Avery Reed", { timeout: 20_000 });
+    await expect(
+      child.getByText("No Morning Routine for you on this household date."),
+    ).toBeVisible();
+    await expect(child.locator(".status-pill[data-kind='online']")).toContainText("Online", {
+      timeout: 10_000,
+    });
+
+    await manager.goto("/");
+    await expect(manager.locator(".topbar")).toContainText("Morgan Reed", { timeout: 20_000 });
+    await expect(manager.locator(".status-pill[data-kind='online']")).toContainText("Online", {
+      timeout: 10_000,
+    });
+    await manager
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("button", { name: "Household", exact: true })
+      .click();
+
+    await ensureSharedRoutine(manager.request, [MORGAN_ID, AVERY_ID, JORDAN_ID]);
+
+    await expect(child.getByRole("button", { name: /Mark Make bed completed/ })).toBeVisible({
+      timeout: 4_000,
+    });
+    await expect(child.getByRole("button", { name: /Mark Pack lunch completed/ })).toBeVisible({
+      timeout: 4_000,
+    });
+
+    await expandAllOccurrences(manager);
+    await expect(manager.getByText("Avery Reed").first()).toBeVisible({ timeout: 4_000 });
+
+    await child.getByRole("button", { name: /Mark Make bed completed/ }).click();
+    await expect(manager.getByText("Status: Completed").first()).toBeVisible({ timeout: 4_000 });
+
+    await managerContext.close();
+    await childContext.close();
+  });
+
   test("manager claims, opens Today, and sees checklist actions", async ({ page }) => {
     await openAsManager(page);
     await page
@@ -291,22 +347,29 @@ test.describe("P0-002 authenticated household", () => {
     await child.getByRole("button", { name: /Mark Make bed completed/ }).click();
     await expect(manager.getByText("Status: Completed").first()).toBeVisible({ timeout: 4000 });
 
-    await manager.route("**/api/v1/sync**", (route) => route.abort());
+    // Drop the live socket without a full page reload; reconnect + authoritative read
+    // must recover the next commit without relying on manual refresh.
+    await manager.evaluate(() => {
+      (
+        window as unknown as { __hdSync?: { closeForTest: () => void } }
+      ).__hdSync?.closeForTest();
+    });
+    await expect(manager.locator(".status-pill[data-kind='online']")).toContainText(
+      /Reconnecting|Online/,
+      { timeout: 10_000 },
+    );
+    await expect(manager.locator(".status-pill[data-kind='online']")).toContainText("Online", {
+      timeout: 20_000,
+    });
+
     await child.getByRole("button", { name: /Mark Pack lunch not needed/ }).click();
     await expect(child.locator(".status-pill[data-kind='pending']")).toHaveCount(0, {
       timeout: 15_000,
     });
-    await manager.unroute("**/api/v1/sync**");
-    await manager.evaluate(() => {
-      window.dispatchEvent(new Event("offline"));
-      window.dispatchEvent(new Event("online"));
-    });
-    await manager
-      .getByRole("navigation", { name: "Primary" })
-      .getByRole("button", { name: "Household", exact: true })
-      .click();
-    await expandAllOccurrences(manager);
     await expect(manager.getByText("Status: Not needed").first()).toBeVisible({ timeout: 8000 });
+    await expect(manager.locator(".occurrence").filter({ hasText: "Avery Reed" })).toContainText(
+      "Complete",
+    );
 
     await managerContext.close();
     await childContext.close();

@@ -132,10 +132,13 @@ export function App() {
   const [preview, setPreview] = useState<RoutinePreview | null>(null);
   const [mutationDelayMs, setMutationDelayMs] = useState(0);
   const identityRef = useRef<string | null>(null);
+  const occurrencesRef = useRef<OccurrenceView[]>([]);
+  const refreshGenerationRef = useRef(0);
   const [, startTransition] = useTransition();
 
   function clearUiCaches() {
     setOccurrences([]);
+    occurrencesRef.current = [];
     setMemberships([]);
     setTasks([]);
     setProposals([]);
@@ -163,14 +166,31 @@ export function App() {
   }
 
   const refreshToday = useEffectEvent(async (membershipId: string, date?: string) => {
+    const generation = ++refreshGenerationRef.current;
     const data = await fetchToday(date);
     if (identityRef.current !== membershipId) return;
+    if (generation !== refreshGenerationRef.current) return;
+    const priorById = new Map(
+      occurrencesRef.current.map((occurrence) => [occurrence.id, occurrence]),
+    );
+    occurrencesRef.current = data.occurrences;
     setHouseholdDate(data.householdDate);
     setOccurrences(data.occurrences);
     setExpanded((current) => {
       const next = { ...current };
       for (const occurrence of data.occurrences) {
-        if (next[occurrence.id] === undefined) next[occurrence.id] = !occurrence.completed;
+        const prior = priorById.get(occurrence.id);
+        if (next[occurrence.id] === undefined) {
+          next[occurrence.id] = !occurrence.completed;
+        } else if (
+          prior &&
+          prior.steps.length === 0 &&
+          occurrence.steps.length > 0 &&
+          !occurrence.completed
+        ) {
+          // Re-open if an earlier empty/incomplete snapshot collapsed the container.
+          next[occurrence.id] = true;
+        }
       }
       return next;
     });
@@ -286,17 +306,52 @@ export function App() {
   useEffect(() => {
     if (!session) return;
     const membershipId = session.member.id;
-    void refreshToday(membershipId).catch((caught) => setError(errorMessage(caught)));
-    void refreshSupportingData(session);
+
+    const refreshAuthoritative = () => {
+      // Always read server "today" on sync/reconnect — never a stale client date.
+      void refreshToday(membershipId).catch((caught) => setError(errorMessage(caught)));
+      void refreshSupportingData(session);
+    };
+
+    refreshAuthoritative();
     void flushOutbox(membershipId);
-    const disconnect = connectSync(() => {
+
+    const disconnect = connectSync(
+      () => {
+        if (identityRef.current !== membershipId) return;
+        startTransition(() => {
+          refreshAuthoritative();
+        });
+      },
+      (status) => {
+        if (identityRef.current !== membershipId) return;
+        if (!navigator.onLine) {
+          setConnection("offline");
+          return;
+        }
+        setConnection(status === "reconnecting" ? "reconnecting" : "connected");
+        if (status === "connected") {
+          // Reconnect handshake already emits "connected"; still force an
+          // authoritative read in case the open raced ahead of missed events.
+          startTransition(() => {
+            refreshAuthoritative();
+          });
+        }
+      },
+    );
+
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
       if (identityRef.current !== membershipId) return;
-      startTransition(() => {
-        void refreshToday(membershipId, householdDate || undefined).catch(() => undefined);
-        void refreshSupportingData(session);
-      });
-    });
-    return disconnect;
+      refreshAuthoritative();
+      void flushOutbox(membershipId);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      disconnect();
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [session?.member.id]);
 
   async function signOut() {
@@ -339,13 +394,15 @@ export function App() {
       performedAt: new Date().toISOString(),
       state: "pending",
     };
-    setOccurrences((current) =>
-      current.map((occurrence) =>
+    setOccurrences((current) => {
+      const next = current.map((occurrence) =>
         occurrence.id === occurrenceId
           ? reconcileOccurrence(occurrence, [item])
           : occurrence,
-      ),
-    );
+      );
+      occurrencesRef.current = next;
+      return next;
+    });
     const next = await enqueueOutbox(membershipId, item);
     if (identityRef.current !== membershipId) return;
     setOutbox(next);
@@ -947,6 +1004,21 @@ function HouseholdView(props: {
 }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const sharedTasks = props.tasks.filter((task) => task.visibility === "household");
+
+  useEffect(() => {
+    setExpanded((current) => {
+      const next = { ...current };
+      for (const occurrence of props.occurrences) {
+        // Seed once while incomplete so a later completion keeps the checklist
+        // open and live status visible; first-seen completed rows stay quiet.
+        if (next[occurrence.id] === undefined) {
+          next[occurrence.id] = !occurrence.completed;
+        }
+      }
+      return next;
+    });
+  }, [props.occurrences]);
+
   return (
     <section>
       <h1>Household</h1>

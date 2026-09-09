@@ -28,8 +28,10 @@ Before applying a new migration on a populated database, run `npm run db:backup`
 
 - Terminate TLS at the edge; redirect HTTP→HTTPS.
 - Forward `/` and `/api` to the Node process; enable WebSocket upgrade for `/api/v1/sync`.
+- The client reconnects dropped sync sockets with backoff and re-reads `/api/v1/today` on reconnect and tab visibility; server ping frames help keep long-lived upgrades healthy through intermediaries.
 - Mount persistent volumes for `DB_PATH` and `BACKUP_DIR`.
 - Do not put passphrases, session tokens, enrollment tokens, or private task titles in logs.
+- Keep a single Node process (in-memory sync fan-out is not multi-replica).
 
 ## Hosted acceptance gap
 

@@ -1,65 +1,69 @@
-# Build Report - BRIEF P0-002 r1 (FIX REQUIRED response)
+# Build Report - BRIEF P0-002 r1 (hosted sync evidence response)
 
 **Brief revision implemented:** 1  
-**Engineering status:** IMPLEMENTED (provider-neutral; hosted evidence incomplete)  
+**Engineering status:** IMPLEMENTED (provider-neutral; hosted AT20 still incomplete)  
 **Branch:** `brief/p0-002-authenticated-household-authority`  
-**Commits:** `c96133a` (initial implementation); `361be83` (FIX REQUIRED response); intervening report/metadata commits on branch  
+**Commits:** prior `c96133a` / `361be83`; this pass is uncommitted until Coordinator/Project Lead authorizes  
 **Pull request:** N/A (not opened)  
-**Architecture disposition addressed:** FIX REQUIRED (2026-09-08)
+**Architecture disposition addressed:** hosted sync evidence follow-up (acceptance 18/20 path)
 
-## What changed in this FIX REQUIRED pass
+## Defect investigated
 
-1. **Origin enforcement:** `/api/v1/auth/login` and `/api/v1/auth/claim` independently require the configured allowed `Origin` (absent/foreign rejected). HTTP coverage added; test-only bootstrap remains absent in hosted mode.
-2. **Migration logical IDs:** `backfill.ts` assigns one unique logical ID per checklist row with FIFO one-to-one continuity across revisions for duplicate/reordered text+obligation rows; integration coverage added.
-3. **P0-001 regressions restored:** `tests/integration/p0-001.test.ts` ported to authenticated contexts (materialization idempotency, assignment/execution separation, future-effective history, household timezone).
-4. **Evidence completion:** HTTP/WebSocket isolation, capability matrix, shared-base-after-personalization, required-item denial, effective-date preview, shared-browser outbox safety, dual-context sync, outbox-through-reload, and a11y e2e restored/expanded. Test-profile rate limits raised so dense e2e auth traffic is not throttled.
+Hosted evaluation reported: manager created a Morning Routine for Eli; Eli’s phone showed the routine container via auto-refresh but checklist steps only after manual refresh; after Eli completed items, the manager browser stayed stale until manual refresh. Manual refresh is not accepted evidence for AT 18/20.
+
+## Root causes (repository)
+
+1. **Dead WebSocket, no reconnect:** `connectSync` opened one socket and never recovered from close/error. Online handling flushed the outbox but did not re-establish sync. After a drop, only a full remount refreshed.
+2. **Stale `/today` races:** Concurrent refreshes could apply an older empty/incomplete snapshot after a newer one. Sync also sometimes re-fetched a closed-over client date.
+3. **Household expand seed gap:** `HouseholdView` kept a local `expanded` map that was never seeded. Incomplete rows relied on `expanded[id] ?? !completed`, so when an occurrence became complete the checklist collapsed and live `Status:` lines disappeared even though sync had applied (“Complete” in the header).
+4. **Empty-step vacuous complete:** `isOccurrenceComplete([])` was true, which could collapse a header-only occurrence before steps materialized. Defensive rematerialization repairs empty step rows when the revision has steps.
+
+P0-001 optimistic outbox / desired-state mutation path was not changed in contract; flush still overlays pending commands after authoritative reads.
+
+## What changed in this pass
+
+1. **Client sync:** exponential-backoff WebSocket reconnect; reconnect + visibilityforce authoritative `/api/v1/today` (server today, no stale date); refresh generation guard; connection pill reflects reconnecting.
+2. **Server sync:** periodic WebSocket ping frames; hub cleanup on process close.
+3. **Household UI:** seed expand flags once while incomplete so live completion stays visible without manual refresh.
+4. **Materialization:** treat empty step lists as incomplete; repair empty occurrence steps from the active revision when needed.
+5. **Evidence:** e2e for create-while-watching dual context (checklist + manager status without reload); reconnect test forces socket close via `__hdSync.closeForTest` and asserts recovery without page reload; ops note on reconnect/single-process.
+
+Contract/implementation boundary: unchanged (still WS invalidation + authoritative HTTP read). No Architecture return required for this defect fix.
 
 ## Verification performed
 
-Environment: Windows, Node.js `v24.16.0`.
+Environment: Windows, Node.js `v24.16.0`. Date: 2026-09-09.
 
 | Command | Result |
 | --- | --- |
-| `npm run validate` | PASS (`lint` + `typecheck` + **25** Vitest tests) |
+| `npm run validate` | PASS (`lint` + `typecheck` + **26** Vitest tests) |
 | `npm run build` | PASS (via e2e webServer) |
-| `npm run test:e2e` | PASS — **16/16** (8 Chromium + 8 WebKit) |
+| `npm run test:e2e` | PASS — **18/18** (9 Chromium + 9 WebKit) |
+| Dual-context create→checklist→manager status (no reload) | PASS (new e2e) |
+| Forced WS drop → reconnect → status without reload | PASS (updated e2e) |
+| Railway HTTPS / two physical phones | **NOT RUN** (no authorized origin credentials in this Engineering session) |
 | Linux Argon2 live probe | NOT RUN |
-| Hosted HTTPS / physical phones | NOT RUN |
 
-## Acceptance test results
+## Acceptance test results (delta)
 
-1. **Populated migration** — PASS  
-2. **Fresh/production startup** — PASS (hosted fail-closed + bootstrap unavailable). Live HTTPS `__Host-` cookie — NOT RUN  
-3. **Six identities** — PASS (integration). Physical family checklist — NOT RUN  
-4. **Credential controls** — PASS (policy, Argon2id PHC, throttle)  
-5. **Claims and sessions** — PASS including Origin on login/claim. Hosted `__Host-` live — NOT RUN  
-6. **Household isolation** — PASS (HTTP foreign IDs + WebSocket auth/origin isolation)  
-7. **Capability matrix** — PASS (HTTP allow/deny matrix for enroll/manage/direct/propose/decide/execute/task)  
-8. **Direct personalization** — PASS  
-9. **Restricted proposal** — PASS  
-10. **Prospective and historical integrity** — PASS (P0-001 regression + personalization snap)  
-11. **Stable-base flow** — PASS (personalization then later shared revision compose preview)  
-12. **Required structure** — PASS (API 403 + UI hides Routine for child)  
-13. **Personal task visibility** — PASS  
-14. **Authority-aware navigation** — PASS  
-15. **Prospective feedback** — PASS (e2e effective date + read-only preview)  
-16. **Optimistic execution regression** — PASS (Chromium + WebKit)  
-17. **Shared-browser identity safety** — PASS (logout clears membership outbox; other membership empty)  
-18. **Cross-device synchronization** — PASS (dual-context sync + reconnect refresh e2e)  
-19. **Household time and accessibility** — PASS (timezone unit + phone a11y e2e)  
-20. **Hosted family-evaluation evidence** — **NOT RUN** (no Project Lead-authorized HTTPS host; no physical phones)  
-21. **Project verification** — PASS for validate/build/Playwright. Hosted-smoke on authorized origin — **NOT RUN**
+18. **Cross-device synchronization** — PASS with strengthened automated evidence (create/assign materialization both ways; reconnect + authoritative read; no manual refresh).  
+20. **Hosted family-evaluation evidence** — still **NOT RUN** against the live Railway HTTPS origin / physical phones in this session. Deploy this build and re-run AT20; do not treat prior manual-refresh observations as pass.  
+21. **Project verification** — PASS for validate/build/Playwright locally. Hosted-smoke on authorized origin — **NOT RUN**.
+
+Unchanged prior PASS items 1–17 and 19 remain as in the previous Build Report unless Architecture reopens them.
 
 ## Deviations from brief revision
 
-- None material. Hosted acceptance gaps remain explicit.
+- None. Fix stays inside existing sync/reconcile contract.
 
 ## Known limitations / evidence gaps
 
-- Acceptance **20** and hosted portions of **21** remain **NOT RUN**.
-- Linux Argon2 native verification remains deferred to an authorized host.
+- AT **20** and hosted portions of **21** remain **NOT RUN** until Project Lead re-evaluates on the authorized HTTPS host with this build.
+- Linux Argon2 native verification remains deferred.
+- Sync fan-out remains single-process (documented).
 
 ## Suggested follow-up
 
-- Architecture reassessment of P0-002 r1 against this updated Build Report.
-- Project Lead: provision HTTPS host for acceptance 20 / hosted 21.
+- Deploy this branch to the authorized Railway HTTPS origin (single replica).
+- Re-run AT20 with two authenticated device contexts **without** manual refresh.
+- Architecture reassessment of P0-002 r1 against this Build Report after hosted evidence.

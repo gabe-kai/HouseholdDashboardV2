@@ -27,7 +27,7 @@ Goal: prove that a real recurring household routine can be used quickly by six d
 - [ ] **Outcome:** Six real household members can authenticate as themselves and use the shared Morning Routine according to capability-based authority: selected members customize their future routine directly, restricted members propose additions for approval, every member can create thin personal work, and history/responsiveness/shared state remain trustworthy.
   - **Learning question:** Can one shared routine support distinct identities and progressively granted personal control without becoming confusing, slow, or historically unreliable?
   - **Brief:** `P0-002 r1 - Authenticated Household Authority` (`briefs/P0-002-authenticated-household-authority.md`)
-  - **Implementation status:** FIX REQUIRED against r1 after Architecture review of the Build Report; fixes/evidence remain on `brief/p0-002-authenticated-household-authority`. Secure hosted acceptance also depends on a Project Lead-authorized HTTPS host with persistent storage and backups.
+  - **Implementation status:** Provider-neutral implementation and automated evidence complete; full r1 technical acceptance is BLOCKED pending hosted/physical-device evidence and Linux Argon2 verification. Secure hosted acceptance depends on a Project Lead-authorized HTTPS host with persistent storage and backups.
 
 ### LIKELY NEXT
 

@@ -19,14 +19,14 @@
 
 ## Current focus
 
-P0-002 r1 FIX REQUIRED items are addressed on the implementation branch; Architecture reassessment is next. Hosted family-evaluation evidence remains blocked on an authorized HTTPS host.
+P0-002 r1 code-level FIX REQUIRED items are addressed on the implementation branch. Architecture has no remaining code-level correction, but full technical acceptance is blocked on hosted family-evaluation evidence and a Linux Argon2 probe.
 
 ## Internal work status
 
 | Work | Revision | State | Current team | Branch / PR | Waiting on |
 | --- | ---: | --- | --- | --- | --- |
 | P0-001 - Shared Morning Routine | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #1 | Product acceptance/evaluation |
-| P0-002 - Authenticated Household Authority | r1 | IMPLEMENTED | Architecture | `brief/p0-002-authenticated-household-authority` | Architecture re-acceptance of updated Build Report; Project Lead HTTPS host for acceptance tests 20–21 |
+| P0-002 - Authenticated Household Authority | r1 | BLOCKED | Project Lead | `brief/p0-002-authenticated-household-authority` | HTTPS host/persistent snapshots, physical phones, Linux Argon2 probe, then Architecture final acceptance |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -39,7 +39,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Known blockers
 
-- P0-002 code planning is unblocked. Completing its secure real-device acceptance requires a Project Lead-authorized internet-reachable HTTPS origin, persistent storage, and backup capability; no provider, account, or spend is authorized by the repository yet.
+- P0-002 implementation and automated evidence are complete enough for hosted evaluation. Full technical acceptance requires a Project Lead-authorized internet-reachable HTTPS origin, persistent storage/backups, physical phones, and Linux Argon2 verification; no provider, account, or spend is authorized by the repository yet.
 
 ## Next Project Lead decision
 
@@ -47,7 +47,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Architecture reassesses the updated P0-002 r1 Build Report. Hosted acceptance tests 20–21 remain NOT RUN until the Project Lead authorizes an HTTPS host.
+Project Lead provisions the authorized HTTPS environment and physical-phone evaluation; then Engineering runs hosted tests 20–21 and returns the same P0-002 r1 to Architecture for final acceptance.
 
 ## Notes for all teams
 

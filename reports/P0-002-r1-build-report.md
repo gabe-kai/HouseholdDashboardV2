@@ -1,69 +1,83 @@
-# Build Report - BRIEF P0-002 r1 (hosted sync evidence response)
+# Build Report - BRIEF P0-002 r1 (hosted sync retest writeback)
 
 **Brief revision implemented:** 1  
-**Engineering status:** IMPLEMENTED (provider-neutral; hosted AT20 still incomplete)  
-**Branch:** `brief/p0-002-authenticated-household-authority`  
-**Commits:** prior `c96133a` / `361be83`; this pass is uncommitted until Coordinator/Project Lead authorizes  
-**Pull request:** N/A (not opened)  
-**Architecture disposition addressed:** hosted sync evidence follow-up (acceptance 18/20 path)
+**Engineering status:** IMPLEMENTED — hosted sync retest recorded; AT20 still partial  
+**Integration branch:** `main`  
+**Deployed sync-fix commit:** `4b0d95f600640c6457f70d0bdebfaa1e18060669` (`P0-002: harden hosted WebSocket sync and reconciliation`)  
+**Deployed main tip (merge):** `546b5e09e628fffe4e1dde5077856e2296e176ea` (Merge PR #3 `brief/p0-002-hosted-sync-reconciliation`)  
+**Pull request:** #3 (merged)  
+**Architecture disposition addressed:** hosted sync retest evidence for r1 reassessment (2026-09-09)
 
-## Defect investigated
+## Hosted retest summary
 
-Hosted evaluation reported: manager created a Morning Routine for Eli; Eli’s phone showed the routine container via auto-refresh but checklist steps only after manual refresh; after Eli completed items, the manager browser stayed stale until manual refresh. Manual refresh is not accepted evidence for AT 18/20.
+Architecture reports the realtime synchronization fix was committed, merged, and redeployed to the Project Lead-authorized Railway HTTPS origin. During the hosted retest, after **one initial page refresh**, changes to Eli’s checklist were reflected in the manager view **live or with negligible delay**. Manual refresh is **not** required for ongoing checklist→manager updates after that initial load.
 
-## Root causes (repository)
+Private origin, real identities, secrets, and routine/task content are omitted per brief.
 
-1. **Dead WebSocket, no reconnect:** `connectSync` opened one socket and never recovered from close/error. Online handling flushed the outbox but did not re-establish sync. After a drop, only a full remount refreshed.
-2. **Stale `/today` races:** Concurrent refreshes could apply an older empty/incomplete snapshot after a newer one. Sync also sometimes re-fetched a closed-over client date.
-3. **Household expand seed gap:** `HouseholdView` kept a local `expanded` map that was never seeded. Incomplete rows relied on `expanded[id] ?? !completed`, so when an occurrence became complete the checklist collapsed and live `Status:` lines disappeared even though sync had applied (“Complete” in the header).
-4. **Empty-step vacuous complete:** `isOccurrenceComplete([])` was true, which could collapse a header-only occurrence before steps materialized. Defensive rematerialization repairs empty step rows when the revision has steps.
+## Deployment evidence
 
-P0-001 optimistic outbox / desired-state mutation path was not changed in contract; flush still overlays pending commands after authoritative reads.
+| Item | Result |
+| --- | --- |
+| Host class | Railway HTTPS (Project Lead-authorized single-host evaluation) |
+| Deployed commit | Feature `4b0d95f…80669`; `main` tip `546b5e0…176ea` |
+| Replica topology | Architecture reports redeploy under the ops **single-replica / one Node process** packaging (required for in-memory SyncHub). Engineering did not re-query the Railway control plane in this writeback session. |
+| Evidence date | 2026-09-09 |
 
-## What changed in this pass
+## Synchronization evidence
 
-1. **Client sync:** exponential-backoff WebSocket reconnect; reconnect + visibilityforce authoritative `/api/v1/today` (server today, no stale date); refresh generation guard; connection pill reflects reconnecting.
-2. **Server sync:** periodic WebSocket ping frames; hub cleanup on process close.
-3. **Household UI:** seed expand flags once while incomplete so live completion stays visible without manual refresh.
-4. **Materialization:** treat empty step lists as incomplete; repair empty occurrence steps from the active revision when needed.
-5. **Evidence:** e2e for create-while-watching dual context (checklist + manager status without reload); reconnect test forces socket close via `__hdSync.closeForTest` and asserts recovery without page reload; ops note on reconnect/single-process.
+| Check | Result | Basis |
+| --- | --- | --- |
+| Two-device hosted sync (Eli checklist → manager Household) | **PASS** | Architecture hosted retest after deploy of `4b0d95f` / `546b5e0`: live or negligible delay after one initial page refresh; no ongoing manual refresh |
+| Dual-context create/assign → checklist without reload | **PASS** | Automated Playwright Chromium + WebKit |
+| Forced socket drop → reconnect → authoritative read without page reload | **PASS (automated)** / **NOT RUN (hosted)** | e2e `__hdSync.closeForTest` path on Chromium + WebKit; Architecture retest did not separately record a hosted forced socket-drop drill |
+| Cross-household isolation (HTTP/WS) | **PASS** | Prior integration evidence (unchanged) |
 
-Contract/implementation boundary: unchanged (still WS invalidation + authoritative HTTP read). No Architecture return required for this defect fix.
+## Other hosted AT20 checks
 
-## Verification performed
+| Check | Result |
+| --- | --- |
+| Application restart persistence (committed state survives restart) | **NOT RUN** — not reported in this hosted retest |
+| Backup / restore rehearsal (counts + sampled records match on isolated restore) | **NOT RUN** — not reported in this hosted retest |
+| Linux Argon2id live probe on deploy OS | **NOT RUN** — Windows readiness verified earlier (`@node-rs/argon2@2.2.0`); Linux target probe still outstanding |
+| Persistent session reload on two physical phones | **PARTIAL** — sync retest implies authenticated multi-device use; full AT20 session-reload checklist not separately itemized here |
+| Hosted proposal approve path | **NOT RUN** — not reported in this retest |
+| HTTP→HTTPS redirect / `__Host-` cookie attributes on live origin | **NOT RUN** — not re-captured in this writeback |
 
-Environment: Windows, Node.js `v24.16.0`. Date: 2026-09-09.
+## Local verification (unchanged from sync-fix pass)
+
+Environment: Windows, Node.js `v24.16.0`.
 
 | Command | Result |
 | --- | --- |
 | `npm run validate` | PASS (`lint` + `typecheck` + **26** Vitest tests) |
 | `npm run build` | PASS (via e2e webServer) |
 | `npm run test:e2e` | PASS — **18/18** (9 Chromium + 9 WebKit) |
-| Dual-context create→checklist→manager status (no reload) | PASS (new e2e) |
-| Forced WS drop → reconnect → status without reload | PASS (updated e2e) |
-| Railway HTTPS / two physical phones | **NOT RUN** (no authorized origin credentials in this Engineering session) |
-| Linux Argon2 live probe | NOT RUN |
 
-## Acceptance test results (delta)
+## Acceptance test results (r1)
 
-18. **Cross-device synchronization** — PASS with strengthened automated evidence (create/assign materialization both ways; reconnect + authoritative read; no manual refresh).  
-20. **Hosted family-evaluation evidence** — still **NOT RUN** against the live Railway HTTPS origin / physical phones in this session. Deploy this build and re-run AT20; do not treat prior manual-refresh observations as pass.  
-21. **Project verification** — PASS for validate/build/Playwright locally. Hosted-smoke on authorized origin — **NOT RUN**.
+1–17, 19 — PASS as previously reported (automated / local), unless Architecture reopens.  
+18. **Cross-device synchronization** — **PASS** (automated + hosted retest of live checklist→manager updates after deploy).  
+20. **Hosted family-evaluation evidence** — **PARTIAL**. Live two-device WebSocket synchronization on Railway HTTPS after deploy of `4b0d95f`/`546b5e0` **PASS**. Remaining AT20 elements still open: restart persistence, backup/restore rehearsal, Linux Argon2 probe, proposal approval on host, and explicit HTTPS/`__Host-` live cookie capture.  
+21. **Project verification** — PASS for local validate/build/Playwright. Hosted-smoke completeness still blocked on the open AT20 items above.
 
-Unchanged prior PASS items 1–17 and 19 remain as in the previous Build Report unless Architecture reopens them.
+## Sync fix retained (repository)
+
+Prior Engineering fix (merged via PR #3): WebSocket reconnect + ping, stale `/today` generation guard, Household expand seeding so live completion stays visible, empty-step incompleteness/repair, dual-context and reconnect e2e. P0-001 optimistic/outbox contract unchanged.
 
 ## Deviations from brief revision
 
-- None. Fix stays inside existing sync/reconcile contract.
+- None. Evidence writeback only; brief remains r1.
 
-## Known limitations / evidence gaps
+## Remaining hosted acceptance gaps
 
-- AT **20** and hosted portions of **21** remain **NOT RUN** until Project Lead re-evaluates on the authorized HTTPS host with this build.
-- Linux Argon2 native verification remains deferred.
-- Sync fan-out remains single-process (documented).
+1. Restart persistence on the Railway instance.  
+2. Documented backup → isolated restore rehearsal with count/sample match.  
+3. Linux Argon2id install/hash/verify on the deploy OS.  
+4. Hosted proposal approve path (AT20).  
+5. Explicit live capture of HTTP→HTTPS redirect and hosted `__Host-` cookie attributes (if not already filed elsewhere).  
+6. Hosted forced WebSocket drop/reconnect drill (optional strengthening; automated coverage already PASS).
 
 ## Suggested follow-up
 
-- Deploy this branch to the authorized Railway HTTPS origin (single replica).
-- Re-run AT20 with two authenticated device contexts **without** manual refresh.
-- Architecture reassessment of P0-002 r1 against this Build Report after hosted evidence.
+- Architecture reassessment of P0-002 r1 against this Build Report.  
+- Project Lead/Engineering: close remaining AT20 gaps on the same Railway origin, then return for final technical acceptance.

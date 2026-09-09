@@ -31,6 +31,10 @@ describe("completion semantics", () => {
     ).toBe(false);
   });
 
+  it("treats an empty step list as incomplete", () => {
+    expect(isOccurrenceComplete([])).toBe(false);
+  });
+
   it("rejects not_needed for non as_needed steps", () => {
     expect(() => assertStatusAllowed("required", "not_needed")).toThrow();
   });

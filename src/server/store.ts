@@ -1525,6 +1525,42 @@ export class AppStore {
         );
       });
       occurrence = { id: occurrenceId };
+    } else {
+      const occurrenceId = occurrence.id;
+      const existing = this.getOccurrenceById(occurrenceId)!;
+      if (existing.steps.length === 0 && revision.steps.length > 0) {
+        const personal = this.getPersonalLayer(membershipId, householdDate);
+        const composed = composeMorningRoutine(
+          revision.steps.map((step) => ({
+            logicalItemId: step.logicalItemId,
+            text: step.text,
+            obligation: step.obligation,
+          })),
+          personal?.additions.map((addition) => ({
+            id: addition.id,
+            text: addition.text,
+            obligation: addition.obligation,
+            anchorLogicalItemId: addition.anchorLogicalItemId,
+            place: addition.place,
+          })) ?? [],
+        );
+        const insert = this.db.prepare(
+          `INSERT INTO occurrence_steps
+           (id, occurrence_id, position, text, obligation, status, source, logical_item_id)
+           VALUES (?, ?, ?, ?, ?, 'open', ?, ?)`,
+        );
+        composed.forEach((step, position) => {
+          insert.run(
+            randomUUID(),
+            occurrenceId,
+            position,
+            step.text,
+            step.obligation,
+            step.source,
+            step.logicalItemId,
+          );
+        });
+      }
     }
     return this.getOccurrenceById(occurrence.id)!;
   }

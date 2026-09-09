@@ -350,15 +350,74 @@ export async function setPersonalTaskStatus(
   );
 }
 
-export function connectSync(onMessage: (notification: SyncNotification) => void): () => void {
-  const protocol = location.protocol === "https:" ? "wss" : "ws";
-  const socket = new WebSocket(`${protocol}://${location.host}/api/v1/sync`);
-  socket.onmessage = (event) => {
-    try {
-      onMessage(JSON.parse(String(event.data)) as SyncNotification);
-    } catch {
-      // Invalid notifications are ignored; authoritative reads remain the source of truth.
+export function connectSync(
+  onMessage: (notification: SyncNotification) => void,
+  onStatus?: (status: "connected" | "reconnecting") => void,
+): () => void {
+  let stopped = false;
+  let socket: WebSocket | null = null;
+  let attempt = 0;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const clearRetry = () => {
+    if (retryTimer !== null) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
     }
   };
-  return () => socket.close();
+
+  const scheduleReconnect = () => {
+    if (stopped) return;
+    onStatus?.("reconnecting");
+    clearRetry();
+    const delay = Math.min(1_000 * 2 ** attempt, 15_000);
+    attempt += 1;
+    retryTimer = setTimeout(open, delay);
+  };
+
+  const open = () => {
+    if (stopped) return;
+    const protocol = location.protocol === "https:" ? "wss" : "ws";
+    const next = new WebSocket(`${protocol}://${location.host}/api/v1/sync`);
+    socket = next;
+    next.onopen = () => {
+      attempt = 0;
+      onStatus?.("connected");
+    };
+    next.onmessage = (event) => {
+      try {
+        onMessage(JSON.parse(String(event.data)) as SyncNotification);
+      } catch {
+        // Invalid notifications are ignored; authoritative reads remain the source of truth.
+      }
+    };
+    next.onerror = () => {
+      try {
+        next.close();
+      } catch {
+        // Ignore close failures; onclose schedules reconnect.
+      }
+    };
+    next.onclose = () => {
+      if (socket === next) socket = null;
+      if (!stopped) scheduleReconnect();
+    };
+  };
+
+  open();
+
+  const testApi = {
+    closeForTest: () => {
+      socket?.close();
+    },
+  };
+  (window as unknown as { __hdSync?: typeof testApi }).__hdSync = testApi;
+
+  return () => {
+    stopped = true;
+    clearRetry();
+    const exposed = window as unknown as { __hdSync?: typeof testApi };
+    if (exposed.__hdSync === testApi) delete exposed.__hdSync;
+    socket?.close();
+  };
 }

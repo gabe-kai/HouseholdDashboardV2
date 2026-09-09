@@ -1,7 +1,7 @@
 # BRIEF P0-002 - Authenticated Household Authority
 
 **Revision:** 1
-**Status:** FIX REQUIRED
+**Status:** BLOCKED
 
 Recommended lifecycle: DRAFT -> IN REVIEW -> READY -> IMPLEMENTING -> IMPLEMENTED -> ACCEPTED
 
@@ -187,6 +187,10 @@ No material Questions or Blockers. Merged P0-001 on `main` (`8004959`) matches t
 - **Required evidence gaps:** Add focused automated evidence for the brief’s partial scenarios: full HTTP route and WebSocket cross-household isolation, exhaustive grant/API matrix, shared-base change after personalization, required-item UI/API denial, effective-date preview behavior, shared-browser identity switch/outbox safety, and two-context synchronization. These may be implemented as integration or e2e tests, but each must be traceable to the corresponding r1 acceptance test.
 
 Acceptance tests 20 and the hosted portions of 21 remain **NOT RUN**, not Engineering defects: they require the Project Lead-authorized HTTPS host, persistent storage/snapshots, and physical phones. After the code/evidence fixes, return the same r1 with an updated Build Report. Architecture will then reassess the implementation; hosted evidence will still be required before full technical acceptance.
+
+**Architecture reassessment:** BLOCKED (2026-09-08). Engineering’s updated Build Report addresses the prior same-revision fixes: the login/claim origin checks are present, duplicate legacy logical IDs are backfilled one-to-one, P0-001 regression coverage is restored, and the previously partial automated scenarios are now covered. Architecture independently reran `npm run validate` with 25 tests passing. The available Engineering e2e evidence is 16/16; a local rerun in this environment was stopped after the command produced no output during its browser-install/test phase, so no contrary result is asserted. No further code-level FIX REQUIRED finding is identified.
+
+Full technical acceptance of P0-002 r1 remains blocked until acceptance test 20 and the hosted portions of 21 are performed against a Project Lead-authorized HTTPS host with persistent storage/snapshots and physical phones. The Linux Argon2 live probe is also still an evidence gap. The brief remains r1; once the external environment is available, Engineering should run the hosted smoke/family evidence and return the same r1 Build Report for final Architecture acceptance.
 
 ## Revision history
 

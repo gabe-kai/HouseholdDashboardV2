@@ -26,6 +26,9 @@ export function isBlockingStepOpen(step: CompletionStep): boolean {
 }
 
 export function isOccurrenceComplete(steps: CompletionStep[]): boolean {
+  // Vacuous truth would mark an empty snapshot complete and collapse the UI
+  // before checklist steps have materialized; treat empty as incomplete.
+  if (steps.length === 0) return false;
   return steps.every(isStepSatisfied);
 }
 

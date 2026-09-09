@@ -596,6 +596,7 @@ export async function buildApp(config: AppConfig) {
   });
 
   app.addHook("onClose", async () => {
+    sync.close();
     db.close();
   });
 

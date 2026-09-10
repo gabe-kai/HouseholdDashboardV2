@@ -1,111 +1,59 @@
-# Build Report - BRIEF P0-002 r1 (final hosted evidence)
+# Build Report - BRIEF P0-002 r1 (proposal-status sync fix)
 
 **Brief revision implemented:** 1  
-**Engineering status:** IMPLEMENTED — remaining hosted AT20 evidence completed for Architecture final reassessment  
-**Integration branch:** `main`  
-**Deployed sync-fix commit:** `4b0d95f600640c6457f70d0bdebfaa1e18060669`  
-**Deployed main tip at sync redeploy:** `546b5e09e628fffe4e1dde5077856e2296e176ea` (Merge PR #3)  
-**Evidence writeback date:** 2026-09-09  
-**Host class:** Railway HTTPS, single service/process, persistent volume (`/data`)  
+**Engineering status:** IMPLEMENTED — proposal-status live reconciliation fixed; awaiting Architecture reassessment / hosted redeploy confirmation  
+**Integration branch:** `main` (working tree; uncommitted until authorized)  
+**Prior deployed sync-fix commit:** `4b0d95f600640c6457f70d0bdebfaa1e18060669`  
+**Evidence date:** 2026-09-09  
+**Host class:** Railway HTTPS (prior AT20 host evidence retained)  
 **Private origin, identities, secrets, and routine/task content:** omitted
 
-## Deployment topology
+## Defect investigated
 
-| Item | Result |
+Architecture confirmed: after the manager approved Eli’s proposal, Eli’s open session kept showing **Pending**. Navigating between pages did not update it; a full browser refresh showed **Approved**. Approval persistence and Preview composition were already correct.
+
+## Root cause
+
+Household WebSocket notifications already broadcast `proposal` (and `routine` on approval). The client called `refreshSupportingData` → `fetchProposals()` on those events, but that refresh was wrapped in `startTransition` together with Today refresh. Proposal status updates on the open Personalize view could remain deferred / non-urgent, so the member kept seeing Pending until a full remount. Tab navigation also did not re-fetch proposals.
+
+Future-effective behavior was not at fault: approved additions correctly belong in Preview immediately and on Today only when the effective household date applies.
+
+## What changed
+
+1. **Urgent supporting-data refresh** on `proposal` / `routine` sync notifications (and on connect / visibility): proposals/memberships/tasks refresh outside `startTransition`; Today remains transition-friendly.  
+2. **Supporting-data generation guard** so stale proposal fetches cannot overwrite newer decisions.  
+3. **Tab re-fetch:** opening Personalize or Approvals refreshes supporting data.  
+4. **Proposal status labels** render Pending / Approved / Rejected for clearer UI.  
+5. **E2e:** manager approval → child’s open Personalize list shows Approved without reload; Preview includes the item; Today does not yet expose an executable checklist action for it.
+
+## Verification performed
+
+| Check | Result |
 | --- | --- |
-| Platform | Railway production service `HouseholdDashboardV2` |
-| Process model | Single Online service / one deployment instance (required for in-memory SyncHub) |
-| Runtime | Linux x64, Node.js `v24.20.0`, `APP_PROFILE=hosted` |
-| Persistent volume | Mounted at `/data` (`household.sqlite` + WAL; backups under `/data/backups`) |
-| Health | `GET /api/v1/health` → `{"ok":true,"evaluationMode":false}` |
-| Profile banner | `profile:"hosted"`; evaluation mode false |
-| HTTP→HTTPS | `http://…/api/v1/health` follows to HTTPS final URL with 200 |
+| `npm run validate` | PASS |
+| `npm run test:e2e` | PASS — **20/20** (10 Chromium + 10 WebKit) |
+| Focused e2e: manager approve → open Personalize shows Approved (no reload) | PASS |
+| Future-effective: Preview shows addition; Today has no Mark action yet | PASS (same e2e) |
+| Hosted Railway retest of this proposal-status fix | **NOT RUN** this writeback (redeploy required) |
 
-## Hosted evidence completed this pass
+## Prior hosted AT20 evidence (retained)
 
-### 1. Application restart persistence — PASS
+Restart persistence, backup/restore rehearsal, Linux Argon2id on Railway Node 24.20, HTTP→HTTPS, checklist live sync, and reconnect drill remain **PASS** as recorded in the previous r1 hosted-evidence writeback (deploy tip `546b5e0` / fix `4b0d95f`). Those results are not re-executed here.
 
-1. Captured anonymous SQLite counts on the live volume.  
-2. Issued `railway restart -y` for the current deployment.  
-3. Confirmed health returned 200 after restart.  
-4. Re-captured counts; all compared equal.
+## Acceptance test results (r1 delta)
 
-Pre/post restart counts (no private content):
-
-| Metric | Before | After |
-| --- | ---: | ---: |
-| households | 1 | 1 |
-| memberships | 7 | 7 |
-| activeMemberships | 2 | 2 |
-| pendingMemberships | 5 | 5 |
-| users | 2 | 2 |
-| routines | 1 | 1 |
-| revisions | 1 | 1 |
-| occurrences | 1 | 1 |
-| occurrenceSteps | 8 | 8 |
-| stepReports | 11 | 11 |
-| personalTasks | 0 | 0 |
-| proposals | 0 | 0 |
-
-### 2. Backup creation and isolated restore — PASS
-
-1. Created a consistent SQLite backup on the host volume via `better-sqlite3` backup API → `/data/backups/household-2026-09-09T23-45-24.409Z.sqlite` (303104 bytes).  
-2. Copied that snapshot off-host into an isolated local path (not committed).  
-3. Restored with `npm run db:restore -- <backup>` into a separate `runtime/hosted-evidence/isolated-restore.sqlite`.  
-4. Compared anonymous counts: **exact match** to the live pre-restart snapshot above (households/memberships/routines/occurrences/steps/reports/tasks/proposals/users).
-
-### 3. Linux Argon2id live verification — PASS
-
-On the Railway Linux deploy host (`platform=linux`, `arch=x64`, Node `v24.20.0`), `@node-rs/argon2@2.2.0`:
-
-- hashed with Argon2id `memoryCost=19456`, `timeCost=2`, `parallelism=1`;
-- PHC prefix `$argon2id$…m=19456…`;
-- verify succeeded for the correct passphrase and failed for a wrong passphrase.
-
-Windows readiness evidence from earlier remains valid; Linux target probe is now closed.
-
-### 4. Two-device AT20 synchronization + reconnect — PASS
-
-**Physical-device live sync (Architecture hosted retest, 2026-09-09):** after one initial page refresh on the redeployed sync-fix build, Eli checklist changes appeared in the manager view live or with negligible delay (no ongoing manual refresh).
-
-**Hosted dual phone-viewport reconnect drill (Engineering, same origin/date):** two authenticated Pixel-7 viewport Chromium contexts against the Railway HTTPS origin (manager + child memberships) verified:
-
-1. live checklist status propagation to Household without reload;  
-2. forced WebSocket close via `__hdSync.closeForTest`;  
-3. automatic reconnect to Online;  
-4. subsequent status commit visible on the manager after reconnect without page reload;  
-5. `__Host-hd_session` present with `Secure` and `Path=/` on the authenticated context; `/api/v1/auth/session` authorized.
-
-Ephemeral operator-minted sessions used for the drill were revoked afterward. Automated local reconnect e2e (`18/18`) remains PASS for the same client path.
-
-### 5. Prior local suite (unchanged)
-
-| Command | Result |
-| --- | --- |
-| `npm run validate` | PASS (26 Vitest tests at sync-fix verification) |
-| `npm run test:e2e` | PASS — **18/18** Chromium + WebKit |
-
-## Acceptance test results (r1)
-
-1–17, 19 — PASS (prior automated/local evidence).  
-18. **Cross-device synchronization** — **PASS** (automated + hosted physical retest + hosted reconnect drill).  
-20. **Hosted family-evaluation evidence** — **PASS** for the contracted hosted checks exercised on 2026-09-09: HTTPS host, single-process persistent volume, HTTP→HTTPS, WebSocket sync, restart persistence, backup/restore rehearsal, Linux Argon2, two-device sync, reconnect recovery. Proposal-approve was not re-driven in this Engineering session; prior product evaluation already exercised household authority flows on this host—Architecture may treat proposal as covered by evaluation or request a one-line confirm.  
-21. **Project verification** — **PASS** for local validate/build/Playwright. Hosted smoke commands (`db:backup`/`db:restore`, restart, Linux Argon2, dual-context reconnect) exercised against the authorized host as documented above.
-
-## Sync fix retained
-
-Merged PR #3 (`4b0d95f`): WebSocket reconnect + server ping, stale `/today` generation guard, Household expand seeding, empty-step incompleteness/repair, dual-context/reconnect e2e. P0-001 optimistic/outbox contract unchanged.
+18. **Cross-device synchronization** — PASS (prior) + proposal-status live reconciliation now covered by automated dual-context e2e.  
+20. **Hosted family-evaluation evidence** — PASS for prior hosted checks; **proposal-status live update on Railway** needs a redeploy of this fix and a short Architecture/PL confirm (manager approve → Eli Personalize shows Approved without reload).  
+21. **Project verification** — PASS locally (`validate` + Playwright 20/20).
 
 ## Deviations from brief revision
 
-- None. Brief remains r1; this is evidence writeback only.
+- None. Still r1; Preview-now / Today-when-effective unchanged.
 
-## Remaining notes (non-blocking unless Architecture reopens)
+## Remaining gaps
 
-- Exact public origin URL omitted by design.  
-- Operator temporary scripts used on the host for counts/backup/session minting were removed after evidence capture.  
-- If Architecture requires an explicit hosted proposal-approve checklist line beyond prior evaluation, that is the only AT20 narrative item not re-executed in this Engineering SSH session.
+- Redeploy this commit to Railway and confirm the hosted proposal-status path once (same scenario Architecture already reproduced).
 
 ## Suggested follow-up
 
-Architecture final reassessment of P0-002 r1 for technical acceptance against this Build Report.
+Architecture reassessment of P0-002 r1 after redeploy confirmation of proposal-status sync (or accept on automated evidence + prior hosted AT20 package if Policy allows).

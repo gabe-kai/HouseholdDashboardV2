@@ -134,6 +134,7 @@ export function App() {
   const identityRef = useRef<string | null>(null);
   const occurrencesRef = useRef<OccurrenceView[]>([]);
   const refreshGenerationRef = useRef(0);
+  const supportingGenerationRef = useRef(0);
   const [, startTransition] = useTransition();
 
   function clearUiCaches() {
@@ -199,15 +200,19 @@ export function App() {
   const refreshSupportingData = useEffectEvent(
     async (activeSession: SessionInfo) => {
       const membershipId = activeSession.member.id;
+      const generation = ++supportingGenerationRef.current;
+      const shouldLoadProposals =
+        hasGrant(activeSession, "routine.personalize.propose") ||
+        hasGrant(activeSession, "routine.proposal.decide");
       const [memberResult, taskResult, proposalResult] = await Promise.allSettled([
         fetchMemberships(),
         fetchPersonalTasks(),
-        hasGrant(activeSession, "routine.personalize.propose") ||
-        hasGrant(activeSession, "routine.proposal.decide")
+        shouldLoadProposals
           ? fetchProposals()
-          : Promise.resolve({ proposals: [] }),
+          : Promise.resolve({ proposals: [] as Proposal[] }),
       ]);
       if (identityRef.current !== membershipId) return;
+      if (generation !== supportingGenerationRef.current) return;
       if (memberResult.status === "fulfilled") setMemberships(memberResult.value.memberships);
       if (taskResult.status === "fulfilled") setTasks(taskResult.value.tasks);
       if (proposalResult.status === "fulfilled") setProposals(proposalResult.value.proposals);
@@ -307,21 +312,35 @@ export function App() {
     if (!session) return;
     const membershipId = session.member.id;
 
-    const refreshAuthoritative = () => {
+    const refreshAuthoritative = (options?: { urgentSupporting?: boolean }) => {
       // Always read server "today" on sync/reconnect — never a stale client date.
-      void refreshToday(membershipId).catch((caught) => setError(errorMessage(caught)));
-      void refreshSupportingData(session);
+      const todayRefresh = () =>
+        void refreshToday(membershipId).catch((caught) => setError(errorMessage(caught)));
+      const supportingRefresh = () => void refreshSupportingData(session);
+      if (options?.urgentSupporting) {
+        // Proposal/routine decisions must update open Personalize/Approvals views
+        // immediately; do not defer them behind startTransition.
+        supportingRefresh();
+        startTransition(() => {
+          todayRefresh();
+        });
+        return;
+      }
+      startTransition(() => {
+        todayRefresh();
+        supportingRefresh();
+      });
     };
 
-    refreshAuthoritative();
+    refreshAuthoritative({ urgentSupporting: true });
     void flushOutbox(membershipId);
 
     const disconnect = connectSync(
-      () => {
+      (notification) => {
         if (identityRef.current !== membershipId) return;
-        startTransition(() => {
-          refreshAuthoritative();
-        });
+        const urgent =
+          notification.resource === "proposal" || notification.resource === "routine";
+        refreshAuthoritative({ urgentSupporting: urgent });
       },
       (status) => {
         if (identityRef.current !== membershipId) return;
@@ -331,11 +350,7 @@ export function App() {
         }
         setConnection(status === "reconnecting" ? "reconnecting" : "connected");
         if (status === "connected") {
-          // Reconnect handshake already emits "connected"; still force an
-          // authoritative read in case the open raced ahead of missed events.
-          startTransition(() => {
-            refreshAuthoritative();
-          });
+          refreshAuthoritative({ urgentSupporting: true });
         }
       },
     );
@@ -343,7 +358,7 @@ export function App() {
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
       if (identityRef.current !== membershipId) return;
-      refreshAuthoritative();
+      refreshAuthoritative({ urgentSupporting: true });
       void flushOutbox(membershipId);
     };
     document.addEventListener("visibilitychange", onVisible);
@@ -452,6 +467,13 @@ export function App() {
   );
   const pendingCount = outbox.filter((item) => item.state !== "rejected").length;
 
+  function selectTab(next: Tab) {
+    setTab(next);
+    if (next === "personalize" || next === "approvals") {
+      void refreshSupportingData(session);
+    }
+  }
+
   return (
     <main className="app-shell">
       {meta?.evaluationMode ? (
@@ -503,30 +525,30 @@ export function App() {
       </div>
 
       <nav className="nav" aria-label="Primary">
-        <NavButton tab="today" current={tab} onSelect={setTab}>
+        <NavButton tab="today" current={tab} onSelect={selectTab}>
           Today
         </NavButton>
         {manager ? (
           <>
-            <NavButton tab="household" current={tab} onSelect={setTab}>
+            <NavButton tab="household" current={tab} onSelect={selectTab}>
               Household
             </NavButton>
             {canDecide ? (
-              <NavButton tab="approvals" current={tab} onSelect={setTab}>
+              <NavButton tab="approvals" current={tab} onSelect={selectTab}>
                 Approvals
               </NavButton>
             ) : null}
             {canEnroll ? (
-              <NavButton tab="enroll" current={tab} onSelect={setTab}>
+              <NavButton tab="enroll" current={tab} onSelect={selectTab}>
                 Enroll
               </NavButton>
             ) : null}
             {canManageShared ? (
               <>
-                <NavButton tab="routine" current={tab} onSelect={setTab}>
+                <NavButton tab="routine" current={tab} onSelect={selectTab}>
                   Routine
                 </NavButton>
-                <NavButton tab="history" current={tab} onSelect={setTab}>
+                <NavButton tab="history" current={tab} onSelect={selectTab}>
                   History
                 </NavButton>
               </>
@@ -534,7 +556,7 @@ export function App() {
           </>
         ) : null}
         {canDirect || canPropose ? (
-          <NavButton tab="personalize" current={tab} onSelect={setTab}>
+          <NavButton tab="personalize" current={tab} onSelect={selectTab}>
             Personalize
           </NavButton>
         ) : null}
@@ -1604,7 +1626,11 @@ function ProposalPersonalization(props: {
           <li key={proposal.id}>
             <span>{proposal.text}</span>
             <span className="status-pill" data-kind={proposal.status === "pending" ? "pending" : "online"}>
-              {proposal.status}
+              {proposal.status === "approved"
+                ? "Approved"
+                : proposal.status === "rejected"
+                  ? "Rejected"
+                  : "Pending"}
             </span>
           </li>
         ))}

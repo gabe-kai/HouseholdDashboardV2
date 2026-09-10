@@ -11,8 +11,13 @@ export type OutboxItem = {
   errorMessage?: string;
 };
 
-function keyForMembership(membershipId: string): string {
+/** Membership-scoped IndexedDB key — never share across identities. */
+export function outboxStorageKey(membershipId: string): string {
   return `hd-outbox-v1:${membershipId}`;
+}
+
+function keyForMembership(membershipId: string): string {
+  return outboxStorageKey(membershipId);
 }
 
 export async function readOutbox(membershipId: string): Promise<OutboxItem[]> {

@@ -48,7 +48,10 @@ From the repository root, with Node.js 24:
 - **Build/package:** `npm run build`.
 - **Test:** `npm test` for unit/integration tests. `npm run test:e2e` installs Playwright Chromium + WebKit for the locked `@playwright/test` version (browser binaries are not shipped by `npm ci`) and then runs the suite against isolated Chromium/WebKit servers. Chromium-only: `npm run test:e2e:chromium`.
 - **Lint/typecheck/validate:** `npm run lint`, `npm run typecheck`, and aggregate `npm run validate`.
+- **Pull-request validation:** `npm run validate:pr` (validate + build + Chromium e2e).
+- **Release-candidate validation:** `npm run validate:rc` (validate + build + Chromium + WebKit e2e).
 - **Preview or production-like run:** `npm run start` after `npm run build` (serves `dist/client` from the Fastify process). Hosted packaging notes: `docs/ops-deploy.md`.
+- **Protected contracts:** `docs/protected-behaviors.md` (catalog, sync matrix, escaped-defect rule). Route policy: `src/server/route-policy.ts`.
 
 Playwright note: if browser launch fails instantly or the suite hangs after marking tests failed, run `npx playwright install chromium webkit` once (or use `npm run test:e2e`, which does this automatically) so binaries match the lockfile’s Playwright revision.
 
@@ -57,9 +60,13 @@ Local development uses `APP_PROFILE=development` with authentication enabled and
 ## Validation and release convention
 
 - Normal development and pull-request validation is local-first and does not require Railway or another hosted environment.
-- Developer feedback uses `npm run validate`. P0-003 will establish a pull-request command containing validation, build, and Chromium, plus a release-candidate command containing validation, build, Chromium, and WebKit. Physical phones, hosted HTTPS, restart, backup/restore, and target-platform checks remain separate hosted evidence when a candidate is actually released or deployed.
+- **Developer:** `npm run validate`.
+- **Pull request:** `npm run validate:pr` (also the GitHub Actions workflow `.github/workflows/validate-pr.yml` on PRs and `main`). Chromium only.
+- **Release candidate:** `npm run validate:rc` includes WebKit. Physical phones, hosted HTTPS, restart, backup/restore, and target-platform checks remain separate hosted evidence when a candidate is actually released or deployed.
 - Hosted evidence applies to the exact committed release candidate and deployed artifact. It does not replace local regression coverage.
-- New synchronization-sensitive mutations must identify and test their invalidation resource, affected reads, optimistic implications, missed-event recovery, reconnect behavior, and duplicate-submission semantics. Events remain invalidation signals; server reads remain authoritative.
+- Making the Actions check required for merge is a Project Lead repository setting.
+- New synchronization-sensitive mutations must update `docs/protected-behaviors.md` and `src/server/route-policy.ts`, and must test invalidation/reconciliation semantics. Events remain invalidation signals; server reads remain authoritative.
+- Escaped defects that violate a protected behavior must add or strengthen a regression test before or alongside the fix.
 
 ## Repository map
 
@@ -212,7 +219,7 @@ Occurrence materialization -> select shared revision + member layer -> snapshot 
 
 ## Known technical debt
 
-- CI and a repository-owned protected-behavior/contract inventory do not yet exist; P0-003 addresses this gap.
+- CI pull-request validation is defined in `.github/workflows/validate-pr.yml`; required-check branch protection remains a Project Lead setting. Contract catalog: `docs/protected-behaviors.md`.
 - Hosted backup/restore is operator-driven; automation and retention beyond the accepted family-evaluation evidence remain future operational work.
 - The initial weekly Morning schedule is deliberately narrower than the contextual schedule model Product anticipates.
 - P0-001 supports transient disconnection after load, not a fully offline-installable application.

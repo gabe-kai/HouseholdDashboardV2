@@ -1,7 +1,7 @@
 # BRIEF P0-002 - Authenticated Household Authority
 
 **Revision:** 1
-**Status:** BLOCKED
+**Status:** ACCEPTED
 
 Recommended lifecycle: DRAFT -> IN REVIEW -> READY -> IMPLEMENTING -> IMPLEMENTED -> ACCEPTED
 
@@ -191,6 +191,10 @@ Acceptance tests 20 and the hosted portions of 21 remain **NOT RUN**, not Engine
 **Architecture reassessment:** BLOCKED (2026-09-08). Engineering’s updated Build Report addresses the prior same-revision fixes: the login/claim origin checks are present, duplicate legacy logical IDs are backfilled one-to-one, P0-001 regression coverage is restored, and the previously partial automated scenarios are now covered. Architecture independently reran `npm run validate` with 25 tests passing. The available Engineering e2e evidence is 16/16; a local rerun in this environment was stopped after the command produced no output during its browser-install/test phase, so no contrary result is asserted. No further code-level FIX REQUIRED finding is identified.
 
 Full technical acceptance of P0-002 r1 remains blocked until acceptance test 20 and the hosted portions of 21 are performed against a Project Lead-authorized HTTPS host with persistent storage/snapshots and physical phones. The Linux Argon2 live probe is also still an evidence gap. The brief remains r1; once the external environment is available, Engineering should run the hosted smoke/family evidence and return the same r1 Build Report for final Architecture acceptance.
+
+**Architecture final acceptance:** ACCEPTED (2026-09-10). The current `main` source satisfies the P0-002 r1 contract based on the merged Engineering Build Report, automated validation (`npm run validate` and Playwright 20/20), local multi-device confirmation of the proposal-status synchronization fix, and the prior hosted evidence package covering HTTPS, secure cookies, checklist synchronization/reconnect, restart persistence, backup/restore, physical-device use, and Linux Argon2id. The later proposal-status fix was not redeployed to Railway; it was reproduced successfully against the current source on a manager computer and physical phone. This is a release-candidate evidence decision, not permission to use an unverified Railway deployment as the development loop.
+
+Technical acceptance does not constitute Project Lead/product acceptance. The current user-facing result is ready for evaluation. Future hosted release candidates must still run the hosted smoke/evidence gate before deployment is treated as verified.
 
 ## Revision history
 

@@ -33,6 +33,15 @@ Before applying a new migration on a populated database, run `npm run db:backup`
 - Do not put passphrases, session tokens, enrollment tokens, or private task titles in logs.
 - Keep a single Node process (in-memory sync fan-out is not multi-replica).
 
-## Hosted acceptance gap
+## Hosted release-candidate checklist
 
-A Project Lead-authorized public HTTPS origin with persistent storage and recoverable snapshots is required for acceptance tests 20–21. Until then, report those checks as NOT RUN.
+Use only when a candidate is actually being released or deployed (not during the normal development loop):
+
+1. Deploy the exact commit SHA behind HTTPS with WebSocket upgrade.
+2. Bootstrap/enroll on two physical phones; confirm checklist sync and proposal-status live update.
+3. Restart persistence, backup → isolated restore rehearsal.
+4. Record evidence in the brief Build Report (omit private origins/secrets).
+
+A Project Lead-authorized public HTTPS origin with persistent storage and recoverable snapshots is required for those hosted checks. Until then, report them as NOT RUN.
+
+Contract catalog and local/CI gates: `docs/protected-behaviors.md`.

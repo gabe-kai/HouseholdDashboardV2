@@ -19,7 +19,7 @@
 
 ## Current focus
 
-P0-003 r1 is ready for implementation after Architecture accepted Engineering's readiness review. P0-002 r1 remains technically accepted and ready for Project Lead evaluation.
+P0-003 r1 is implemented but requires focused contract-evidence corrections before technical acceptance. P0-002 r1 remains technically accepted and ready for Project Lead evaluation.
 
 ## Internal work status
 
@@ -27,7 +27,7 @@ P0-003 r1 is ready for implementation after Architecture accepted Engineering's 
 | --- | ---: | --- | --- | --- | --- |
 | P0-001 - Shared Morning Routine | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #1 | Product acceptance/evaluation |
 | P0-002 - Authenticated Household Authority | r1 | ACCEPTED | Project Lead evaluation | `brief/p0-002-authenticated-household-authority` | Product evaluation; future hosted release candidates require the hosted smoke/evidence gate |
-| P0-003 - Regression Safety and Contract Hardening | r1 | READY | Engineering | `brief/p0-003-regression-safety-contract-hardening` | Implementation of accepted r1 contract |
+| P0-003 - Regression Safety and Contract Hardening | r1 | FIX REQUIRED | Engineering | `brief/p0-003-regression-safety-contract-hardening` | Exact CI command, visibility recovery evidence, personal-task UI projection evidence, then first Actions run |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -41,7 +41,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Known blockers
 
-- None for P0-003 readiness. GitHub required-check branch protection is an external Project Lead setting and is not yet asserted as configured.
+- P0-003 technical acceptance awaits the focused r1 corrections and an observed GitHub Actions run. Required-check branch protection is an external Project Lead setting and is not yet asserted as configured.
 
 ## Next Project Lead decision
 
@@ -49,7 +49,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Engineering implements P0-003 r1 on `brief/p0-003-regression-safety-contract-hardening` and returns the Build Report to Architecture for technical acceptance.
+Engineering addresses the P0-003 r1 FIX REQUIRED disposition on `brief/p0-003-regression-safety-contract-hardening` and returns the updated Build Report to Architecture for reassessment.
 
 ## Notes for all teams
 

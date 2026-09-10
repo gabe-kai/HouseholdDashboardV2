@@ -211,6 +211,13 @@ The project may choose merge, squash, or rebase strategy. Do not rewrite shared 
 
 Run the checks the project actually defines in `ARCHITECTURE.md`.
 
+Validation tiers (P0-003):
+- **Developer:** `npm run validate` for routine local feedback.
+- **Pull request:** `npm run validate:pr` (validate + build + Chromium). GitHub Actions runs this on PRs and `main` without secrets or deploy steps.
+- **Release candidate:** `npm run validate:rc` (validate + build + Chromium + WebKit). Hosted/physical checks are separate and only when releasing.
+
+Escaped-defect rule: if a fix addresses a defect that violates a protected behavior in `docs/protected-behaviors.md`, add or strengthen a regression test in the same change.
+
 When available, this normally includes some combination of:
 - build;
 - automated tests;
@@ -222,6 +229,7 @@ Be precise in reports:
 - "build passed" is not the same as "behavior was manually verified";
 - "tests passed" is not the same as "the outcome is valuable";
 - "works in one environment" is not the same as supported-environment compatibility.
+- "CI check exists" is not the same as "required branch protection is configured" (Project Lead setting).
 
 ## 7. Dependencies
 

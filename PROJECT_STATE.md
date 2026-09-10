@@ -19,14 +19,14 @@
 
 ## Current focus
 
-P0-002 r1 code-level FIX REQUIRED items are addressed on the implementation branch. Architecture has no remaining code-level correction, but full technical acceptance is blocked on hosted family-evaluation evidence and a Linux Argon2 probe.
+P0-002 r1 is technically accepted. The current local source, automated suite, local multi-device evidence, and prior hosted evidence package satisfy the reviewed contract. Project Lead/product evaluation remains separate.
 
 ## Internal work status
 
 | Work | Revision | State | Current team | Branch / PR | Waiting on |
 | --- | ---: | --- | --- | --- | --- |
 | P0-001 - Shared Morning Routine | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #1 | Product acceptance/evaluation |
-| P0-002 - Authenticated Household Authority | r1 | BLOCKED | Project Lead | `brief/p0-002-authenticated-household-authority` | HTTPS host/persistent snapshots, physical phones, Linux Argon2 probe, then Architecture final acceptance |
+| P0-002 - Authenticated Household Authority | r1 | ACCEPTED | Project Lead evaluation | `brief/p0-002-authenticated-household-authority` | Product evaluation; future hosted release candidates require the hosted smoke/evidence gate |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -39,15 +39,15 @@ This table is the short repository-side coordination index. An external project 
 
 ## Known blockers
 
-- P0-002 implementation and automated evidence are complete enough for hosted evaluation. Full technical acceptance requires a Project Lead-authorized internet-reachable HTTPS origin, persistent storage/backups, physical phones, and Linux Argon2 verification; no provider, account, or spend is authorized by the repository yet.
+- P0-002 technical acceptance uses the prior authorized hosted evidence package plus current-source local confirmation of the later proposal-status fix. The latest fix was intentionally not redeployed during the local-first development loop. No provider, account, or spend is authorized by the repository beyond the evaluation environment already used.
 
 ## Next Project Lead decision
 
-- Approve or provide the single-host HTTPS environment used for family evaluation, including its public origin, persistent volume, and backup/snapshot facility. Architecture has deliberately kept the application package provider-neutral.
+- Evaluate the accepted P0-002 user-facing result. Future release candidates still require the single-host HTTPS environment and hosted smoke/evidence gate.
 
 ## Next likely handoff
 
-Project Lead provisions the authorized HTTPS environment and physical-phone evaluation; then Engineering runs hosted tests 20–21 and returns the same P0-002 r1 to Architecture for final acceptance.
+P0-002 is ready for Project Lead/product evaluation. The next technical outcome is a separate local-first regression-safety and contract-hardening brief.
 
 ## Notes for all teams
 

@@ -19,7 +19,7 @@
 
 ## Current focus
 
-P0-003 r1 is in Engineering readiness review. P0-002 r1 remains technically accepted and ready for Project Lead evaluation.
+P0-003 r1 is ready for implementation after Architecture accepted Engineering's readiness review. P0-002 r1 remains technically accepted and ready for Project Lead evaluation.
 
 ## Internal work status
 
@@ -27,7 +27,7 @@ P0-003 r1 is in Engineering readiness review. P0-002 r1 remains technically acce
 | --- | ---: | --- | --- | --- | --- |
 | P0-001 - Shared Morning Routine | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #1 | Product acceptance/evaluation |
 | P0-002 - Authenticated Household Authority | r1 | ACCEPTED | Project Lead evaluation | `brief/p0-002-authenticated-household-authority` | Product evaluation; future hosted release candidates require the hosted smoke/evidence gate |
-| P0-003 - Regression Safety and Contract Hardening | r1 | IN REVIEW | Engineering | `briefs/p0-003-regression-safety-contract-hardening.md` | Engineering readiness review |
+| P0-003 - Regression Safety and Contract Hardening | r1 | READY | Engineering | `brief/p0-003-regression-safety-contract-hardening` | Implementation of accepted r1 contract |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -49,7 +49,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-After the planning writeback is committed, Engineering reviews P0-003 r1 and returns one consolidated readiness disposition before implementation.
+Engineering implements P0-003 r1 on `brief/p0-003-regression-safety-contract-hardening` and returns the Build Report to Architecture for technical acceptance.
 
 ## Notes for all teams
 

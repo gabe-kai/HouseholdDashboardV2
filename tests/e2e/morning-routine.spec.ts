@@ -86,7 +86,7 @@ async function claimChild(
   membershipId: string,
   loginName: string,
   displayName: string,
-  options?: { ensureRoutine?: boolean },
+  options?: { ensureRoutine?: boolean; preset?: "direct_personalizer" | "proposal_personalizer" },
 ) {
   await ensureManagerSession(request);
   if (options?.ensureRoutine !== false) {
@@ -94,7 +94,7 @@ async function claimChild(
   }
   const enroll = await request.post("/api/v1/enrollment/claims", {
     headers: await mutatingHeaders(request),
-    data: { membershipId, preset: "direct_personalizer" },
+    data: { membershipId, preset: options?.preset ?? "direct_personalizer" },
   });
   if (enroll.ok()) {
     const token = ((await enroll.json()) as { claim: { token: string } }).claim.token;
@@ -370,6 +370,67 @@ test.describe("P0-002 authenticated household", () => {
     await expect(manager.locator(".occurrence").filter({ hasText: "Avery Reed" })).toContainText(
       "Complete",
     );
+
+    await managerContext.close();
+    await childContext.close();
+  });
+
+  test("manager approval updates open personalize proposal status without reload", async ({
+    browser,
+  }: {
+    browser: Browser;
+  }) => {
+    const managerContext = await browser.newContext();
+    const childContext = await browser.newContext();
+    const manager = await managerContext.newPage();
+    const child = await childContext.newPage();
+
+    await ensureManagerSession(manager.request);
+    await ensureSharedRoutine(manager.request);
+    await claimChild(child.request, JORDAN_ID, JORDAN_LOGIN, "Jordan Reed", {
+      preset: "proposal_personalizer",
+    });
+
+    await child.goto("/");
+    await expect(child.locator(".topbar")).toContainText("Jordan Reed", { timeout: 20_000 });
+    await expect(child.locator(".status-pill[data-kind='online']")).toContainText("Online", {
+      timeout: 10_000,
+    });
+    await child
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("button", { name: "Personalize", exact: true })
+      .click();
+    await child.getByLabel("Item text").fill("Pack soccer bag");
+    await child.getByRole("button", { name: "Send proposal" }).click();
+    await expect(child.getByText("Pack soccer bag")).toBeVisible({ timeout: 10_000 });
+    await expect(
+      child.locator(".simple-list li").filter({ hasText: "Pack soccer bag" }).getByText("Pending"),
+    ).toBeVisible();
+
+    await manager.goto("/");
+    await expect(manager.locator(".topbar")).toContainText("Morgan Reed", { timeout: 20_000 });
+    await expect(manager.locator(".status-pill[data-kind='online']")).toContainText("Online", {
+      timeout: 10_000,
+    });
+    await manager
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("button", { name: "Approvals", exact: true })
+      .click();
+    await manager.getByRole("button", { name: "Approve Pack soccer bag" }).click();
+    await expect(manager.getByText(/Effective/i).first()).toBeVisible({ timeout: 15_000 });
+
+    await expect(
+      child.locator(".simple-list li").filter({ hasText: "Pack soccer bag" }).getByText("Approved"),
+    ).toBeVisible({ timeout: 4_000 });
+
+    // Future-effective: approved item is previewable, but not on Today's executable checklist yet.
+    await manager.getByRole("button", { name: "Open read-only preview" }).click();
+    await expect(manager.getByText(/Pack soccer bag/i).first()).toBeVisible({ timeout: 10_000 });
+    await child
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("button", { name: "Today", exact: true })
+      .click();
+    await expect(child.getByRole("button", { name: /Mark Pack soccer bag/ })).toHaveCount(0);
 
     await managerContext.close();
     await childContext.close();

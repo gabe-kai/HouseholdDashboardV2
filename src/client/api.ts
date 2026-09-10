@@ -7,8 +7,31 @@ import type {
   StepStatus,
   SyncNotification,
 } from "../shared/schemas";
+import { newClientId } from "./id";
 
-let csrfToken = "";
+const CSRF_STORAGE_KEY = "hd_csrf_token";
+
+function readStoredCsrf(): string {
+  if (typeof sessionStorage === "undefined") return "";
+  try {
+    return sessionStorage.getItem(CSRF_STORAGE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeStoredCsrf(token: string): void {
+  if (typeof sessionStorage === "undefined") return;
+  try {
+    if (token) sessionStorage.setItem(CSRF_STORAGE_KEY, token);
+    else sessionStorage.removeItem(CSRF_STORAGE_KEY);
+  } catch {
+    /* private mode / quota */
+  }
+}
+
+/** Survives Vite HMR; empty until login/claim/session restore. */
+let csrfToken = readStoredCsrf();
 
 export type ApiError = Error & { code?: string; requestId?: string };
 
@@ -130,6 +153,7 @@ async function request<T>(
   path: string,
   init: RequestInit = {},
   mutationDelayMs?: number,
+  retried = false,
 ): Promise<T> {
   const method = (init.method ?? "GET").toUpperCase();
   const mutating = !["GET", "HEAD", "OPTIONS"].includes(method);
@@ -139,17 +163,35 @@ async function request<T>(
   if (mutationDelayMs && mutationDelayMs > 0) {
     headers.set("x-mutation-delay-ms", String(mutationDelayMs));
   }
-  return parseJson<T>(
-    await fetch(path, {
-      ...init,
-      headers,
-      credentials: "include",
-    }),
-  );
+  const res = await fetch(path, {
+    ...init,
+    headers,
+    credentials: "include",
+  });
+  if (mutating && !retried && res.status === 403) {
+    let code: string | undefined;
+    try {
+      code = ((await res.clone().json()) as { code?: string }).code;
+    } catch {
+      code = undefined;
+    }
+    if (code === "CSRF") {
+      const refreshed = await fetchSession();
+      if (refreshed) {
+        return request<T>(path, init, mutationDelayMs, true);
+      }
+    }
+  }
+  return parseJson<T>(res);
+}
+
+export function rememberCsrfToken(token: string): void {
+  csrfToken = token;
+  writeStoredCsrf(token);
 }
 
 function retainSessionToken(session: SessionInfo): SessionInfo {
-  csrfToken = session.csrfToken;
+  rememberCsrfToken(session.csrfToken);
   return session;
 }
 
@@ -187,14 +229,14 @@ export async function logout(): Promise<void> {
   try {
     await request<{ ok: true }>("/api/v1/auth/logout", { method: "POST" });
   } finally {
-    csrfToken = "";
+    rememberCsrfToken("");
   }
 }
 
 export async function fetchSession(): Promise<SessionInfo | null> {
   const res = await fetch("/api/v1/auth/session", { credentials: "include" });
   if (res.status === 401) {
-    csrfToken = "";
+    rememberCsrfToken("");
     return null;
   }
   return retainSessionToken(await parseJson<SessionInfo>(res));
@@ -345,7 +387,7 @@ export async function setPersonalTaskStatus(
     `/api/v1/personal-tasks/${encodeURIComponent(taskId)}/status`,
     {
       method: "POST",
-      body: JSON.stringify({ mutationId: crypto.randomUUID(), status }),
+      body: JSON.stringify({ mutationId: newClientId(), status }),
     },
   );
 }

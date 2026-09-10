@@ -43,7 +43,8 @@ From the repository root, with Node.js 24:
 - **Migrate/seed:** `npm run db:migrate` then `npm run db:seed` (seed creates pending fictional memberships only; hosted profile forbids `AUTO_SEED`).
 - **Bootstrap:** `npm run auth:bootstrap` issues one single-use manager claim token (shown once).
 - **Backup/restore:** `npm run db:backup`; `npm run db:restore -- path/to/backup.sqlite`. Run backup before applying migrations on populated data.
-- **Run/develop:** `npm run dev` (API on `127.0.0.1:8787`, Vite on `5173` with `/api` proxy).
+- **Run/develop:** `npm run dev` (API on `127.0.0.1:8787`, Vite on `127.0.0.1:5173` with `/api/v1` proxy). Login/claim Origin must match the Vite URL (`http://127.0.0.1:5173` by default).
+- **Phone on LAN:** `npm run dev:lan` (binds Vite/API for LAN; prints `http://<lan-ip>:5173`). With `EVAL_LAN_ACCESS=1`, claim/login also accept other private/loopback HTTP Origins so a mismatched NIC IP does not block the phone. Not for public internet exposure.
 - **Build/package:** `npm run build`.
 - **Test:** `npm test` for unit/integration tests. `npm run test:e2e` installs Playwright Chromium + WebKit for the locked `@playwright/test` version (browser binaries are not shipped by `npm ci`) and then runs the suite against isolated Chromium/WebKit servers. Chromium-only: `npm run test:e2e:chromium`.
 - **Lint/typecheck/validate:** `npm run lint`, `npm run typecheck`, and aggregate `npm run validate`.

@@ -30,7 +30,7 @@ Goal: prove that a real recurring household routine can be used quickly by six d
 
 - [ ] **Outcome:** The application can evolve without repeating the V1 hardening regression: protected behavior is explicit, critical contracts have layered automated coverage, and normal development is local-first with hosted checks reserved for committed release candidates.
   - **Brief:** `P0-003 r1 - Regression Safety and Contract Hardening` (`briefs/p0-003-regression-safety-contract-hardening.md`)
-  - **Status:** In Engineering readiness review.
+  - **Status:** Engineering readiness accepted; ready for implementation.
 
 ### LIKELY NEXT
 

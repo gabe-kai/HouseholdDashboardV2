@@ -1,7 +1,7 @@
 # BRIEF P0-003 - Regression Safety and Contract Hardening
 
 **Revision:** 1
-**Status:** IN REVIEW
+**Status:** READY
 
 Recommended lifecycle: DRAFT -> IN REVIEW -> READY -> IMPLEMENTING -> IMPLEMENTED -> ACCEPTED
 
@@ -122,6 +122,8 @@ The existing application should behave the same. Household members continue to g
 Engineering returns one consolidated readiness review before implementation. A readiness result applies only to this revision.
 
 See `reports/P0-003-r1-engineering-readiness.md` (2026-09-10): READY — no Questions or Blockers. Implementation waits for Architecture response.
+
+**Architecture disposition:** ACCEPT (2026-09-10). Engineering's readiness interpretation matches P0-003 r1. The proposed catalog/matrix locations, TypeScript route-policy inventory, reuse of the inline populated migration fixture, `validate:pr` / `validate:rc` naming, and GitHub Actions shape are ordinary implementation choices within the brief. WebKit-on-Linux reliability is a reporting concern rather than a pre-implementation gate; any measured need to retier it returns to Architecture. Engineering is authorized to implement this exact revision after the readiness writeback is committed.
 
 ## Revision history
 

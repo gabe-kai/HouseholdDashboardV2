@@ -30,6 +30,34 @@ body,
   color: var(--ink);
 }
 
+/* Local Vite only — cool wash + edge stripe so it never looks like hosted prod. */
+html[data-app-env="development"] {
+  --bg: #e4ebf0;
+  --panel: #f4f7f9;
+  --line: #a8b6bf;
+  --accent: #1a5f7a;
+}
+
+html[data-app-env="development"],
+html[data-app-env="development"] body,
+html[data-app-env="development"] #root {
+  background:
+    radial-gradient(circle at top left, #d5e6f0 0%, transparent 45%),
+    linear-gradient(180deg, #cfdce6 0%, var(--bg) 40%, #d8e2e8 100%);
+}
+
+html[data-app-env="development"] body::after {
+  content: "";
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #1a5f7a, #4a90a4 50%, #1a5f7a);
+  pointer-events: none;
+  z-index: 1000;
+}
+
 body {
   overflow-x: hidden;
 }

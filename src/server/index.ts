@@ -11,6 +11,8 @@ async function main() {
       host: config.host,
       port: config.port,
       profile: config.profile,
+      publicOrigin: config.publicOrigin,
+      allowLan: config.allowLan,
     },
     config.profile === "hosted"
       ? "Authenticated household server listening behind configured HTTPS proxy"

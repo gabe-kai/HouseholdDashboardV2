@@ -67,7 +67,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     cookieName: hosted ? "__Host-hd_session" : "hd_dev_session",
     cookieSecure: hosted,
     cookieHostPrefix: hosted,
-    publicOrigin: env.PUBLIC_ORIGIN?.trim() || (hosted ? null : `http://127.0.0.1:${port}`),
+    // In local dev the browser Origin is the Vite app (5173), not the API port.
+    publicOrigin:
+      env.PUBLIC_ORIGIN?.trim() ||
+      (hosted ? null : `http://127.0.0.1:${Number(env.VITE_PORT ?? 5173)}`),
     trustedProxy: env.TRUSTED_PROXY === "1",
     sessionIdleDays: 7,
     sessionAbsoluteDays: 30,

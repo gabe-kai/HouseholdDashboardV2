@@ -27,9 +27,13 @@ Goal: prove that a real recurring household routine can be used quickly by six d
 - [ ] **Outcome:** Six real household members can authenticate as themselves and use the shared Morning Routine according to capability-based authority: selected members customize their future routine directly, restricted members propose additions for approval, every member can create thin personal work, and history/responsiveness/shared state remain trustworthy.
   - **Learning question:** Can one shared routine support distinct identities and progressively granted personal control without becoming confusing, slow, or historically unreliable?
   - **Brief:** `P0-002 r1 - Authenticated Household Authority` (`briefs/P0-002-authenticated-household-authority.md`)
-  - **Implementation status:** Provider-neutral implementation and automated evidence complete; full r1 technical acceptance is BLOCKED pending hosted/physical-device evidence and Linux Argon2 verification. Secure hosted acceptance depends on a Project Lead-authorized HTTPS host with persistent storage and backups.
+  - **Implementation status:** Technically ACCEPTED at r1 using the merged automated evidence, current-source local multi-device confirmation, and prior hosted HTTPS/persistence/backup/restore/physical-device/Linux Argon2 evidence. The user-facing result is ready for Project Lead evaluation. Future release candidates require the hosted smoke/evidence gate; Railway is not the normal development loop.
 
 ### LIKELY NEXT
+
+- [ ] **Outcome:** The application can evolve without repeating the V1 hardening regression: protected behavior is explicit, critical contracts have layered automated coverage, and hosted verification is reserved for committed release candidates.
+  - **Proposed brief:** `P0-003 — Regression Safety and Contract Hardening`
+  - **Planning status:** Awaiting Planning & Design proposal; exact scope should follow the P0-002 evaluation and current repository evidence.
 
 - [ ] **Outcome:** Today can coordinate several real household responsibilities—initially examples such as Kitchen, Cats, and Bathroom—with a clear completed/current/later hierarchy and a mix of timed and untimed work.
   - **Why likely:** Once identity and authority are credible, multiple responsibilities are the next product pressure needed to determine whether the Morning Routine model generalizes.

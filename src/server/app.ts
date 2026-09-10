@@ -27,6 +27,7 @@ import {
 import type { AppConfig } from "./config.js";
 import { digestEquals, sha256Hex } from "./crypto.js";
 import { migrate, openDatabase, resolveDbPath } from "./db.js";
+import { originMatchesConfig } from "./origin.js";
 import { AppStore, type AuthContext } from "./store.js";
 import { SyncHub } from "./sync-hub.js";
 
@@ -127,9 +128,11 @@ export async function buildApp(config: AppConfig) {
   }
 
   function originAllowed(request: FastifyRequest): boolean {
-    const origin = request.headers.origin;
-    return typeof origin === "string" &&
-      (!config.publicOrigin || origin === config.publicOrigin);
+    return originMatchesConfig(
+      request.headers.origin,
+      config.publicOrigin,
+      config.allowLan,
+    );
   }
 
   function setSessionCookie(reply: FastifyReply, token: string): void {
@@ -190,7 +193,7 @@ export async function buildApp(config: AppConfig) {
     if (!UNSAFE_METHODS.has(request.method)) return;
 
     if (AUTH_ORIGIN_REQUIRED.has(routePath)) {
-      if (!config.publicOrigin || !originAllowed(request)) {
+      if (!originAllowed(request)) {
         return reply
           .code(403)
           .send(errorBody("ORIGIN", "Request origin is not allowed", request.id));

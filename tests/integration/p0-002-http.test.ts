@@ -112,8 +112,39 @@ describe("P0-002 auth origin and hosted bootstrap", () => {
       await harness.close();
     }
   },
-    20_000,
+  20_000,
   );
+
+  it("accepts a private LAN Origin for claim when EVAL_LAN_ACCESS is enabled", async () => {
+    const harness = await createHttpHarness({
+      EVAL_LAN_ACCESS: "1",
+      PUBLIC_ORIGIN: "http://127.0.0.1:5173",
+    });
+    temps.push(harness.dbPath);
+    try {
+      const boot = await harness.app.inject({
+        method: "POST",
+        url: "/api/v1/test/bootstrap-claim",
+      });
+      expect(boot.statusCode).toBe(200);
+      const { token } = boot.json() as { token: string };
+
+      const lanClaim = await harness.app.inject({
+        method: "POST",
+        url: "/api/v1/auth/claim",
+        headers: { origin: "http://192.168.50.20:5173" },
+        payload: {
+          claimToken: token,
+          loginName: "origin.lan",
+          passphrase: PASSPHRASE,
+          displayName: "Morgan Reed",
+        },
+      });
+      expect(lanClaim.statusCode).toBe(200);
+    } finally {
+      await harness.close();
+    }
+  });
 
   it("does not expose the test-only bootstrap endpoint in hosted mode", async () => {
     const dbPath = tempDbPath("hd-hosted");

@@ -40,6 +40,7 @@ import {
   savePersonalLayer,
   setPersonalTaskStatus,
   setStepStatus,
+  rememberCsrfToken,
   type PersonalAddition,
   type PersonalTask,
   type Proposal,
@@ -55,6 +56,7 @@ import {
   removeOutboxItem,
   type OutboxItem,
 } from "./outbox";
+import { newClientId } from "./id";
 
 type Tab =
   | "today"
@@ -154,6 +156,7 @@ export function App() {
   function establishSession(next: SessionInfo) {
     if (identityRef.current !== next.member.id) clearUiCaches();
     identityRef.current = next.member.id;
+    rememberCsrfToken(next.csrfToken);
     setSession(next);
     setHouseholdDate(next.householdDate);
     setTab("today");
@@ -402,7 +405,7 @@ export function App() {
     if (!session) return;
     const membershipId = session.member.id;
     const item: OutboxItem = {
-      mutationId: crypto.randomUUID(),
+      mutationId: newClientId(),
       occurrenceId,
       stepId,
       status,
@@ -453,24 +456,25 @@ export function App() {
     );
   }
 
-  const canManageShared = hasGrant(session, "routine.shared.manage");
-  const canEnroll = hasGrant(session, "household.member.enroll");
-  const canDecide = hasGrant(session, "routine.proposal.decide");
+  const activeSession = session;
+  const canManageShared = hasGrant(activeSession, "routine.shared.manage");
+  const canEnroll = hasGrant(activeSession, "household.member.enroll");
+  const canDecide = hasGrant(activeSession, "routine.proposal.decide");
   const manager = canManageShared || canEnroll || canDecide;
-  const canDirect = hasGrant(session, "routine.personalize.direct");
-  const canPropose = hasGrant(session, "routine.personalize.propose");
+  const canDirect = hasGrant(activeSession, "routine.personalize.direct");
+  const canPropose = hasGrant(activeSession, "routine.personalize.propose");
   const projectedOccurrences = occurrences.map((occurrence) =>
     reconcileOccurrence(occurrence, outbox),
   );
   const projectedOwn = projectedOccurrences.filter(
-    (occurrence) => occurrence.accountableMemberId === session.member.id,
+    (occurrence) => occurrence.accountableMemberId === activeSession.member.id,
   );
   const pendingCount = outbox.filter((item) => item.state !== "rejected").length;
 
   function selectTab(next: Tab) {
     setTab(next);
     if (next === "personalize" || next === "approvals") {
-      void refreshSupportingData(session);
+      void refreshSupportingData(activeSession);
     }
   }
 
@@ -656,6 +660,15 @@ export function App() {
           proposals={proposals}
           onCreated={(proposal) => setProposals((current) => [proposal, ...current])}
         />
+      ) : null}
+      {tab === "personalize" && !canDirect && !canPropose ? (
+        <section className="panel">
+          <h1>Personalize</h1>
+          <p role="status">
+            This account cannot add personal Morning Routine items. Ask a manager to
+            enroll with a personalizer preset.
+          </p>
+        </section>
       ) : null}
       {tab === "preview" && preview ? (
         <PreviewView preview={preview} onBack={() => setTab(feedback ? "personalize" : "today")} />
@@ -1539,7 +1552,7 @@ function DirectPersonalization(props: {
             setAdditions((current) => [
               ...current,
               {
-                id: crypto.randomUUID(),
+                id: newClientId(),
                 text: "",
                 obligation: "optional",
                 anchorLogicalItemId: null,
@@ -1571,7 +1584,7 @@ function ProposalPersonalization(props: {
   onCreated: (proposal: Proposal) => void;
 }) {
   const [addition, setAddition] = useState<Omit<PersonalAddition, "position">>({
-    id: crypto.randomUUID(),
+    id: newClientId(),
     text: "",
     obligation: "optional",
     anchorLogicalItemId: null,
@@ -1599,7 +1612,7 @@ function ProposalPersonalization(props: {
       const result = await createProposal(input);
       props.onCreated(result.proposal);
       setAddition({
-        id: crypto.randomUUID(),
+        id: newClientId(),
         text: "",
         obligation: "optional",
         anchorLogicalItemId: null,

@@ -19,7 +19,7 @@
 
 ## Current focus
 
-P0-003 r1 is technically accepted after its local and GitHub Actions validation gates passed. The next product outcome should return to Planning & Design.
+P0-003 r1 is technically accepted after its local and GitHub Actions validation gates passed. P0-004A r2 is the current implementation contract awaiting Engineering readiness review.
 
 ## Internal work status
 
@@ -27,7 +27,8 @@ P0-003 r1 is technically accepted after its local and GitHub Actions validation 
 | --- | ---: | --- | --- | --- | --- |
 | P0-001 - Shared Morning Routine | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #1 | Product acceptance/evaluation |
 | P0-002 - Authenticated Household Authority | r1 | ACCEPTED | Project Lead evaluation | `brief/p0-002-authenticated-household-authority` | Product evaluation; future hosted release candidates require the hosted smoke/evidence gate |
-| P0-003 - Regression Safety and Contract Hardening | r1 | ACCEPTED | Project Lead integration | PR #6 | Optional required-check configuration; merge |
+| P0-003 - Regression Safety and Contract Hardening | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #6 | Product evaluation; optional required-check configuration |
+| P0-004A - People, Groups, and Access Status | r2 | IN REVIEW | Engineering readiness | `brief/p0-004a-people-groups-access` | Consolidated Engineering readiness review |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -46,11 +47,11 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next Project Lead decision
 
-- Decide whether to make the P0-003 **Pull-request validation** check required, merge PR #6, and return to Planning & Design for the next product outcome.
+- Review Engineering readiness for P0-004A; P0-004B and P0-005 remain sequenced behind evidence from the current slice.
 
 ## Next likely handoff
 
-Planning & Design proposes the next evidence-producing product outcome, informed by household evaluation of P0-001/P0-002 and the accepted P0-003 regression baseline.
+Engineering performs its consolidated readiness review of P0-004A r2 on `brief/p0-004a-people-groups-access`.
 
 ## Notes for all teams
 

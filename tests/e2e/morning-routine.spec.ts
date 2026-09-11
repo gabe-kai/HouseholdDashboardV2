@@ -94,7 +94,7 @@ async function claimChild(
   }
   const enroll = await request.post("/api/v1/enrollment/claims", {
     headers: await mutatingHeaders(request),
-    data: { membershipId, preset: options?.preset ?? "direct_personalizer" },
+    data: { mutationId: crypto.randomUUID(), membershipId, preset: options?.preset ?? "direct_personalizer" },
   });
   if (enroll.ok()) {
     const token = ((await enroll.json()) as { claim: { token: string } }).claim.token;
@@ -205,7 +205,7 @@ test.describe("P0-002 authenticated household", () => {
     });
     await manager
       .getByRole("navigation", { name: "Primary" })
-      .getByRole("button", { name: "Household", exact: true })
+      .getByRole("button", { name: "People & Groups", exact: true })
       .click();
 
     await ensureSharedRoutine(manager.request, [MORGAN_ID, AVERY_ID, JORDAN_ID]);
@@ -335,7 +335,7 @@ test.describe("P0-002 authenticated household", () => {
     await expect(manager.locator(".topbar")).toContainText("Morgan Reed", { timeout: 20_000 });
     await manager
       .getByRole("navigation", { name: "Primary" })
-      .getByRole("button", { name: "Household", exact: true })
+      .getByRole("button", { name: "People & Groups", exact: true })
       .click();
     await expandAllOccurrences(manager);
 
@@ -398,7 +398,7 @@ test.describe("P0-002 authenticated household", () => {
     await expect(manager.locator(".topbar")).toContainText("Morgan Reed", { timeout: 20_000 });
     await manager
       .getByRole("navigation", { name: "Primary" })
-      .getByRole("button", { name: "Household", exact: true })
+      .getByRole("button", { name: "People & Groups", exact: true })
       .click();
     await expandAllOccurrences(manager);
     const averyOccurrence = manager.locator(".occurrence").filter({ hasText: "Avery Reed" });
@@ -516,7 +516,7 @@ test.describe("P0-002 authenticated household", () => {
     await expect(manager.locator(".topbar")).toContainText("Morgan Reed", { timeout: 20_000 });
     await manager
       .getByRole("navigation", { name: "Primary" })
-      .getByRole("button", { name: "Household", exact: true })
+      .getByRole("button", { name: "People & Groups", exact: true })
       .click();
     await expect(manager.getByRole("heading", { name: "Household-visible personal tasks" })).toBeVisible();
     await expect(manager.getByText("Shared grocery list")).toBeVisible({ timeout: 10_000 });

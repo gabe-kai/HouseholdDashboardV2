@@ -59,6 +59,7 @@ describe("P0-003 contract hardening", () => {
         url: "/api/v1/enrollment/claims",
         headers: authHeaders(harness, manager),
         payload: {
+          mutationId: crypto.randomUUID(),
           membershipId: IDS.avery,
           preset: "direct_personalizer",
         },

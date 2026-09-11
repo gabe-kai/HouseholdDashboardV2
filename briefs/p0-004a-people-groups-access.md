@@ -120,10 +120,10 @@ An authorized parent opens Household → People & Groups and recognizes everyone
 
 ## Engineering readiness
 
-**Reviewed revision:** NOT REVIEWED
-**Readiness:** NOT REVIEWED
+**Reviewed revision:** 2
+**Readiness:** READY
 
-Engineering returns one consolidated readiness review against revision 2 before implementation.
+Engineering returned READY against revision 2 (see `reports/P0-004A-r2-engineering-readiness.md`) and implemented r2.
 
 ## Revision history
 

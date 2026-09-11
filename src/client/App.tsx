@@ -11,7 +11,6 @@ import {
 import { reconcileOccurrence } from "../domain/reconcile";
 import type {
   Grant,
-  GrantPreset,
   MemberPublic,
   OccurrenceView,
   ObligationMeaning,
@@ -34,7 +33,6 @@ import {
   fetchRoutine,
   fetchSession,
   fetchToday,
-  issueEnrollmentClaim,
   login,
   logout,
   savePersonalLayer,
@@ -48,6 +46,7 @@ import {
   type RoutinePreview,
   type SessionInfo,
 } from "./api";
+import { PeopleGroupsView } from "./PeopleGroups";
 import {
   clearMembershipOutbox,
   enqueueOutbox,
@@ -62,7 +61,6 @@ type Tab =
   | "today"
   | "household"
   | "approvals"
-  | "enroll"
   | "routine"
   | "history"
   | "personalize"
@@ -342,7 +340,10 @@ export function App() {
       (notification) => {
         if (identityRef.current !== membershipId) return;
         const urgent =
-          notification.resource === "proposal" || notification.resource === "routine";
+          notification.resource === "proposal" ||
+          notification.resource === "routine" ||
+          notification.resource === "membership" ||
+          notification.resource === "group";
         refreshAuthoritative({ urgentSupporting: urgent });
       },
       (status) => {
@@ -462,8 +463,9 @@ export function App() {
   const activeSession = session;
   const canManageShared = hasGrant(activeSession, "routine.shared.manage");
   const canEnroll = hasGrant(activeSession, "household.member.enroll");
+  const canManageStructure = hasGrant(activeSession, "household.structure.manage");
   const canDecide = hasGrant(activeSession, "routine.proposal.decide");
-  const manager = canManageShared || canEnroll || canDecide;
+  const manager = canManageShared || canEnroll || canDecide || canManageStructure;
   const canDirect = hasGrant(activeSession, "routine.personalize.direct");
   const canPropose = hasGrant(activeSession, "routine.personalize.propose");
   const projectedOccurrences = occurrences.map((occurrence) =>
@@ -535,19 +537,14 @@ export function App() {
         <NavButton tab="today" current={tab} onSelect={selectTab}>
           Today
         </NavButton>
+        <NavButton tab="household" current={tab} onSelect={selectTab}>
+          People &amp; Groups
+        </NavButton>
         {manager ? (
           <>
-            <NavButton tab="household" current={tab} onSelect={selectTab}>
-              Household
-            </NavButton>
             {canDecide ? (
               <NavButton tab="approvals" current={tab} onSelect={selectTab}>
                 Approvals
-              </NavButton>
-            ) : null}
-            {canEnroll ? (
-              <NavButton tab="enroll" current={tab} onSelect={selectTab}>
-                Enroll
               </NavButton>
             ) : null}
             {canManageShared ? (
@@ -589,12 +586,21 @@ export function App() {
           }
         />
       ) : null}
-      {tab === "household" && manager ? (
-        <HouseholdView
-          occurrences={projectedOccurrences}
-          tasks={tasks}
-          memberships={memberships}
-        />
+      {tab === "household" ? (
+        <>
+          <PeopleGroupsView
+            memberships={memberships}
+            tasks={tasks.filter((task) => task.visibility === "household")}
+            canManageStructure={canManageStructure}
+            canEnroll={canEnroll}
+            onPeopleChanged={() => {
+              if (activeSession) void refreshSupportingData(activeSession);
+            }}
+          />
+          {manager ? (
+            <HouseholdProgressView occurrences={projectedOccurrences} />
+          ) : null}
+        </>
       ) : null}
       {tab === "approvals" && canDecide ? (
         <ApprovalsView
@@ -613,12 +619,6 @@ export function App() {
               effectiveDate,
             })
           }
-        />
-      ) : null}
-      {tab === "enroll" && canEnroll ? (
-        <EnrollmentView
-          memberships={memberships}
-          onMembershipsChanged={() => void refreshSupportingData(session)}
         />
       ) : null}
       {tab === "routine" && canManageShared ? (
@@ -1035,20 +1035,13 @@ function TaskList(props: {
   );
 }
 
-function HouseholdView(props: {
-  occurrences: OccurrenceView[];
-  tasks: PersonalTask[];
-  memberships: MemberPublic[];
-}) {
+function HouseholdProgressView(props: { occurrences: OccurrenceView[] }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const sharedTasks = props.tasks.filter((task) => task.visibility === "household");
 
   useEffect(() => {
     setExpanded((current) => {
       const next = { ...current };
       for (const occurrence of props.occurrences) {
-        // Seed once while incomplete so a later completion keeps the checklist
-        // open and live status visible; first-seen completed rows stay quiet.
         if (next[occurrence.id] === undefined) {
           next[occurrence.id] = !occurrence.completed;
         }
@@ -1058,30 +1051,14 @@ function HouseholdView(props: {
   }, [props.occurrences]);
 
   return (
-    <section>
-      <h1>Household</h1>
+    <section className="panel" aria-labelledby="household-progress-heading">
+      <h2 id="household-progress-heading">Household Morning Routine</h2>
       <OccurrenceList
         occurrences={props.occurrences}
         expanded={expanded}
         setExpanded={setExpanded}
         canExecute={false}
       />
-      <div className="panel">
-        <h2>Household-visible personal tasks</h2>
-        {sharedTasks.length === 0 ? <p className="meta">No shared personal tasks.</p> : null}
-        <ul className="simple-list">
-          {sharedTasks.map((task) => (
-            <li key={task.id}>
-              <span>{task.title}</span>
-              <span className="meta">
-                {props.memberships.find((member) => member.id === task.ownerMembershipId)
-                  ?.displayName ?? "Household member"}{" "}
-                · {task.status}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </div>
     </section>
   );
 }
@@ -1109,97 +1086,6 @@ function ChangeNotice(props: {
         Open read-only preview
       </button>
     </div>
-  );
-}
-
-function EnrollmentView(props: {
-  memberships: MemberPublic[];
-  onMembershipsChanged: () => void;
-}) {
-  const pending = props.memberships.filter((member) => member.status === "pending");
-  const [membershipId, setMembershipId] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [preset, setPreset] = useState<GrantPreset>("proposal_personalizer");
-  const [claimInfo, setClaimInfo] = useState<{
-    token: string;
-    expiresAt: string;
-  } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function issue(event: FormEvent) {
-    event.preventDefault();
-    setError(null);
-    setClaimInfo(null);
-    try {
-      const result = await issueEnrollmentClaim({
-        ...(membershipId ? { membershipId } : { displayName }),
-        preset,
-      });
-      setClaimInfo(result.claim);
-      props.onMembershipsChanged();
-    } catch (caught) {
-      setError(errorMessage(caught));
-    }
-  }
-
-  return (
-    <section className="panel">
-      <h1>Enroll a household member</h1>
-      <p className="meta">
-        Create a one-time token, then give it to the member to paste into the claim form.
-      </p>
-      <form className="form-grid" onSubmit={issue}>
-        <label>
-          Pending membership
-          <select
-            value={membershipId}
-            onChange={(event) => {
-              setMembershipId(event.target.value);
-              if (event.target.value) setDisplayName("");
-            }}
-          >
-            <option value="">Create a new membership</option>
-            {pending.map((member) => (
-              <option key={member.id} value={member.id}>
-                {member.displayName}
-              </option>
-            ))}
-          </select>
-        </label>
-        {!membershipId ? (
-          <label>
-            Display name
-            <input
-              value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
-              required
-            />
-          </label>
-        ) : null}
-        <label>
-          Authority preset
-          <select
-            value={preset}
-            onChange={(event) => setPreset(event.target.value as GrantPreset)}
-          >
-            <option value="manager">Manager</option>
-            <option value="direct_personalizer">Direct personalizer</option>
-            <option value="proposal_personalizer">Proposal personalizer</option>
-          </select>
-        </label>
-        <button type="submit" className="primary">
-          Issue enrollment token
-        </button>
-      </form>
-      {claimInfo ? (
-        <div className="token-box" role="status">
-          <strong>Copy this token now</strong>
-          <code>{claimInfo.token}</code>
-          <span className="meta">Expires {new Date(claimInfo.expiresAt).toLocaleString()}</span>
-        </div>
-      ) : null}
-      {error ? <p role="alert">{error}</p> : null}
-    </section>
   );
 }
 

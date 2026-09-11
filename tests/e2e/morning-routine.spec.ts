@@ -375,6 +375,165 @@ test.describe("P0-002 authenticated household", () => {
     await childContext.close();
   });
 
+  test("visibilitychange re-reads authoritative state after missed sync", async ({
+    browser,
+  }: {
+    browser: Browser;
+  }) => {
+    const managerContext = await browser.newContext();
+    const childContext = await browser.newContext();
+    const manager = await managerContext.newPage();
+    const child = await childContext.newPage();
+
+    await ensureManagerSession(manager.request);
+    await ensureSharedRoutine(manager.request);
+    await claimChild(child.request, AVERY_ID, AVERY_LOGIN, "Avery Reed");
+
+    await child.goto("/");
+    await expect(child.locator(".topbar")).toContainText("Avery Reed", { timeout: 20_000 });
+    await ensureStepOpen(child, "Make bed");
+    await ensureStepOpen(child, "Pack lunch");
+
+    await manager.goto("/");
+    await expect(manager.locator(".topbar")).toContainText("Morgan Reed", { timeout: 20_000 });
+    await manager
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("button", { name: "Household", exact: true })
+      .click();
+    await expandAllOccurrences(manager);
+    const averyOccurrence = manager.locator(".occurrence").filter({ hasText: "Avery Reed" });
+    const makeBedStep = averyOccurrence.locator(".step").filter({ hasText: "Make bed" });
+    await expect(makeBedStep.getByText("Status: Open")).toBeVisible({ timeout: 10_000 });
+
+    const muted = await manager.evaluate(() => {
+      const api = (
+        window as unknown as {
+          __hdSync?: { ignoreMessagesForTest: (ignore: boolean) => void };
+        }
+      ).__hdSync;
+      if (!api?.ignoreMessagesForTest) return false;
+      api.ignoreMessagesForTest(true);
+      return true;
+    });
+    expect(muted).toBe(true);
+
+    await child.getByRole("button", { name: /Mark Make bed completed/ }).click();
+    await expect(child.locator(".status-pill[data-kind='pending']")).toHaveCount(0, {
+      timeout: 15_000,
+    });
+    await expect(
+      child.locator(".step").filter({ hasText: "Make bed" }).getByText("Status: Completed"),
+    ).toBeVisible({ timeout: 10_000 });
+    await expect
+      .poll(async () => {
+        const response = await child.request.get("/api/v1/today");
+        if (!response.ok()) return "error";
+        const body = (await response.json()) as {
+          occurrences: Array<{
+            accountableMemberName: string;
+            steps: Array<{ text: string; status: string }>;
+          }>;
+        };
+        const own = body.occurrences.find(
+          (occurrence) => occurrence.accountableMemberName === "Avery Reed",
+        );
+        return own?.steps.find((step) => step.text === "Make bed")?.status ?? "missing";
+      })
+      .toBe("completed");
+
+    await expect(makeBedStep.getByText("Status: Completed")).toHaveCount(0);
+
+    await Promise.all([
+      manager.waitForResponse(
+        (response) =>
+          response.url().includes("/api/v1/today") &&
+          !response.url().includes("date=") &&
+          response.request().method() === "GET" &&
+          response.ok(),
+      ),
+      manager.evaluate(() => {
+        Object.defineProperty(document, "visibilityState", {
+          configurable: true,
+          get: () => "visible",
+        });
+        Object.defineProperty(document, "hidden", {
+          configurable: true,
+          get: () => false,
+        });
+        document.dispatchEvent(new Event("visibilitychange"));
+      }),
+    ]);
+    await expandAllOccurrences(manager);
+    await expect(
+      manager
+        .locator(".occurrence")
+        .filter({ hasText: "Avery Reed" })
+        .locator(".step")
+        .filter({ hasText: "Make bed" })
+        .getByText("Status: Completed"),
+    ).toBeVisible({
+      timeout: 15_000,
+    });
+
+    await managerContext.close();
+    await childContext.close();
+  });
+
+  test("personal-task UI projects private vs household visibility", async ({
+    browser,
+  }: {
+    browser: Browser;
+  }) => {
+    const managerContext = await browser.newContext();
+    const childContext = await browser.newContext();
+    const manager = await managerContext.newPage();
+    const child = await childContext.newPage();
+
+    await ensureManagerSession(manager.request);
+    await ensureSharedRoutine(manager.request);
+    await claimChild(child.request, AVERY_ID, AVERY_LOGIN, "Avery Reed");
+
+    await child.goto("/");
+    await expect(child.locator(".topbar")).toContainText("Avery Reed", { timeout: 20_000 });
+
+    await child.getByPlaceholder("Add a personal task").fill("Private diary note");
+    await child.getByLabel("Task visibility").selectOption("private");
+    await child.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(child.getByText("Private diary note")).toBeVisible({ timeout: 10_000 });
+    await expect(
+      child.locator(".task-list li").filter({ hasText: "Private diary note" }).locator(".meta"),
+    ).toHaveText("private");
+
+    await child.getByPlaceholder("Add a personal task").fill("Shared grocery list");
+    await child.getByLabel("Task visibility").selectOption("household");
+    await child.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(child.getByText("Shared grocery list")).toBeVisible({ timeout: 10_000 });
+    await expect(
+      child.locator(".task-list li").filter({ hasText: "Shared grocery list" }).locator(".meta"),
+    ).toHaveText("household");
+
+    await manager.goto("/");
+    await expect(manager.locator(".topbar")).toContainText("Morgan Reed", { timeout: 20_000 });
+    await manager
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("button", { name: "Household", exact: true })
+      .click();
+    await expect(manager.getByRole("heading", { name: "Household-visible personal tasks" })).toBeVisible();
+    await expect(manager.getByText("Shared grocery list")).toBeVisible({ timeout: 10_000 });
+    await expect(manager.getByText("Private diary note")).toHaveCount(0);
+
+    await manager
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("button", { name: "Today", exact: true })
+      .click();
+    await expect(manager.getByRole("heading", { name: "Personal tasks" })).toBeVisible();
+    await expect(manager.getByText("Private diary note")).toHaveCount(0);
+    await expect(manager.getByText("Shared grocery list")).toHaveCount(0);
+
+    await managerContext.close();
+    await childContext.close();
+  });
+
   test("manager approval updates open personalize proposal status without reload", async ({
     browser,
   }: {

@@ -19,7 +19,7 @@
 
 ## Current focus
 
-P0-003 r1 is technically accepted after its local and GitHub Actions validation gates passed. P0-004A r2 is the current implementation contract awaiting Engineering readiness review.
+P0-003 r1 is technically accepted after its local and GitHub Actions validation gates passed. P0-004A r2 is implemented but awaits one factual Build Report correction before technical acceptance.
 
 ## Internal work status
 
@@ -28,7 +28,7 @@ P0-003 r1 is technically accepted after its local and GitHub Actions validation 
 | P0-001 - Shared Morning Routine | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #1 | Product acceptance/evaluation |
 | P0-002 - Authenticated Household Authority | r1 | ACCEPTED | Project Lead evaluation | `brief/p0-002-authenticated-household-authority` | Product evaluation; future hosted release candidates require the hosted smoke/evidence gate |
 | P0-003 - Regression Safety and Contract Hardening | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #6 | Product evaluation; optional required-check configuration |
-| P0-004A - People, Groups, and Access Status | r2 | IN REVIEW | Engineering readiness | `brief/p0-004a-people-groups-access` | Consolidated Engineering readiness review |
+| P0-004A - People, Groups, and Access Status | r2 | FIX REQUIRED | Architecture acceptance | `brief/p0-004a-people-groups-access` | Correct Build Report commit metadata, then Architecture acceptance |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -47,11 +47,11 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next Project Lead decision
 
-- Review Engineering readiness for P0-004A; P0-004B and P0-005 remain sequenced behind evidence from the current slice.
+- Engineering corrects the P0-004A Build Report metadata; Architecture then accepts r2 if no new discrepancy appears. P0-004B and P0-005 remain sequenced behind evidence from the current slice.
 
 ## Next likely handoff
 
-Engineering performs its consolidated readiness review of P0-004A r2 on `brief/p0-004a-people-groups-access`.
+Engineering updates `reports/P0-004A-r2-build-report.md` to identify committed artifact `656db28`; Architecture performs final r2 acceptance afterward.
 
 ## Notes for all teams
 

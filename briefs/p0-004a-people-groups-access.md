@@ -1,7 +1,7 @@
 # BRIEF P0-004A - People, Groups, and Access Status
 
 **Revision:** 2
-**Status:** IN REVIEW
+**Status:** FIX REQUIRED
 
 Recommended lifecycle: DRAFT -> IN REVIEW -> READY -> IMPLEMENTING -> IMPLEMENTED -> ACCEPTED
 
@@ -124,6 +124,8 @@ An authorized parent opens Household → People & Groups and recognizes everyone
 **Readiness:** READY
 
 Engineering returned READY against revision 2 (see `reports/P0-004A-r2-engineering-readiness.md`) and implemented r2.
+
+**Architecture acceptance review:** FIX REQUIRED (2026-09-11). The implementation evidence is otherwise consistent with r2, but the Build Report must correct its repository metadata: it currently says `Commits: N/A (not committed)` even though the implementation is committed at `656db28`. Update the report to name the actual commit and final branch state, then return it for technical acceptance. This is a same-revision factual writeback; no new readiness review is required.
 
 ## Revision history
 

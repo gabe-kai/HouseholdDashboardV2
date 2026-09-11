@@ -50,6 +50,10 @@ invalidation/reconciliation semantics.
 | PB-13 | Stable API / error / idempotency semantics | step mutationId in `p0-001.test.ts`; task mutationId in `p0-003-contracts.test.ts`; route inventory completeness | Developer |
 | PB-14 | Realtime invalidation model (duplicate/missed safe) | `src/server/sync-hub.test.ts`; e2e reconnect; e2e visibilitychange recovery; proposal-status e2e | Developer + PR |
 | PB-15 | Open-view proposal-status sync (escaped defect) | e2e `manager approval updates open personalize proposal status without reload` | PR / RC |
+| PB-16 | People directory independent of access | `tests/integration/p0-004a.test.ts`; e2e People & Groups | Developer + PR |
+| PB-17 | Access-state lifecycle + one-time setup secret | `tests/integration/p0-004a.test.ts` (ready/expired/cancel/replace/replay) | Developer |
+| PB-18 | Structure manage vs enroll authority | `tests/integration/p0-004a.test.ts` HTTP matrix | Developer |
+| PB-19 | Groups are structural only (no grants/assignments) | `tests/integration/p0-004a.test.ts`; e2e group edit | Developer + PR |
 
 ### Environment-specific (not counted as automated acceptance)
 
@@ -68,7 +72,13 @@ Duplicate, late, and missed events must be safe.
 | POST `/auth/login` | session | *(none)* | — | — | new session | n/a |
 | POST `/auth/claim` | user/membership/session | `membership` | memberships, session | — | claim single-use | reconnect + session |
 | POST `/auth/logout` | session revoked | *(none)* | — | outbox cleared for membership | — | re-login |
-| POST `/enrollment/claims` | claim row | `membership` | memberships | — | new token each call | list memberships |
+| POST `/enrollment/claims` | claim row | `membership` | people, memberships | — | same `mutationId` replay (no plaintext); replacement revokes prior | fetch people |
+| DELETE `/people/:id/setup` | claim revoked | `membership` | people | — | revoke actionable | fetch people |
+| POST `/people` | pending membership | `membership` | people | — | same `mutationId` replay | fetch people |
+| PATCH `/people/:id` | membership fields | `membership` | people | — | version conflict | fetch people |
+| POST `/groups` | group + members | `group` | groups, people detail | — | same `mutationId` replay | fetch groups |
+| PATCH `/groups/:id` | group + members | `group` | groups, people detail | — | expectedVersion conflict | fetch groups |
+| DELETE `/groups/:id` | group removed | `group` | groups, people detail | — | delete once | fetch groups |
 | POST `/routines` | definition+revision | `routine` | routines, today, preview | — | create once | fetch routines/today |
 | POST `/routines/:id/revisions` | revision | `routine` | routines, today, preview | — | append revision | fetch routines/today |
 | POST `/occurrences/.../status` | occurrence step + report | `occurrence` (+version) | today, history | membership outbox overlay | same `mutationId` idempotent | refresh today; flush outbox |

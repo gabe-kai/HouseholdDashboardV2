@@ -243,20 +243,107 @@ export async function fetchSession(): Promise<SessionInfo | null> {
 }
 
 export async function issueEnrollmentClaim(body: {
-  membershipId?: string;
-  displayName?: string;
+  mutationId: string;
+  membershipId: string;
   preset: GrantPreset;
 }) {
   return request<{
-    claim: { token: string; expiresAt: string; membershipId: string };
+    claim: {
+      claimId: string;
+      membershipId: string;
+      expiresAt: string;
+      accessState: string;
+      secretAlreadyIssued: boolean;
+      token?: string;
+    };
   }>("/api/v1/enrollment/claims", {
     method: "POST",
     body: JSON.stringify(body),
   });
 }
 
+export async function cancelEnrollmentSetup(membershipId: string) {
+  return request<{ membershipId: string; accessState: string }>(
+    `/api/v1/people/${membershipId}/setup`,
+    { method: "DELETE" },
+  );
+}
+
 export async function fetchMemberships() {
   return request<{ memberships: MemberPublic[] }>("/api/v1/memberships");
+}
+
+export async function fetchPeople() {
+  return request<{ people: MemberPublic[] }>("/api/v1/people");
+}
+
+export async function createPerson(body: {
+  mutationId: string;
+  displayName: string;
+  classification: "adult" | "child";
+}) {
+  return request<{ person: MemberPublic }>("/api/v1/people", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updatePerson(
+  membershipId: string,
+  body: {
+    displayName: string;
+    classification: "adult" | "child" | null;
+    expectedVersion: number;
+  },
+) {
+  return request<{ person: MemberPublic }>(`/api/v1/people/${membershipId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function fetchPerson(membershipId: string) {
+  return request<{ person: import("../shared/schemas").PersonDetail }>(
+    `/api/v1/people/${membershipId}`,
+  );
+}
+
+export async function fetchGroups() {
+  return request<{ groups: import("../shared/schemas").GroupPublic[] }>(
+    "/api/v1/groups",
+  );
+}
+
+export async function createGroup(body: {
+  mutationId: string;
+  name: string;
+  membershipIds: string[];
+}) {
+  return request<{ group: import("../shared/schemas").GroupPublic }>("/api/v1/groups", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateGroup(
+  groupId: string,
+  body: {
+    name: string;
+    membershipIds: string[];
+    expectedVersion: number;
+  },
+) {
+  return request<{ group: import("../shared/schemas").GroupPublic }>(
+    `/api/v1/groups/${groupId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export async function deleteGroup(groupId: string) {
+  return request<{ ok: true }>(`/api/v1/groups/${groupId}`, { method: "DELETE" });
 }
 
 export async function fetchRoutine() {

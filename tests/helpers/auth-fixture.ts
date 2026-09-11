@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import type { FastifyInstance } from "fastify";
 import { loadConfig, type AppConfig } from "../../src/server/config.js";
@@ -47,7 +48,12 @@ export async function enrollAndClaim(
   loginName: string,
   displayName: string,
 ): Promise<ClaimedAuth> {
-  const claim = store.issueEnrollmentClaim(manager, { membershipId, preset });
+  const claim = store.issueEnrollmentClaim(manager, {
+    mutationId: randomUUID(),
+    membershipId,
+    preset,
+  });
+  if (!claim.token) throw new Error("expected one-time setup token");
   return store.claim({
     claimToken: claim.token,
     loginName,

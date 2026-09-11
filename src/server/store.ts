@@ -16,11 +16,15 @@ import {
 } from "../domain/time.js";
 import { GRANT_PRESETS } from "../shared/grants.js";
 import type {
+  AccessState,
   Grant,
   GrantPreset,
+  GroupPublic,
   MemberPublic,
   ObligationMeaning,
   OccurrenceView,
+  PersonClassification,
+  PersonDetail,
   StepStatus,
 } from "../shared/schemas.js";
 import {
@@ -159,6 +163,15 @@ function isValidHouseholdDate(value: string): boolean {
 
 function isoAt(date: Date): string {
   return date.toISOString();
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: string }).code === "SQLITE_CONSTRAINT_UNIQUE"
+  );
 }
 
 export class AppStore {
@@ -387,7 +400,7 @@ export class AppStore {
     const claim = this.db
       .prepare(
         `SELECT * FROM enrollment_claims
-         WHERE token_digest = ? AND consumed_at IS NULL`,
+         WHERE token_digest = ? AND consumed_at IS NULL AND revoked_at IS NULL`,
       )
       .get(digest) as
       | {
@@ -421,10 +434,18 @@ export class AppStore {
     const tx = this.db.transaction(() => {
       const fresh = this.db
         .prepare(
-          "SELECT consumed_at, expires_at FROM enrollment_claims WHERE id = ?",
+          `SELECT consumed_at, expires_at, revoked_at FROM enrollment_claims WHERE id = ?`,
         )
-        .get(claim.id) as { consumed_at: string | null; expires_at: string };
-      if (fresh.consumed_at || new Date(fresh.expires_at) <= new Date()) {
+        .get(claim.id) as {
+        consumed_at: string | null;
+        expires_at: string;
+        revoked_at: string | null;
+      };
+      if (
+        fresh.consumed_at ||
+        fresh.revoked_at ||
+        new Date(fresh.expires_at) <= new Date()
+      ) {
         fail("UNAUTHORIZED", "Claim is invalid or expired");
       }
 
@@ -474,6 +495,13 @@ export class AppStore {
       this.db
         .prepare("UPDATE enrollment_claims SET consumed_at = ? WHERE id = ?")
         .run(createdAt, claim.id);
+      this.db
+        .prepare(
+          `UPDATE enrollment_claims
+           SET revoked_at = COALESCE(revoked_at, ?)
+           WHERE membership_id = ? AND id != ? AND consumed_at IS NULL AND revoked_at IS NULL`,
+        )
+        .run(createdAt, membershipId, claim.id);
     });
     tx();
     return this.createSession(userId, membershipId);
@@ -528,49 +556,100 @@ export class AppStore {
 
   issueEnrollmentClaim(
     ctx: AuthContext,
-    input: { membershipId?: string; displayName?: string; preset: GrantPreset },
-  ): { token: string; expiresAt: string; membershipId: string } {
+    input: { mutationId: string; membershipId: string; preset: GrantPreset },
+  ): {
+    claimId: string;
+    membershipId: string;
+    expiresAt: string;
+    accessState: AccessState;
+    secretAlreadyIssued: boolean;
+    token?: string;
+  } {
     this.requireGrant(ctx, "household.member.enroll");
     if (!GRANT_PRESETS[input.preset]) fail("VALIDATION", "Invalid grant preset");
-    if (!input.membershipId && !input.displayName?.trim()) {
-      fail("VALIDATION", "A display name is required for a new membership");
+
+    const prior = this.readStructureReceipt(input.mutationId, "setup_issue");
+    if (prior) {
+      return prior as {
+        claimId: string;
+        membershipId: string;
+        expiresAt: string;
+        accessState: AccessState;
+        secretAlreadyIssued: boolean;
+      };
     }
 
-    const createdAt = nowUtcIso();
-    const membershipId = input.membershipId ?? randomUUID();
+    const membership = this.db
+      .prepare(
+        `SELECT id, display_name FROM household_memberships
+         WHERE id = ? AND household_id = ? AND status = 'pending' AND user_id IS NULL`,
+      )
+      .get(input.membershipId, ctx.householdId) as
+      | { id: string; display_name: string }
+      | undefined;
+    if (!membership) fail("NOT_FOUND", "Membership not found");
+
+    let issued!: {
+      claimId: string;
+      membershipId: string;
+      expiresAt: string;
+      accessState: AccessState;
+      secretAlreadyIssued: boolean;
+      token?: string;
+    };
     const tx = this.db.transaction(() => {
-      if (input.membershipId) {
-        const membership = this.db
-          .prepare(
-            `SELECT id FROM household_memberships
-             WHERE id = ? AND household_id = ? AND status = 'pending' AND user_id IS NULL`,
-          )
-          .get(input.membershipId, ctx.householdId);
-        if (!membership) fail("NOT_FOUND", "Membership not found");
-        this.replaceGrants(membershipId, GRANT_PRESETS[input.preset]);
-      } else {
-        this.insertCompatibleMembership(
-          membershipId,
-          ctx.householdId,
-          null,
-          input.displayName!.trim(),
-          "pending",
-          createdAt,
-          GRANT_PRESETS[input.preset],
-        );
-      }
+      const now = nowUtcIso();
+      this.db
+        .prepare(
+          `UPDATE enrollment_claims
+           SET revoked_at = COALESCE(revoked_at, ?)
+           WHERE membership_id = ? AND consumed_at IS NULL AND revoked_at IS NULL`,
+        )
+        .run(now, input.membershipId);
+
+      const claim = this.insertClaim({
+        householdId: ctx.householdId,
+        membershipId: input.membershipId,
+        displayName: membership.display_name,
+        preset: input.preset,
+        creatorMembershipId: ctx.membershipId,
+        kind: "enrollment",
+      });
+      const safe = {
+        claimId: claim.claimId,
+        membershipId: input.membershipId,
+        expiresAt: claim.expiresAt,
+        accessState: "setup_ready" as const,
+        secretAlreadyIssued: true,
+      };
+      this.writeStructureReceipt(input.mutationId, "setup_issue", safe);
+      issued = { ...safe, secretAlreadyIssued: false, token: claim.token };
     });
     tx();
+    return issued;
+  }
 
-    const issued = this.insertClaim({
-      householdId: ctx.householdId,
-      membershipId,
-      displayName: input.displayName?.trim() ?? null,
-      preset: input.preset,
-      creatorMembershipId: ctx.membershipId,
-      kind: "enrollment",
-    });
-    return { ...issued, membershipId };
+  cancelEnrollmentSetup(ctx: AuthContext, membershipId: string): {
+    membershipId: string;
+    accessState: AccessState;
+  } {
+    this.requireGrant(ctx, "household.member.enroll");
+    const membership = this.db
+      .prepare(
+        `SELECT id FROM household_memberships
+         WHERE id = ? AND household_id = ? AND status = 'pending' AND user_id IS NULL`,
+      )
+      .get(membershipId, ctx.householdId);
+    if (!membership) fail("NOT_FOUND", "Membership not found");
+    const now = nowUtcIso();
+    this.db
+      .prepare(
+        `UPDATE enrollment_claims
+         SET revoked_at = COALESCE(revoked_at, ?)
+         WHERE membership_id = ? AND consumed_at IS NULL AND revoked_at IS NULL`,
+      )
+      .run(now, membershipId);
+    return { membershipId, accessState: this.accessStateForMembership(membershipId) };
   }
 
   validatePassphrasePolicy(passphrase: string): { ok: boolean; message?: string } {
@@ -592,20 +671,271 @@ export class AppStore {
   listMemberships(householdId: string): MemberPublic[] {
     const rows = this.db
       .prepare(
-        `SELECT id, display_name, status FROM household_memberships
+        `SELECT id, display_name, status, classification, version
+         FROM household_memberships
          WHERE household_id = ? ORDER BY display_name`,
       )
       .all(householdId) as Array<{
       id: string;
       display_name: string;
       status: "active" | "pending";
+      classification: PersonClassification | null;
+      version: number;
     }>;
-    return rows.map((row) => ({
-      id: row.id,
-      displayName: row.display_name,
-      status: row.status,
-      grants: this.grantsForMembership(row.id),
-    }));
+    return rows.map((row) => this.toMemberPublic(row));
+  }
+
+  createPerson(
+    ctx: AuthContext,
+    input: {
+      mutationId: string;
+      displayName: string;
+      classification: PersonClassification;
+    },
+  ): MemberPublic {
+    this.requireGrant(ctx, "household.structure.manage");
+    const prior = this.readStructureReceipt(input.mutationId, "person_create");
+    if (prior) return prior as MemberPublic;
+
+    const displayName = input.displayName.trim();
+    if (!displayName || displayName.length > 80) {
+      fail("VALIDATION", "Display name must be between 1 and 80 characters");
+    }
+    const id = randomUUID();
+    const createdAt = nowUtcIso();
+    const tx = this.db.transaction(() => {
+      this.insertCompatibleMembership(
+        id,
+        ctx.householdId,
+        null,
+        displayName,
+        "pending",
+        createdAt,
+        [],
+      );
+      this.db
+        .prepare(
+          `UPDATE household_memberships
+           SET classification = ?, version = 1 WHERE id = ?`,
+        )
+        .run(input.classification, id);
+    });
+    tx();
+    const person = this.requireMemberPublic(id, ctx.householdId);
+    this.writeStructureReceipt(input.mutationId, "person_create", person);
+    return person;
+  }
+
+  updatePerson(
+    ctx: AuthContext,
+    membershipId: string,
+    input: {
+      displayName: string;
+      classification: PersonClassification | null;
+      expectedVersion: number;
+    },
+  ): MemberPublic {
+    this.requireGrant(ctx, "household.structure.manage");
+    const displayName = input.displayName.trim();
+    if (!displayName || displayName.length > 80) {
+      fail("VALIDATION", "Display name must be between 1 and 80 characters");
+    }
+    const tx = this.db.transaction(() => {
+      const current = this.db
+        .prepare(
+          `SELECT id, version FROM household_memberships
+           WHERE id = ? AND household_id = ?`,
+        )
+        .get(membershipId, ctx.householdId) as
+        | { id: string; version: number }
+        | undefined;
+      if (!current) fail("NOT_FOUND", "Person not found");
+      if (current.version !== input.expectedVersion) {
+        fail("CONFLICT", "Person was updated elsewhere; re-read and try again");
+      }
+      this.db
+        .prepare(
+          `UPDATE household_memberships
+           SET display_name = ?, classification = ?, version = version + 1
+           WHERE id = ?`,
+        )
+        .run(displayName, input.classification, membershipId);
+      this.db
+        .prepare("UPDATE members SET display_name = ? WHERE id = ?")
+        .run(displayName, membershipId);
+    });
+    tx();
+    return this.requireMemberPublic(membershipId, ctx.householdId);
+  }
+
+  getPersonDetail(ctx: AuthContext, membershipId: string): PersonDetail {
+    const person = this.requireMemberPublic(membershipId, ctx.householdId);
+    const groups = this.db
+      .prepare(
+        `SELECT g.id, g.name
+         FROM household_groups g
+         JOIN household_group_members gm ON gm.group_id = g.id
+         WHERE g.household_id = ? AND gm.membership_id = ?
+         ORDER BY lower(g.name)`,
+      )
+      .all(ctx.householdId, membershipId) as Array<{ id: string; name: string }>;
+    const accessMeta = this.accessMetaForMembership(membershipId);
+    return {
+      ...person,
+      groups,
+      morningRoutine: this.currentDirectMorningRoutine(ctx, membershipId),
+      access: accessMeta,
+    };
+  }
+
+  listGroups(householdId: string): GroupPublic[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, name, version, created_at, updated_at
+         FROM household_groups WHERE household_id = ? ORDER BY lower(name)`,
+      )
+      .all(householdId) as Array<{
+      id: string;
+      name: string;
+      version: number;
+      created_at: string;
+      updated_at: string;
+    }>;
+    return rows.map((row) => this.toGroupPublic(row));
+  }
+
+  getGroup(householdId: string, groupId: string): GroupPublic {
+    const row = this.db
+      .prepare(
+        `SELECT id, name, version, created_at, updated_at
+         FROM household_groups WHERE id = ? AND household_id = ?`,
+      )
+      .get(groupId, householdId) as
+      | {
+          id: string;
+          name: string;
+          version: number;
+          created_at: string;
+          updated_at: string;
+        }
+      | undefined;
+    if (!row) fail("NOT_FOUND", "Group not found");
+    return this.toGroupPublic(row);
+  }
+
+  createGroup(
+    ctx: AuthContext,
+    input: { mutationId: string; name: string; membershipIds: string[] },
+  ): GroupPublic {
+    this.requireGrant(ctx, "household.structure.manage");
+    const prior = this.readStructureReceipt(input.mutationId, "group_create");
+    if (prior) return prior as GroupPublic;
+
+    const name = input.name.trim();
+    if (!name || name.length > 80) {
+      fail("VALIDATION", "Group name must be between 1 and 80 characters");
+    }
+    const membershipIds = [...new Set(input.membershipIds)];
+    const id = randomUUID();
+    const now = nowUtcIso();
+    const tx = this.db.transaction(() => {
+      this.assertSameHouseholdMemberships(ctx.householdId, membershipIds);
+      try {
+        this.db
+          .prepare(
+            `INSERT INTO household_groups
+             (id, household_id, name, version, created_at, updated_at)
+             VALUES (?, ?, ?, 1, ?, ?)`,
+          )
+          .run(id, ctx.householdId, name, now, now);
+      } catch (error) {
+        if (isUniqueViolation(error)) {
+          fail("CONFLICT", "A group with that name already exists");
+        }
+        throw error;
+      }
+      const insert = this.db.prepare(
+        "INSERT INTO household_group_members (group_id, membership_id) VALUES (?, ?)",
+      );
+      for (const membershipId of membershipIds) insert.run(id, membershipId);
+    });
+    tx();
+    const group = this.getGroup(ctx.householdId, id);
+    this.writeStructureReceipt(input.mutationId, "group_create", group);
+    return group;
+  }
+
+  updateGroup(
+    ctx: AuthContext,
+    groupId: string,
+    input: { name: string; membershipIds: string[]; expectedVersion: number },
+  ): GroupPublic {
+    this.requireGrant(ctx, "household.structure.manage");
+    const name = input.name.trim();
+    if (!name || name.length > 80) {
+      fail("VALIDATION", "Group name must be between 1 and 80 characters");
+    }
+    const membershipIds = [...new Set(input.membershipIds)];
+    const now = nowUtcIso();
+    const tx = this.db.transaction(() => {
+      const current = this.db
+        .prepare(
+          `SELECT id, version FROM household_groups
+           WHERE id = ? AND household_id = ?`,
+        )
+        .get(groupId, ctx.householdId) as
+        | { id: string; version: number }
+        | undefined;
+      if (!current) fail("NOT_FOUND", "Group not found");
+      if (current.version !== input.expectedVersion) {
+        fail("CONFLICT", "Group was updated elsewhere; re-read and try again");
+      }
+      this.assertSameHouseholdMemberships(ctx.householdId, membershipIds);
+      try {
+        const result = this.db
+          .prepare(
+            `UPDATE household_groups
+             SET name = ?, version = version + 1, updated_at = ?
+             WHERE id = ? AND version = ?`,
+          )
+          .run(name, now, groupId, input.expectedVersion);
+        if (result.changes !== 1) {
+          fail("CONFLICT", "Group was updated elsewhere; re-read and try again");
+        }
+      } catch (error) {
+        if (isUniqueViolation(error)) {
+          fail("CONFLICT", "A group with that name already exists");
+        }
+        throw error;
+      }
+      this.db
+        .prepare("DELETE FROM household_group_members WHERE group_id = ?")
+        .run(groupId);
+      const insert = this.db.prepare(
+        "INSERT INTO household_group_members (group_id, membership_id) VALUES (?, ?)",
+      );
+      for (const membershipId of membershipIds) insert.run(groupId, membershipId);
+    });
+    tx();
+    return this.getGroup(ctx.householdId, groupId);
+  }
+
+  deleteGroup(ctx: AuthContext, groupId: string): { ok: true } {
+    this.requireGrant(ctx, "household.structure.manage");
+    const tx = this.db.transaction(() => {
+      const current = this.db
+        .prepare(
+          "SELECT id FROM household_groups WHERE id = ? AND household_id = ?",
+        )
+        .get(groupId, ctx.householdId);
+      if (!current) fail("NOT_FOUND", "Group not found");
+      this.db
+        .prepare("DELETE FROM household_group_members WHERE group_id = ?")
+        .run(groupId);
+      this.db.prepare("DELETE FROM household_groups WHERE id = ?").run(groupId);
+    });
+    tx();
+    return { ok: true };
   }
 
   getRoutine(householdId: string) {
@@ -1237,19 +1567,20 @@ export class AppStore {
     preset: GrantPreset;
     creatorMembershipId: string | null;
     kind: "bootstrap" | "enrollment";
-  }): { token: string; expiresAt: string } {
+  }): { claimId: string; token: string; expiresAt: string } {
     const token = randomToken();
+    const claimId = randomUUID();
     const now = new Date();
     const expiresAt = isoAt(new Date(now.getTime() + CLAIM_MS));
     this.db
       .prepare(
         `INSERT INTO enrollment_claims
          (id, household_id, membership_id, token_digest, preset, display_name,
-          created_by_membership_id, created_at, expires_at, consumed_at, kind)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+          created_by_membership_id, created_at, expires_at, consumed_at, kind, revoked_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL)`,
       )
       .run(
-        randomUUID(),
+        claimId,
         input.householdId,
         input.membershipId,
         sha256Hex(token),
@@ -1260,7 +1591,260 @@ export class AppStore {
         expiresAt,
         input.kind,
       );
-    return { token, expiresAt };
+    return { claimId, token, expiresAt };
+  }
+
+  private toMemberPublic(row: {
+    id: string;
+    display_name: string;
+    status: "active" | "pending";
+    classification: PersonClassification | null;
+    version: number;
+  }): MemberPublic {
+    return {
+      id: row.id,
+      displayName: row.display_name,
+      status: row.status,
+      classification: row.classification,
+      version: row.version,
+      grants: this.grantsForMembership(row.id),
+      accessState: this.accessStateForMembership(row.id),
+    };
+  }
+
+  private requireMemberPublic(membershipId: string, householdId: string): MemberPublic {
+    const row = this.db
+      .prepare(
+        `SELECT id, display_name, status, classification, version
+         FROM household_memberships WHERE id = ? AND household_id = ?`,
+      )
+      .get(membershipId, householdId) as
+      | {
+          id: string;
+          display_name: string;
+          status: "active" | "pending";
+          classification: PersonClassification | null;
+          version: number;
+        }
+      | undefined;
+    if (!row) fail("NOT_FOUND", "Person not found");
+    return this.toMemberPublic(row);
+  }
+
+  private accessStateForMembership(membershipId: string): AccessState {
+    return this.accessMetaForMembership(membershipId).state;
+  }
+
+  private accessMetaForMembership(membershipId: string): {
+    state: AccessState;
+    setupClaimId: string | null;
+    setupCreatedAt: string | null;
+    setupExpiresAt: string | null;
+  } {
+    const membership = this.db
+      .prepare(
+        `SELECT hm.user_id, u.disabled
+         FROM household_memberships hm
+         LEFT JOIN users u ON u.id = hm.user_id
+         WHERE hm.id = ?`,
+      )
+      .get(membershipId) as
+      | { user_id: string | null; disabled: number | null }
+      | undefined;
+    if (membership?.user_id && membership.disabled === 0) {
+      return {
+        state: "access_set_up",
+        setupClaimId: null,
+        setupCreatedAt: null,
+        setupExpiresAt: null,
+      };
+    }
+
+    const now = new Date();
+    const actionable = this.db
+      .prepare(
+        `SELECT id, created_at, expires_at
+         FROM enrollment_claims
+         WHERE membership_id = ?
+           AND kind = 'enrollment'
+           AND consumed_at IS NULL
+           AND revoked_at IS NULL
+           AND expires_at > ?
+         ORDER BY created_at DESC LIMIT 1`,
+      )
+      .get(membershipId, isoAt(now)) as
+      | { id: string; created_at: string; expires_at: string }
+      | undefined;
+    if (actionable) {
+      return {
+        state: "setup_ready",
+        setupClaimId: actionable.id,
+        setupCreatedAt: actionable.created_at,
+        setupExpiresAt: actionable.expires_at,
+      };
+    }
+
+    const latest = this.db
+      .prepare(
+        `SELECT id, created_at, expires_at, consumed_at
+         FROM enrollment_claims
+         WHERE membership_id = ?
+           AND kind = 'enrollment'
+           AND revoked_at IS NULL
+         ORDER BY created_at DESC LIMIT 1`,
+      )
+      .get(membershipId) as
+      | {
+          id: string;
+          created_at: string;
+          expires_at: string;
+          consumed_at: string | null;
+        }
+      | undefined;
+    if (
+      latest &&
+      !latest.consumed_at &&
+      new Date(latest.expires_at) <= now
+    ) {
+      return {
+        state: "setup_expired",
+        setupClaimId: latest.id,
+        setupCreatedAt: latest.created_at,
+        setupExpiresAt: latest.expires_at,
+      };
+    }
+    return {
+      state: "not_set_up",
+      setupClaimId: null,
+      setupCreatedAt: null,
+      setupExpiresAt: null,
+    };
+  }
+
+  private currentDirectMorningRoutine(
+    ctx: AuthContext,
+    membershipId: string,
+  ): PersonDetail["morningRoutine"] {
+    const definition = this.db
+      .prepare("SELECT id FROM routine_definitions WHERE household_id = ?")
+      .get(ctx.householdId) as { id: string } | undefined;
+    if (!definition) {
+      return {
+        currentlyAssigned: false,
+        revisionId: null,
+        revisionTitle: null,
+        effectiveDate: null,
+      };
+    }
+    const revisions = this.db
+      .prepare(
+        `SELECT id, effective_date, title, weekdays_json
+         FROM routine_revisions WHERE definition_id = ? ORDER BY effective_date`,
+      )
+      .all(definition.id) as Array<{
+      id: string;
+      effective_date: string;
+      title: string;
+      weekdays_json: string;
+    }>;
+    const householdDate = this.householdDateNow(ctx);
+    const selected = selectRevisionForDate(
+      revisions.map((revision) => ({
+        id: revision.id,
+        effectiveDate: revision.effective_date,
+        weekdays: JSON.parse(revision.weekdays_json) as number[],
+      })),
+      householdDate,
+    );
+    if (!selected) {
+      return {
+        currentlyAssigned: false,
+        revisionId: null,
+        revisionTitle: null,
+        effectiveDate: null,
+      };
+    }
+    const assigned = !!this.db
+      .prepare(
+        "SELECT 1 FROM revision_assignees WHERE revision_id = ? AND member_id = ?",
+      )
+      .get(selected.id, membershipId);
+    const revision = revisions.find((row) => row.id === selected.id)!;
+    return {
+      currentlyAssigned: assigned,
+      revisionId: revision.id,
+      revisionTitle: revision.title,
+      effectiveDate: revision.effective_date,
+    };
+  }
+
+  private toGroupPublic(row: {
+    id: string;
+    name: string;
+    version: number;
+    created_at: string;
+    updated_at: string;
+  }): GroupPublic {
+    const membershipIds = (
+      this.db
+        .prepare(
+          `SELECT membership_id FROM household_group_members
+           WHERE group_id = ? ORDER BY membership_id`,
+        )
+        .all(row.id) as Array<{ membership_id: string }>
+    ).map((entry) => entry.membership_id);
+    return {
+      id: row.id,
+      name: row.name,
+      version: row.version,
+      membershipIds,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  private assertSameHouseholdMemberships(
+    householdId: string,
+    membershipIds: string[],
+  ): void {
+    for (const membershipId of membershipIds) {
+      if (
+        !this.db
+          .prepare(
+            "SELECT 1 FROM household_memberships WHERE id = ? AND household_id = ?",
+          )
+          .get(membershipId, householdId)
+      ) {
+        fail("NOT_FOUND", "Membership not found");
+      }
+    }
+  }
+
+  private readStructureReceipt(
+    mutationId: string,
+    kind: "person_create" | "group_create" | "setup_issue",
+  ): unknown | null {
+    const row = this.db
+      .prepare(
+        `SELECT response_json FROM structure_mutation_receipts
+         WHERE mutation_id = ? AND kind = ?`,
+      )
+      .get(mutationId, kind) as { response_json: string } | undefined;
+    return row ? (JSON.parse(row.response_json) as unknown) : null;
+  }
+
+  private writeStructureReceipt(
+    mutationId: string,
+    kind: "person_create" | "group_create" | "setup_issue",
+    response: unknown,
+  ): void {
+    this.db
+      .prepare(
+        `INSERT INTO structure_mutation_receipts
+         (mutation_id, kind, response_json, created_at)
+         VALUES (?, ?, ?, ?)`,
+      )
+      .run(mutationId, kind, JSON.stringify(response), nowUtcIso());
   }
 
   private loginThrottle(key: string, now: Date): number {

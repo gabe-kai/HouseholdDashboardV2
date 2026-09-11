@@ -19,7 +19,7 @@
 
 ## Current focus
 
-P0-003 r1 is implemented but requires focused contract-evidence corrections before technical acceptance. P0-002 r1 remains technically accepted and ready for Project Lead evaluation.
+P0-003 r1 is technically accepted after its local and GitHub Actions validation gates passed. The next product outcome should return to Planning & Design.
 
 ## Internal work status
 
@@ -27,7 +27,7 @@ P0-003 r1 is implemented but requires focused contract-evidence corrections befo
 | --- | ---: | --- | --- | --- | --- |
 | P0-001 - Shared Morning Routine | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #1 | Product acceptance/evaluation |
 | P0-002 - Authenticated Household Authority | r1 | ACCEPTED | Project Lead evaluation | `brief/p0-002-authenticated-household-authority` | Product evaluation; future hosted release candidates require the hosted smoke/evidence gate |
-| P0-003 - Regression Safety and Contract Hardening | r1 | FIX REQUIRED | Engineering | `brief/p0-003-regression-safety-contract-hardening` | Exact CI command, visibility recovery evidence, personal-task UI projection evidence, then first Actions run |
+| P0-003 - Regression Safety and Contract Hardening | r1 | ACCEPTED | Project Lead integration | PR #6 | Optional required-check configuration; merge |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -38,18 +38,19 @@ This table is the short repository-side coordination index. An external project 
 - P0-001 r1 was implemented, technically accepted by Architecture, and merged to `main` through PR #1.
 - The P0-001 implementation provides a responsive Morning Routine evaluation build with immutable structural history, optimistic durable checklist intent, and household-scoped synchronization.
 - P0-002 r1 added authenticated household authority, personal layers/proposals, scoped personal tasks, and hosted-operability evidence; Architecture technically accepted it on 2026-09-10.
+- P0-003 r1 added protected-behavior traceability, route-policy completeness, focused regression evidence, local PR/RC validation tiers, and a successful GitHub Actions PR gate; Architecture technically accepted it on 2026-09-10.
 
 ## Known blockers
 
-- P0-003 technical acceptance awaits the focused r1 corrections and an observed GitHub Actions run. Required-check branch protection is an external Project Lead setting and is not yet asserted as configured.
+- None. Required-check branch protection is an optional external Project Lead setting and is not yet asserted as configured.
 
 ## Next Project Lead decision
 
-- Evaluate the accepted P0-002 user-facing result. Decide whether to make the P0-003 GitHub Actions check required after Engineering supplies the workflow/check name.
+- Decide whether to make the P0-003 **Pull-request validation** check required, merge PR #6, and return to Planning & Design for the next product outcome.
 
 ## Next likely handoff
 
-Engineering addresses the P0-003 r1 FIX REQUIRED disposition on `brief/p0-003-regression-safety-contract-hardening` and returns the updated Build Report to Architecture for reassessment.
+Planning & Design proposes the next evidence-producing product outcome, informed by household evaluation of P0-001/P0-002 and the accepted P0-003 regression baseline.
 
 ## Notes for all teams
 

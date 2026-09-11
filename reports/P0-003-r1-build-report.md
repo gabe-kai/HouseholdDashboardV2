@@ -41,7 +41,7 @@ P0-003 r1 adds durable contract cataloging, a machine-checked `/api/v1` route-po
 | 8 Escaped proposal-status defect | **PASS** | Existing e2e retained |
 | 9 Personal-task visibility API + UI | **PASS** | API contracts (**new**/**reused**); **personal-task UI e2e (new, required)** |
 | 10 validate / validate:pr / validate:rc | **PASS** | Exact commands run locally (see below) |
-| 11 GitHub Actions runs validate:pr | **SUPPLIED / CI RUN NOT YET OBSERVED** | Workflow invokes `npm run validate:pr`; **Actions URL pending push/PR**; required-check remains Project Lead external setting |
+| 11 GitHub Actions runs validate:pr | **PASS** | Workflow invoked `npm run validate:pr` successfully in [Actions run 34545641127](https://github.com/gabe-kai/HouseholdDashboardV2/actions/runs/34545641127) for PR #6 at `50fcddbbbd93795c2383e307cbf80852f631e769`; required-check remains Project Lead external setting |
 | 12 Documentation | **PASS** | protected-behaviors, ARCHITECTURE, CONTRIBUTING, ops-deploy |
 
 ## Verification performed
@@ -50,7 +50,7 @@ P0-003 r1 adds durable contract cataloging, a machine-checked `/api/v1` route-po
 | --- | --- |
 | `npm run validate:pr` | **PASS** (exact script) — lint/typecheck/Vitest 43, build, Chromium e2e **12/12** |
 | `npm run validate:rc` | **PASS** (exact script) — validate + build + Chromium+WebKit e2e **24/24** |
-| GitHub Actions run URL/result | **NOT RUN** — record after first push/PR |
+| GitHub Actions run URL/result | **PASS** — [run 34545641127](https://github.com/gabe-kai/HouseholdDashboardV2/actions/runs/34545641127), PR #6, commit `50fcddbbbd93795c2383e307cbf80852f631e769` |
 | Required branch protection | **EXTERNAL / UNKNOWN** — Project Lead setting |
 
 ## Reused vs new evidence
@@ -65,9 +65,8 @@ P0-003 r1 adds durable contract cataloging, a machine-checked `/api/v1` route-po
 
 ## Remaining gaps
 
-1. **First GitHub Actions run URL/result** — needed for final AT11 acceptance after push/PR.  
-2. **Required-check branch protection** — Project Lead repository setting (not claimed by Engineering).
+1. **Required-check branch protection** — optional Project Lead configuration; do not claim merge is mechanically blocked by CI unless enabled.
 
 ## Suggested follow-up
 
-Architecture re-review of this updated Build Report. After commit/push, attach the Actions run URL for AT11 closeout.
+Architecture accepted P0-003 r1 on 2026-09-10 after verifying the successful PR #6 Actions run. Project Lead may make the check required, then merge through the normal PR workflow.

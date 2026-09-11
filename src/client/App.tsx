@@ -361,7 +361,10 @@ export function App() {
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
       if (identityRef.current !== membershipId) return;
-      refreshAuthoritative({ urgentSupporting: true });
+      // Visible-tab recovery must re-read Today immediately; do not defer it
+      // behind startTransition (same class of bug as deferred proposal status).
+      void refreshToday(membershipId).catch((caught) => setError(errorMessage(caught)));
+      void refreshSupportingData(session);
       void flushOutbox(membershipId);
     };
     document.addEventListener("visibilitychange", onVisible);

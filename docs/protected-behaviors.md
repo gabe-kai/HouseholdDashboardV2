@@ -40,15 +40,15 @@ invalidation/reconciliation semantics.
 | PB-03 | Household-local dates (not device TZ) | `src/domain/time.test.ts`; `tests/integration/p0-001.test.ts` | Developer |
 | PB-04 | Stable item identity and composition | `src/domain/compose.test.ts`; `tests/integration/p0-002-http.test.ts` (logical-item migration) | Developer |
 | PB-05 | Optimistic checklist interaction | e2e `child rapid checklist stays optimistic under delayed mutations` | PR / RC |
-| PB-06 | Authoritative reconciliation after sync | e2e reconnect + Today refresh; `src/domain/reconcile.test.ts` | Developer + PR |
+| PB-06 | Authoritative reconciliation after sync | e2e reconnect + Today refresh; e2e `visibilitychange re-reads authoritative state after missed sync`; `src/domain/reconcile.test.ts` | Developer + PR |
 | PB-07 | Outbox membership identity safety | `src/client/outbox.test.ts`; e2e outbox reload + logout/identity | Developer + PR |
 | PB-08 | Authentication, origin, CSRF | `tests/integration/p0-002-http.test.ts` (origin); `tests/integration/p0-003-contracts.test.ts` (CSRF) | Developer |
 | PB-09 | Authorization / grant isolation | `tests/integration/p0-002-http.test.ts` capability matrix | Developer |
 | PB-10 | Household isolation (HTTP + WS) | `tests/integration/p0-002-http.test.ts`; `src/server/sync-hub.test.ts` | Developer |
-| PB-11 | Personal-task visibility | `tests/integration/p0-003-contracts.test.ts`; store cases in `p0-002.test.ts` | Developer |
+| PB-11 | Personal-task visibility | `tests/integration/p0-003-contracts.test.ts`; e2e `personal-task UI projects private vs household visibility`; store cases in `p0-002.test.ts` | Developer + PR |
 | PB-12 | Migration preservation + idempotent reapply | `tests/integration/p0-003-migration.test.ts`; prior `p0-002.test.ts` migrate case | Developer |
 | PB-13 | Stable API / error / idempotency semantics | step mutationId in `p0-001.test.ts`; task mutationId in `p0-003-contracts.test.ts`; route inventory completeness | Developer |
-| PB-14 | Realtime invalidation model (duplicate/missed safe) | `src/server/sync-hub.test.ts`; e2e reconnect; proposal-status e2e | Developer + PR |
+| PB-14 | Realtime invalidation model (duplicate/missed safe) | `src/server/sync-hub.test.ts`; e2e reconnect; e2e visibilitychange recovery; proposal-status e2e | Developer + PR |
 | PB-15 | Open-view proposal-status sync (escaped defect) | e2e `manager approval updates open personalize proposal status without reload` | PR / RC |
 
 ### Environment-specific (not counted as automated acceptance)

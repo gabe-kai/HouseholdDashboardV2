@@ -3,7 +3,7 @@
 **Brief revision implemented:** 2  
 **Engineering status:** IMPLEMENTED  
 **Branch:** `brief/p0-004a-people-groups-access`  
-**Commits:** N/A (not committed; Project Lead manages Git)  
+**Commits:** `656db28`, `740d141`  
 **Pull request:** N/A  
 
 ## Readiness
@@ -55,4 +55,4 @@ Parents can add unenrolled people, see `Classification not set` on migrated memb
 
 ## Suggested follow-up
 
-Architecture acceptance of r2. After commit/push, optional PR Actions run confirms CI path; required-check remains Project Lead external setting.
+Architecture acceptance of r2. Optional PR Actions run remains available for CI confirmation; required-check remains Project Lead external setting.

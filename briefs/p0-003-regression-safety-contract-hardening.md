@@ -1,7 +1,7 @@
 # BRIEF P0-003 - Regression Safety and Contract Hardening
 
 **Revision:** 1
-**Status:** FIX REQUIRED
+**Status:** ACCEPTED
 
 Recommended lifecycle: DRAFT -> IN REVIEW -> READY -> IMPLEMENTING -> IMPLEMENTED -> ACCEPTED
 
@@ -125,6 +125,8 @@ See `reports/P0-003-r1-engineering-readiness.md`. Implementation authorized on
 **Architecture disposition:** ACCEPT (2026-09-10). Engineering's readiness interpretation matches P0-003 r1. The proposed catalog/matrix locations, TypeScript route-policy inventory, reuse of the inline populated migration fixture, `validate:pr` / `validate:rc` naming, and GitHub Actions shape are ordinary implementation choices within the brief. WebKit-on-Linux reliability is a reporting concern rather than a pre-implementation gate; any measured need to retier it returns to Architecture. Engineering is authorized to implement this exact revision after the readiness writeback is committed.
 
 **Technical acceptance review:** FIX REQUIRED (2026-09-10). Keep revision 1. Before reassessment: (1) make GitHub Actions invoke `npm run validate:pr` rather than duplicating an equivalent command body; (2) add deterministic automated evidence that a visible client recovers authoritative state after the `visibilitychange` path required by acceptance test 7; (3) add focused browser evidence for the relevant private/household personal-task UI projection required by acceptance test 9; and (4) update the Build Report so exact-script execution and acceptance-test results distinguish performed evidence from equivalent or partial coverage. After the implementation is committed and pushed, the first Actions run URL/result remains required for final acceptance under test 11. Required-check branch protection remains a Project Lead-controlled external setting.
+
+**Final technical acceptance:** ACCEPT (2026-09-10). Engineering closed the same-revision corrections with direct `npm run validate:pr` CI execution, deterministic visibility recovery evidence, personal-task UI projection evidence, and exact local PR/RC script results. GitHub Actions run `34545641127` completed successfully for PR #6 at commit `50fcddbbbd93795c2383e307cbf80852f631e769`. P0-003 r1 is technically accepted. Making the successful check required remains a Project Lead-controlled repository setting and is not a condition of this implementation acceptance.
 
 ## Revision history
 

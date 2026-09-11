@@ -26,11 +26,14 @@ Goal: prove that a real recurring household routine can be used quickly by six d
   - **Brief:** `P0-002 r1 - Authenticated Household Authority` (`briefs/P0-002-authenticated-household-authority.md`)
   - **Result:** Technically accepted and merged to `main`; Project Lead product evaluation remains separate. Future hosted release candidates retain the hosted smoke/evidence gate.
 
+- [x] **P0-003 — Regression Safety and Contract Hardening:** Protected behavior is explicit, critical contracts have layered automated coverage, and local PR/RC validation is backed by a successful GitHub Actions pull-request gate.
+  - **Brief:** `P0-003 r1 - Regression Safety and Contract Hardening` (`briefs/p0-003-regression-safety-contract-hardening.md`)
+  - **Result:** Technically accepted on PR #6 after exact local PR/RC scripts and GitHub Actions passed; merge and required-check configuration remain Project Lead operations.
+
 ### CURRENT
 
-- [ ] **Outcome:** The application can evolve without repeating the V1 hardening regression: protected behavior is explicit, critical contracts have layered automated coverage, and normal development is local-first with hosted checks reserved for committed release candidates.
-  - **Brief:** `P0-003 r1 - Regression Safety and Contract Hardening` (`briefs/p0-003-regression-safety-contract-hardening.md`)
-  - **Status:** Engineering readiness accepted; ready for implementation.
+- [ ] **Outcome:** Planning & Design selects the next smallest product outcome using household evaluation evidence and the accepted P0-003 regression baseline.
+  - **Status:** Product definition pending; no implementation brief yet.
 
 ### LIKELY NEXT
 

@@ -20,6 +20,17 @@ If this document disagrees with the repository about what exists, the repository
 
 ## Authenticated household architecture
 
+### P0-004 people and groups direction
+
+- The repository's existing `household_memberships` row is the durable household-person boundary: `user_id` may be null while a person is pending access. New person creation should extend this boundary rather than creating credentials as a prerequisite.
+- Adult/Child is a descriptive household classification, not an authority source. Capabilities remain explicit membership grants and groups never grant authority.
+- Groups are household-scoped named sets of membership IDs. They are structural data only; personal-task privacy, permissions, rotation, and assignment semantics remain independent.
+- P0-004A is limited to People, Groups, and person-centered access status. P0-004B will separately define group-backed Morning Routine audience resolution, overlap deduplication, prospective membership effects, and materialized-occurrence boundaries.
+- Household structure mutation uses a distinct `household.structure.manage` grant; `household.member.enroll` remains the access-setup grant. The manager preset carries both, while Adult/Child remains descriptive only.
+- Existing memberships migrate with classification unset because the repository has no trustworthy classification fact. New people require Adult/Child, and managers may correct the migrated `Classification not set` state without changing authority.
+- Enrollment status is a safe projection over user and claim facts. One actionable claim per membership is permitted; replacement/cancellation revoke it, plaintext is shown once, and later reads never expose claim secrets.
+- Administrative create operations are server-authoritative and replay-safe by client mutation ID. Group member-set updates are transactional and version-guarded; they are not placed in the checklist IndexedDB outbox.
+
 P0-002 deepened the Morning Routine without generalizing the product. One household can use distinct accounts across two personal-authority paths while P0-001 execution and history remain intact.
 
 - **Identity boundary:** `User` represents a sign-in identity independently of a household. `HouseholdMembership` links a user to one household and owns the household display name, status, and normalized capability grants. Pending enrollment may exist before a user claims a membership. P0-002 signs a user directly into their sole active membership; multi-household switching remains unimplemented.

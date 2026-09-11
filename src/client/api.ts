@@ -397,6 +397,7 @@ export function connectSync(
   onStatus?: (status: "connected" | "reconnecting") => void,
 ): () => void {
   let stopped = false;
+  let ignoreMessages = false;
   let socket: WebSocket | null = null;
   let attempt = 0;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -427,6 +428,7 @@ export function connectSync(
       onStatus?.("connected");
     };
     next.onmessage = (event) => {
+      if (ignoreMessages) return;
       try {
         onMessage(JSON.parse(String(event.data)) as SyncNotification);
       } catch {
@@ -451,6 +453,21 @@ export function connectSync(
   const testApi = {
     closeForTest: () => {
       socket?.close();
+    },
+    /** Drop invalidation handling without tearing down the socket (visibility recovery tests). */
+    ignoreMessagesForTest: (ignore: boolean) => {
+      ignoreMessages = ignore;
+    },
+    /** Close the socket and suppress auto-reconnect so visibility recovery can be isolated. */
+    suspendForTest: () => {
+      stopped = true;
+      clearRetry();
+      socket?.close();
+    },
+    resumeForTest: () => {
+      if (!stopped && socket) return;
+      stopped = false;
+      open();
     },
   };
   (window as unknown as { __hdSync?: typeof testApi }).__hdSync = testApi;

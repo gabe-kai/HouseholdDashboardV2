@@ -7,7 +7,7 @@
 Use these horizons instead of fully specifying everything in advance:
 
 - **CURRENT** - the next evidence-producing outcome. This may have a detailed implementation brief.
-- **LIKELY NEXT** - a plausible next outcome whose exact contract may depend on what CURRENT teaches.
+- **LIKELY NEXT** - a plausible next outcome whose exact contract may depend on CURRENT.
 - **LATER** - preserved direction or ideas that do not need technical detail yet.
 
 A roadmap item is not an implementation contract. Normally only CURRENT should receive a fully detailed brief. Let working evidence refine later outcomes before Architecture over-specifies them.
@@ -22,18 +22,20 @@ Goal: prove that a real recurring household routine can be used quickly by six d
   - **Brief:** `P0-001 r1 - Shared Morning Routine` (`briefs/P0-001-shared-morning-routine.md`)
   - **Result:** Technically accepted and merged to `main`; Project Lead product evaluation remains separate.
 
+- [x] **P0-002 — Authenticated Household Authority:** Household members can authenticate individually, act under membership capabilities, personalize future routine content directly or by proposal, and create scoped personal work without weakening P0-001 history or synchronization.
+  - **Brief:** `P0-002 r1 - Authenticated Household Authority` (`briefs/P0-002-authenticated-household-authority.md`)
+  - **Result:** Technically accepted and merged to `main`; Project Lead product evaluation remains separate. Future hosted release candidates retain the hosted smoke/evidence gate.
+
+- [x] **P0-003 — Regression Safety and Contract Hardening:** Protected behavior is explicit, critical contracts have layered automated coverage, and local PR/RC validation is backed by a successful GitHub Actions pull-request gate.
+  - **Brief:** `P0-003 r1 - Regression Safety and Contract Hardening` (`briefs/p0-003-regression-safety-contract-hardening.md`)
+  - **Result:** Technically accepted on PR #6 after exact local PR/RC scripts and GitHub Actions passed; merge and required-check configuration remain Project Lead operations.
+
 ### CURRENT
 
-- [ ] **Outcome:** Six real household members can authenticate as themselves and use the shared Morning Routine according to capability-based authority: selected members customize their future routine directly, restricted members propose additions for approval, every member can create thin personal work, and history/responsiveness/shared state remain trustworthy.
-  - **Learning question:** Can one shared routine support distinct identities and progressively granted personal control without becoming confusing, slow, or historically unreliable?
-  - **Brief:** `P0-002 r1 - Authenticated Household Authority` (`briefs/P0-002-authenticated-household-authority.md`)
-  - **Implementation status:** Technically ACCEPTED at r1 using the merged automated evidence, current-source local multi-device confirmation, and prior hosted HTTPS/persistence/backup/restore/physical-device/Linux Argon2 evidence. The user-facing result is ready for Project Lead evaluation. Future release candidates require the hosted smoke/evidence gate; Railway is not the normal development loop.
+- [ ] **Outcome:** Planning & Design selects the next smallest product outcome using household evaluation evidence and the accepted P0-003 regression baseline.
+  - **Status:** Product definition pending; no implementation brief yet.
 
 ### LIKELY NEXT
-
-- [ ] **Outcome:** The application can evolve without repeating the V1 hardening regression: protected behavior is explicit, critical contracts have layered automated coverage, and hosted verification is reserved for committed release candidates.
-  - **Proposed brief:** `P0-003 — Regression Safety and Contract Hardening`
-  - **Planning status:** Awaiting Planning & Design proposal; exact scope should follow the P0-002 evaluation and current repository evidence.
 
 - [ ] **Outcome:** Today can coordinate several real household responsibilities—initially examples such as Kitchen, Cats, and Bathroom—with a clear completed/current/later hierarchy and a mix of timed and untimed work.
   - **Why likely:** Once identity and authority are credible, multiple responsibilities are the next product pressure needed to determine whether the Morning Routine model generalizes.

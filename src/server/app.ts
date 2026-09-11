@@ -70,7 +70,12 @@ function statusForCode(code: string): number {
   }
 }
 
-export async function buildApp(config: AppConfig) {
+export async function buildApp(
+  config: AppConfig,
+  options?: {
+    onRoute?: (routeOptions: { method: string | string[]; url?: string }) => void;
+  },
+) {
   const db = openDatabase(resolveDbPath(config.dbPath));
   migrate(db);
   const store = new AppStore(db);
@@ -95,6 +100,10 @@ export async function buildApp(config: AppConfig) {
     bodyLimit: 64 * 1024,
     trustProxy: config.trustedProxy,
   });
+
+  if (options?.onRoute) {
+    app.addHook("onRoute", options.onRoute);
+  }
 
   await app.register(cookie);
   await app.register(websocket);

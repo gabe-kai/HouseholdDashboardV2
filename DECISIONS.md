@@ -227,3 +227,19 @@ P0-002 direct personalizers may add and reorder only their own personal addition
 **Related briefs:**
 
 - P0-002
+
+---
+
+## D-011 - Local-first validation with release-candidate hosted evidence
+
+**Status:** Active
+
+**Decision:** Normal development and pull-request validation runs locally and through CI against deterministic fixtures. Railway or another provider is reserved for committed release candidates and explicit hosted/physical-device evidence. Hosted success does not replace local regression coverage, and local success does not silently count as hosted evidence.
+
+**Reason:** Hosted infrastructure is needed for HTTPS, persistent storage, proxy/WebSocket, Linux runtime, and physical-device evidence, but requiring it for every iteration creates slow feedback and encourages testing unverified changes in the evaluation deployment.
+
+**Implications:** Briefs define fast pull-request and stronger release-candidate tiers separately. New realtime mutations must document and test invalidation/reconciliation semantics. Hosted checks are release gates, not the normal development loop.
+
+**Related briefs:**
+
+- P0-003

@@ -140,10 +140,10 @@ If a parent changes a group used by Morning Routine, People & Groups explains th
 
 ## Engineering readiness
 
-**Reviewed revision:** NOT REVIEWED
-**Readiness:** NOT REVIEWED
+**Reviewed revision:** 1  
+**Readiness:** READY  
 
-Engineering returns one consolidated readiness review before implementation. Readiness must inspect the current repository, the dated-membership migration, future-occurrence/status boundary, delete-reference interval rule, routine replay scope, route/sync inventory, and the deterministic phone journey. A result applies only to P0-004B r1.
+Engineering returned READY against revision 1 (see `reports/P0-004B-r1-engineering-readiness.md`). Inspection was against `main` @ `9feec29`. No blockers; material gaps are intentional contract deltas covered by D-018/D-019.
 
 ## Revision history
 

@@ -19,7 +19,7 @@
 
 ## Current focus
 
-Architecture accepts P0-004A r2 as the technical foundation, but Product did not accept its composite phone interaction. P0-004A r3 is the current material UX/bootstrap revision awaiting renewed Engineering readiness.
+Architecture accepts P0-004A r2 as the technical foundation, but Product did not accept its composite phone interaction. Engineering has returned READY against P0-004A r3; Architecture authorizes implementation of that revision.
 
 ## Internal work status
 
@@ -28,7 +28,7 @@ Architecture accepts P0-004A r2 as the technical foundation, but Product did not
 | P0-001 - Shared Morning Routine | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #1 | Product acceptance/evaluation |
 | P0-002 - Authenticated Household Authority | r1 | ACCEPTED | Project Lead evaluation | `brief/p0-002-authenticated-household-authority` | Product evaluation; future hosted release candidates require the hosted smoke/evidence gate |
 | P0-003 - Regression Safety and Contract Hardening | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #6 | Product evaluation; optional required-check configuration |
-| P0-004A - People & Groups UX Completion | r3 | IN REVIEW | Engineering readiness | `brief/p0-004a-people-groups-access` | Consolidated r3 readiness review; r2 readiness does not apply |
+| P0-004A - People & Groups UX Completion | r3 | READY | Engineering implementation | `brief/p0-004a-people-groups-access` | Implement exact r3 and return its Build Report for Architecture acceptance |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -51,7 +51,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Engineering performs a consolidated readiness review against P0-004A r3, including focused-state UX and fixture/bootstrap remediation safety.
+Engineering implements exact P0-004A r3 and returns its Build Report and required fictional-data phone-width screenshots for Architecture acceptance.
 
 ## Notes for all teams
 

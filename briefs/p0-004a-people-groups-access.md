@@ -1,7 +1,7 @@
 # BRIEF P0-004A - People & Groups UX Completion
 
 **Revision:** 3
-**Status:** IN REVIEW
+**Status:** READY
 
 Recommended lifecycle: DRAFT -> IN REVIEW -> READY -> IMPLEMENTING -> IMPLEMENTED -> ACCEPTED
 

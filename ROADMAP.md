@@ -34,7 +34,7 @@ Goal: prove that a real recurring household routine can be used quickly by six d
 
 - [ ] **Outcome:** A parent can use People & Groups as a clear phone directory with focused person, access, group, and household-activity states, while normal bootstrap remains free of fictional family members.
   - **Brief:** `P0-004A r3 - People & Groups UX Completion` (`briefs/p0-004a-people-groups-access.md`)
-  - **Status:** Material Product revision awaiting renewed Engineering readiness review.
+  - **Status:** Engineering readiness accepted; authorized for implementation against exact revision 3.
 
 ### LIKELY NEXT
 

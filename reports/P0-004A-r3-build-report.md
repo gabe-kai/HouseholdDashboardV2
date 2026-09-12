@@ -1,11 +1,12 @@
 # Build Report - BRIEF P0-004A r3
 
 **Brief revision implemented:** 3  
-**Engineering status:** IMPLEMENTED (FIX REQUIRED closed — awaiting Architecture re-acceptance)  
+**Engineering status:** IMPLEMENTED
+**Architecture status:** ACCEPTED (2026-09-11)
 **Branch:** `brief/p0-004a-people-groups-access`  
 **Commits:**  
 - `b4256ac` — r3 implementation (focused UX + fixture-free bootstrap)  
-- *correction pass uncommitted* — CSS/touch geometry, secret-safe screenshots, exhaustive cleanup inventory + tests (suggested message below)  
+- `b20744e` — CSS/touch geometry, secret-safe screenshots, exhaustive cleanup inventory + tests
 **Pull request:** N/A  
 
 ## Readiness
@@ -55,7 +56,7 @@ Prior disposable-copy rehearsal under `b4256ac` remains valid as operator proced
 
 ## Deviations from brief revision
 
-- None material. Correction commit SHA will land when the Project Lead/Coordinator commits the working tree; report names implementation SHA `b4256ac` now.
+- None material.
 
 ## Discoveries for Architecture
 
@@ -69,15 +70,6 @@ Prior disposable-copy rehearsal under `b4256ac` remains valid as operator proced
 - No generic member deletion UI/API.
 - Product Lead phone evaluation remains required after Architecture technical acceptance.
 
-## Suggested commit message (not committed)
-
-```
-P0-004A: close r3 FIX REQUIRED for controls, secrets, and cleanup
-
-Align choice-row tap targets, keep access screenshots secret-safe,
-and exhaust fixture cleanup references with regression coverage.
-```
-
 ## Suggested follow-up
 
-Architecture re-acceptance of r3. After commit, append the correction SHA to this report’s Commits line if desired. Product evaluation using the regenerated screenshot set.
+Project Lead product evaluation using the regenerated screenshot set and local phone flow. Return P0-004B group-backed Morning Routine audience to Planning & Design; no hosted deployment is required for this acceptance.

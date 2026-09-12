@@ -30,23 +30,24 @@ Goal: prove that a real recurring household routine can be used quickly by six d
   - **Brief:** `P0-003 r1 - Regression Safety and Contract Hardening` (`briefs/p0-003-regression-safety-contract-hardening.md`)
   - **Result:** Technically accepted and merged to `main` via PR #6 after exact local PR/RC scripts and GitHub Actions passed; required-check configuration remains an optional Project Lead operation.
 
-### CURRENT
-
-- [ ] **Outcome:** A parent can use People & Groups as a clear phone directory with focused person, access, group, and household-activity states, while normal bootstrap remains free of fictional family members.
+- [x] **P0-004A — People & Groups UX Completion:** A parent can navigate focused people, access, group, and household-activity states while normal bootstrap remains fixture-free and demo cleanup remains provenance-safe.
   - **Brief:** `P0-004A r3 - People & Groups UX Completion` (`briefs/p0-004a-people-groups-access.md`)
-  - **Status:** Implemented at `b4256ac`; same-revision Architecture acceptance corrections required before Product evaluation.
+  - **Result:** Technically accepted through `b4256ac` and correction `b20744e`; Product phone evaluation and branch integration remain separate.
 
-### LIKELY NEXT
+### CURRENT
 
 - [ ] **Outcome:** Morning Routine can consume a named group as a clear audience, giving each current group member one future occurrence while preserving overlap, prospective-change, and historical invariants.
   - **Planned brief:** `P0-004B - Group-backed Morning Routine audience` (not yet detailed).
-  - **Why likely:** People and groups only become a reusable household structure when one existing product workflow demonstrates their meaning.
+  - **Status:** Return to Planning & Design for the next bounded proposal; P0-004A technical acceptance supplies the repository baseline.
   - **Do not over-specify yet:** Exact effective-date and already-materialized-future reconciliation should follow P0-004A repository evidence.
+
+### LIKELY NEXT
+
+- [ ] **Outcome:** Today can present more than one real household responsibility, such as Kitchen, Cats, or Bathroom, without cloning Morning Routine-specific concepts or weakening authority/history.
+- [ ] Add only the rotation or eligibility behavior required by the first proven multi-responsibility examples.
 
 ### LATER
 
-- [ ] Multi-Responsibility Today for real household responsibilities such as Kitchen, Cats, and Bathroom.
-- [ ] Add prospective assignment patterns and only the rotation/eligibility needed by proven household examples.
 - [ ] Add retrospective completion, helper/cover/reassignment, and explicit credit while retaining the original assignment.
 - [ ] Support household exception days and contextual schedule additions/previews without a global weekday/weekend classification.
 

@@ -1,7 +1,7 @@
 # BRIEF P0-004A - People & Groups UX Completion
 
 **Revision:** 3
-**Status:** FIX REQUIRED
+**Status:** ACCEPTED
 
 Recommended lifecycle: DRAFT -> IN REVIEW -> READY -> IMPLEMENTING -> IMPLEMENTED -> ACCEPTED
 
@@ -138,6 +138,8 @@ Engineering returned READY against revision 3 (see `reports/P0-004A-r3-engineeri
 2. `reports/p0-004a-r3-screenshots/04-person-access.png` persists one-time setup material. Replace it with secret-safe access-state evidence captured before issuance or with the sensitive element excluded at capture. No report artifact may retain claim plaintext or another credential, including fictional/test credentials.
 3. Fixture cleanup is not yet exhaustive. Its relationship inventory omits at least legacy `sessions.member_id` and enrollment audit authorship through `enrollment_claims.created_by_membership_id`; it must also account for durable identity-bearing replay/audit payloads such as structure mutation receipts. Inventory all current durable references, block deletion when any non-seed-only reference exists, and test safe, renamed, same-name non-fixture, target-claim, creator/audit, legacy-session, group/history/personal, backup-failure, post-dry-run changed-state, and idempotent cases. Preserve dry-run, backup-first, transactional recheck, and disposable-copy-only rehearsal.
 4. Update the Build Report after correction with the actual implementation and correction commit SHAs, corrected acceptance evidence, and no retained secret. This is enforcement of the existing r3 contract and does not require revision 4 or a new readiness review.
+
+**Architecture reassessment:** ACCEPTED (2026-09-11). Correction commit `b20744e` resolves all four findings: choice controls and secondary actions meet the composed touch-target contract with geometry regression evidence; screenshots are secret-safe; fixture cleanup inventories the omitted session, enrollment-authorship, and identity-bearing receipt relationships with the required failure/race/idempotency matrix; and the Build Report identifies both implementation commits. Engineering reports exact `validate:pr` and `validate:rc` passes. Architecture independently confirmed lint, typecheck, 57 Vitest tests, production build, and all 15 Chromium scenario results; the sandboxed wrapper stalled in its browser-install/teardown process, so that interrupted wrapper run is not separately represented as a clean gate. Hosted evidence was not required.
 
 ## Revision history
 

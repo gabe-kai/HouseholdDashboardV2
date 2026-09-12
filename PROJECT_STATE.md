@@ -19,7 +19,7 @@
 
 ## Current focus
 
-Engineering returned **READY** for `P0-004B r1 - Group-backed Morning Routine` against `main` @ `9feec29` (see `reports/P0-004B-r1-engineering-readiness.md`). Waiting on Architecture ACCEPT / PROCEED before implementation.
+Architecture accepted Engineering's READY interpretation of `P0-004B r1 - Group-backed Morning Routine` without revision. Engineering is authorized to implement r1 on the existing brief branch.
 
 ## Internal work status
 
@@ -29,7 +29,7 @@ Engineering returned **READY** for `P0-004B r1 - Group-backed Morning Routine` a
 | P0-002 - Authenticated Household Authority | r1 | ACCEPTED | Project Lead evaluation | `brief/p0-002-authenticated-household-authority` | Product evaluation; future hosted release candidates require the hosted smoke/evidence gate |
 | P0-003 - Regression Safety and Contract Hardening | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #6 | Product evaluation; optional required-check configuration |
 | P0-004A - People & Groups UX Completion | r3 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #8 | Product phone evaluation |
-| P0-004B - Group-backed Morning Routine | r1 | IN REVIEW | Architecture (post-readiness) | `brief/p0-004b-group-backed-morning-routine` | Architecture ACCEPT / PROCEED |
+| P0-004B - Group-backed Morning Routine | r1 | READY | Engineering | `brief/p0-004b-group-backed-morning-routine` | Implementation and Build Report against r1 |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -53,7 +53,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Architecture responds to Engineering's P0-004B r1 READY review (ACCEPT / PROCEED, or revise). Engineering must not implement until that response.
+Engineering implements only `P0-004B r1` and returns its Build Report to Architecture for technical acceptance.
 
 ## Notes for all teams
 

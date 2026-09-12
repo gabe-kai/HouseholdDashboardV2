@@ -1,7 +1,7 @@
 # BRIEF P0-004B - Group-backed Morning Routine
 
 **Revision:** 1
-**Status:** IN REVIEW
+**Status:** READY
 
 Recommended lifecycle: DRAFT -> IN REVIEW -> READY -> IMPLEMENTING -> IMPLEMENTED -> ACCEPTED
 
@@ -144,6 +144,8 @@ If a parent changes a group used by Morning Routine, People & Groups explains th
 **Readiness:** READY  
 
 Engineering returned READY against revision 1 (see `reports/P0-004B-r1-engineering-readiness.md`). Inspection was against `main` @ `9feec29`. No blockers; material gaps are intentional contract deltas covered by D-018/D-019.
+
+**Architecture disposition:** ACCEPT / PROCEED. Engineering's interpretation matches r1; implementation is authorized without a contract revision.
 
 ## Revision history
 

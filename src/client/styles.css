@@ -344,6 +344,39 @@ textarea {
   background: #fff;
 }
 
+/* Choice rows must win over `.form-grid label { display: grid }` so the
+   native control sits beside its text as one full-row tap target. */
+.form-grid label.choice-row,
+.choice-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: var(--touch);
+  padding: 0.45rem 0.35rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.form-grid label.choice-row input[type="radio"],
+.form-grid label.choice-row input[type="checkbox"],
+.choice-row input[type="radio"],
+.choice-row input[type="checkbox"] {
+  width: 1.25rem;
+  height: 1.25rem;
+  min-width: 1.25rem;
+  min-height: 1.25rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  flex: 0 0 auto;
+  align-self: center;
+  accent-color: var(--accent);
+}
+
 .weekday-row,
 .assignee-row {
   display: flex;
@@ -575,18 +608,31 @@ textarea {
   font-weight: 650;
 }
 
-.choice-row {
-  display: flex;
-  gap: 0.65rem;
-  align-items: flex-start;
-  min-height: var(--touch);
-  padding: 0.35rem 0;
-}
-
 .button-row {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
+}
+
+/* Secondary actions in People & Groups focused flows meet --touch. */
+.people-groups .button-row > button,
+.people-groups .focused-state > button:not(.back-link):not(.occurrence-header),
+.people-groups .form-grid .button-row > button {
+  min-height: var(--touch);
+  min-width: var(--touch);
+  padding: 0.55rem 0.9rem;
+  border-radius: 0.4rem;
+  border: 2px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.people-groups .button-row > button.primary,
+.people-groups .form-grid .button-row > button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .person-detail,

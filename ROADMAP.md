@@ -32,9 +32,9 @@ Goal: prove that a real recurring household routine can be used quickly by six d
 
 ### CURRENT
 
-- [ ] **Outcome:** A parent can see and organize household people, understand app access status, and create simple named groups without treating enrollment or permissions as the household model.
-  - **Brief:** `P0-004A r2 - People, Groups, and Access Status` (`briefs/p0-004a-people-groups-access.md`)
-  - **Status:** Revised Architecture contract in Engineering readiness review.
+- [ ] **Outcome:** A parent can use People & Groups as a clear phone directory with focused person, access, group, and household-activity states, while normal bootstrap remains free of fictional family members.
+  - **Brief:** `P0-004A r3 - People & Groups UX Completion` (`briefs/p0-004a-people-groups-access.md`)
+  - **Status:** Material Product revision awaiting renewed Engineering readiness review.
 
 ### LIKELY NEXT
 

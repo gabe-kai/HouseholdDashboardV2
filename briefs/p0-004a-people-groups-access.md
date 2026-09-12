@@ -1,7 +1,7 @@
-# BRIEF P0-004A - People, Groups, and Access Status
+# BRIEF P0-004A - People & Groups UX Completion
 
-**Revision:** 2
-**Status:** FIX REQUIRED
+**Revision:** 3
+**Status:** IN REVIEW
 
 Recommended lifecycle: DRAFT -> IN REVIEW -> READY -> IMPLEMENTING -> IMPLEMENTED -> ACCEPTED
 
@@ -9,99 +9,104 @@ A material contract change increments the revision and invalidates previous Engi
 
 ## Why
 
-The application authenticates household memberships, but a parent still discovers people indirectly through Morning Routine and enrollment. Before more responsibility types depend on that model, the household's people, access state, and reusable named groups need one direct, understandable home.
+P0-004A r2 established the people, access, and group model, but Product evaluation found the phone experience difficult to understand. The current People & Groups page simultaneously renders the directory, add-person form, selected-person editor, access setup, group management, household-visible personal tasks, and the full household Morning Routine. Selecting a row changes content below the viewport instead of establishing a clear context.
 
-P0-004A establishes that foundation without yet making groups a routine audience. Group-backed Morning Routine behavior has distinct prospective and historical semantics and remains the follow-up P0-004B slice.
+The same evaluation exposed a separate repository defect in the normal local bootstrap path: development auto-seeds six fictional Reed memberships by default, and bootstrap also invokes that seed for an empty database. P0-004A is not complete while demo records masquerade as a real household.
+
+Revision 3 preserves the working r2 domain/API contracts while completing the product's progressive-disclosure experience and separating explicit demo fixtures from normal bootstrap.
 
 ## Learning question
 
-Can a parent understand and maintain the household's people, app-access state, and named groups on a phone without learning the underlying identity, token, or capability model?
+Can a parent understand and maintain the household's people, app-access state, and named groups on a phone without learning the identity/token model or searching through one long administration page?
 
 ## Player experience
 
-An authorized parent opens Household → People & Groups and recognizes everyone in the household, including people with no account or assigned work. They can add a person, correct that person's name or Adult/Child classification, understand whether access is set up, safely prepare or replace access setup, and create/edit a group such as Kids. The normal flow talks about people and access—not membership IDs, claims, or grants.
+People & Groups opens as a compact directory. Tapping a person or group replaces that overview with a focused, primarily read-only view and an obvious path back. Add, edit, and access setup appear only when deliberately opened. Household activity remains available through a focused secondary view rather than being stacked beneath the directory. A newly bootstrapped household contains only people the parent intentionally establishes.
 
 ## Project card
 
-**Card title:** See and organize the people in the household
+**Card title:** Make People & Groups easy to use
 
 **Suggested column:** Up Next
 
-**Player-facing goal:** Give the household a clear people list, understandable access status, and simple reusable groups.
+**Player-facing goal:** Turn the working household directory into a clear phone experience with focused people, access, and group flows.
 
-**Done when:** A parent can add an unenrolled child, return later and understand that child's access state, and create or edit Kids comfortably from a phone.
+**Done when:** A parent can recognize the household, open or edit one person, manage access, create or edit Kids, and return without exploratory scrolling—and a fresh household contains no fictional family.
 
-**Tracking relationship:** Standalone first half of Product's P0-004 outcome; enables P0-004B group-backed Morning Routine.
+**Tracking relationship:** Continues the existing P0-004A card; do not create a second product card.
 
 ## Current system
 
-- `household_memberships` is already the household-person record. Its `user_id` is nullable and its status is `pending|active`; P0-002 preserved legacy member IDs as pending memberships.
-- `users`, `user_credentials`, and `auth_sessions` represent app access separately. Claiming a membership attaches a user, activates the membership, assigns the selected existing grant preset, and creates a session.
-- `enrollment_claims` stores a token digest, membership/household, preset, creation/expiry/consumption timestamps, and creator. It has no revocation timestamp or read model for person-centered setup status. Plaintext is returned only when a claim is issued.
-- `POST /api/v1/enrollment/claims` can currently create a membership and claim together when no membership ID is supplied. The P0-004A user flow must instead create the person first and issue setup for that existing person.
-- `GET /api/v1/memberships` exposes the household directory. Routine revisions reference individual membership IDs through `revision_assignees`; occurrences snapshot accountable membership IDs and names.
-- The current grants include `household.member.enroll` but no capability whose meaning is household-structure management. Existing manager presets receive `household.member.enroll`.
-- There is no group persistence or API. `SyncHub`, the P0-003 route-policy inventory, protected-behavior catalog, and local/CI validation tiers are established extension points.
+- P0-004A r2 is implemented on `brief/p0-004a-people-groups-access` through `740d141`; its corrected Build Report names commits `656db28` and `740d141`. Exact local RC validation passed with 48 Vitest tests and 28 Chromium/WebKit scenarios.
+- `PeopleGroupsView` currently appends selected-person detail and edit/access controls below the directory, keeps Add person permanently open, embeds group editing, then renders household-visible personal tasks. `App.tsx` appends `HouseholdProgressView` beneath the component for manager-capable sessions.
+- The app uses internal React tab state and has no routing dependency. P0-004A subviews can be exclusive in-app states with explicit Back actions; browser-history routing is not required for this slice.
+- The r2 server contracts already separate membership from account access, provide versioned person/group edits, one-actionable-claim setup lifecycle, stable capabilities, household isolation, mutation replay, and invalidation/re-read synchronization.
+- Normal development currently sets `autoSeed` true unless `AUTO_SEED=0`; `.env.example` sets `AUTO_SEED=1`. Hosted mode forbids auto-seeding.
+- `issueBootstrapClaim()` calls `seed("UTC")` when no household exists. `AppStore.seed()` creates the fixed evaluation household plus six fixed Reed memberships. The imported canonical seed module describes only three differently named members while `store.ts` separately defines the six-member list.
+- Local `runtime/dev.sqlite` inspection on 2026-09-11 found exact fixture IDs ending `202`–`206` with no attached user, session, claim, assignment, occurrence, execution, personal layer/proposal/task, group membership, or other meaningful relationship; fixture ID `201` has active/session/decision relationships and is not safely removable. This evidence describes the inspected local file only and must not be generalized by display name.
 
 ## Behavioral contract
 
-1. **Directory and projections.** Every active or pending membership in the current household appears in People & Groups regardless of account, enrollment, routine assignment, personal work, login history, or today's activity. Any active household membership may read basic people/group structure. Enrollment-claim details and structure mutations remain capability-protected.
-2. **Independent person creation.** A membership with `household.structure.manage` can add a person using a trimmed display name and required `Adult|Child` classification. The server creates a pending membership with no user, credentials, claim, grants, group, or routine assignment. The UI shows the person after authoritative success; this administrative mutation does not use the checklist outbox.
-3. **Stable person identity and editing.** Membership ID—not display name—is identity, so duplicate display names are allowed. An authorized manager can edit display name and classification. Those edits do not alter users, credentials, sessions, grants, groups, existing occurrence snapshots, execution facts, or other historical records.
-4. **Existing-member migration.** Add a nullable descriptive classification field constrained to `adult|child`. Existing memberships migrate with classification unset because the repository contains no trustworthy age/classification fact. The UI says `Classification not set`; an authorized manager can correct it. New people require Adult or Child. Classification never grants or revokes authority.
-5. **Structure authority.** Introduce `household.structure.manage` for adding/editing people and creating/editing/deleting groups. Add it to the existing manager preset and backfill it only to memberships that currently hold `household.member.enroll`; this preserves current manager behavior without inferring Adult/Child. `household.member.enroll` continues to govern access setup. No granular permission editor is introduced.
-6. **Person detail.** A person view answers: who the person is, their classification, access state, groups, and current direct Morning Routine involvement. “Current” means inclusion in the latest shared revision effective on the household's current date, computed without materializing an occurrence. P0-004A does not show `Via group`; that arrives when P0-004B adds a group consumer.
-7. **Access-state read model.** For a membership without an attached active user: an unconsumed, unrevoked, unexpired enrollment claim is `Setup ready`; if none exists and the latest non-revoked setup claim expired, state is `Setup expired`; otherwise it is `Not set up`. A membership attached to an enabled user is `Access set up`. APIs return this state and safe timestamps, never token digests, plaintext tokens, passphrase data, or session data.
-8. **Safe setup lifecycle.** Normal authenticated setup issuance must target an existing, same-household membership that does not already have a user. At most one actionable enrollment claim exists per membership. Issuing a replacement transactionally revokes the previous actionable claim; cancellation revokes it without removing the person. Claim consumption activates access and invalidates any other actionable claim. Plaintext setup material is returned once at issuance and cannot be retrieved later; a returning parent sees status and may create a replacement after an explicit explanation.
-9. **Access-level choice remains explicit.** Adult/Child does not silently select grants. Setup presents the existing presets in household language: `Household manager` (manage people/access/groups, shared Morning Routine, and approvals), `Independent member` (change their own routine directly), and `Guided member` (suggest routine changes for approval). Supporting text may mention own checklist/personal-task abilities, but raw grant names remain hidden. The selected preset is stored on the claim and applied only when claimed. No individual-grant editor is added.
-10. **Simple groups.** A `household.structure.manage` membership can create a group with a trimmed 1–80-character name and zero or more current same-household membership IDs. Names must be unique within a household after the same normalization/case-fold comparison; duplicates return the stable validation/conflict response used by the API. Display names remain non-unique.
-11. **Group editing and deletion.** The same authority can rename a group, replace its member set, or delete it after a clear confirmation. Membership replacement is transactional, rejects foreign/nonexistent membership IDs without partial writes, and uses an expected version so concurrent edits conflict and re-read rather than silently overwrite. In P0-004A deletion removes only the group and its join rows because no feature may reference groups yet; it never removes people or history.
-12. **Groups remain structural.** A group grants no capability, changes no access state, widens no personal-task visibility, creates no assignment or occurrence, and supports no nesting, rules, schedules, or dynamic queries. Removing a person from a group removes only that association.
-13. **Mutation safety.** Create-person, create-group, and setup issuance/replacement accept client mutation IDs so ambiguous retries cannot create duplicate people, groups, or claims. Person/group replay returns the original safe result. Setup replay returns the same claim identity/status but never replays plaintext; it explicitly reports that setup material was already issued so the parent may intentionally replace it. Edit operations are desired-state updates guarded by current version where applicable. Errors retain P0-003 machine codes, safe messages, and request IDs.
-14. **Authorization and isolation.** All reads/writes are server-scoped to the authenticated household. Mutations enforce session, origin/CSRF, and the exact capability. A foreign person/group/claim ID is indistinguishable from a missing one. Group membership cannot cross households.
-15. **Realtime convergence.** Successful person, access-state, and group mutations emit household-scoped invalidations. Open authorized clients re-read authoritative supporting data urgently enough that People & Groups and an open person/group view converge without manual reload. Duplicate/missed events remain safe; reconnect and visibility recovery converge through reads. No P0-004A form is added to the durable checklist outbox.
-16. **Mobile and accessible interaction.** Core flows use vertical, semantically labelled views with practical touch targets, keyboard operation, logical focus, textual access/selection/error states, field-associated errors, and no horizontal scrolling, hover dependency, drag-and-drop, or modal chain at the established phone viewport.
+1. **Compact overview.** The default People & Groups state shows a heading, people/group counts, concise person rows, Add person, concise group rows, Create group, and—when needed—a short empty-group explanation. It does not render an open person/group editor, access credential, household-visible task list, or full Morning Routine checklist.
+2. **Useful rows.** A person row shows name, known Adult/Child role, useful access state, and an explicit affordance that it opens detail. An unset migrated role is omitted from the overview rather than repeated as a warning. Group rows show name, member count, and the same navigational affordance. Rows are coherent full-width tap targets.
+3. **Focused state model.** People & Groups has mutually exclusive states for overview, person detail, add person, edit person, access management, group detail, create group, edit group, and household activity. Only one primary state renders at phone width. Each non-overview state has an accessible Back to People & Groups—or Back to the parent detail—action, a state-specific heading, and focus/scroll placement at that heading so a tap produces an unmistakable context change. No new routing dependency is required.
+4. **Person detail is read-first.** Person detail shows name, Role, access summary, groups, and current direct Morning Routine involvement. Editing and access management are explicit secondary actions; neither form appears on initial detail. If the role is unset, detail says `Role not selected` and offers Edit person to authorized users.
+5. **Focused person forms.** Add person and Edit person are separate short states using `Name` and `Role` copy. New people require Adult or Child and remain independent from access setup. Migrated people may retain Not selected until edited. Native radio semantics are preserved, but each option is one aligned label/control tap target with no oversized detached control.
+6. **Focused access management.** Person detail presents only the human access state and relevant action. The Access state contains the existing r2 access-level choices, issue/cancel/replace controls, one-time setup material, and explanations. Raw claim/grant terminology remains hidden; Adult/Child never selects authority. The r2 one-actionable-claim, revocation, replay, and one-time-secret contracts remain unchanged.
+7. **Group view before edit.** Group detail first shows name and member names. Create group and Edit group/Edit members are focused forms; the checkbox list appears only there. Delete remains a secondary, confirmed action within group editing. Existing normalized-name, version-conflict, transactional membership, replay, isolation, and structural-only contracts remain unchanged.
+8. **Household activity placement.** The overview may contain one restrained `View household activity` action but no activity records. It opens a focused state containing the existing household Morning Routine progress and household-visible personal tasks. This preserves manager progress access and personal-task visibility without treating activity as household structure. Users retain only the data their existing capabilities/visibility permit; no private task becomes visible.
+9. **Realtime focused-state convergence.** Existing person/access/group invalidations refresh overview counts/rows and any currently open affected detail. If a remotely deleted group is open, return safely to the overview with a human message. Duplicate/missed events, reconnect, and visibility recovery continue to converge through authoritative reads without forcing a manual reload or silently dropping the user's current context.
+10. **Normal bootstrap is fixture-free.** Development defaults to no automatic seed. `.env.example` and operator documentation use `AUTO_SEED=0`; only explicit test/demo configuration or `npm run db:seed` creates fictional fixtures. On an empty database, `auth:bootstrap` creates only the minimum household in the configured household timezone and bootstrap claim needed for the first manager to establish access; it does not call the demo seed or create additional people. Hosted fail-closed behavior remains unchanged.
+11. **One fixture manifest.** Consolidate the evaluation household and six fixed membership IDs/names/presets into one canonical explicit demo fixture manifest used by store seeding and tests. Remove the conflicting duplicated three-member/six-member definitions. Tests continue to use fictional deterministic data only.
+12. **Safe existing-fixture remediation.** Provide a documented operator command with dry-run default and explicit apply mode. It considers only IDs from the canonical fixture manifest in that manifest's fixed household—not display names. Apply first creates a normal database backup, then transactionally removes only a fixture membership for which the server proves: pending status, no attached user, no session or enrollment relationship, no routine revision/occurrence/execution relationship, no personal layer/proposal/task, no group membership, and no other durable reference. Seed-only grants and the legacy compatibility `members` row may be removed with that proven-safe membership. Blocked candidates are reported without exposing private content and remain unchanged. This is not a generic member-deletion API or UI.
+13. **Current local cleanup expectation.** Against the inspected `runtime/dev.sqlite`, the remediation dry run should identify fixture IDs `202`–`206` as candidates and block `201`; apply may remove only candidates that still satisfy all predicates at execution time. The operator—not application startup—chooses whether to apply it. The command must remain safe if local state changes after this brief was written.
+14. **Visual/accessibility baseline.** Phone layout drives the implementation. Overview/detail distinction, typography, spacing, lighter row separation, restrained status treatment, and aligned choice controls should create a calm household-oriented hierarchy without a new design system. Primary workflows have practical touch targets, keyboard operation, logical focus, text/non-color state, field-associated errors, no horizontal scroll, and no hover or drag dependency.
+15. **Administrative response behavior.** Person/group/access forms remain server-authoritative rather than using the checklist outbox. Submissions immediately show pending feedback, disable accidental duplicate submission, preserve entered values on recoverable error, surface safe household-language errors, and navigate/show success only after authoritative confirmation.
 
 ## Implementation boundary
 
-- Add ordered forward migration(s) after the current schema for nullable person classification, `household.structure.manage`, enrollment-claim revocation/status support, groups, group memberships, group versioning, and minimal mutation-receipt persistence. Preserve all IDs and occurrence/history data.
-- Extend the existing store/service boundary, shared Zod schemas, Fastify routes, route-policy inventory, and `SyncHub` resource union. Prefer cohesive person/access/group methods over a generalized administration framework.
-- Evolve Household into the canonical People & Groups path. Reuse the existing application shell and person-centered enrollment endpoint behavior; the old Enroll destination may redirect into or become a thin access overview, but must no longer be the primary unexplained token form.
-- Retain server-authoritative forms with explicit pending/success/error feedback. Do not add administrative mutations to IndexedDB unless Engineering demonstrates a concrete requirement and returns it to Architecture.
-- Extend `docs/protected-behaviors.md` with people/group/access invariants and the sync matrix. Add direct API, migration, domain/store, and Chromium/WebKit phone-width evidence. Update `ARCHITECTURE.md` and the Build Report with facts actually verified.
+- Refactor `PeopleGroupsView` into small focused view/form components or an equivalent cohesive client structure. Use component-local/in-app navigation state and explicit Back actions; do not introduce a router solely for r3.
+- Move `HouseholdProgressView` and household-visible personal tasks into the focused Household activity state while preserving their existing data sources, authority, synchronization, and privacy.
+- Adjust client styling for hierarchy, row affordances, compact overview, radio/checkbox alignment, focus, and phone behavior. This is not a general design-system rewrite.
+- Change development configuration/bootstrap so normal empty startup is fixture-free. Consolidate the explicit demo fixture manifest and retain deterministic test setup.
+- Add a narrowly scoped cleanup script and package command with dry-run/apply behavior, automatic pre-apply backup, exact-ID/provenance checks, exhaustive relationship checks, transactionality, and machine-testable results. Do not run apply automatically or as part of migration/startup.
+- Update browser tests that assert the r2 composite page to assert behavior across focused states. Extend protected-behavior/sync documentation and operator docs where contracts change.
 
 ## Do not change
 
-- Do not implement group selection in Morning Routine, audience resolution, overlap deduplication, prospective assignment changes, or future-occurrence reconciliation; those belong to P0-004B.
-- Do not implement P0-005 responsibility types, Today hierarchy changes, rotation, eligibility, helpers, coverage, schedule engines, or exception days.
-- Do not implement member deletion/departure/inactivation, multi-household switching, nested/query groups, group permissions, age-derived authority, a granular grant editor, broad account recovery, MFA, or device management.
-- Do not use display name as identity or infer classification from capabilities except for the one-time structure-grant backfill specified above.
-- Do not expose claim plaintext after issuance, token digests, credentials, private task content, or capability internals in ordinary UI, URLs, logs, fixtures, or reports.
-- Do not weaken historical snapshots, household-time authority, authorization/isolation, private-task visibility, optimistic checklist execution, outbox identity safety, API/error contracts, or P0-003 validation gates.
+- Do not redesign or replace the r2 people, access, group, authority, isolation, idempotency, versioning, or historical-integrity model except for the explicit fixture/bootstrap changes above.
+- Do not implement group-backed Morning Routine, audience resolution, rotation, P0-005 responsibilities, broad global navigation, a routing framework, or a new design system.
+- Do not add generic person deletion, departure/inactivity, multiple households, device administration, granular permission editing, account recovery, MFA, nested/query groups, or group permissions.
+- Do not identify fixture records by display name. Do not remove any fixture-ID record with a user, claim, session, assignment, occurrence, execution, proposal, task, personal layer, group membership, or unknown durable reference.
+- Do not expose claim plaintext after issuance, token digests, credentials, private task content, or capability internals in UI, URLs, logs, fixtures, cleanup output, or reports.
+- Do not weaken P0-001/P0-002 history and execution, P0-003 protected contracts and validation tiers, or P0-004A r2 synchronization/privacy behavior.
 
 ## Acceptance tests
 
-1. **Migration preservation:** Fresh migration and populated P0-003-baseline migration both succeed and are idempotent. Existing membership/user/claim/group-independent IDs and all sampled occurrence, step, report, proposal, personal-layer, and personal-task facts compare equal. Existing classifications are unset; existing `household.member.enroll` holders alone receive `household.structure.manage`.
-2. **Independent creation/edit:** Through direct API and phone UI, an authorized manager creates Elizabeth as Child without a user, claim, grants, assignment, or task; she appears after reload. The manager edits her name/classification without changing an existing historical occurrence snapshot. Replaying the create mutation returns the same membership. Duplicate display names create distinct stable IDs.
-3. **Authority matrix:** Direct API tests prove basic same-household reads, `household.structure.manage` mutations, and `household.member.enroll` setup actions independently. Missing grants, missing/wrong CSRF, disallowed origin, and cross-household IDs are rejected with no partial write or existence leak. Hidden controls are separately verified but do not count as authorization evidence.
-4. **Person detail and responsibilities:** Person detail shows classification (including migrated `Classification not set`), access state, groups, and current direct Morning Routine involvement derived from the household-date-effective revision without creating an occurrence.
-5. **Setup lifecycle:** Automated time-controlled tests prove Not set up → Setup ready → Access set up, Setup ready → Setup expired, cancellation → Not set up, and replacement revocation. Only the newly issued plaintext is returned once; list/detail/reload/replay responses expose safe status/timestamps only and replay explains that the secret was already issued. Replays do not create extra claims, and an already-enrolled person or revoked/expired/consumed token cannot be claimed.
-6. **Access preset independence:** Phone UI presents `Household manager`, `Independent member`, and `Guided member` with understandable consequences and submits the corresponding existing preset separately from Adult/Child. Changing classification does not change grants; claiming applies exactly the selected preset plus no structure authority unless that preset defines it.
-7. **Group lifecycle:** A parent creates empty and populated groups, rejects a normalized duplicate name, renames Kids, transactionally replaces members, handles stale-version conflict by re-reading, and deletes an unreferenced group after confirmation. Person rows and historical data remain unchanged. Create replay returns the same group.
-8. **Group isolation and privacy:** Foreign/nonexistent membership IDs cannot enter a group; another household cannot observe group records/events; group membership grants no capability and does not expose another member's private personal tasks.
-9. **Realtime recovery:** In two same-household authenticated browser contexts, add/edit person, setup-state, and create/edit/delete group mutations update an already-open relevant view without manual reload. Another household receives no event. Duplicate notification plus forced missed-notification reconnect/visibility paths converge through authoritative reads.
-10. **Mobile journey and accessibility:** Chromium and WebKit at the established phone viewport complete People & Groups list, add/edit person, person detail, prepare/cancel/replace setup, create/edit/delete group, validation/conflict recovery, and reload-return journeys. Selected members and access states are textual, controls have accessible names, focus/errors are usable, and no primary flow requires horizontal scrolling.
-11. **Regression gates:** `npm run validate`, `npm run validate:pr`, and `npm run validate:rc` pass exactly. The P0-003 route-policy completeness test, protected-behavior catalog, sync matrix, migration baseline, authorization/isolation, proposal sync, outbox, personal-task visibility, and historical-integrity evidence remain green. The Build Report separates new from reused evidence and local from any hosted evidence.
+1. **Overview purpose:** At phone width, opening People & Groups shows only compact people/groups structure, counts, concise navigable rows, Add person/Create group, and the empty-group explanation when applicable. No editor, access credential/form, household-visible task record, or Morning Routine checklist is rendered before its explicit action.
+2. **Person navigation:** Tapping Eli replaces the overview with focused read-only detail whose heading receives focus/is visible. Role, access, groups, and direct responsibility summary are present; no edit controls appear until Edit person. Back returns to the overview without exploratory scrolling.
+3. **Add/edit person:** Focused Add person creates Elizabeth without access setup and returns to Elizabeth detail or the overview with clear success. Focused Edit person uses `Name`/`Role`; aligned native radio rows work by label tap, keyboard, and screen reader. Migrated unset role is omitted from overview but clear/actionable on detail. Existing r2 API/history tests remain green.
+4. **Access flow:** From Elizabeth detail, Set up access opens only the access workflow. Existing preset explanations, setup-ready/expired/access-set-up states, one-time material, cancellation/replacement, reload, and replay behavior remain correct. Back returns to Elizabeth detail, not an unrelated page position.
+5. **Group navigation:** Overview empty state teaches groups briefly. Create Kids in a focused form, land on its read-only detail, then explicitly edit members/name and save. Checkboxes are coherent tap targets. Delete requires confirmation and returns to overview without deleting people/history. Version conflict re-reads and gives actionable feedback.
+6. **Household activity:** People & Groups renders no inline activity. The explicit Household activity state shows the same authorized household Morning Routine progress and household-visible personal tasks previously available; manager live progress and private-task exclusion tests pass. Back returns to the directory.
+7. **Focused realtime:** With two authorized contexts, remote person/access/group mutations update the open overview or affected focused detail without reload. Remote deletion of the open group exits safely with a message. Cross-household, duplicate-event, reconnect, and visibility-recovery protections remain green.
+8. **Fresh normal bootstrap:** With an empty database and default development configuration, application startup creates no household/member fixture. Running `auth:bootstrap` and claiming it creates one household with exactly the claimed manager and no Reed/demo memberships. Restart/reload preserves that state. Hosted still rejects auto-seed.
+9. **Explicit demo/test fixture:** Explicit `db:seed`, test profile, or explicitly enabled demo seeding creates the canonical deterministic fictional fixture. Store/tests import one manifest; no conflicting member list remains. Existing integration/e2e fixtures remain deterministic.
+10. **Cleanup dry run:** Against fixtures containing safe, unsafe, renamed, and same-name non-fixture people, dry run selects only exact manifest IDs in the manifest household and changes nothing. Display names never select a candidate. Output reports candidate/blocked counts and blocking relationship categories without private content.
+11. **Cleanup apply:** Apply creates a backup, rechecks predicates transactionally, removes only safe fixture memberships plus seed-only grants/compatibility rows, and leaves unsafe/non-fixture people and all durable facts byte/field-equivalent. Re-running is idempotent. A simulated backup failure or newly introduced reference aborts deletion.
+12. **Current local remediation rehearsal:** Using a disposable copy of `runtime/dev.sqlite`, dry run identifies `202`–`206` as candidates and blocks `201`; apply removes only still-safe candidates. The real local database is not mutated by automated tests or Engineering without explicit Project Lead instruction.
+13. **Phone/accessibility and visual evidence:** Chromium and WebKit at the established phone viewport complete overview, person detail/edit/add/access, group detail/edit/create, household activity, and Back journeys without long composite-page discovery, horizontal scrolling, detached choice controls, inaccessible names, broken focus, or color-only state. The Build Report includes fictional-data phone-width screenshots of at least the overview, person detail, person edit/access, and group detail/edit states for Product evaluation.
+14. **Regression gates:** `npm run validate`, `npm run validate:pr`, and `npm run validate:rc` pass exactly. The Build Report distinguishes new/reused evidence, records fixture-remediation rehearsal without private content, and separately reports any optional hosted evidence.
 
 ## Dependencies
 
-- P0-003 r1 technically accepted and its local/CI gates active on the integration baseline.
-- Existing P0-002 membership, enrollment, capability, migration, and synchronization contracts.
-- No new external service, paid account, email delivery, or secret-bearing dependency.
+- P0-004A r2 implementation and corrected Build Report on the current branch.
+- Existing P0-003 protected-behavior, route-policy, migration, PR, and RC validation gates.
+- Existing backup command for the remediation precondition.
+- No new runtime service, account, paid dependency, router, or secret-bearing integration.
 
 ## Relevant decisions
 
-- D-002 - Single-process TypeScript web application
 - D-003 - Versioned definitions and snapshotted occurrences
 - D-006 - Users authenticate; memberships carry household authority
 - D-010 - Personal task ownership and visibility are separate facts
@@ -110,24 +115,27 @@ An authorized parent opens Household → People & Groups and recognizes everyone
 - D-013 - Groups are named household sets, not authority or assignment engines
 - D-014 - Household structure management has its own capability
 - D-015 - Enrollment setup has one actionable, one-time-secret lifecycle
+- D-016 - People & Groups uses exclusive progressive-disclosure states
+- D-017 - Demo fixtures are opt-in and remediated only by stable provenance plus reference safety
 
 ## Known risks / assumptions
 
-- The existing pending-membership shape appears sufficient for an unenrolled person, but Engineering must verify claim, session, and seed interactions during readiness.
-- Existing data contains no reliable Adult/Child fact; `Classification not set` is an intentional migration state, not a guessed product fact.
-- The current three grant presets remain the access-level choices in this slice. Their user-facing names/descriptions are presentation work; changing their grant contents beyond adding `household.structure.manage` to the manager preset requires Architecture review.
-- Group-backed routine audience and already-materialized-future behavior remain deliberately unresolved until P0-004B. P0-004A must not introduce hidden group consumers.
+- The focused-state model deliberately uses explicit in-app Back actions rather than introducing URL/deep-link/browser-history semantics. Product may revisit routing after broader navigation evidence exists.
+- The current local cleanup result is time-sensitive. Engineering must test on a disposable copy and the operator command must re-evaluate every predicate at apply time.
+- Existing demo household name/provenance is currently implicit in fixed IDs. Consolidating one canonical manifest is required before the cleanup command can be authoritative.
+- Visual acceptance cannot be reduced to automated assertions. Product Lead phone evaluation remains required after Architecture technical acceptance.
 
 ## Engineering readiness
 
-**Reviewed revision:** 2
-**Readiness:** READY
+**Reviewed revision:** NOT REVIEWED
+**Readiness:** NOT REVIEWED
 
-Engineering returned READY against revision 2 (see `reports/P0-004A-r2-engineering-readiness.md`) and implemented r2.
+Engineering must perform a new consolidated readiness review against revision 3. Revision 2 readiness does not apply.
 
-**Architecture acceptance review:** FIX REQUIRED (2026-09-11). The implementation evidence is otherwise consistent with r2, but the Build Report must correct its repository metadata: it currently says `Commits: N/A (not committed)` even though the implementation is committed at `656db28`. Update the report to name the actual commit and final branch state, then return it for technical acceptance. This is a same-revision factual writeback; no new readiness review is required.
+**Prior revision disposition:** Architecture accepts the corrected r2 implementation evidence as the technical foundation through `740d141`; Product did not accept the r2 composite phone experience. Revision 3 supersedes r2 for product completion and requires new readiness and implementation review.
 
 ## Revision history
 
-- **r1:** Initial bounded People, Groups, and person-centered access-status slice derived from Product's P0-004 proposal.
-- **r2:** Corrected lifecycle status; separated structure/enrollment authority; resolved migrated classification, enrollment replacement/cancellation, group validation/deletion/concurrency, mutation replay, and direct-responsibility-summary contracts; strengthened mobile, isolation, synchronization, migration, and regression evidence.
+- **r1:** Initial People, Groups, and person-centered access-status slice.
+- **r2:** Separated structure/enrollment authority and defined classification, safe setup, group lifecycle/concurrency, replay, synchronization, and regression contracts.
+- **r3:** Product-requested UX completion: exclusive mobile overview/detail/edit/access/activity states, fixture-free normal bootstrap, canonical opt-in demo fixtures, and dry-run-first provenance/reference-safe remediation of existing contamination.

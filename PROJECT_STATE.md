@@ -19,7 +19,7 @@
 
 ## Current focus
 
-P0-003 r1 is technically accepted after its local and GitHub Actions validation gates passed. P0-004A r2 is implemented but awaits one factual Build Report correction before technical acceptance.
+Architecture accepts P0-004A r2 as the technical foundation, but Product did not accept its composite phone interaction. P0-004A r3 is the current material UX/bootstrap revision awaiting renewed Engineering readiness.
 
 ## Internal work status
 
@@ -28,7 +28,7 @@ P0-003 r1 is technically accepted after its local and GitHub Actions validation 
 | P0-001 - Shared Morning Routine | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #1 | Product acceptance/evaluation |
 | P0-002 - Authenticated Household Authority | r1 | ACCEPTED | Project Lead evaluation | `brief/p0-002-authenticated-household-authority` | Product evaluation; future hosted release candidates require the hosted smoke/evidence gate |
 | P0-003 - Regression Safety and Contract Hardening | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #6 | Product evaluation; optional required-check configuration |
-| P0-004A - People, Groups, and Access Status | r2 | FIX REQUIRED | Architecture acceptance | `brief/p0-004a-people-groups-access` | Correct Build Report commit metadata, then Architecture acceptance |
+| P0-004A - People & Groups UX Completion | r3 | IN REVIEW | Engineering readiness | `brief/p0-004a-people-groups-access` | Consolidated r3 readiness review; r2 readiness does not apply |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -47,11 +47,11 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next Project Lead decision
 
-- Engineering corrects the P0-004A Build Report metadata; Architecture then accepts r2 if no new discrepancy appears. P0-004B and P0-005 remain sequenced behind evidence from the current slice.
+- Complete P0-004A r3 before advancing to group-backed Morning Routine. Product evaluation remains required after technical acceptance.
 
 ## Next likely handoff
 
-Engineering updates `reports/P0-004A-r2-build-report.md` to identify committed artifact `656db28`; Architecture performs final r2 acceptance afterward.
+Engineering performs a consolidated readiness review against P0-004A r3, including focused-state UX and fixture/bootstrap remediation safety.
 
 ## Notes for all teams
 

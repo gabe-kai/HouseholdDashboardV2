@@ -30,6 +30,8 @@ If this document disagrees with the repository about what exists, the repository
 - Existing memberships migrate with classification unset because the repository has no trustworthy classification fact. New people require Adult/Child, and managers may correct the migrated `Classification not set` state without changing authority.
 - Enrollment status is a safe projection over user and claim facts. One actionable claim per membership is permitted; replacement/cancellation revoke it, plaintext is shown once, and later reads never expose claim secrets.
 - Administrative create operations are server-authoritative and replay-safe by client mutation ID. Group member-set updates are transactional and version-guarded; they are not placed in the checklist IndexedDB outbox.
+- P0-004A r3 uses exclusive in-app overview/detail/edit/access/activity states with explicit Back and focus restoration on phone. It does not add a router or deep-link contract. Household progress and household-visible tasks live in the focused Household activity state rather than the directory overview.
+- Normal development/bootstrap is fixture-free. Deterministic demo/test seeding is explicit and derives from one canonical stable-ID manifest. Existing demo contamination may be removed only by a dry-run-first, backup-first operator command that matches manifest IDs and proves the absence of every durable relationship; display names are never provenance.
 
 P0-002 deepened the Morning Routine without generalizing the product. One household can use distinct accounts across two personal-authority paths while P0-001 execution and history remain intact.
 

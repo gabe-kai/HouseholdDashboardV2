@@ -38,7 +38,7 @@ Goal: prove that a real recurring household routine can be used quickly by six d
 
 - [ ] **Outcome:** Morning Routine can consume a named group as a clear audience, giving each current group member one future occurrence while preserving overlap, prospective-change, and historical invariants.
   - **Brief:** `P0-004B r1 - Group-backed Morning Routine` (`briefs/p0-004b-group-backed-morning-routine.md`).
-  - **Status:** P0-004B r1 is in review and ready for Engineering's consolidated readiness review against merged P0-004A.
+  - **Status:** Engineering returned READY and Architecture authorized implementation of P0-004B r1 without revision.
   - **Evidence target:** A deterministic phone-width journey proves source-preserving group selection, unique occurrence resolution, next-day membership changes, stable today/history, deletion safety, and realtime convergence.
 
 ### LIKELY NEXT

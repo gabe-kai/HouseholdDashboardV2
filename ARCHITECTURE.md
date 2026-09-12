@@ -52,9 +52,10 @@ Security parameters follow current primary guidance: [OWASP password storage](ht
 From the repository root, with Node.js 24:
 
 - **Install/setup:** `npm ci` (requires the committed lockfile).
-- **Local configuration:** copy `.env.example` values into the environment as needed (`DB_PATH`, `BACKUP_DIR`, `HOUSEHOLD_TIMEZONE`, `HOST`, `PORT`, `APP_PROFILE`, `PUBLIC_ORIGIN`, `AUTO_SEED`, `EVAL_LAN_ACCESS`).
-- **Migrate/seed:** `npm run db:migrate` then `npm run db:seed` (seed creates pending fictional memberships only; hosted profile forbids `AUTO_SEED`).
-- **Bootstrap:** `npm run auth:bootstrap` issues one single-use manager claim token (shown once).
+- **Local configuration:** copy `.env.example` values into the environment as needed (`DB_PATH`, `BACKUP_DIR`, `HOUSEHOLD_TIMEZONE`, `HOST`, `PORT`, `APP_PROFILE`, `PUBLIC_ORIGIN`, `AUTO_SEED`, `EVAL_LAN_ACCESS`). Development defaults to `AUTO_SEED=0`.
+- **Migrate/seed:** `npm run db:migrate` then opt-in `npm run db:seed` (seed creates pending fictional memberships only; hosted profile forbids `AUTO_SEED`).
+- **Bootstrap:** `npm run auth:bootstrap` issues one single-use manager claim token (shown once). On an empty database it creates only the minimum household plus that claim — no demo people.
+- **Fixture cleanup:** `npm run db:cleanup-fixtures` (dry-run) / `… -- --apply` removes only proven-safe canonical fixture memberships by exact ID; backup-first; never automatic.
 - **Backup/restore:** `npm run db:backup`; `npm run db:restore -- path/to/backup.sqlite`. Run backup before applying migrations on populated data.
 - **Run/develop:** `npm run dev` (API on `127.0.0.1:8787`, Vite on `127.0.0.1:5173` with `/api/v1` proxy). Login/claim Origin must match the Vite URL (`http://127.0.0.1:5173` by default).
 - **Phone on LAN:** `npm run dev:lan` (binds Vite/API for LAN; prints `http://<lan-ip>:5173`). With `EVAL_LAN_ACCESS=1`, claim/login also accept other private/loopback HTTP Origins so a mismatched NIC IP does not block the phone. Not for public internet exposure.
@@ -68,7 +69,7 @@ From the repository root, with Node.js 24:
 
 Playwright note: if browser launch fails instantly or the suite hangs after marking tests failed, run `npx playwright install chromium webkit` once (or use `npm run test:e2e`, which does this automatically) so binaries match the lockfile’s Playwright revision.
 
-Local development uses `APP_PROFILE=development` with authentication enabled and pending seeded memberships that must still be claimed. Hosted mode (`APP_PROFILE=hosted`) requires `PUBLIC_ORIGIN=https://…`, persistent `DB_PATH`/`BACKUP_DIR`, and rejects evaluation bypass flags.
+Local development uses `APP_PROFILE=development` with authentication enabled. Demo fixtures are opt-in (`AUTO_SEED=1` or `npm run db:seed`). Hosted mode (`APP_PROFILE=hosted`) requires `PUBLIC_ORIGIN=https://…`, persistent `DB_PATH`/`BACKUP_DIR`, and rejects evaluation bypass flags.
 
 ## Validation and release convention
 

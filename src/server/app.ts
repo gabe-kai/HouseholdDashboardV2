@@ -709,7 +709,7 @@ export async function buildApp(
   if (config.profile === "development" || config.profile === "test") {
     app.post("/api/v1/test/bootstrap-claim", async (request, reply) => {
       try {
-        const issued = store.issueBootstrapClaim();
+        const issued = store.issueBootstrapClaim(config.householdTimezone);
         return { token: issued.token, expiresAt: issued.expiresAt };
       } catch (err) {
         return sendStoreError(reply, request.id, err);

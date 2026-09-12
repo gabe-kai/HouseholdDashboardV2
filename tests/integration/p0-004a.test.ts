@@ -381,6 +381,129 @@ describe("P0-004A people, groups, and access", () => {
   });
 });
 
+describe("P0-004A r3 fixture-free bootstrap and cleanup", () => {
+  it("defaults AUTO_SEED off and bootstrap creates only the claimed manager", async () => {
+    const { loadConfig } = await import("../../src/server/config.js");
+    expect(loadConfig({ APP_PROFILE: "development" }).autoSeed).toBe(false);
+    expect(loadConfig({ APP_PROFILE: "development", AUTO_SEED: "1" }).autoSeed).toBe(true);
+
+    const dbPath = path.join(os.tmpdir(), `hd-004a-boot-${Date.now()}.sqlite`);
+    temps.push(dbPath);
+    const db = openDatabase(dbPath);
+    migrate(db);
+    const store = new AppStore(db);
+
+    expect(db.prepare("SELECT COUNT(*) AS c FROM household_memberships").get()).toEqual({ c: 0 });
+    const issued = store.issueBootstrapClaim("America/New_York");
+    expect(db.prepare("SELECT COUNT(*) AS c FROM household_memberships").get()).toEqual({ c: 0 });
+    expect(db.prepare("SELECT COUNT(*) AS c FROM households").get()).toEqual({ c: 1 });
+
+    await store.claim({
+      claimToken: issued.token,
+      loginName: `boot.${Date.now().toString(36)}`,
+      passphrase: PASSPHRASE,
+      displayName: "Parent One",
+    });
+
+    const members = db
+      .prepare("SELECT display_name FROM household_memberships ORDER BY display_name")
+      .all() as Array<{ display_name: string }>;
+    expect(members).toEqual([{ display_name: "Parent One" }]);
+    expect(
+      db.prepare("SELECT COUNT(*) AS c FROM household_memberships WHERE display_name LIKE '%Reed%'").get(),
+    ).toEqual({ c: 0 });
+  });
+
+  it("cleanup dry-run and apply remove only safe exact fixture IDs", async () => {
+    const { execFileSync } = await import("node:child_process");
+    const { FIXTURE_MEMBER_IDS, SEED } = await import("../../src/server/seeds/evaluation.js");
+
+    const dbPath = path.join(os.tmpdir(), `hd-004a-clean-${Date.now()}.sqlite`);
+    const backupDir = path.join(os.tmpdir(), `hd-004a-clean-bak-${Date.now()}`);
+    temps.push(dbPath, backupDir);
+    fs.mkdirSync(backupDir, { recursive: true });
+
+    const db = openDatabase(dbPath);
+    migrate(db);
+    const store = new AppStore(db);
+    store.seed("America/New_York");
+    await claimManager(store);
+    db.close();
+
+    const script = path.resolve("src/server/scripts/cleanup-fixtures.ts");
+    const dry = JSON.parse(
+      execFileSync(
+        process.execPath,
+        ["--import", "tsx", script, "--db", dbPath],
+        {
+          encoding: "utf8",
+          env: { ...process.env, BACKUP_DIR: backupDir, APP_PROFILE: "development" },
+        },
+      ),
+    ) as {
+      mode: string;
+      candidateCount: number;
+      blockedCount: number;
+      candidates: string[];
+      blocked: Array<{ membershipId: string; blockers: string[] }>;
+    };
+
+    expect(dry.mode).toBe("dry-run");
+    expect(dry.candidates).toEqual(
+      FIXTURE_MEMBER_IDS.filter((id) => id !== IDS.morgan),
+    );
+    expect(dry.candidateCount).toBe(5);
+    expect(dry.blockedCount).toBe(1);
+    expect(dry.blocked[0]?.membershipId).toBe(IDS.morgan);
+    expect(dry.blocked[0]?.blockers.length).toBeGreaterThan(0);
+
+    const afterDry = openDatabase(dbPath);
+    expect(
+      afterDry.prepare("SELECT COUNT(*) AS c FROM household_memberships").get(),
+    ).toEqual({ c: 6 });
+    afterDry.close();
+
+    const applied = JSON.parse(
+      execFileSync(
+        process.execPath,
+        ["--import", "tsx", script, "--db", dbPath, "--apply"],
+        {
+          encoding: "utf8",
+          env: { ...process.env, BACKUP_DIR: backupDir, APP_PROFILE: "development" },
+        },
+      ),
+    ) as { mode: string; removed: string[]; backupPath: string | null };
+
+    expect(applied.mode).toBe("apply");
+    expect(applied.backupPath).toBeTruthy();
+    expect(fs.existsSync(applied.backupPath!)).toBe(true);
+    expect(applied.removed.sort()).toEqual(
+      FIXTURE_MEMBER_IDS.filter((id) => id !== IDS.morgan).slice().sort(),
+    );
+
+    const after = openDatabase(dbPath);
+    const remaining = after
+      .prepare(
+        `SELECT id FROM household_memberships WHERE household_id = ? ORDER BY id`,
+      )
+      .all(SEED.household.id) as Array<{ id: string }>;
+    expect(remaining).toEqual([{ id: IDS.morgan }]);
+    after.close();
+
+    const again = JSON.parse(
+      execFileSync(
+        process.execPath,
+        ["--import", "tsx", script, "--db", dbPath, "--apply"],
+        {
+          encoding: "utf8",
+          env: { ...process.env, BACKUP_DIR: backupDir, APP_PROFILE: "development" },
+        },
+      ),
+    ) as { removed: string[] };
+    expect(again.removed).toEqual([]);
+  });
+});
+
 async function enrollAndClaimChild(
   store: AppStore,
   manager: AuthContext,

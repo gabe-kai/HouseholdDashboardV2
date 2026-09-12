@@ -7,7 +7,7 @@ import { loadConfig } from "../../src/server/config.js";
 import { migrate, openDatabase, resolveDbPath } from "../../src/server/db.js";
 import { AppStore } from "../../src/server/store.js";
 import { assertArgon2idPhc } from "../../src/server/crypto.js";
-import { SEED } from "../../src/server/seeds/evaluation.js";
+import { SEED, legacyCapabilitiesJson } from "../../src/server/seeds/evaluation.js";
 import { GRANT_PRESETS } from "../../src/shared/grants.js";
 
 const temps: string[] = [];
@@ -67,7 +67,7 @@ describe("P0-002 authenticated authority", () => {
     for (const m of SEED.members) {
       db.prepare(
         "INSERT INTO members (id, household_id, display_name, capabilities_json) VALUES (?, ?, ?, ?)",
-      ).run(m.id, SEED.household.id, m.displayName, JSON.stringify([...m.capabilities]));
+      ).run(m.id, SEED.household.id, m.displayName, legacyCapabilitiesJson(m.preset));
     }
     const defId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
     const revId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2";

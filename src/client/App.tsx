@@ -587,20 +587,17 @@ export function App() {
         />
       ) : null}
       {tab === "household" ? (
-        <>
-          <PeopleGroupsView
-            memberships={memberships}
-            tasks={tasks.filter((task) => task.visibility === "household")}
-            canManageStructure={canManageStructure}
-            canEnroll={canEnroll}
-            onPeopleChanged={() => {
-              if (activeSession) void refreshSupportingData(activeSession);
-            }}
-          />
-          {manager ? (
-            <HouseholdProgressView occurrences={projectedOccurrences} />
-          ) : null}
-        </>
+        <PeopleGroupsView
+          memberships={memberships}
+          tasks={tasks.filter((task) => task.visibility === "household")}
+          occurrences={projectedOccurrences}
+          canManageStructure={canManageStructure}
+          canEnroll={canEnroll}
+          canViewActivity={manager}
+          onPeopleChanged={() => {
+            if (activeSession) void refreshSupportingData(activeSession);
+          }}
+        />
       ) : null}
       {tab === "approvals" && canDecide ? (
         <ApprovalsView
@@ -1032,34 +1029,6 @@ function TaskList(props: {
         </li>
       ))}
     </ul>
-  );
-}
-
-function HouseholdProgressView(props: { occurrences: OccurrenceView[] }) {
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-
-  useEffect(() => {
-    setExpanded((current) => {
-      const next = { ...current };
-      for (const occurrence of props.occurrences) {
-        if (next[occurrence.id] === undefined) {
-          next[occurrence.id] = !occurrence.completed;
-        }
-      }
-      return next;
-    });
-  }, [props.occurrences]);
-
-  return (
-    <section className="panel" aria-labelledby="household-progress-heading">
-      <h2 id="household-progress-heading">Household Morning Routine</h2>
-      <OccurrenceList
-        occurrences={props.occurrences}
-        expanded={expanded}
-        setExpanded={setExpanded}
-        canExecute={false}
-      />
-    </section>
   );
 }
 

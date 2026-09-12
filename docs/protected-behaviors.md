@@ -50,10 +50,11 @@ invalidation/reconciliation semantics.
 | PB-13 | Stable API / error / idempotency semantics | step mutationId in `p0-001.test.ts`; task mutationId in `p0-003-contracts.test.ts`; route inventory completeness | Developer |
 | PB-14 | Realtime invalidation model (duplicate/missed safe) | `src/server/sync-hub.test.ts`; e2e reconnect; e2e visibilitychange recovery; proposal-status e2e | Developer + PR |
 | PB-15 | Open-view proposal-status sync (escaped defect) | e2e `manager approval updates open personalize proposal status without reload` | PR / RC |
-| PB-16 | People directory independent of access | `tests/integration/p0-004a.test.ts`; e2e People & Groups | Developer + PR |
+| PB-16 | People directory independent of access | `tests/integration/p0-004a.test.ts`; e2e People & Groups focused states | Developer + PR |
 | PB-17 | Access-state lifecycle + one-time setup secret | `tests/integration/p0-004a.test.ts` (ready/expired/cancel/replace/replay) | Developer |
 | PB-18 | Structure manage vs enroll authority | `tests/integration/p0-004a.test.ts` HTTP matrix | Developer |
 | PB-19 | Groups are structural only (no grants/assignments) | `tests/integration/p0-004a.test.ts`; e2e group edit | Developer + PR |
+| PB-20 | Fixture-free normal bootstrap; opt-in seed; provenance-safe cleanup | `tests/integration/p0-004a.test.ts` (r3) | Developer + PR |
 
 ### Environment-specific (not counted as automated acceptance)
 

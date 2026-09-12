@@ -127,12 +127,10 @@ People & Groups opens as a compact directory. Tapping a person or group replaces
 
 ## Engineering readiness
 
-**Reviewed revision:** NOT REVIEWED
-**Readiness:** NOT REVIEWED
+**Reviewed revision:** 3  
+**Readiness:** READY  
 
-Engineering must perform a new consolidated readiness review against revision 3. Revision 2 readiness does not apply.
-
-**Prior revision disposition:** Architecture accepts the corrected r2 implementation evidence as the technical foundation through `740d141`; Product did not accept the r2 composite phone experience. Revision 3 supersedes r2 for product completion and requires new readiness and implementation review.
+Engineering returned READY against revision 3 (see `reports/P0-004A-r3-engineering-readiness.md`). Revision 2 readiness does not apply.
 
 ## Revision history
 

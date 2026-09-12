@@ -1,85 +1,83 @@
 # Build Report - BRIEF P0-004A r3
 
 **Brief revision implemented:** 3  
-**Engineering status:** IMPLEMENTED  
+**Engineering status:** IMPLEMENTED (FIX REQUIRED closed — awaiting Architecture re-acceptance)  
 **Branch:** `brief/p0-004a-people-groups-access`  
-**Commits:** *uncommitted at report time* (suggested message below)  
+**Commits:**  
+- `b4256ac` — r3 implementation (focused UX + fixture-free bootstrap)  
+- *correction pass uncommitted* — CSS/touch geometry, secret-safe screenshots, exhaustive cleanup inventory + tests (suggested message below)  
 **Pull request:** N/A  
 
 ## Readiness
 
-**READY** against r3 (see `reports/P0-004A-r3-engineering-readiness.md`). Architecture **ACCEPT / PROCEED**. Implemented only r3; P0-004B, routing, and generic member deletion were not implemented. Accepted r2 security, authority, isolation, sync, replay, and historical-integrity contracts are preserved.
+**READY** against r3 (see `reports/P0-004A-r3-engineering-readiness.md`). Architecture **ACCEPT / PROCEED**, then **FIX REQUIRED** (2026-09-11). This report covers the consolidated correction pass against the same revision 3 contract. No new readiness review. P0-004B, routing, generic member deletion, and Railway deployment were not implemented.
 
-## What changed
+## What changed (correction pass)
 
-- **Focused People & Groups UX (D-016):** exclusive in-app states for overview, person detail/add/edit/access, group detail/create/edit, and household activity; Back + focus-heading; compact directory without stacked editors/activity.
-- **Household activity:** Morning Routine progress (same expandable occurrence DOM as prior manager progress) and household-visible personal tasks live only in the focused activity state; overview exposes a single `View household activity` action when authorized.
-- **Fixture-free normal bootstrap (D-017):** development `AUTO_SEED` defaults off (`.env.example` `AUTO_SEED=0`); empty `auth:bootstrap` creates minimum household + claim only via `ensureEmptyHousehold` (no demo seed).
-- **One canonical fixture manifest:** six Reed memberships `…201`–`…206` in `src/server/seeds/evaluation.ts`; store seeding uses that list only.
-- **Cleanup command:** `npm run db:cleanup-fixtures` dry-run default / `--apply` with backup-first, exact manifest IDs, transactional re-check; not a generic deletion API/UI.
-- **Tests/docs:** focused people-groups e2e + Chromium phone screenshots; morning-routine e2e opens household activity; integration coverage for bootstrap/cleanup; ops/ARCHITECTURE/protected-behaviors (PB-20) updates.
+1. **Choice-control CSS:** `.form-grid label.choice-row` wins over `.form-grid label { display: grid }`; radio/checkbox inputs no longer inherit text-field `min-height`/`padding`. Controls sit beside their text in full-row flex tap targets.
+2. **Touch targets:** People & Groups secondary actions (`.button-row` and focused-state actions) meet `--touch` (44px). Geometry e2e asserts composed row layout vs oversized/stacked controls.
+3. **Secret-safe access screenshot:** `04-person-access.png` is captured **before** issuance (Access: Not set up; Guided member selected). One-time setup material is exercised in the test but never written to report artifacts. Prior secret-bearing PNG removed.
+4. **Exhaustive fixture cleanup inventory:** blocks on `auth_sessions`, legacy `sessions.member_id`, `enrollment_claims.membership_id`, `enrollment_claims.created_by_membership_id`, revision/occurrence/step/personal/proposal/group refs, and identity-bearing `structure_mutation_receipts` / `mutation_receipts` JSON. Exported `evaluateMembership` / `runFixtureCleanup` for tests; backup-failure injectable.
+5. **Cleanup test matrix:** safe/renamed/same-name non-fixture, target claim, creator authorship, legacy session, structure/mutation receipts, group/personal/history, backup failure, post-dry-run changed state, idempotency (`tests/integration/p0-004a-cleanup.test.ts`).
 
 ## Behavior delivered
 
-A parent can open a compact People & Groups directory, drill into one person or group with clear Back navigation, manage access in a focused state, and open household activity without scrolling a composite admin page. A fresh empty database no longer invents demo people unless seeding is explicitly opted in.
+Unchanged player-facing r3 intent, with operable phone choice controls, safe Product evidence, and provenance-safe cleanup that refuses deletion when any inventoried durable reference remains.
 
 ## Verification performed
 
 | Check | Result |
 | --- | --- |
-| `npm run validate` | **PASS** (included in PR/RC) — lint/typecheck/Vitest **50** |
-| `npm run validate:pr` | **PASS** — build + Chromium e2e **14/14** |
-| `npm run validate:rc` | **PASS** — Chromium + WebKit e2e **28/28** |
-| Hosted / Railway | **NOT RUN** — not required for this implementation review |
+| `npm run validate` | **PASS** (included in PR/RC) — lint/typecheck/Vitest **57** |
+| `npm run validate:pr` | **PASS** — build + Chromium e2e **15/15** (includes geometry regression) |
+| `npm run validate:rc` | **PASS** — Chromium + WebKit e2e **30/30** |
+| Hosted / Railway | **NOT RUN** — not required |
 
 ### New vs reused evidence
 
-**New:** exclusive focused-state People & Groups UX; household activity placement; fixture-free bootstrap + `AUTO_SEED` default off; canonical six-member manifest; cleanup dry-run/apply integration; Chromium phone screenshots under `reports/p0-004a-r3-screenshots/`; PB-20.  
-**Reused:** r2 people/access/group/authority/isolation/replay/sync suites remaining green under validate:rc; P0-001/P0-002/P0-003 gates; morning-routine sync/visibility scenarios updated only for activity navigation.
+**New (correction):** choice-row computed-style/geometry e2e; secret-safe access screenshot regeneration; exhaustive cleanup blockers + dedicated cleanup suite.  
+**Reused:** r2/r3 domain contracts; focused-state UX from `b4256ac`; bootstrap fixture-free test; morning-routine activity navigation.
 
-### Phone-width screenshots (fictional data)
+### Phone-width screenshots (fictional data; secret-safe)
 
 | File | State |
 | --- | --- |
 | `reports/p0-004a-r3-screenshots/01-overview.png` | Compact overview |
 | `reports/p0-004a-r3-screenshots/02-person-detail.png` | Person detail (Elizabeth) |
-| `reports/p0-004a-r3-screenshots/03-person-edit.png` | Edit person |
-| `reports/p0-004a-r3-screenshots/04-person-access.png` | Access setup (one-time material visible once) |
+| `reports/p0-004a-r3-screenshots/03-person-edit.png` | Edit person (aligned role radios) |
+| `reports/p0-004a-r3-screenshots/04-person-access.png` | Access setup **before issuance** (no one-time material) |
 | `reports/p0-004a-r3-screenshots/05-group-detail.png` | Group detail |
-| `reports/p0-004a-r3-screenshots/06-group-edit.png` | Edit group |
+| `reports/p0-004a-r3-screenshots/06-group-edit.png` | Edit group (aligned member checkboxes) |
 
-### Fixture-remediation rehearsal (disposable copy only)
+### Fixture-remediation rehearsal
 
-- Copied `runtime/dev.sqlite` → disposable path; migrated the copy; ran dry-run then `--apply` against the copy only.
-- **Real `runtime/dev.sqlite` was not mutated.**
-- At rehearsal time the disposable copy evaluated **all six** manifest IDs (`…201`–`…206`) as candidates (no blockers); apply removed those six; re-run was idempotent (absent). This differs from the brief’s earlier inspection snapshot (then `…201` blocked) — predicates are re-evaluated at apply time, as required.
-- Output reports IDs and blocker categories only; no private task/content/credentials.
+Prior disposable-copy rehearsal under `b4256ac` remains valid as operator procedure. Live `runtime/dev.sqlite` was **not** mutated in this correction pass. Cleanup apply still requires Project Lead instruction for the real local database.
 
 ## Deviations from brief revision
 
-- None material. Local cleanup rehearsal candidate set reflected current disposable-copy state rather than the dated brief inspection note for live `dev.sqlite`.
+- None material. Correction commit SHA will land when the Project Lead/Coordinator commits the working tree; report names implementation SHA `b4256ac` now.
 
 ## Discoveries for Architecture
 
-- Seeded pending memberships intentionally omit classification until edited; overview correctly omits unset role.
-- Manager progress sync e2e depends on the prior expandable occurrence markup (`Status: …`); the activity state preserves that DOM contract.
+- `.form-grid label` specificity over `.choice-row` was the root cause of stacked/oversized radios; scoped `label.choice-row` + input-type resets are sufficient without a design-system rewrite.
+- Structure/step mutation receipts store membership identity inside JSON and must be treated as durable references for cleanup safety.
 
 ## Known limitations
 
-- P0-004B group-backed Morning Routine / audience / rotation not implemented (by design).
-- No router/URL deep links; Back is in-app only (D-016).
+- P0-004B not implemented (by design).
+- No router/URL deep links; Back is in-app only.
 - No generic member deletion UI/API.
 - Product Lead phone evaluation remains required after Architecture technical acceptance.
 
 ## Suggested commit message (not committed)
 
 ```
-P0-004A: complete focused People & Groups UX and fixture-safe bootstrap
+P0-004A: close r3 FIX REQUIRED for controls, secrets, and cleanup
 
-Exclusive mobile states, opt-in demo fixtures, provenance-safe cleanup,
-and r3 validation evidence while preserving r2 authority contracts.
+Align choice-row tap targets, keep access screenshots secret-safe,
+and exhaust fixture cleanup references with regression coverage.
 ```
 
 ## Suggested follow-up
 
-Architecture technical acceptance of r3. Product evaluation using the screenshot set and phone-width flows. Operator may later apply cleanup to live local DB only with explicit Project Lead instruction.
+Architecture re-acceptance of r3. After commit, append the correction SHA to this report’s Commits line if desired. Product evaluation using the regenerated screenshot set.

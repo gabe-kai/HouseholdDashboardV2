@@ -90,14 +90,16 @@ test.describe("P0-004A People & Groups focused UX", () => {
     await page.getByRole("button", { name: "Set up access" }).click();
     await expect(page.getByRole("heading", { name: "Access setup" })).toBeVisible();
     await page.getByRole("radio", { name: /Guided member/i }).check();
-    await page.getByRole("button", { name: "Prepare access setup" }).click();
-    await expect(page.getByText(/Copy this setup material now/i)).toBeVisible();
+    // Capture access state before issuance so report artifacts never retain one-time material.
     if (testInfo.project.name === "chromium") {
       await page.screenshot({
         path: path.join(SCREENSHOT_DIR, "04-person-access.png"),
         fullPage: true,
       });
     }
+    await page.getByRole("button", { name: "Prepare access setup" }).click();
+    await expect(page.getByText(/Copy this setup material now/i)).toBeVisible();
+    await expect(page.locator(".token-box code")).toBeVisible();
     await page.getByRole("button", { name: "Cancel setup" }).click();
     await page.getByRole("button", { name: /Back to Elizabeth/i }).click();
     await page.getByRole("button", { name: "Back to People & Groups" }).click();
@@ -159,5 +161,77 @@ test.describe("P0-004A People & Groups focused UX", () => {
 
     await managerA.close();
     await managerB.close();
+  });
+
+  test("choice rows and secondary actions meet composed touch geometry", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openAsManager(page);
+    await page.getByRole("button", { name: "People & Groups" }).click();
+
+    await page.getByRole("button", { name: "Add person" }).click();
+    await page.getByLabel("Name").fill("Geometry Child");
+    await page.getByRole("radio", { name: "Child" }).check();
+    await page.getByRole("button", { name: "Add person" }).click();
+    await expect(page.getByRole("heading", { name: "Geometry Child" })).toBeVisible();
+
+    const editPerson = page.getByRole("button", { name: "Edit person" });
+    const editBox = await editPerson.boundingBox();
+    expect(editBox, "Edit person touch target").toBeTruthy();
+    expect(editBox!.height).toBeGreaterThanOrEqual(44);
+
+    await editPerson.click();
+    await expect(page.getByRole("heading", { name: "Edit person" })).toBeVisible();
+
+    const childRow = page.locator("label.choice-row").filter({ hasText: "Child" });
+    await expect(childRow).toBeVisible();
+    const composed = await childRow.evaluate((node) => {
+      const style = getComputedStyle(node);
+      const input = node.querySelector("input");
+      if (!input) return null;
+      const rowBox = node.getBoundingClientRect();
+      const inputBox = input.getBoundingClientRect();
+      return {
+        display: style.display,
+        flexDirection: style.flexDirection,
+        rowHeight: rowBox.height,
+        inputHeight: inputBox.height,
+        inputWidth: inputBox.width,
+        // Control should sit beside text, not stacked above it.
+        verticalCenterDelta: Math.abs(
+          inputBox.top + inputBox.height / 2 - (rowBox.top + rowBox.height / 2),
+        ),
+        inputLeftOfTextCenter: inputBox.left < rowBox.left + rowBox.width / 2,
+      };
+    });
+    expect(composed).toBeTruthy();
+    expect(composed!.display).toBe("flex");
+    expect(composed!.flexDirection).toBe("row");
+    expect(composed!.rowHeight).toBeGreaterThanOrEqual(44);
+    // Native control stays compact; oversized text-field sizing is the regression.
+    expect(composed!.inputHeight).toBeLessThan(28);
+    expect(composed!.inputWidth).toBeLessThan(28);
+    expect(composed!.verticalCenterDelta).toBeLessThan(10);
+    expect(composed!.inputLeftOfTextCenter).toBe(true);
+
+    await page.getByRole("button", { name: /Back to Geometry Child/i }).click();
+    await page.getByRole("button", { name: "Set up access" }).click();
+    const prepare = page.getByRole("button", { name: "Prepare access setup" });
+    const prepareBox = await prepare.boundingBox();
+    expect(prepareBox!.height).toBeGreaterThanOrEqual(44);
+
+    const guided = page.locator("label.choice-row").filter({ hasText: /Guided member/i });
+    const guidedGeom = await guided.evaluate((node) => {
+      const input = node.querySelector("input");
+      const rowBox = node.getBoundingClientRect();
+      const inputBox = input!.getBoundingClientRect();
+      return {
+        display: getComputedStyle(node).display,
+        stacked: inputBox.bottom <= rowBox.top + inputBox.height + 4 && inputBox.height > 36,
+        sideBySide: Math.abs(inputBox.top + inputBox.height / 2 - (rowBox.top + rowBox.height / 2)) < 12,
+      };
+    });
+    expect(guidedGeom.display).toBe("flex");
+    expect(guidedGeom.sideBySide).toBe(true);
+    expect(guidedGeom.stacked).toBe(false);
   });
 });

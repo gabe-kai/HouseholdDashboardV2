@@ -7,15 +7,19 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import type Database from "better-sqlite3";
 import { loadConfig } from "../config.js";
 import { openDatabase, resolveDbPath } from "../db.js";
 import { FIXTURE_MEMBER_IDS, SEED } from "../seeds/evaluation.js";
 
-type BlockReason =
+export type BlockReason =
   | "not_pending"
   | "has_user"
   | "has_session"
+  | "has_legacy_session"
   | "has_enrollment_claim"
+  | "has_enrollment_authorship"
   | "has_revision_assignment"
   | "has_occurrence"
   | "has_step_report"
@@ -23,12 +27,35 @@ type BlockReason =
   | "has_proposal"
   | "has_personal_task"
   | "has_group_membership"
+  | "has_structure_receipt"
+  | "has_mutation_receipt"
   | "missing_membership";
 
-type CandidateReport = {
+export type CandidateReport = {
   membershipId: string;
   status: "candidate" | "blocked" | "absent";
   blockers: BlockReason[];
+};
+
+export type CleanupSummary = {
+  mode: "dry-run" | "apply";
+  dbPath: string;
+  householdId: string;
+  candidateCount: number;
+  blockedCount: number;
+  absentCount: number;
+  candidates: string[];
+  blocked: Array<{ membershipId: string; blockers: BlockReason[] }>;
+  removed: string[];
+  backupPath: string | null;
+};
+
+export type CleanupOptions = {
+  dbPath: string;
+  apply?: boolean;
+  backupDir: string;
+  /** Override for tests (e.g. simulate backup failure). */
+  backup?: (db: Database.Database, destPath: string) => Promise<void>;
 };
 
 function parseArgs(argv: string[]) {
@@ -46,8 +73,23 @@ function parseArgs(argv: string[]) {
   return { dbPath, apply };
 }
 
-function evaluateMembership(
-  db: ReturnType<typeof openDatabase>,
+function tableExists(db: Database.Database, name: string): boolean {
+  return Boolean(
+    db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name),
+  );
+}
+
+function jsonMentionsMembership(db: Database.Database, table: string, membershipId: string): boolean {
+  if (!tableExists(db, table)) return false;
+  // Identity-bearing replay/audit payloads store membership ids inside JSON.
+  const rows = db.prepare(`SELECT response_json FROM ${table}`).all() as Array<{
+    response_json: string;
+  }>;
+  return rows.some((row) => row.response_json.includes(membershipId));
+}
+
+export function evaluateMembership(
+  db: Database.Database,
   membershipId: string,
   householdId: string,
 ): CandidateReport {
@@ -71,11 +113,26 @@ function evaluateMembership(
     blockers.push("has_session");
   }
   if (
+    tableExists(db, "sessions") &&
+    db.prepare("SELECT 1 FROM sessions WHERE member_id = ? LIMIT 1").get(membershipId)
+  ) {
+    blockers.push("has_legacy_session");
+  }
+  if (
     db
       .prepare("SELECT 1 FROM enrollment_claims WHERE membership_id = ? LIMIT 1")
       .get(membershipId)
   ) {
     blockers.push("has_enrollment_claim");
+  }
+  if (
+    db
+      .prepare(
+        "SELECT 1 FROM enrollment_claims WHERE created_by_membership_id = ? LIMIT 1",
+      )
+      .get(membershipId)
+  ) {
+    blockers.push("has_enrollment_authorship");
   }
   if (
     db.prepare("SELECT 1 FROM revision_assignees WHERE member_id = ? LIMIT 1").get(membershipId)
@@ -130,6 +187,12 @@ function evaluateMembership(
   ) {
     blockers.push("has_group_membership");
   }
+  if (jsonMentionsMembership(db, "structure_mutation_receipts", membershipId)) {
+    blockers.push("has_structure_receipt");
+  }
+  if (jsonMentionsMembership(db, "mutation_receipts", membershipId)) {
+    blockers.push("has_mutation_receipt");
+  }
   return {
     membershipId,
     status: blockers.length === 0 ? "candidate" : "blocked",
@@ -137,16 +200,15 @@ function evaluateMembership(
   };
 }
 
-function removeSafeMembership(db: ReturnType<typeof openDatabase>, membershipId: string): void {
+function removeSafeMembership(db: Database.Database, membershipId: string): void {
   db.prepare("DELETE FROM membership_grants WHERE membership_id = ?").run(membershipId);
   db.prepare("DELETE FROM household_memberships WHERE id = ?").run(membershipId);
   db.prepare("DELETE FROM members WHERE id = ?").run(membershipId);
 }
 
-async function main() {
-  const { dbPath: overridePath, apply } = parseArgs(process.argv.slice(2));
-  const config = loadConfig();
-  const dbPath = resolveDbPath(overridePath ?? config.dbPath);
+export async function runFixtureCleanup(options: CleanupOptions): Promise<CleanupSummary> {
+  const apply = options.apply === true;
+  const dbPath = resolveDbPath(options.dbPath);
   if (!fs.existsSync(dbPath)) {
     throw new Error(`Database does not exist: ${dbPath}`);
   }
@@ -160,7 +222,7 @@ async function main() {
     const blocked = reports.filter((r) => r.status === "blocked");
     const absent = reports.filter((r) => r.status === "absent");
 
-    const summary = {
+    const summary: CleanupSummary = {
       mode: apply ? "apply" : "dry-run",
       dbPath,
       householdId: SEED.household.id,
@@ -172,21 +234,23 @@ async function main() {
         membershipId: r.membershipId,
         blockers: r.blockers,
       })),
-      removed: [] as string[],
-      backupPath: null as string | null,
+      removed: [],
+      backupPath: null,
     };
 
-    if (!apply) {
-      console.log(JSON.stringify(summary, null, 2));
-      return;
-    }
+    if (!apply) return summary;
 
-    const backupDir = path.resolve(config.backupDir);
+    const backupDir = path.resolve(options.backupDir);
     fs.mkdirSync(backupDir, { recursive: true });
     const timestamp = new Date().toISOString().replaceAll(":", "-");
     const backupPath = path.join(backupDir, `household-pre-fixture-cleanup-${timestamp}.sqlite`);
+    const backupFn =
+      options.backup ??
+      (async (database: Database.Database, dest: string) => {
+        await database.backup(dest);
+      });
     try {
-      await db.backup(backupPath);
+      await backupFn(db, backupPath);
     } catch (error) {
       throw new Error(
         `Backup failed; no memberships removed (${error instanceof Error ? error.message : "unknown"})`,
@@ -205,13 +269,27 @@ async function main() {
     });
     tx();
     summary.removed = removed;
-    console.log(JSON.stringify(summary, null, 2));
+    return summary;
   } finally {
     db.close();
   }
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
-});
+async function main() {
+  const { dbPath: overridePath, apply } = parseArgs(process.argv.slice(2));
+  const config = loadConfig();
+  const dbPath = resolveDbPath(overridePath ?? config.dbPath);
+  const summary = await runFixtureCleanup({
+    dbPath,
+    apply,
+    backupDir: config.backupDir,
+  });
+  console.log(JSON.stringify(summary, null, 2));
+}
+
+if (process.argv[1] && path.resolve(fileURLToPath(import.meta.url)) === path.resolve(process.argv[1])) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  });
+}

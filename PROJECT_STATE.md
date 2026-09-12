@@ -19,7 +19,7 @@
 
 ## Current focus
 
-Architecture accepts P0-004A r2 as the technical foundation, but Product did not accept its composite phone interaction. Engineering has returned READY against P0-004A r3; Architecture authorizes implementation of that revision.
+P0-004A r3 is implemented at `b4256ac`, but Architecture found acceptance gaps in choice-control composition/touch targets, secret-safe screenshot evidence, fixture-cleanup reference completeness/tests, and Build Report metadata. Same-revision correction is required.
 
 ## Internal work status
 
@@ -28,7 +28,7 @@ Architecture accepts P0-004A r2 as the technical foundation, but Product did not
 | P0-001 - Shared Morning Routine | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #1 | Product acceptance/evaluation |
 | P0-002 - Authenticated Household Authority | r1 | ACCEPTED | Project Lead evaluation | `brief/p0-002-authenticated-household-authority` | Product evaluation; future hosted release candidates require the hosted smoke/evidence gate |
 | P0-003 - Regression Safety and Contract Hardening | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #6 | Product evaluation; optional required-check configuration |
-| P0-004A - People & Groups UX Completion | r3 | READY | Engineering implementation | `brief/p0-004a-people-groups-access` | Implement exact r3 and return its Build Report for Architecture acceptance |
+| P0-004A - People & Groups UX Completion | r3 | FIX REQUIRED | Engineering correction | `brief/p0-004a-people-groups-access` | Correct the consolidated r3 acceptance findings and return updated evidence |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -51,7 +51,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Engineering implements exact P0-004A r3 and returns its Build Report and required fictional-data phone-width screenshots for Architecture acceptance.
+Engineering corrects the consolidated P0-004A r3 findings and returns an updated, secret-safe Build Report for Architecture reassessment; no new readiness review is required.
 
 ## Notes for all teams
 

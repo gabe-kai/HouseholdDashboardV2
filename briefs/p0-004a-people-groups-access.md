@@ -1,7 +1,7 @@
 # BRIEF P0-004A - People & Groups UX Completion
 
 **Revision:** 3
-**Status:** READY
+**Status:** FIX REQUIRED
 
 Recommended lifecycle: DRAFT -> IN REVIEW -> READY -> IMPLEMENTING -> IMPLEMENTED -> ACCEPTED
 
@@ -131,6 +131,13 @@ People & Groups opens as a compact directory. Tapping a person or group replaces
 **Readiness:** READY  
 
 Engineering returned READY against revision 3 (see `reports/P0-004A-r3-engineering-readiness.md`). Revision 2 readiness does not apply.
+
+**Architecture acceptance review:** FIX REQUIRED (2026-09-11). Commit `b4256ac` delivers the focused-state structure and fixture-free bootstrap, but the submitted evidence and cleanup implementation do not yet satisfy revision 3:
+
+1. Phone screenshots show radio buttons and checkboxes as oversized controls detached vertically from their text. `.form-grid input` applies text-field sizing to every input type, and `.form-grid label` wins over `.choice-row` display/alignment. Correct the scoped CSS so each native radio/checkbox and its text form one aligned, full-row tap target. Apply the established minimum touch target to secondary actions in these flows, including detail, access, group, and Household activity actions. Add focused geometry/computed-style evidence so the regression suite can distinguish an operable control from a correctly composed control.
+2. `reports/p0-004a-r3-screenshots/04-person-access.png` persists one-time setup material. Replace it with secret-safe access-state evidence captured before issuance or with the sensitive element excluded at capture. No report artifact may retain claim plaintext or another credential, including fictional/test credentials.
+3. Fixture cleanup is not yet exhaustive. Its relationship inventory omits at least legacy `sessions.member_id` and enrollment audit authorship through `enrollment_claims.created_by_membership_id`; it must also account for durable identity-bearing replay/audit payloads such as structure mutation receipts. Inventory all current durable references, block deletion when any non-seed-only reference exists, and test safe, renamed, same-name non-fixture, target-claim, creator/audit, legacy-session, group/history/personal, backup-failure, post-dry-run changed-state, and idempotent cases. Preserve dry-run, backup-first, transactional recheck, and disposable-copy-only rehearsal.
+4. Update the Build Report after correction with the actual implementation and correction commit SHAs, corrected acceptance evidence, and no retained secret. This is enforcement of the existing r3 contract and does not require revision 4 or a new readiness review.
 
 ## Revision history
 

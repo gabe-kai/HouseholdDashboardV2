@@ -19,7 +19,7 @@
 
 ## Current focus
 
-Architecture has drafted `P0-004B r1 - Group-backed Morning Routine` against merged P0-004A. The next step is Engineering's consolidated readiness review of that exact revision; implementation has not started.
+Engineering returned **READY** for `P0-004B r1 - Group-backed Morning Routine` against `main` @ `9feec29` (see `reports/P0-004B-r1-engineering-readiness.md`). Waiting on Architecture ACCEPT / PROCEED before implementation.
 
 ## Internal work status
 
@@ -29,7 +29,7 @@ Architecture has drafted `P0-004B r1 - Group-backed Morning Routine` against mer
 | P0-002 - Authenticated Household Authority | r1 | ACCEPTED | Project Lead evaluation | `brief/p0-002-authenticated-household-authority` | Product evaluation; future hosted release candidates require the hosted smoke/evidence gate |
 | P0-003 - Regression Safety and Contract Hardening | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #6 | Product evaluation; optional required-check configuration |
 | P0-004A - People & Groups UX Completion | r3 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #8 | Product phone evaluation |
-| P0-004B - Group-backed Morning Routine | r1 | IN REVIEW | Engineering readiness | Not started; planned `brief/p0-004b-group-backed-morning-routine` | Consolidated readiness review against r1 |
+| P0-004B - Group-backed Morning Routine | r1 | IN REVIEW | Architecture (post-readiness) | `brief/p0-004b-group-backed-morning-routine` | Architecture ACCEPT / PROCEED |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -53,7 +53,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Architecture hands `P0-004B r1` to Engineering for one consolidated repository-grounded readiness review. Engineering should not implement until Architecture responds to that review.
+Architecture responds to Engineering's P0-004B r1 READY review (ACCEPT / PROCEED, or revise). Engineering must not implement until that response.
 
 ## Notes for all teams
 

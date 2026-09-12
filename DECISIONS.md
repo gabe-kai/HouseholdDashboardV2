@@ -243,3 +243,100 @@ P0-002 direct personalizers may add and reorder only their own personal addition
 **Related briefs:**
 
 - P0-003
+
+---
+
+## D-012 - Household people are distinct from app access
+
+**Status:** Active
+
+**Decision:** A household person is represented by a household membership independently of whether a user account, credentials, or active session exists. Person creation must not require enrollment. Access status is derived from the membership/user/enrollment facts and must be presented in person-centered language.
+
+**Reason:** A parent needs to organize the household before every person is ready to sign in, especially for younger children. Conflating membership with access makes the household invisible and encourages unsafe enrollment workarounds.
+
+**Implications:** Pending memberships remain first-class directory records. Adult/Child is descriptive classification only; capabilities remain explicit grants. Permanent member removal and account recovery remain separate future workflows.
+
+**Related briefs:**
+
+- P0-004A
+
+---
+
+## D-013 - Groups are named household sets, not authority or assignment engines
+
+**Status:** Active
+
+**Decision:** A group is a named set of current household memberships. Group membership does not grant capabilities, widen personal-task visibility, imply rotation, create assignment rules, or nest/query dynamically. Features consuming groups define their own semantics.
+
+**Reason:** Product needs reusable family structure without prematurely creating a rule engine or permission hierarchy.
+
+**Implications:** Group identity and membership are household-scoped. Removing a person from a group does not remove the person or rewrite history. Group-backed routine audience behavior is a separate contract in P0-004B.
+
+**Related briefs:**
+
+- P0-004A
+- P0-004B (planned)
+
+---
+
+## D-014 - Household structure management has its own capability
+
+**Status:** Active
+
+**Decision:** Adding/editing household people and creating/editing/deleting groups requires `household.structure.manage`. Enrollment setup remains governed by `household.member.enroll`. Adult/Child classification does not grant either capability. The existing manager preset receives both; migration backfills the new structure grant only to memberships already holding the enrollment grant.
+
+**Reason:** Reusing an enrollment-named grant for all household structure would couple unrelated authority and make future access delegation unsafe. Deriving authority from Adult/Child would contradict the established capability model.
+
+**Implications:** Structure and access controls can be presented together in a parent workflow while remaining independently enforced by the server. No granular grant editor is introduced in P0-004A.
+
+**Related briefs:**
+
+- P0-004A
+
+---
+
+## D-015 - Enrollment setup has one actionable, one-time-secret lifecycle
+
+**Status:** Active
+
+**Decision:** An unenrolled membership may have at most one actionable enrollment claim. Issuing a replacement revokes the prior actionable claim; cancellation revokes without deleting the person; successful consumption invalidates any remaining actionable claim. Plaintext setup material is returned once at issuance and is never recoverable from status/detail reads.
+
+**Reason:** Person-centered access status must remain understandable after reload without retaining or repeatedly exposing reusable secrets or creating multiple mysterious setup credentials.
+
+**Implications:** Enrollment claims need revocation/status support and transactional replacement. The UI may show safe timestamps and human states, then offer replacement when plaintext is no longer available. This is an operational lifecycle, not a permanent token-history dashboard.
+
+**Related briefs:**
+
+- P0-004A
+
+---
+
+## D-016 - People & Groups uses exclusive progressive-disclosure states
+
+**Status:** Active
+
+**Decision:** At phone width, People & Groups renders one primary in-app state at a time: overview, focused person/group detail, focused add/edit/access form, or household activity. Detail is read-first; editing is explicit. Each nested state supplies an accessible in-app Back action and moves focus/scroll to its heading. P0-004A does not add a routing dependency or promise URL/deep-link state.
+
+**Reason:** The r2 composite page made successful row selections appear ineffective and forced users to search below the viewport for forms. The smallest correction is clearer state and hierarchy, not a broad navigation or design-system rewrite.
+
+**Implications:** Household Morning Routine progress and household-visible personal tasks move into a focused Household activity state reachable from the directory but retain their existing authorization, privacy, and synchronization. Wider-screen master/detail remains optional later.
+
+**Related briefs:**
+
+- P0-004A r3
+
+---
+
+## D-017 - Demo fixtures are opt-in and cleanup is provenance-safe
+
+**Status:** Active
+
+**Decision:** Normal development and bootstrap do not create fictional household members. Demo/test seeding is explicit and uses one canonical manifest of stable fixture IDs. Existing contamination is remediated only by an operator-invoked, backup-first command that matches manifest identity and removes a membership only after exhaustive durable-reference checks; names never establish provenance.
+
+**Reason:** Default auto-seeding made fictional people appear to be real household members. Generic deletion or name-based cleanup would threaten authentication and historical responsibility records.
+
+**Implications:** Development defaults `AUTO_SEED` off; tests/demo commands opt in. Empty bootstrap creates the minimum household/claim needed for one manager. Cleanup defaults to dry run, is transactionally rechecked on apply, reports blocked relationship categories without private content, and is not a general member-departure feature.
+
+**Related briefs:**
+
+- P0-004A r3

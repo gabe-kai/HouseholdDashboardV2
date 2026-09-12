@@ -21,6 +21,7 @@ export const UuidSchema = z.string().uuid();
 
 export const GrantSchema = z.enum([
   "household.member.enroll",
+  "household.structure.manage",
   "routine.shared.manage",
   "routine.personalize.direct",
   "routine.personalize.propose",
@@ -29,6 +30,17 @@ export const GrantSchema = z.enum([
   "personal_task.create",
 ]);
 export type Grant = z.infer<typeof GrantSchema>;
+
+export const PersonClassificationSchema = z.enum(["adult", "child"]);
+export type PersonClassification = z.infer<typeof PersonClassificationSchema>;
+
+export const AccessStateSchema = z.enum([
+  "not_set_up",
+  "setup_ready",
+  "setup_expired",
+  "access_set_up",
+]);
+export type AccessState = z.infer<typeof AccessStateSchema>;
 
 export const GrantPresetSchema = z.enum([
   "manager",
@@ -81,9 +93,33 @@ export const ClaimSchema = z.object({
 });
 
 export const IssueEnrollmentSchema = z.object({
-  membershipId: UuidSchema.optional(),
-  displayName: z.string().trim().min(1).max(80).optional(),
+  mutationId: UuidSchema,
+  membershipId: UuidSchema,
   preset: GrantPresetSchema,
+});
+
+export const CreatePersonSchema = z.object({
+  mutationId: UuidSchema,
+  displayName: z.string().trim().min(1).max(80),
+  classification: PersonClassificationSchema,
+});
+
+export const UpdatePersonSchema = z.object({
+  displayName: z.string().trim().min(1).max(80),
+  classification: PersonClassificationSchema.nullable(),
+  expectedVersion: z.number().int().positive(),
+});
+
+export const CreateGroupSchema = z.object({
+  mutationId: UuidSchema,
+  name: z.string().trim().min(1).max(80),
+  membershipIds: z.array(UuidSchema).default([]),
+});
+
+export const UpdateGroupSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  membershipIds: z.array(UuidSchema),
+  expectedVersion: z.number().int().positive(),
 });
 
 export const PersonalAdditionSchema = z.object({
@@ -154,7 +190,13 @@ export type OccurrenceView = {
 export type SyncNotification = {
   type: "household_change";
   householdId: string;
-  resource: "occurrence" | "routine" | "proposal" | "personal_task" | "membership";
+  resource:
+    | "occurrence"
+    | "routine"
+    | "proposal"
+    | "personal_task"
+    | "membership"
+    | "group";
   resourceId: string;
   version?: number;
   at: string;
@@ -165,4 +207,32 @@ export type MemberPublic = {
   displayName: string;
   grants: Grant[];
   status: "active" | "pending";
+  classification: PersonClassification | null;
+  accessState: AccessState;
+  version: number;
+};
+
+export type PersonDetail = MemberPublic & {
+  groups: Array<{ id: string; name: string }>;
+  morningRoutine: {
+    currentlyAssigned: boolean;
+    revisionId: string | null;
+    revisionTitle: string | null;
+    effectiveDate: string | null;
+  };
+  access: {
+    state: AccessState;
+    setupClaimId: string | null;
+    setupCreatedAt: string | null;
+    setupExpiresAt: string | null;
+  };
+};
+
+export type GroupPublic = {
+  id: string;
+  name: string;
+  version: number;
+  membershipIds: string[];
+  createdAt: string;
+  updatedAt: string;
 };

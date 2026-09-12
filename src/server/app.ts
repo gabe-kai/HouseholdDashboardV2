@@ -12,6 +12,8 @@ import Fastify, {
 import { nowUtcIso } from "../domain/time.js";
 import {
   ClaimSchema,
+  CreateGroupSchema,
+  CreatePersonSchema,
   CreatePersonalTaskSchema,
   CreateProposalSchema,
   CreateRevisionSchema,
@@ -23,6 +25,9 @@ import {
   SavePersonalLayerSchema,
   SetPersonalTaskStatusSchema,
   SetStepStatusSchema,
+  UpdateGroupSchema,
+  UpdatePersonSchema,
+  UuidSchema,
 } from "../shared/schemas.js";
 import type { AppConfig } from "./config.js";
 import { digestEquals, sha256Hex } from "./crypto.js";
@@ -177,7 +182,13 @@ export async function buildApp(
 
   function broadcast(
     session: AuthContext,
-    resource: "occurrence" | "routine" | "proposal" | "personal_task" | "membership",
+    resource:
+      | "occurrence"
+      | "routine"
+      | "proposal"
+      | "personal_task"
+      | "membership"
+      | "group",
     resourceId: string,
     version?: number,
   ): void {
@@ -336,6 +347,126 @@ export async function buildApp(
     const session = requireSession(request, reply);
     if (!session) return;
     return { memberships: store.listMemberships(session.householdId) };
+  });
+
+  app.get("/api/v1/people", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    return { people: store.listMemberships(session.householdId) };
+  });
+
+  app.post("/api/v1/people", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const parsed = CreatePersonSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid person", request.id));
+    }
+    const person = store.createPerson(session, parsed.data);
+    broadcast(session, "membership", person.id, person.version);
+    return { person };
+  });
+
+  app.get("/api/v1/people/:membershipId", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const membershipId = (request.params as { membershipId: string }).membershipId;
+    if (!UuidSchema.safeParse(membershipId).success) {
+      return reply.code(400).send(errorBody("VALIDATION", "Invalid person id", request.id));
+    }
+    return { person: store.getPersonDetail(session, membershipId) };
+  });
+
+  app.patch("/api/v1/people/:membershipId", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const membershipId = (request.params as { membershipId: string }).membershipId;
+    if (!UuidSchema.safeParse(membershipId).success) {
+      return reply.code(400).send(errorBody("VALIDATION", "Invalid person id", request.id));
+    }
+    const parsed = UpdatePersonSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid person update", request.id));
+    }
+    const person = store.updatePerson(session, membershipId, parsed.data);
+    broadcast(session, "membership", person.id, person.version);
+    return { person };
+  });
+
+  app.delete("/api/v1/people/:membershipId/setup", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const membershipId = (request.params as { membershipId: string }).membershipId;
+    if (!UuidSchema.safeParse(membershipId).success) {
+      return reply.code(400).send(errorBody("VALIDATION", "Invalid person id", request.id));
+    }
+    const result = store.cancelEnrollmentSetup(session, membershipId);
+    broadcast(session, "membership", result.membershipId);
+    return result;
+  });
+
+  app.get("/api/v1/groups", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    return { groups: store.listGroups(session.householdId) };
+  });
+
+  app.post("/api/v1/groups", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const parsed = CreateGroupSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid group", request.id));
+    }
+    const group = store.createGroup(session, parsed.data);
+    broadcast(session, "group", group.id, group.version);
+    return { group };
+  });
+
+  app.get("/api/v1/groups/:groupId", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const groupId = (request.params as { groupId: string }).groupId;
+    if (!UuidSchema.safeParse(groupId).success) {
+      return reply.code(400).send(errorBody("VALIDATION", "Invalid group id", request.id));
+    }
+    return { group: store.getGroup(session.householdId, groupId) };
+  });
+
+  app.patch("/api/v1/groups/:groupId", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const groupId = (request.params as { groupId: string }).groupId;
+    if (!UuidSchema.safeParse(groupId).success) {
+      return reply.code(400).send(errorBody("VALIDATION", "Invalid group id", request.id));
+    }
+    const parsed = UpdateGroupSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid group update", request.id));
+    }
+    const group = store.updateGroup(session, groupId, parsed.data);
+    broadcast(session, "group", group.id, group.version);
+    return { group };
+  });
+
+  app.delete("/api/v1/groups/:groupId", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const groupId = (request.params as { groupId: string }).groupId;
+    if (!UuidSchema.safeParse(groupId).success) {
+      return reply.code(400).send(errorBody("VALIDATION", "Invalid group id", request.id));
+    }
+    const result = store.deleteGroup(session, groupId);
+    broadcast(session, "group", groupId);
+    return result;
   });
 
   app.get("/api/v1/routines", async (request, reply) => {
@@ -578,7 +709,7 @@ export async function buildApp(
   if (config.profile === "development" || config.profile === "test") {
     app.post("/api/v1/test/bootstrap-claim", async (request, reply) => {
       try {
-        const issued = store.issueBootstrapClaim();
+        const issued = store.issueBootstrapClaim(config.householdTimezone);
         return { token: issued.token, expiresAt: issued.expiresAt };
       } catch (err) {
         return sendStoreError(reply, request.id, err);

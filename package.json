@@ -18,6 +18,7 @@
     "start": "node dist/server/index.js",
     "db:migrate": "tsx src/server/scripts/migrate.ts",
     "db:seed": "tsx src/server/scripts/seed.ts",
+    "db:cleanup-fixtures": "tsx src/server/scripts/cleanup-fixtures.ts",
     "auth:bootstrap": "tsx src/server/scripts/bootstrap.ts",
     "db:backup": "tsx src/server/scripts/backup.ts",
     "db:restore": "tsx src/server/scripts/restore.ts",

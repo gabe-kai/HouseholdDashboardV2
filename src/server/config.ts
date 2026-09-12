@@ -74,6 +74,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     trustedProxy: env.TRUSTED_PROXY === "1",
     sessionIdleDays: 7,
     sessionAbsoluteDays: 30,
-    autoSeed: profile !== "hosted" && env.AUTO_SEED !== "0",
+    autoSeed: profile !== "hosted" && (env.AUTO_SEED === "1" || env.AUTO_SEED === "true"),
   };
 }

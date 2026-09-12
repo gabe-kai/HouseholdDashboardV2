@@ -410,7 +410,7 @@ describe("P0-002 HTTP isolation, grants, and composition", () => {
         method: "POST",
         url: "/api/v1/enrollment/claims",
         headers: mgrHeaders,
-        payload: { membershipId: IDS.avery, preset: "direct_personalizer" },
+        payload: { mutationId: crypto.randomUUID(), membershipId: IDS.avery, preset: "direct_personalizer" },
       });
       expect(enrollAvery.statusCode).toBe(200);
       const averyToken = (enrollAvery.json() as { claim: { token: string } }).claim.token;
@@ -435,7 +435,7 @@ describe("P0-002 HTTP isolation, grants, and composition", () => {
         method: "POST",
         url: "/api/v1/enrollment/claims",
         headers: mgrHeaders,
-        payload: { membershipId: IDS.casey, preset: "proposal_personalizer" },
+        payload: { mutationId: crypto.randomUUID(), membershipId: IDS.casey, preset: "proposal_personalizer" },
       });
       const caseyToken = (enrollCasey.json() as { claim: { token: string } }).claim.token;
       const caseyClaim = await harness.app.inject({
@@ -479,7 +479,7 @@ describe("P0-002 HTTP isolation, grants, and composition", () => {
             method: "POST",
             url: "/api/v1/enrollment/claims",
             headers: mgrHeaders,
-            payload: { membershipId: IDS.jordan, preset: "direct_personalizer" },
+            payload: { mutationId: crypto.randomUUID(), membershipId: IDS.jordan, preset: "direct_personalizer" },
           })
         ).statusCode,
       ).toBe(200);
@@ -570,7 +570,7 @@ describe("P0-002 HTTP isolation, grants, and composition", () => {
             method: "POST",
             url: "/api/v1/enrollment/claims",
             headers: authHeaders(harness, casey),
-            payload: { membershipId: IDS.taylor, preset: "direct_personalizer" },
+            payload: { mutationId: crypto.randomUUID(), membershipId: IDS.taylor, preset: "direct_personalizer" },
           })
         ).statusCode,
       ).toBe(403);

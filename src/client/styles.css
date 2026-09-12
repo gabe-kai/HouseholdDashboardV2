@@ -526,14 +526,49 @@ textarea {
   gap: 0.15rem;
   text-align: left;
   padding: 0.75rem 0.9rem;
-  border: 1px solid var(--line);
-  background: var(--panel);
+  border: 1px solid transparent;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
   color: inherit;
 }
 
 .person-row.selected {
   border-color: var(--accent);
   box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.row-affordance {
+  font-size: 0.9rem;
+}
+
+.back-link {
+  min-height: var(--touch);
+  margin: 0 0 0.75rem;
+  padding: 0.35rem 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  text-align: left;
+  text-decoration: underline;
+}
+
+.focus-heading:focus {
+  outline: none;
+}
+
+.focus-heading:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.activity-entry {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.focused-state .form-grid {
+  margin-top: 0.5rem;
 }
 
 .person-name {

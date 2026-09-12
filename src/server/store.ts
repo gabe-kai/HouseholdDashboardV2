@@ -101,39 +101,6 @@ const CLAIM_MS = 24 * 60 * 60 * 1_000;
 const LOGIN_WINDOW_MS = 15 * 60 * 1_000;
 const LOGIN_BLOCK_MS = 60 * 1_000;
 
-const FIXTURE_MEMBERS = [
-  {
-    id: "22222222-2222-4222-8222-222222222201",
-    displayName: "Morgan Reed",
-    preset: "manager" as const,
-  },
-  {
-    id: "22222222-2222-4222-8222-222222222202",
-    displayName: "Avery Reed",
-    preset: "direct_personalizer" as const,
-  },
-  {
-    id: "22222222-2222-4222-8222-222222222203",
-    displayName: "Jordan Reed",
-    preset: "direct_personalizer" as const,
-  },
-  {
-    id: "22222222-2222-4222-8222-222222222204",
-    displayName: "Casey Reed",
-    preset: "proposal_personalizer" as const,
-  },
-  {
-    id: "22222222-2222-4222-8222-222222222205",
-    displayName: "Taylor Reed",
-    preset: "proposal_personalizer" as const,
-  },
-  {
-    id: "22222222-2222-4222-8222-222222222206",
-    displayName: "Rowan Reed",
-    preset: "proposal_personalizer" as const,
-  },
-] as const;
-
 function fail(code: StoreErrorCode, message: string, extra?: Record<string, unknown>): never {
   throw Object.assign(new Error(message), { code, ...extra });
 }
@@ -188,7 +155,7 @@ export class AppStore {
     const tx = this.db.transaction(() => {
       this.db
         .prepare("INSERT INTO households (id, name, timezone) VALUES (?, ?, ?)")
-        .run(SEED.household.id, "Reed Household", timezone);
+        .run(SEED.household.id, SEED.household.name, timezone);
 
       const insertMember = this.db.prepare(
         `INSERT INTO members (id, household_id, display_name, capabilities_json)
@@ -202,7 +169,7 @@ export class AppStore {
       const insertGrant = this.db.prepare(
         "INSERT INTO membership_grants (membership_id, grant_name) VALUES (?, ?)",
       );
-      for (const member of FIXTURE_MEMBERS) {
+      for (const member of SEED.members) {
         const grants = GRANT_PRESETS[member.preset];
         insertMember.run(
           member.id,
@@ -215,6 +182,63 @@ export class AppStore {
       }
     });
     tx();
+  }
+
+  /** Create an empty household only — no demo people. Used by fixture-free bootstrap. */
+  ensureEmptyHousehold(timezone: string): string {
+    const existing = this.db
+      .prepare("SELECT id FROM households ORDER BY id LIMIT 1")
+      .get() as { id: string } | undefined;
+    if (existing) return existing.id;
+    const id = randomUUID();
+    this.db
+      .prepare("INSERT INTO households (id, name, timezone) VALUES (?, ?, ?)")
+      .run(id, "Household", timezone);
+    return id;
+  }
+
+  issueBootstrapClaim(timezone = "UTC"): { token: string; expiresAt: string } {
+    const activeManager = this.db
+      .prepare(
+        `SELECT 1
+         FROM household_memberships hm
+         JOIN membership_grants mg ON mg.membership_id = hm.id
+         JOIN users u ON u.id = hm.user_id AND u.disabled = 0
+         WHERE hm.status = 'active' AND mg.grant_name = 'household.member.enroll'
+         LIMIT 1`,
+      )
+      .get();
+    if (activeManager) fail("CONFLICT", "An active manager already exists");
+
+    const householdId = this.ensureEmptyHousehold(timezone);
+
+    // Prefer an existing pending enroll-capable membership (explicit demo seed),
+    // otherwise issue a claim with no membership — claim creates the first manager.
+    const manager = this.db
+      .prepare(
+        `SELECT hm.id
+         FROM household_memberships hm
+         JOIN membership_grants mg ON mg.membership_id = hm.id
+         WHERE hm.household_id = ? AND hm.status = 'pending'
+           AND mg.grant_name = 'household.member.enroll'
+         ORDER BY hm.created_at LIMIT 1`,
+      )
+      .get(householdId) as { id: string } | undefined;
+
+    this.db
+      .prepare(
+        `UPDATE enrollment_claims SET consumed_at = ?
+         WHERE kind = 'bootstrap' AND consumed_at IS NULL`,
+      )
+      .run(nowUtcIso());
+    return this.insertClaim({
+      householdId,
+      membershipId: manager?.id ?? null,
+      displayName: null,
+      preset: "manager",
+      creatorMembershipId: null,
+      kind: "bootstrap",
+    });
   }
 
   getSessionByTokenDigest(digest: string): AuthContext | null {
@@ -505,53 +529,6 @@ export class AppStore {
     });
     tx();
     return this.createSession(userId, membershipId);
-  }
-
-  issueBootstrapClaim(): { token: string; expiresAt: string } {
-    const activeManager = this.db
-      .prepare(
-        `SELECT 1
-         FROM household_memberships hm
-         JOIN membership_grants mg ON mg.membership_id = hm.id
-         JOIN users u ON u.id = hm.user_id AND u.disabled = 0
-         WHERE hm.status = 'active' AND mg.grant_name = 'household.member.enroll'
-         LIMIT 1`,
-      )
-      .get();
-    if (activeManager) fail("CONFLICT", "An active manager already exists");
-
-    let household = this.db
-      .prepare("SELECT id FROM households ORDER BY id LIMIT 1")
-      .get() as { id: string } | undefined;
-    if (!household) {
-      this.seed("UTC");
-      household = { id: SEED.household.id };
-    }
-    const manager = this.db
-      .prepare(
-        `SELECT hm.id
-         FROM household_memberships hm
-         JOIN membership_grants mg ON mg.membership_id = hm.id
-         WHERE hm.household_id = ? AND hm.status = 'pending'
-           AND mg.grant_name = 'household.member.enroll'
-         ORDER BY hm.created_at LIMIT 1`,
-      )
-      .get(household.id) as { id: string } | undefined;
-
-    this.db
-      .prepare(
-        `UPDATE enrollment_claims SET consumed_at = ?
-         WHERE kind = 'bootstrap' AND consumed_at IS NULL`,
-      )
-      .run(nowUtcIso());
-    return this.insertClaim({
-      householdId: household.id,
-      membershipId: manager?.id ?? null,
-      displayName: null,
-      preset: "manager",
-      creatorMembershipId: null,
-      kind: "bootstrap",
-    });
   }
 
   issueEnrollmentClaim(

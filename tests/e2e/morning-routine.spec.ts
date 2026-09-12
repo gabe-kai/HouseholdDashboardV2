@@ -130,6 +130,15 @@ async function expandAllOccurrences(page: Page) {
   }
 }
 
+async function openHouseholdActivity(page: Page) {
+  await page
+    .getByRole("navigation", { name: "Primary" })
+    .getByRole("button", { name: "People & Groups", exact: true })
+    .click();
+  await page.getByRole("button", { name: "View household activity" }).click();
+  await expect(page.getByRole("heading", { name: "Household activity" })).toBeVisible();
+}
+
 async function outboxCount(page: Page, membershipId: string): Promise<number> {
   return page.evaluate(async (id) => {
     return await new Promise<number>((resolve, reject) => {
@@ -203,10 +212,7 @@ test.describe("P0-002 authenticated household", () => {
     await expect(manager.locator(".status-pill[data-kind='online']")).toContainText("Online", {
       timeout: 10_000,
     });
-    await manager
-      .getByRole("navigation", { name: "Primary" })
-      .getByRole("button", { name: "People & Groups", exact: true })
-      .click();
+    await openHouseholdActivity(manager);
 
     await ensureSharedRoutine(manager.request, [MORGAN_ID, AVERY_ID, JORDAN_ID]);
 
@@ -333,10 +339,7 @@ test.describe("P0-002 authenticated household", () => {
 
     await manager.goto("/");
     await expect(manager.locator(".topbar")).toContainText("Morgan Reed", { timeout: 20_000 });
-    await manager
-      .getByRole("navigation", { name: "Primary" })
-      .getByRole("button", { name: "People & Groups", exact: true })
-      .click();
+    await openHouseholdActivity(manager);
     await expandAllOccurrences(manager);
 
     await child.goto("/");
@@ -396,10 +399,7 @@ test.describe("P0-002 authenticated household", () => {
 
     await manager.goto("/");
     await expect(manager.locator(".topbar")).toContainText("Morgan Reed", { timeout: 20_000 });
-    await manager
-      .getByRole("navigation", { name: "Primary" })
-      .getByRole("button", { name: "People & Groups", exact: true })
-      .click();
+    await openHouseholdActivity(manager);
     await expandAllOccurrences(manager);
     const averyOccurrence = manager.locator(".occurrence").filter({ hasText: "Avery Reed" });
     const makeBedStep = averyOccurrence.locator(".step").filter({ hasText: "Make bed" });
@@ -514,10 +514,7 @@ test.describe("P0-002 authenticated household", () => {
 
     await manager.goto("/");
     await expect(manager.locator(".topbar")).toContainText("Morgan Reed", { timeout: 20_000 });
-    await manager
-      .getByRole("navigation", { name: "Primary" })
-      .getByRole("button", { name: "People & Groups", exact: true })
-      .click();
+    await openHouseholdActivity(manager);
     await expect(manager.getByRole("heading", { name: "Household-visible personal tasks" })).toBeVisible();
     await expect(manager.getByText("Shared grocery list")).toBeVisible({ timeout: 10_000 });
     await expect(manager.getByText("Private diary note")).toHaveCount(0);

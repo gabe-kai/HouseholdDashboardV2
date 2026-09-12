@@ -308,3 +308,35 @@ P0-002 direct personalizers may add and reorder only their own personal addition
 **Related briefs:**
 
 - P0-004A
+
+---
+
+## D-016 - People & Groups uses exclusive progressive-disclosure states
+
+**Status:** Active
+
+**Decision:** At phone width, People & Groups renders one primary in-app state at a time: overview, focused person/group detail, focused add/edit/access form, or household activity. Detail is read-first; editing is explicit. Each nested state supplies an accessible in-app Back action and moves focus/scroll to its heading. P0-004A does not add a routing dependency or promise URL/deep-link state.
+
+**Reason:** The r2 composite page made successful row selections appear ineffective and forced users to search below the viewport for forms. The smallest correction is clearer state and hierarchy, not a broad navigation or design-system rewrite.
+
+**Implications:** Household Morning Routine progress and household-visible personal tasks move into a focused Household activity state reachable from the directory but retain their existing authorization, privacy, and synchronization. Wider-screen master/detail remains optional later.
+
+**Related briefs:**
+
+- P0-004A r3
+
+---
+
+## D-017 - Demo fixtures are opt-in and cleanup is provenance-safe
+
+**Status:** Active
+
+**Decision:** Normal development and bootstrap do not create fictional household members. Demo/test seeding is explicit and uses one canonical manifest of stable fixture IDs. Existing contamination is remediated only by an operator-invoked, backup-first command that matches manifest identity and removes a membership only after exhaustive durable-reference checks; names never establish provenance.
+
+**Reason:** Default auto-seeding made fictional people appear to be real household members. Generic deletion or name-based cleanup would threaten authentication and historical responsibility records.
+
+**Implications:** Development defaults `AUTO_SEED` off; tests/demo commands opt in. Empty bootstrap creates the minimum household/claim needed for one manager. Cleanup defaults to dry run, is transactionally rechecked on apply, reports blocked relationship categories without private content, and is not a general member-departure feature.
+
+**Related briefs:**
+
+- P0-004A r3

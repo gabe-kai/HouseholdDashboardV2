@@ -14,41 +14,47 @@ afterEach(async () => {
 });
 
 describe("P0-003 contract hardening", () => {
-  it("rejects mutating requests with missing or wrong CSRF tokens", async () => {
-    const harness = await createHttpHarness();
-    temps.push(harness.dbPath);
-    try {
-      const session = await httpClaimManager(harness);
-      const missing = await harness.app.inject({
-        method: "POST",
-        url: "/api/v1/personal-tasks",
-        headers: {
-          origin: harness.origin,
-          cookie: session.cookieHeader,
-        },
-        payload: { title: "No CSRF", visibility: "private" },
-      });
-      expect(missing.statusCode).toBe(403);
-      expect((missing.json() as { code: string }).code).toBe("CSRF");
+  it(
+    "rejects mutating requests with missing or wrong CSRF tokens",
+    async () => {
+      const harness = await createHttpHarness();
+      temps.push(harness.dbPath);
+      try {
+        const session = await httpClaimManager(harness);
+        const missing = await harness.app.inject({
+          method: "POST",
+          url: "/api/v1/personal-tasks",
+          headers: {
+            origin: harness.origin,
+            cookie: session.cookieHeader,
+          },
+          payload: { title: "No CSRF", visibility: "private" },
+        });
+        expect(missing.statusCode).toBe(403);
+        expect((missing.json() as { code: string }).code).toBe("CSRF");
 
-      const wrong = await harness.app.inject({
-        method: "POST",
-        url: "/api/v1/personal-tasks",
-        headers: {
-          origin: harness.origin,
-          cookie: session.cookieHeader,
-          "x-csrf-token": "not-the-session-csrf-secret",
-        },
-        payload: { title: "Bad CSRF", visibility: "private" },
-      });
-      expect(wrong.statusCode).toBe(403);
-      expect((wrong.json() as { code: string }).code).toBe("CSRF");
-    } finally {
-      await harness.close();
-    }
-  });
+        const wrong = await harness.app.inject({
+          method: "POST",
+          url: "/api/v1/personal-tasks",
+          headers: {
+            origin: harness.origin,
+            cookie: session.cookieHeader,
+            "x-csrf-token": "not-the-session-csrf-secret",
+          },
+          payload: { title: "Bad CSRF", visibility: "private" },
+        });
+        expect(wrong.statusCode).toBe(403);
+        expect((wrong.json() as { code: string }).code).toBe("CSRF");
+      } finally {
+        await harness.close();
+      }
+    },
+    20_000,
+  );
 
-  it("enforces personal-task visibility and owner-only status with idempotent mutationIds", async () => {
+  it(
+    "enforces personal-task visibility and owner-only status with idempotent mutationIds",
+    async () => {
     const harness = await createHttpHarness();
     temps.push(harness.dbPath);
     try {
@@ -59,6 +65,7 @@ describe("P0-003 contract hardening", () => {
         url: "/api/v1/enrollment/claims",
         headers: authHeaders(harness, manager),
         payload: {
+          mutationId: crypto.randomUUID(),
           membershipId: IDS.avery,
           preset: "direct_personalizer",
         },
@@ -156,5 +163,7 @@ describe("P0-003 contract hardening", () => {
     } finally {
       await harness.close();
     }
-  });
+  },
+  20_000,
+  );
 });

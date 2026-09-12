@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
-import { SEED } from "../../src/server/seeds/evaluation.js";
+import { SEED, legacyCapabilitiesJson } from "../../src/server/seeds/evaluation.js";
 
 /** Supported P0-003 migration baseline: representative populated pre-P0-002 schema. */
 export const P001_FIXTURE_IDS = {
@@ -40,7 +40,7 @@ export function applyPopulatedP001Fixture(db: Database.Database, timezone = "Ame
       member.id,
       SEED.household.id,
       member.displayName,
-      JSON.stringify([...member.capabilities]),
+      legacyCapabilitiesJson(member.preset),
     );
   }
 

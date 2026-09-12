@@ -5,7 +5,7 @@ behind HTTPS with WebSocket forwarding. Do not commit real origins, accounts, or
 
 ## Runtime profiles
 
-- `APP_PROFILE=development` (default locally): loopback, auto-seed pending memberships, distinct `hd_dev_session` cookie.
+- `APP_PROFILE=development` (default locally): loopback, no automatic fixture seed unless `AUTO_SEED=1`, distinct `hd_dev_session` cookie.
 - `APP_PROFILE=test`: used by Playwright; allows `/api/v1/test/bootstrap-claim`.
 - `APP_PROFILE=hosted`: fail-closed. Requires `PUBLIC_ORIGIN=https://…`, `DB_PATH`, `BACKUP_DIR`. Forbids `EVAL_LAN_ACCESS`, `ALLOW_EVAL_BYPASS`, and `AUTO_SEED=1`. Uses `__Host-hd_session` with `Secure; HttpOnly; SameSite=Strict; Path=/`.
 
@@ -14,8 +14,9 @@ behind HTTPS with WebSocket forwarding. Do not commit real origins, accounts, or
 ```bash
 npm ci
 npm run db:migrate
-npm run db:seed          # development/test only — pending fictional memberships, no passwords
-npm run auth:bootstrap   # prints one single-use bootstrap claim token
+npm run db:seed          # opt-in — pending fictional Reed memberships, no passwords
+npm run auth:bootstrap   # empty DB: minimum household + one-time claim only (no demo people)
+npm run db:cleanup-fixtures -- [--db path] [--apply]  # dry-run default; exact fixture IDs only
 npm run db:backup        # consistent backup into BACKUP_DIR
 npm run db:restore -- path/to/backup.sqlite
 npm run build
@@ -23,6 +24,8 @@ npm run start            # with APP_PROFILE=hosted and required env
 ```
 
 Before applying a new migration on a populated database, run `npm run db:backup`.
+
+Normal local development uses `AUTO_SEED=0` (see `.env.example`). Explicit `npm run db:seed` or `AUTO_SEED=1` creates the canonical demo fixture. Fixture cleanup is operator-driven: dry-run by default, `--apply` after backup, and never runs on startup. Do not apply cleanup to a live household database without an explicit Project Lead decision.
 
 ## Reverse proxy expectations
 

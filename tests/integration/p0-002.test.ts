@@ -7,7 +7,7 @@ import { loadConfig } from "../../src/server/config.js";
 import { migrate, openDatabase, resolveDbPath } from "../../src/server/db.js";
 import { AppStore } from "../../src/server/store.js";
 import { assertArgon2idPhc } from "../../src/server/crypto.js";
-import { SEED } from "../../src/server/seeds/evaluation.js";
+import { SEED, legacyCapabilitiesJson } from "../../src/server/seeds/evaluation.js";
 import { GRANT_PRESETS } from "../../src/shared/grants.js";
 
 const temps: string[] = [];
@@ -67,7 +67,7 @@ describe("P0-002 authenticated authority", () => {
     for (const m of SEED.members) {
       db.prepare(
         "INSERT INTO members (id, household_id, display_name, capabilities_json) VALUES (?, ?, ?, ?)",
-      ).run(m.id, SEED.household.id, m.displayName, JSON.stringify([...m.capabilities]));
+      ).run(m.id, SEED.household.id, m.displayName, legacyCapabilitiesJson(m.preset));
     }
     const defId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
     const revId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2";
@@ -206,11 +206,12 @@ describe("P0-002 authenticated authority", () => {
     const propId = "22222222-2222-4222-8222-222222222204";
 
     const childClaim = store.issueEnrollmentClaim(managerAuth.context, {
+      mutationId: crypto.randomUUID(),
       membershipId: childId,
       preset: "direct_personalizer",
     });
     const childAuth = await store.claim({
-      claimToken: childClaim.token,
+      claimToken: childClaim.token!,
       loginName: "avery.reed",
       passphrase: "unique-passphrase-ok!",
       displayName: "Avery Reed",
@@ -253,11 +254,12 @@ describe("P0-002 authenticated authority", () => {
     expect(preview.steps.some((p) => p.text === "Clean up breakfast")).toBe(true);
 
     const propClaim = store.issueEnrollmentClaim(managerAuth.context, {
+      mutationId: crypto.randomUUID(),
       membershipId: propId,
       preset: "proposal_personalizer",
     });
     const propAuth = await store.claim({
-      claimToken: propClaim.token,
+      claimToken: propClaim.token!,
       loginName: "casey.reed",
       passphrase: "unique-passphrase-ok!",
       displayName: "Casey Reed",
@@ -328,11 +330,12 @@ describe("P0-002 authenticated authority", () => {
     for (const [index, membership] of pending.entries()) {
       const preset = presets[index]!;
       const claim = store.issueEnrollmentClaim(manager.context, {
+        mutationId: crypto.randomUUID(),
         membershipId: membership.id,
         preset,
       });
       const auth = await store.claim({
-        claimToken: claim.token,
+        claimToken: claim.token!,
         loginName: `member${index}.${Date.now().toString(36)}`,
         passphrase: "unique-passphrase-ok!",
         displayName: membership.displayName,

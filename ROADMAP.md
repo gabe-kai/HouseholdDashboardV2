@@ -28,22 +28,26 @@ Goal: prove that a real recurring household routine can be used quickly by six d
 
 - [x] **P0-003 — Regression Safety and Contract Hardening:** Protected behavior is explicit, critical contracts have layered automated coverage, and local PR/RC validation is backed by a successful GitHub Actions pull-request gate.
   - **Brief:** `P0-003 r1 - Regression Safety and Contract Hardening` (`briefs/p0-003-regression-safety-contract-hardening.md`)
-  - **Result:** Technically accepted on PR #6 after exact local PR/RC scripts and GitHub Actions passed; merge and required-check configuration remain Project Lead operations.
+  - **Result:** Technically accepted and merged to `main` via PR #6 after exact local PR/RC scripts and GitHub Actions passed; required-check configuration remains an optional Project Lead operation.
+
+- [x] **P0-004A — People & Groups UX Completion:** A parent can navigate focused people, access, group, and household-activity states while normal bootstrap remains fixture-free and demo cleanup remains provenance-safe.
+  - **Brief:** `P0-004A r3 - People & Groups UX Completion` (`briefs/p0-004a-people-groups-access.md`)
+  - **Result:** Technically accepted through `b4256ac` and correction `b20744e`; Product phone evaluation and branch integration remain separate.
 
 ### CURRENT
 
-- [ ] **Outcome:** Planning & Design selects the next smallest product outcome using household evaluation evidence and the accepted P0-003 regression baseline.
-  - **Status:** Product definition pending; no implementation brief yet.
+- [ ] **Outcome:** Morning Routine can consume a named group as a clear audience, giving each current group member one future occurrence while preserving overlap, prospective-change, and historical invariants.
+  - **Planned brief:** `P0-004B - Group-backed Morning Routine audience` (not yet detailed).
+  - **Status:** Return to Planning & Design for the next bounded proposal; P0-004A technical acceptance supplies the repository baseline.
+  - **Do not over-specify yet:** Exact effective-date and already-materialized-future reconciliation should follow P0-004A repository evidence.
 
 ### LIKELY NEXT
 
-- [ ] **Outcome:** Today can coordinate several real household responsibilities—initially examples such as Kitchen, Cats, and Bathroom—with a clear completed/current/later hierarchy and a mix of timed and untimed work.
-  - **Why likely:** Once identity and authority are credible, multiple responsibilities are the next product pressure needed to determine whether the Morning Routine model generalizes.
-  - **Do not over-specify yet:** Exact schedules, assignment patterns, contextual deep-clean additions, and rotation should respond to P0-002 family evaluation.
+- [ ] **Outcome:** Today can present more than one real household responsibility, such as Kitchen, Cats, or Bathroom, without cloning Morning Routine-specific concepts or weakening authority/history.
+- [ ] Add only the rotation or eligibility behavior required by the first proven multi-responsibility examples.
 
 ### LATER
 
-- [ ] Add prospective assignment patterns and only the rotation/eligibility needed by proven household examples.
 - [ ] Add retrospective completion, helper/cover/reassignment, and explicit credit while retaining the original assignment.
 - [ ] Support household exception days and contextual schedule additions/previews without a global weekday/weekend classification.
 

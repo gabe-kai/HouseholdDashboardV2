@@ -19,7 +19,7 @@
 
 ## Current focus
 
-Engineering implemented `P0-004B r1 - Group-backed Morning Routine` and returned `reports/P0-004B-r1-build-report.md`. Waiting on Architecture technical acceptance.
+Architecture reviewed the P0-004B r1 implementation and returned FIX REQUIRED for two contract gaps: household-local baseline membership dating and current-versus-next-day Routine summary resolution. The same r1 remains assigned to Engineering for correction.
 
 ## Internal work status
 
@@ -29,7 +29,7 @@ Engineering implemented `P0-004B r1 - Group-backed Morning Routine` and returned
 | P0-002 - Authenticated Household Authority | r1 | ACCEPTED | Project Lead evaluation | `brief/p0-002-authenticated-household-authority` | Product evaluation; future hosted release candidates require the hosted smoke/evidence gate |
 | P0-003 - Regression Safety and Contract Hardening | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #6 | Product evaluation; optional required-check configuration |
 | P0-004A - People & Groups UX Completion | r3 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #8 | Product phone evaluation |
-| P0-004B - Group-backed Morning Routine | r1 | IMPLEMENTED | Architecture | `brief/p0-004b-group-backed-morning-routine` | Architecture technical acceptance of Build Report |
+| P0-004B - Group-backed Morning Routine | r1 | FIX REQUIRED | Engineering | `brief/p0-004b-group-backed-morning-routine` | Correct r1 gaps and update Build Report |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -53,7 +53,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Architecture reviews `reports/P0-004B-r1-build-report.md` and either accepts r1 or returns FIX REQUIRED.
+Engineering corrects only `P0-004B r1` and returns an updated Build Report to Architecture for technical acceptance.
 
 ## Notes for all teams
 

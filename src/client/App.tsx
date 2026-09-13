@@ -21,8 +21,6 @@ import {
   connectSync,
   createPersonalTask,
   createProposal,
-  createRevision,
-  createRoutine,
   decideProposal,
   fetchHistory,
   fetchMemberships,
@@ -42,11 +40,11 @@ import {
   type PersonalAddition,
   type PersonalTask,
   type Proposal,
-  type Routine,
   type RoutinePreview,
   type SessionInfo,
 } from "./api";
 import { PeopleGroupsView } from "./PeopleGroups";
+import { RoutineEditor } from "./RoutineEditor";
 import {
   clearMembershipOutbox,
   enqueueOutbox,
@@ -71,16 +69,6 @@ type ChangeFeedback = {
   membershipId: string;
   effectiveDate: string;
 };
-
-const WEEKDAYS = [
-  { value: 1, label: "Mon" },
-  { value: 2, label: "Tue" },
-  { value: 3, label: "Wed" },
-  { value: 4, label: "Thu" },
-  { value: 5, label: "Fri" },
-  { value: 6, label: "Sat" },
-  { value: 7, label: "Sun" },
-];
 
 function hasGrant(session: SessionInfo, grant: Grant): boolean {
   return session.grants.includes(grant);
@@ -131,6 +119,7 @@ export function App() {
   const [feedback, setFeedback] = useState<ChangeFeedback | null>(null);
   const [preview, setPreview] = useState<RoutinePreview | null>(null);
   const [mutationDelayMs, setMutationDelayMs] = useState(0);
+  const [routineRefreshToken, setRoutineRefreshToken] = useState(0);
   const identityRef = useRef<string | null>(null);
   const occurrencesRef = useRef<OccurrenceView[]>([]);
   const refreshGenerationRef = useRef(0);
@@ -339,6 +328,9 @@ export function App() {
     const disconnect = connectSync(
       (notification) => {
         if (identityRef.current !== membershipId) return;
+        if (notification.resource === "group" || notification.resource === "routine") {
+          setRoutineRefreshToken((n) => n + 1);
+        }
         const urgent =
           notification.resource === "proposal" ||
           notification.resource === "routine" ||
@@ -621,13 +613,16 @@ export function App() {
       {tab === "routine" && canManageShared ? (
         <RoutineEditor
           memberships={memberships}
+          refreshToken={routineRefreshToken}
           onSaved={(routine) => {
             const latest = routine.revisions.at(-1);
             if (latest) {
               setFeedback({
                 message: "The shared Morning Routine was saved.",
                 membershipId:
-                  latest.assigneeMemberIds[0] ?? session.member.id,
+                  latest.resolvedMemberIds?.[0] ??
+                  latest.assigneeMemberIds[0] ??
+                  session.member.id,
                 effectiveDate: latest.effectiveDate,
               });
             }
@@ -1055,184 +1050,6 @@ function ChangeNotice(props: {
         Open read-only preview
       </button>
     </div>
-  );
-}
-
-function RoutineEditor(props: {
-  memberships: MemberPublic[];
-  onSaved: (routine: Routine) => void;
-}) {
-  const eligible = props.memberships.filter(
-    (member) =>
-      member.status === "active" && member.grants.includes("routine.execute.own"),
-  );
-  const [routine, setRoutine] = useState<Routine | null>(null);
-  const [title, setTitle] = useState("Morning Routine");
-  const [weekdays, setWeekdays] = useState<number[]>([1, 2, 3, 4, 5, 6, 7]);
-  const [assignees, setAssignees] = useState<string[]>([]);
-  const [steps, setSteps] = useState<
-    Array<{ text: string; obligation: ObligationMeaning; logicalItemId?: string }>
-  >([{ text: "New step", obligation: "required" }]);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    void fetchRoutine()
-      .then((result) => {
-        setRoutine(result.routine);
-        const latest = result.routine?.revisions.at(-1);
-        if (!latest) {
-          setAssignees(eligible.map((member) => member.id));
-          return;
-        }
-        setTitle(latest.title);
-        setWeekdays(latest.weekdays);
-        setAssignees(latest.assigneeMemberIds);
-        setSteps(
-          latest.steps.map((step) => ({
-            text: step.text,
-            obligation: step.obligation,
-            logicalItemId: step.logicalItemId,
-          })),
-        );
-      })
-      .catch((caught) => setError(errorMessage(caught)));
-  }, []);
-
-  async function save() {
-    setError(null);
-    try {
-      const result = routine
-        ? await createRevision(routine.id, { title, weekdays, assigneeMemberIds: assignees, steps })
-        : await createRoutine({ title, weekdays, assigneeMemberIds: assignees, steps });
-      setRoutine(result.routine);
-      props.onSaved(result.routine);
-    } catch (caught) {
-      setError(errorMessage(caught));
-    }
-  }
-
-  return (
-    <section className="panel">
-      <h1>Morning Routine</h1>
-      <p className="meta">
-        Shared changes are prospective. Existing Today and history snapshots stay unchanged.
-      </p>
-      <div className="form-grid">
-        <label>
-          Title
-          <input value={title} onChange={(event) => setTitle(event.target.value)} />
-        </label>
-        <fieldset>
-          <legend>Weekdays</legend>
-          <div className="weekday-row">
-            {WEEKDAYS.map((day) => (
-              <label key={day.value}>
-                <input
-                  type="checkbox"
-                  checked={weekdays.includes(day.value)}
-                  onChange={(event) =>
-                    setWeekdays((current) =>
-                      event.target.checked
-                        ? [...current, day.value]
-                        : current.filter((value) => value !== day.value),
-                    )
-                  }
-                />
-                {day.label}
-              </label>
-            ))}
-          </div>
-        </fieldset>
-        <fieldset>
-          <legend>Assigned members</legend>
-          <div className="assignee-row">
-            {eligible.map((member) => (
-              <label key={member.id}>
-                <input
-                  type="checkbox"
-                  checked={assignees.includes(member.id)}
-                  onChange={(event) =>
-                    setAssignees((current) =>
-                      event.target.checked
-                        ? [...current, member.id]
-                        : current.filter((id) => id !== member.id),
-                    )
-                  }
-                />
-                {member.displayName}
-              </label>
-            ))}
-          </div>
-        </fieldset>
-        <div>
-          <h2>Steps</h2>
-          {steps.map((step, index) => (
-            <div className="step-editor" key={step.logicalItemId ?? index}>
-              <label>
-                Step {index + 1}
-                <input
-                  value={step.text}
-                  onChange={(event) =>
-                    setSteps((current) =>
-                      current.map((item, itemIndex) =>
-                        itemIndex === index ? { ...item, text: event.target.value } : item,
-                      ),
-                    )
-                  }
-                />
-              </label>
-              <label>
-                Obligation
-                <select
-                  value={step.obligation}
-                  onChange={(event) =>
-                    setSteps((current) =>
-                      current.map((item, itemIndex) =>
-                        itemIndex === index
-                          ? {
-                              ...item,
-                              obligation: event.target.value as ObligationMeaning,
-                            }
-                          : item,
-                      ),
-                    )
-                  }
-                >
-                  <option value="required">Required</option>
-                  <option value="as_needed">As needed</option>
-                  <option value="optional">Optional</option>
-                </select>
-              </label>
-              <button
-                type="button"
-                className="text-button danger-text"
-                onClick={() =>
-                  setSteps((current) => current.filter((_, itemIndex) => itemIndex !== index))
-                }
-              >
-                Remove step {index + 1}
-              </button>
-            </div>
-          ))}
-          <button
-            type="button"
-            className="secondary"
-            onClick={() =>
-              setSteps((current) => [
-                ...current,
-                { text: "New step", obligation: "optional" },
-              ])
-            }
-          >
-            Add step
-          </button>
-        </div>
-        <button type="button" className="primary" onClick={() => void save()}>
-          {routine ? "Schedule future revision" : "Create routine"}
-        </button>
-        {error ? <p role="alert">{error}</p> : null}
-      </div>
-    </section>
   );
 }
 

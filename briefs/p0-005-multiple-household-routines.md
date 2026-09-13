@@ -182,7 +182,7 @@ Domain/HTTP tests supply edge matrices; browser evidence must actually create an
 
 Engineering returned READY against revision 1 (see `reports/P0-005-r1-engineering-readiness.md`). Inspection was against `main` @ `93ef494` with planning commit `9cfb89e` on `brief/p0-005-multiple-household-routines` (no `src/`/`db/migrations` delta vs `main`). No blockers; material gaps are intentional contract deltas covered by D-020/D-021/D-022.
 
-**Architecture disposition:** PENDING. Implementation waits for Architecture’s response to this readiness review.
+**Architecture disposition:** ACCEPT / PROCEED (2026-09-13). The readiness review confirms the repository facts and the deliberate singleton-to-multiple-routine gaps. Engineering is authorized to implement P0-005 r1 from the integrated planning baseline. The contract, acceptance tests, implementation boundary, and deferred scope remain unchanged. Hosted or physical-device evidence is not required during implementation.
 
 ## Revision history
 

@@ -125,7 +125,7 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     origin: "none",
     csrf: "n/a",
     grant: null,
-    notes: "Person detail including access, groups, direct Morning Routine",
+    notes: "Person detail including access, groups, resolved Morning Routine assignment",
   },
   {
     method: "PATCH",
@@ -152,7 +152,7 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     origin: "none",
     csrf: "n/a",
     grant: null,
-    notes: "List household groups",
+    notes: "List live (non-deleted) household groups; includes usedByMorningRoutine",
   },
   {
     method: "POST",
@@ -161,7 +161,7 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     origin: "mutation_when_configured",
     csrf: "required",
     grant: "household.structure.manage",
-    notes: "Create named group; mutationId replay-safe",
+    notes: "Create named group + baseline membership version; mutationId replay-safe",
   },
   {
     method: "GET",
@@ -170,7 +170,7 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     origin: "none",
     csrf: "n/a",
     grant: null,
-    notes: "Group detail",
+    notes: "Group detail with usedByMorningRoutine / routineEffectFromDate",
   },
   {
     method: "PATCH",
@@ -179,7 +179,8 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     origin: "mutation_when_configured",
     csrf: "required",
     grant: "household.structure.manage",
-    notes: "Rename/replace members; expectedVersion conflict",
+    notes:
+      "Rename/replace members; expectedVersion conflict; membership changes dated next household day",
   },
   {
     method: "DELETE",
@@ -188,7 +189,8 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     origin: "mutation_when_configured",
     csrf: "required",
     grant: "household.structure.manage",
-    notes: "Delete unreferenced group and join rows only",
+    notes:
+      "Tombstone unreferenced group; CONFLICT if selected by operative/scheduled Morning Routine",
   },
   {
     method: "GET",
@@ -206,7 +208,8 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     origin: "mutation_when_configured",
     csrf: "required",
     grant: "routine.shared.manage",
-    notes: "Create shared definition + first revision",
+    notes:
+      "Create shared definition + first revision; mutationId replay-safe; group + direct sources",
   },
   {
     method: "POST",
@@ -215,7 +218,8 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     origin: "mutation_when_configured",
     csrf: "required",
     grant: "routine.shared.manage",
-    notes: "Append prospective shared revision",
+    notes:
+      "Append prospective shared revision; mutationId replay-safe; group + direct sources",
   },
   {
     method: "GET",
@@ -242,7 +246,8 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     origin: "mutation_when_configured",
     csrf: "required",
     grant: "routine.execute.own",
-    notes: "Accountable member checklist mutation; idempotent mutationId",
+    notes:
+      "Accountable member checklist mutation; idempotent mutationId; rejects future dates and non-participants",
   },
   {
     method: "PUT",

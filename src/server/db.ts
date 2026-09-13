@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { backfillAuthenticatedAuthority } from "./backfill.js";
+import { backfillGroupMembershipBaselines } from "./backfill-group-membership.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");
@@ -52,6 +53,9 @@ export function migrate(db: Database.Database): void {
     if (file.startsWith("002_")) {
       backfillAuthenticatedAuthority(db);
     }
+    if (file.startsWith("004_")) {
+      backfillGroupMembershipBaselines(db);
+    }
   }
 
   const has002 = (db.prepare("SELECT 1 AS ok FROM schema_migrations WHERE id = ?").get(
@@ -66,5 +70,12 @@ export function migrate(db: Database.Database): void {
     if (missing.c > 0) {
       backfillAuthenticatedAuthority(db);
     }
+  }
+
+  const has004 = db
+    .prepare("SELECT 1 AS ok FROM schema_migrations WHERE id = ?")
+    .get("004_group_backed_morning_routine.sql") as { ok: number } | undefined;
+  if (has004) {
+    backfillGroupMembershipBaselines(db);
   }
 }

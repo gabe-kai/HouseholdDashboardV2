@@ -307,13 +307,28 @@ export function PeopleGroupsView(props: {
           people={props.memberships}
           onBack={() => setView({ kind: "group-detail", groupId: view.groupId })}
           onSaved={(group) => {
+            const prior = loadedGroups.find((item) => item.id === group.id);
+            const membersChanged =
+              !prior ||
+              [...prior.membershipIds].sort().join("\0") !==
+                [...group.membershipIds].sort().join("\0");
             setGroups((current) => {
               const list = current ?? [];
               return [...list.filter((item) => item.id !== group.id), group].sort((a, b) =>
                 a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
               );
             });
-            setMessage(`Saved group ${group.name}.`);
+            if (
+              membersChanged &&
+              group.usedByMorningRoutine &&
+              group.routineEffectFromDate
+            ) {
+              setMessage(
+                `${group.name} updated. Morning Routine will use the new members starting ${group.routineEffectFromDate}.`,
+              );
+            } else {
+              setMessage(`Saved group ${group.name}.`);
+            }
             setError(null);
             setView({ kind: "group-detail", groupId: group.id });
             props.onPeopleChanged();
@@ -796,6 +811,15 @@ function GroupDetailState(props: {
       <BackButton label="Back to People & Groups" onClick={props.onBack} />
       <FocusHeading id="group-detail-heading">{props.group.name}</FocusHeading>
       <p className="meta">{memberCountLabel(props.group.membershipIds.length)}</p>
+      {props.group.usedByMorningRoutine ? (
+        <>
+          <p>Used by Morning Routine</p>
+          <p className="meta">
+            Membership changes update Morning Routine beginning on{" "}
+            {props.group.routineEffectFromDate}
+          </p>
+        </>
+      ) : null}
       <p>
         Members:{" "}
         {members.length ? members.join(", ") : "No members yet"}
@@ -892,6 +916,15 @@ function GroupFormState(props: {
     <div className="focused-state" aria-labelledby="group-form-heading">
       <BackButton label={backLabel} onClick={props.onBack} />
       <FocusHeading id="group-form-heading">{heading}</FocusHeading>
+      {props.mode === "edit" && props.initial?.usedByMorningRoutine ? (
+        <>
+          <p>Used by Morning Routine</p>
+          <p className="meta">
+            Membership changes update Morning Routine beginning on{" "}
+            {props.initial.routineEffectFromDate}
+          </p>
+        </>
+      ) : null}
       <form className="form-grid" onSubmit={save}>
         <label>
           Group name

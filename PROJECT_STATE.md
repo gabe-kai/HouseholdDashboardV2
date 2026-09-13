@@ -19,7 +19,7 @@
 
 ## Current focus
 
-P0-004A r3 is technically accepted through implementation commits `b4256ac` and `b20744e`. Product evaluation remains separate; Planning & Design can now refine the P0-004B group-backed Morning Routine outcome.
+Architecture technically accepted `P0-004B r1` after Engineering resolved the same-revision findings; Product/Project Lead evaluation and integration remain separate.
 
 ## Internal work status
 
@@ -28,7 +28,8 @@ P0-004A r3 is technically accepted through implementation commits `b4256ac` and 
 | P0-001 - Shared Morning Routine | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #1 | Product acceptance/evaluation |
 | P0-002 - Authenticated Household Authority | r1 | ACCEPTED | Project Lead evaluation | `brief/p0-002-authenticated-household-authority` | Product evaluation; future hosted release candidates require the hosted smoke/evidence gate |
 | P0-003 - Regression Safety and Contract Hardening | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #6 | Product evaluation; optional required-check configuration |
-| P0-004A - People & Groups UX Completion | r3 | ACCEPTED | Project Lead evaluation | `brief/p0-004a-people-groups-access` | Product phone evaluation and branch integration |
+| P0-004A - People & Groups UX Completion | r3 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #8 | Product phone evaluation |
+| P0-004B - Group-backed Morning Routine | r1 | ACCEPTED | Project Lead evaluation | `brief/p0-004b-group-backed-morning-routine` | Product evaluation and integration |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -40,7 +41,7 @@ This table is the short repository-side coordination index. An external project 
 - The P0-001 implementation provides a responsive Morning Routine evaluation build with immutable structural history, optimistic durable checklist intent, and household-scoped synchronization.
 - P0-002 r1 added authenticated household authority, personal layers/proposals, scoped personal tasks, and hosted-operability evidence; Architecture technically accepted it on 2026-09-10.
 - P0-003 r1 added protected-behavior traceability, route-policy completeness, focused regression evidence, local PR/RC validation tiers, and a successful GitHub Actions PR gate; Architecture technically accepted it on 2026-09-10.
-- P0-004A r3 established focused People & Groups states, fixture-free normal bootstrap, canonical opt-in demo fixtures, and provenance-safe cleanup; Architecture technically accepted it on 2026-09-11.
+- P0-004A r3 established focused People & Groups states, fixture-free normal bootstrap, canonical opt-in demo fixtures, and provenance-safe cleanup; Architecture technically accepted it on 2026-09-11 and it was merged through PR #8.
 
 ## Known blockers
 
@@ -48,11 +49,11 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next Project Lead decision
 
-- Evaluate P0-004A r3 on the local phone flow and integrate the accepted branch. P0-004B may proceed through Planning & Design without waiting for a hosted deployment.
+- Product evaluation of P0-004A may continue independently. Hosted/physical evidence for P0-004B is not required unless this exact commit is separately promoted as a release candidate.
 
 ## Next likely handoff
 
-Planning & Design returns a bounded proposal for P0-004B group-backed Morning Routine audience semantics, informed by the accepted P0-004A repository evidence.
+P0-004B r1 is technically accepted; Product/Project Lead may evaluate the group-backed Routine journey and decide whether to integrate it.
 
 ## Notes for all teams
 

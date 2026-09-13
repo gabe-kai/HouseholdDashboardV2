@@ -219,8 +219,10 @@ describe("P0-002 authenticated authority", () => {
 
     const today = store.householdDateNow(managerAuth.context);
     store.createRoutine(managerAuth.context, {
+      mutationId: crypto.randomUUID(),
       title: "Morning Routine",
       assigneeMemberIds: [childId, propId],
+      assigneeGroupIds: [],
       weekdays: [1, 2, 3, 4, 5, 6, 7],
       steps: [
         { text: "Make bed", obligation: "required" },
@@ -373,9 +375,11 @@ describe("P0-002 authenticated authority", () => {
     expect(store.getRoutine(manager.context.householdId)?.id).not.toBe(foreignRoutine);
     expect(() =>
       store.createRevision(manager.context, foreignRoutine, {
+        mutationId: crypto.randomUUID(),
         title: "Hijack",
         weekdays: [1],
         assigneeMemberIds: [manager.context.membershipId],
+        assigneeGroupIds: [],
         steps: [{ text: "Nope", obligation: "required" }],
       }),
     ).toThrow();

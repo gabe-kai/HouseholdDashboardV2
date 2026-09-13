@@ -37,17 +37,17 @@ Goal: prove that a real recurring household routine can be used quickly by six d
 ### CURRENT
 
 - [ ] **Outcome:** Morning Routine can consume a named group as a clear audience, giving each current group member one future occurrence while preserving overlap, prospective-change, and historical invariants.
-  - **Planned brief:** `P0-004B - Group-backed Morning Routine audience` (not yet detailed).
-  - **Status:** Return to Planning & Design for the next bounded proposal; P0-004A technical acceptance supplies the repository baseline.
-  - **Do not over-specify yet:** Exact effective-date and already-materialized-future reconciliation should follow P0-004A repository evidence.
+  - **Brief:** `P0-004B r1 - Group-backed Morning Routine` (`briefs/p0-004b-group-backed-morning-routine.md`).
+  - **Status:** Technically accepted by Architecture after same-revision corrections; Product/Project Lead evaluation and integration remain separate.
+  - **Evidence target:** A deterministic phone-width journey proves source-preserving group selection, unique occurrence resolution, next-day membership changes, stable today/history, deletion safety, and realtime convergence.
 
 ### LIKELY NEXT
 
-- [ ] **Outcome:** Today can present more than one real household responsibility, such as Kitchen, Cats, or Bathroom, without cloning Morning Routine-specific concepts or weakening authority/history.
-- [ ] Add only the rotation or eligibility behavior required by the first proven multi-responsibility examples.
+- [ ] **Outcome:** Today can present more than one real household responsibility, such as Kitchen, Cats, or Bathroom, without cloning Morning Routine-specific concepts or weakening authority/history. Exact assignment/rotation behavior should follow P0-004B evidence.
 
 ### LATER
 
+- [ ] Add only the rotation, eligibility, or choose-one behavior justified by concrete multi-responsibility examples.
 - [ ] Add retrospective completion, helper/cover/reassignment, and explicit credit while retaining the original assignment.
 - [ ] Support household exception days and contextual schedule additions/previews without a global weekday/weekend classification.
 

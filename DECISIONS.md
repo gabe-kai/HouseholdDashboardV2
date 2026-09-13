@@ -340,3 +340,51 @@ P0-002 direct personalizers may add and reorder only their own personal addition
 **Related briefs:**
 
 - P0-004A r3
+
+---
+
+## D-018 - Routine revisions preserve source intent and resolve dated group membership
+
+**Status:** Active
+
+**Decision:** A Morning Routine revision stores directly selected household memberships and selected stable group identities as separate source sets. For a target household date, the responsibility resolver unions direct memberships with each selected group's dated member set and deduplicates by stable membership ID. Group member-set changes are versioned and become effective on the next household day; group creation establishes an initial set usable on its creation date, and rename is immediate presentation behavior.
+
+A deliberate Routine save removes a direct source that is redundant through a selected group on that Routine revision's effective date. A later group edit does not mutate an immutable Routine revision or silently erase prior direct intent; derived resolution still gives the person only one occurrence. Groups remain structural and confer no capability or assignment strategy beyond the consuming Routine's every-member behavior.
+
+**Reason:** Flattening a group into copied people would make the parent maintain participation in two places and would lose the explanation for future changes. Mutating Routine sources as a side effect of later group edits would be equally surprising, particularly if a directly selected person later leaves the group. Dated source resolution preserves both understandable configuration and prospective responsibility.
+
+**Implications:** Existing `revision_assignees` migrate as direct sources with no selected groups. A selected empty group is valid. Dated membership history and group tombstones must survive long enough to interpret immutable revisions. A group cannot be deleted while an operative-today or scheduled-future Routine interval selects it; after references become historical, it disappears from current structure while retained identity prevents historical damage. Current group names remain unique independently of tombstoned historical identities.
+
+**Alternatives considered:**
+
+- Flattening selected groups into individual revision assignees was rejected because later group membership would not flow and the parent's chosen structure would be lost.
+- Treating groups as dynamic queries, roles, permissions, rotations, or eligibility engines was rejected as outside the proven need and contrary to D-013.
+- Silently removing an old direct source whenever a later group edit creates overlap was rejected because an unrelated structure edit should not erase explicit Routine intent.
+
+**Related briefs:**
+
+- P0-004B
+
+---
+
+## D-019 - Future occurrence participation is provisional but snapshots are durable
+
+**Status:** Active
+
+**Decision:** The occurrence date is the commitment boundary for group-backed participation. Current-day and past occurrence participation and every materialized checklist/report fact remain fixed. Before a future household date begins, dated group membership may change whether an already-materialized occurrence is returned and actionable. Reconciliation may create a missing future occurrence or exclude a stale one, but it never rewrites or deletes an existing occurrence, step snapshot, execution report, or receipt, and it never recomposes the content of a surviving occurrence.
+
+Checklist execution is rejected for a future household date and for a cached occurrence whose accountable member no longer resolves through that occurrence's stored Routine revision and dated sources. Delayed or offline reports for valid current/past occurrences remain supported.
+
+**Reason:** Product requires group edits to affect the next household day even when implementation has materialized that date early, while the existing architecture treats occurrence snapshots and execution evidence as durable facts. Making future participation provisional but snapshot content durable satisfies both requirements without allowing an internal cache timing detail to change user behavior.
+
+**Implications:** Authoritative reads cannot equate every persisted future occurrence row with active work. Status authorization must revalidate date and participation rather than trusting possession of an occurrence ID. Retained excluded rows are internal evidence and do not appear as actionable work. The exception is narrowly about group-derived future participation; shared/personal checklist revision semantics remain governed by D-003 and D-008.
+
+**Alternatives considered:**
+
+- Freezing every future assignment at first materialization was rejected because it would make group behavior depend on an invisible read/cache event.
+- Deleting and rebuilding future occurrence graphs was rejected because existing deployments may contain durable rows or reports and because deletion weakens the historical model.
+- Rewriting surviving future occurrence steps from the latest Routine revision was rejected because P0-004B changes participation, not the established snapshot-content boundary.
+
+**Related briefs:**
+
+- P0-004B

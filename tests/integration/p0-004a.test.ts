@@ -107,8 +107,10 @@ describe("P0-004A people, groups, and access", () => {
     expect(twin.id).not.toBe(elizabeth.id);
 
     store.createRoutine(manager.context, {
+      mutationId: randomUUID(),
       title: "Morning Routine",
       assigneeMemberIds: [IDS.avery],
+      assigneeGroupIds: [],
       weekdays: [1, 2, 3, 4, 5, 6, 7],
       steps: [{ text: "Make bed", obligation: "required" }],
     });

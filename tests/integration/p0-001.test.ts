@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import { addHouseholdDays, householdDateFromInstant } from "../../src/domain/time.js";
 import { migrate, openDatabase } from "../../src/server/db.js";
@@ -47,8 +48,10 @@ describe("P0-001 regression under authenticated authority", () => {
     const weekday = weekdayOf(today);
 
     store.createRoutine(manager.context, {
+      mutationId: randomUUID(),
       title: "Morning Routine",
       assigneeMemberIds: [IDS.avery, IDS.jordan],
+      assigneeGroupIds: [],
       weekdays: [weekday],
       steps: [
         { text: "Make bed", obligation: "required" },
@@ -89,8 +92,10 @@ describe("P0-001 regression under authenticated authority", () => {
     const weekday = weekdayOf(today);
 
     store.createRoutine(manager.context, {
+      mutationId: randomUUID(),
       title: "Morning Routine",
       assigneeMemberIds: [IDS.avery, IDS.jordan],
+      assigneeGroupIds: [],
       weekdays: [weekday],
       steps: [
         { text: "Make bed", obligation: "required" },
@@ -156,8 +161,10 @@ describe("P0-001 regression under authenticated authority", () => {
     const tomorrowWeekday = weekdayOf(addHouseholdDays(today, 1));
 
     store.createRoutine(manager.context, {
+      mutationId: randomUUID(),
       title: "Morning Routine",
       assigneeMemberIds: [IDS.avery],
+      assigneeGroupIds: [],
       weekdays: [weekday, tomorrowWeekday],
       steps: [
         { text: "Make bed", obligation: "required" },
@@ -181,8 +188,10 @@ describe("P0-001 regression under authenticated authority", () => {
     const before = store.occurrenceSnapshotStructure(todayOcc.id);
     const routine = store.getRoutine(manager.context.householdId)!;
     store.createRevision(manager.context, routine.id, {
+      mutationId: randomUUID(),
       title: "Morning Routine v2",
       assigneeMemberIds: [IDS.avery],
+      assigneeGroupIds: [],
       weekdays: [weekday, tomorrowWeekday],
       steps: [
         { text: "Brush teeth", obligation: "required" },

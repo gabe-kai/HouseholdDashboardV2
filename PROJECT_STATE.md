@@ -19,7 +19,7 @@
 
 ## Current focus
 
-Architecture accepted Engineering's READY interpretation of `P0-004B r1 - Group-backed Morning Routine` without revision. Engineering is authorized to implement r1 on the existing brief branch.
+Engineering implemented `P0-004B r1 - Group-backed Morning Routine` and returned `reports/P0-004B-r1-build-report.md`. Waiting on Architecture technical acceptance.
 
 ## Internal work status
 
@@ -29,7 +29,7 @@ Architecture accepted Engineering's READY interpretation of `P0-004B r1 - Group-
 | P0-002 - Authenticated Household Authority | r1 | ACCEPTED | Project Lead evaluation | `brief/p0-002-authenticated-household-authority` | Product evaluation; future hosted release candidates require the hosted smoke/evidence gate |
 | P0-003 - Regression Safety and Contract Hardening | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #6 | Product evaluation; optional required-check configuration |
 | P0-004A - People & Groups UX Completion | r3 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #8 | Product phone evaluation |
-| P0-004B - Group-backed Morning Routine | r1 | READY | Engineering | `brief/p0-004b-group-backed-morning-routine` | Implementation and Build Report against r1 |
+| P0-004B - Group-backed Morning Routine | r1 | IMPLEMENTED | Architecture | `brief/p0-004b-group-backed-morning-routine` | Architecture technical acceptance of Build Report |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -49,11 +49,11 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next Project Lead decision
 
-- Product evaluation of P0-004A may continue independently. No hosted deployment or new Project Lead decision is required before local P0-004B readiness/implementation.
+- Product evaluation of P0-004A may continue independently. Hosted/physical evidence for P0-004B is not required unless this exact commit is separately promoted as a release candidate.
 
 ## Next likely handoff
 
-Engineering implements only `P0-004B r1` and returns its Build Report to Architecture for technical acceptance.
+Architecture reviews `reports/P0-004B-r1-build-report.md` and either accepts r1 or returns FIX REQUIRED.
 
 ## Notes for all teams
 

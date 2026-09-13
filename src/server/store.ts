@@ -1,7 +1,13 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import { isOccurrenceComplete, assertStatusAllowed } from "../domain/completion.js";
 import { composeMorningRoutine } from "../domain/compose.js";
+import {
+  normalizeDirectSources,
+  resolveParticipants,
+  revisionIntervalActiveFrom,
+  selectMembershipVersionForDate,
+} from "../domain/participation.js";
 import {
   isDateApplicable,
   selectRevisionForDate,
@@ -63,11 +69,49 @@ type RoutineStepInput = {
 };
 
 type RoutineInput = {
+  mutationId: string;
   title: string;
   assigneeMemberIds: string[];
+  assigneeGroupIds: string[];
   weekdays: number[];
   steps: RoutineStepInput[];
 };
+
+type RoutineMutationKind = "routine_create" | "routine_revision";
+
+function sameMembershipSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const left = [...a].sort((x, y) => x.localeCompare(y));
+  const right = [...b].sort((x, y) => x.localeCompare(y));
+  return left.every((id, index) => id === right[index]);
+}
+
+function routinePayloadDigest(input: {
+  title: string;
+  weekdays: number[];
+  steps: RoutineStepInput[];
+  assigneeMemberIds?: string[];
+  assigneeGroupIds?: string[];
+  effectiveDate?: string;
+}): string {
+  const payload = {
+    title: input.title.trim(),
+    weekdays: [...input.weekdays].sort((a, b) => a - b),
+    steps: input.steps.map((step) => ({
+      text: step.text.trim(),
+      obligation: step.obligation,
+      ...(step.logicalItemId ? { logicalItemId: step.logicalItemId } : {}),
+    })),
+    assigneeMemberIds: [...(input.assigneeMemberIds ?? [])].sort((a, b) =>
+      a.localeCompare(b),
+    ),
+    assigneeGroupIds: [...(input.assigneeGroupIds ?? [])].sort((a, b) =>
+      a.localeCompare(b),
+    ),
+    ...(input.effectiveDate ? { effectiveDate: input.effectiveDate } : {}),
+  };
+  return createHash("sha256").update(JSON.stringify(payload), "utf8").digest("hex");
+}
 
 type PersonalAdditionInput = {
   id?: string;
@@ -753,6 +797,7 @@ export class AppStore {
          FROM household_groups g
          JOIN household_group_members gm ON gm.group_id = g.id
          WHERE g.household_id = ? AND gm.membership_id = ?
+           AND g.deleted_at IS NULL
          ORDER BY lower(g.name)`,
       )
       .all(ctx.householdId, membershipId) as Array<{ id: string; name: string }>;
@@ -766,10 +811,13 @@ export class AppStore {
   }
 
   listGroups(householdId: string): GroupPublic[] {
+    const today = this.householdDateFor(householdId);
     const rows = this.db
       .prepare(
         `SELECT id, name, version, created_at, updated_at
-         FROM household_groups WHERE household_id = ? ORDER BY lower(name)`,
+         FROM household_groups
+         WHERE household_id = ? AND deleted_at IS NULL
+         ORDER BY lower(name)`,
       )
       .all(householdId) as Array<{
       id: string;
@@ -778,14 +826,15 @@ export class AppStore {
       created_at: string;
       updated_at: string;
     }>;
-    return rows.map((row) => this.toGroupPublic(row));
+    return rows.map((row) => this.toGroupPublic(row, today));
   }
 
   getGroup(householdId: string, groupId: string): GroupPublic {
     const row = this.db
       .prepare(
         `SELECT id, name, version, created_at, updated_at
-         FROM household_groups WHERE id = ? AND household_id = ?`,
+         FROM household_groups
+         WHERE id = ? AND household_id = ? AND deleted_at IS NULL`,
       )
       .get(groupId, householdId) as
       | {
@@ -797,7 +846,7 @@ export class AppStore {
         }
       | undefined;
     if (!row) fail("NOT_FOUND", "Group not found");
-    return this.toGroupPublic(row);
+    return this.toGroupPublic(row, this.householdDateFor(householdId));
   }
 
   createGroup(
@@ -815,6 +864,7 @@ export class AppStore {
     const membershipIds = [...new Set(input.membershipIds)];
     const id = randomUUID();
     const now = nowUtcIso();
+    const effectiveDate = this.householdDateNow(ctx);
     const tx = this.db.transaction(() => {
       this.assertSameHouseholdMemberships(ctx.householdId, membershipIds);
       try {
@@ -831,10 +881,26 @@ export class AppStore {
         }
         throw error;
       }
-      const insert = this.db.prepare(
+      const insertLive = this.db.prepare(
         "INSERT INTO household_group_members (group_id, membership_id) VALUES (?, ?)",
       );
-      for (const membershipId of membershipIds) insert.run(id, membershipId);
+      for (const membershipId of membershipIds) insertLive.run(id, membershipId);
+
+      const versionId = `${id}:v1`;
+      this.db
+        .prepare(
+          `INSERT INTO group_membership_versions
+           (id, group_id, version, effective_date, created_at)
+           VALUES (?, ?, 1, ?, ?)`,
+        )
+        .run(versionId, id, effectiveDate, now);
+      const insertVersionMember = this.db.prepare(
+        `INSERT INTO group_membership_version_members (version_id, membership_id)
+         VALUES (?, ?)`,
+      );
+      for (const membershipId of membershipIds) {
+        insertVersionMember.run(versionId, membershipId);
+      }
     });
     tx();
     const group = this.getGroup(ctx.householdId, id);
@@ -854,26 +920,39 @@ export class AppStore {
     }
     const membershipIds = [...new Set(input.membershipIds)];
     const now = nowUtcIso();
+    const today = this.householdDateNow(ctx);
     const tx = this.db.transaction(() => {
       const current = this.db
         .prepare(
-          `SELECT id, version FROM household_groups
+          `SELECT id, name, version, deleted_at
+           FROM household_groups
            WHERE id = ? AND household_id = ?`,
         )
         .get(groupId, ctx.householdId) as
-        | { id: string; version: number }
+        | { id: string; name: string; version: number; deleted_at: string | null }
         | undefined;
-      if (!current) fail("NOT_FOUND", "Group not found");
+      if (!current || current.deleted_at) fail("NOT_FOUND", "Group not found");
       if (current.version !== input.expectedVersion) {
         fail("CONFLICT", "Group was updated elsewhere; re-read and try again");
       }
       this.assertSameHouseholdMemberships(ctx.householdId, membershipIds);
+
+      const currentMembers = (
+        this.db
+          .prepare(
+            `SELECT membership_id FROM household_group_members
+             WHERE group_id = ? ORDER BY membership_id`,
+          )
+          .all(groupId) as Array<{ membership_id: string }>
+      ).map((row) => row.membership_id);
+      const membershipChanged = !sameMembershipSet(currentMembers, membershipIds);
+
       try {
         const result = this.db
           .prepare(
             `UPDATE household_groups
              SET name = ?, version = version + 1, updated_at = ?
-             WHERE id = ? AND version = ?`,
+             WHERE id = ? AND version = ? AND deleted_at IS NULL`,
           )
           .run(name, now, groupId, input.expectedVersion);
         if (result.changes !== 1) {
@@ -885,13 +964,42 @@ export class AppStore {
         }
         throw error;
       }
+
       this.db
         .prepare("DELETE FROM household_group_members WHERE group_id = ?")
         .run(groupId);
-      const insert = this.db.prepare(
+      const insertLive = this.db.prepare(
         "INSERT INTO household_group_members (group_id, membership_id) VALUES (?, ?)",
       );
-      for (const membershipId of membershipIds) insert.run(groupId, membershipId);
+      for (const membershipId of membershipIds) insertLive.run(groupId, membershipId);
+
+      if (membershipChanged) {
+        const maxVersion = (
+          this.db
+            .prepare(
+              `SELECT COALESCE(MAX(version), 0) AS max_version
+               FROM group_membership_versions WHERE group_id = ?`,
+            )
+            .get(groupId) as { max_version: number }
+        ).max_version;
+        const nextVersion = maxVersion + 1;
+        const versionId = randomUUID();
+        const effectiveDate = addHouseholdDays(today, 1);
+        this.db
+          .prepare(
+            `INSERT INTO group_membership_versions
+             (id, group_id, version, effective_date, created_at)
+             VALUES (?, ?, ?, ?, ?)`,
+          )
+          .run(versionId, groupId, nextVersion, effectiveDate, now);
+        const insertVersionMember = this.db.prepare(
+          `INSERT INTO group_membership_version_members (version_id, membership_id)
+           VALUES (?, ?)`,
+        );
+        for (const membershipId of membershipIds) {
+          insertVersionMember.run(versionId, membershipId);
+        }
+      }
     });
     tx();
     return this.getGroup(ctx.householdId, groupId);
@@ -899,17 +1007,33 @@ export class AppStore {
 
   deleteGroup(ctx: AuthContext, groupId: string): { ok: true } {
     this.requireGrant(ctx, "household.structure.manage");
+    const today = this.householdDateNow(ctx);
     const tx = this.db.transaction(() => {
       const current = this.db
         .prepare(
-          "SELECT id FROM household_groups WHERE id = ? AND household_id = ?",
+          `SELECT id, deleted_at FROM household_groups
+           WHERE id = ? AND household_id = ?`,
         )
-        .get(groupId, ctx.householdId);
-      if (!current) fail("NOT_FOUND", "Group not found");
+        .get(groupId, ctx.householdId) as
+        | { id: string; deleted_at: string | null }
+        | undefined;
+      if (!current || current.deleted_at) fail("NOT_FOUND", "Group not found");
+      if (this.groupActivelyReferenced(groupId, today)) {
+        fail(
+          "CONFLICT",
+          "Remove this group from Morning Routine before deleting it",
+        );
+      }
       this.db
         .prepare("DELETE FROM household_group_members WHERE group_id = ?")
         .run(groupId);
-      this.db.prepare("DELETE FROM household_groups WHERE id = ?").run(groupId);
+      this.db
+        .prepare(
+          `UPDATE household_groups
+           SET deleted_at = ?, updated_at = ?, version = version + 1
+           WHERE id = ?`,
+        )
+        .run(nowUtcIso(), nowUtcIso(), groupId);
     });
     tx();
     return { ok: true };
@@ -920,6 +1044,7 @@ export class AppStore {
       .prepare("SELECT id, kind FROM routine_definitions WHERE household_id = ?")
       .get(householdId) as { id: string; kind: "morning" } | undefined;
     if (!definition) return null;
+    const today = this.householdDateFor(householdId);
     const revisions = this.db
       .prepare(
         `SELECT id, effective_date, title, weekdays_json, created_at
@@ -935,24 +1060,52 @@ export class AppStore {
     return {
       id: definition.id,
       kind: definition.kind,
-      revisions: revisions.map((revision) => ({
-        id: revision.id,
-        effectiveDate: revision.effective_date,
-        title: revision.title,
-        weekdays: JSON.parse(revision.weekdays_json) as number[],
-        createdAt: revision.created_at,
-        steps: this.revisionSteps(revision.id),
-        assigneeMemberIds: this.revisionAssignees(revision.id),
-      })),
+      revisions: revisions.map((revision) => {
+        const assigneeMemberIds = this.revisionAssignees(revision.id);
+        const assigneeGroupIds = this.revisionGroupSources(revision.id);
+        const groupMemberIdSets = assigneeGroupIds.map((groupId) =>
+          this.groupMembersOnDate(groupId, today),
+        );
+        return {
+          id: revision.id,
+          effectiveDate: revision.effective_date,
+          title: revision.title,
+          weekdays: JSON.parse(revision.weekdays_json) as number[],
+          createdAt: revision.created_at,
+          steps: this.revisionSteps(revision.id),
+          assigneeMemberIds,
+          assigneeGroupIds,
+          resolvedMemberIds: resolveParticipants({
+            directMemberIds: assigneeMemberIds,
+            groupMemberIdSets,
+          }),
+        };
+      }),
     };
   }
 
   createRoutine(ctx: AuthContext, input: RoutineInput) {
     this.requireGrant(ctx, "routine.shared.manage");
-    this.validateRoutineInput(ctx, input);
+    const audienceInput: RoutineInput = {
+      ...input,
+      assigneeMemberIds: input.assigneeMemberIds ?? [],
+      assigneeGroupIds: input.assigneeGroupIds ?? [],
+    };
+    const digest = routinePayloadDigest(audienceInput);
+    const replay = this.readRoutineMutationReceipt(
+      audienceInput.mutationId,
+      ctx.householdId,
+      "routine_create",
+      digest,
+    );
+    if (replay) return replay;
+
+    this.validateRoutineInput(ctx, audienceInput);
     if (this.getRoutine(ctx.householdId)) {
       fail("CONFLICT", "Household already has a Morning Routine");
     }
+    const effectiveDate = this.householdDateNow(ctx);
+    const normalized = this.normalizeRoutineAudience(ctx, audienceInput, effectiveDate);
     const definitionId = randomUUID();
     const tx = this.db.transaction(() => {
       this.db
@@ -960,10 +1113,18 @@ export class AppStore {
           "INSERT INTO routine_definitions (id, household_id, kind) VALUES (?, ?, 'morning')",
         )
         .run(definitionId, ctx.householdId);
-      this.insertRevision(randomUUID(), definitionId, this.householdDateNow(ctx), input);
+      this.insertRevision(randomUUID(), definitionId, effectiveDate, normalized);
     });
     tx();
-    return this.getRoutine(ctx.householdId);
+    const routine = this.getRoutine(ctx.householdId);
+    this.writeRoutineMutationReceipt(
+      audienceInput.mutationId,
+      ctx.householdId,
+      "routine_create",
+      digest,
+      routine,
+    );
+    return routine;
   }
 
   createRevision(
@@ -972,7 +1133,23 @@ export class AppStore {
     input: RoutineInput & { effectiveDate?: string },
   ) {
     this.requireGrant(ctx, "routine.shared.manage");
-    this.validateRoutineInput(ctx, input);
+    const audienceInput: RoutineInput & { effectiveDate?: string } = {
+      ...input,
+      assigneeMemberIds: input.assigneeMemberIds ?? [],
+      assigneeGroupIds: input.assigneeGroupIds ?? [],
+    };
+    const minimum = addHouseholdDays(this.householdDateNow(ctx), 1);
+    const effectiveDate = audienceInput.effectiveDate ?? minimum;
+    const digest = routinePayloadDigest({ ...audienceInput, effectiveDate });
+    const replay = this.readRoutineMutationReceipt(
+      audienceInput.mutationId,
+      ctx.householdId,
+      "routine_revision",
+      digest,
+    );
+    if (replay) return replay;
+
+    this.validateRoutineInput(ctx, audienceInput);
     if (
       !this.db
         .prepare("SELECT 1 FROM routine_definitions WHERE id = ? AND household_id = ?")
@@ -980,23 +1157,30 @@ export class AppStore {
     ) {
       fail("NOT_FOUND", "Routine not found");
     }
-    const minimum = addHouseholdDays(this.householdDateNow(ctx), 1);
-    const effectiveDate = input.effectiveDate ?? minimum;
     if (
       !isValidHouseholdDate(effectiveDate) ||
       compareHouseholdDates(effectiveDate, minimum) < 0
     ) {
       fail("VALIDATION", "Revision must be effective no earlier than the next household day");
     }
+    const normalized = this.normalizeRoutineAudience(ctx, audienceInput, effectiveDate);
     try {
-      this.insertRevision(randomUUID(), definitionId, effectiveDate, input);
+      this.insertRevision(randomUUID(), definitionId, effectiveDate, normalized);
     } catch (error) {
       if (error instanceof Error && error.message.includes("UNIQUE")) {
         fail("CONFLICT", "A revision already exists for that effective date");
       }
       throw error;
     }
-    return this.getRoutine(ctx.householdId);
+    const routine = this.getRoutine(ctx.householdId);
+    this.writeRoutineMutationReceipt(
+      audienceInput.mutationId,
+      ctx.householdId,
+      "routine_revision",
+      digest,
+      routine,
+    );
+    return routine;
   }
 
   materializeForDate(ctx: AuthContext, householdDate: HouseholdDate): OccurrenceView[] {
@@ -1006,9 +1190,16 @@ export class AppStore {
     const revision = selectRevisionForDate(routine.revisions, householdDate);
     if (!revision || !isDateApplicable(householdDate, revision.weekdays)) return [];
 
+    const participants = resolveParticipants({
+      directMemberIds: revision.assigneeMemberIds,
+      groupMemberIdSets: revision.assigneeGroupIds.map((groupId) =>
+        this.groupMembersOnDate(groupId, householdDate),
+      ),
+    });
+
     const results: OccurrenceView[] = [];
     const tx = this.db.transaction(() => {
-      for (const membershipId of revision.assigneeMemberIds) {
+      for (const membershipId of participants) {
         results.push(
           this.ensureOccurrence(
             ctx.householdId,
@@ -1034,11 +1225,17 @@ export class AppStore {
   ) {
     const occurrence = this.db
       .prepare(
-        `SELECT id, household_id, accountable_member_id
+        `SELECT id, household_id, accountable_member_id, household_date, revision_id
          FROM occurrences WHERE id = ?`,
       )
       .get(occurrenceId) as
-      | { id: string; household_id: string; accountable_member_id: string }
+      | {
+          id: string;
+          household_id: string;
+          accountable_member_id: string;
+          household_date: string;
+          revision_id: string;
+        }
       | undefined;
     if (!occurrence || occurrence.household_id !== ctx.householdId) {
       fail("NOT_FOUND", "Occurrence not found");
@@ -1046,6 +1243,20 @@ export class AppStore {
     this.requireGrant(ctx, "routine.execute.own");
     if (occurrence.accountable_member_id !== ctx.membershipId) {
       fail("FORBIDDEN", "Cannot modify another member's occurrence");
+    }
+    const today = this.householdDateNow(ctx);
+    if (compareHouseholdDates(occurrence.household_date, today) > 0) {
+      fail("VALIDATION", "This checklist isn't available yet");
+    }
+    const participants = this.resolveParticipantsForRevision(
+      occurrence.revision_id,
+      occurrence.household_date,
+    );
+    if (!participants.includes(occurrence.accountable_member_id)) {
+      fail(
+        "FORBIDDEN",
+        "This person is no longer on Morning Routine for that day",
+      );
     }
     const receipt = this.db
       .prepare("SELECT response_json FROM mutation_receipts WHERE mutation_id = ?")
@@ -1741,27 +1952,26 @@ export class AppStore {
         effectiveDate: null,
       };
     }
-    const assigned = !!this.db
-      .prepare(
-        "SELECT 1 FROM revision_assignees WHERE revision_id = ? AND member_id = ?",
-      )
-      .get(selected.id, membershipId);
+    const participants = this.resolveParticipantsForRevision(selected.id, householdDate);
     const revision = revisions.find((row) => row.id === selected.id)!;
     return {
-      currentlyAssigned: assigned,
+      currentlyAssigned: participants.includes(membershipId),
       revisionId: revision.id,
       revisionTitle: revision.title,
       effectiveDate: revision.effective_date,
     };
   }
 
-  private toGroupPublic(row: {
-    id: string;
-    name: string;
-    version: number;
-    created_at: string;
-    updated_at: string;
-  }): GroupPublic {
+  private toGroupPublic(
+    row: {
+      id: string;
+      name: string;
+      version: number;
+      created_at: string;
+      updated_at: string;
+    },
+    today: HouseholdDate,
+  ): GroupPublic {
     const membershipIds = (
       this.db
         .prepare(
@@ -1770,6 +1980,7 @@ export class AppStore {
         )
         .all(row.id) as Array<{ membership_id: string }>
     ).map((entry) => entry.membership_id);
+    const usedByMorningRoutine = this.groupActivelyReferenced(row.id, today);
     return {
       id: row.id,
       name: row.name,
@@ -1777,6 +1988,8 @@ export class AppStore {
       membershipIds,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      usedByMorningRoutine,
+      routineEffectFromDate: usedByMorningRoutine ? addHouseholdDays(today, 1) : null,
     };
   }
 
@@ -1894,6 +2107,184 @@ export class AppStore {
     ).map((row) => row.member_id);
   }
 
+  private revisionGroupSources(revisionId: string): string[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT group_id FROM revision_group_sources
+           WHERE revision_id = ? ORDER BY group_id`,
+        )
+        .all(revisionId) as Array<{ group_id: string }>
+    ).map((row) => row.group_id);
+  }
+
+  private householdTimezone(householdId: string): string {
+    const row = this.db
+      .prepare("SELECT timezone FROM households WHERE id = ?")
+      .get(householdId) as { timezone: string } | undefined;
+    return row?.timezone ?? "UTC";
+  }
+
+  private householdDateFor(householdId: string, now = new Date()): HouseholdDate {
+    return householdDateFromInstant(now, this.householdTimezone(householdId));
+  }
+
+  private groupMembersOnDate(groupId: string, date: HouseholdDate): string[] {
+    const versions = (
+      this.db
+        .prepare(
+          `SELECT id, version, effective_date
+           FROM group_membership_versions WHERE group_id = ?`,
+        )
+        .all(groupId) as Array<{ id: string; version: number; effective_date: string }>
+    ).map((row) => ({
+      id: row.id,
+      version: row.version,
+      effectiveDate: row.effective_date as HouseholdDate,
+    }));
+    const selected = selectMembershipVersionForDate(versions, date);
+    if (!selected) {
+      return (
+        this.db
+          .prepare(
+            `SELECT membership_id FROM household_group_members
+             WHERE group_id = ? ORDER BY membership_id`,
+          )
+          .all(groupId) as Array<{ membership_id: string }>
+      ).map((row) => row.membership_id);
+    }
+    return (
+      this.db
+        .prepare(
+          `SELECT membership_id FROM group_membership_version_members
+           WHERE version_id = ? ORDER BY membership_id`,
+        )
+        .all(selected.id) as Array<{ membership_id: string }>
+    ).map((row) => row.membership_id);
+  }
+
+  private resolveParticipantsForRevision(
+    revisionId: string,
+    date: HouseholdDate,
+  ): string[] {
+    const directMemberIds = this.revisionAssignees(revisionId);
+    const groupMemberIdSets = this.revisionGroupSources(revisionId).map((groupId) =>
+      this.groupMembersOnDate(groupId, date),
+    );
+    return resolveParticipants({ directMemberIds, groupMemberIdSets });
+  }
+
+  private groupActivelyReferenced(groupId: string, today: HouseholdDate): boolean {
+    const revisions = this.db
+      .prepare(
+        `SELECT rr.id, rr.definition_id, rr.effective_date
+         FROM revision_group_sources rgs
+         JOIN routine_revisions rr ON rr.id = rgs.revision_id
+         WHERE rgs.group_id = ?`,
+      )
+      .all(groupId) as Array<{
+      id: string;
+      definition_id: string;
+      effective_date: string;
+    }>;
+    for (const revision of revisions) {
+      const next = this.db
+        .prepare(
+          `SELECT effective_date FROM routine_revisions
+           WHERE definition_id = ? AND effective_date > ?
+           ORDER BY effective_date ASC LIMIT 1`,
+        )
+        .get(revision.definition_id, revision.effective_date) as
+        | { effective_date: string }
+        | undefined;
+      if (
+        revisionIntervalActiveFrom(
+          revision.effective_date,
+          next?.effective_date ?? null,
+          today,
+        )
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private normalizeRoutineAudience(
+    ctx: AuthContext,
+    input: RoutineInput,
+    effectiveDate: HouseholdDate,
+  ): RoutineInput {
+    const assigneeGroupIds = [...new Set(input.assigneeGroupIds)].sort((a, b) =>
+      a.localeCompare(b),
+    );
+    const groupMemberIdSets = assigneeGroupIds.map((groupId) =>
+      this.groupMembersOnDate(groupId, effectiveDate),
+    );
+    const assigneeMemberIds = normalizeDirectSources({
+      directMemberIds: input.assigneeMemberIds,
+      groupMemberIdSets,
+    });
+    return {
+      ...input,
+      assigneeMemberIds,
+      assigneeGroupIds,
+    };
+  }
+
+  private readRoutineMutationReceipt(
+    mutationId: string,
+    householdId: string,
+    kind: RoutineMutationKind,
+    digest: string,
+  ): ReturnType<AppStore["getRoutine"]> | null {
+    const row = this.db
+      .prepare(
+        `SELECT household_id, kind, payload_digest, response_json
+         FROM routine_mutation_receipts WHERE mutation_id = ?`,
+      )
+      .get(mutationId) as
+      | {
+          household_id: string;
+          kind: string;
+          payload_digest: string;
+          response_json: string;
+        }
+      | undefined;
+    if (!row) return null;
+    if (
+      row.household_id !== householdId ||
+      row.kind !== kind ||
+      row.payload_digest !== digest
+    ) {
+      fail("CONFLICT", "Morning Routine couldn't be updated");
+    }
+    return JSON.parse(row.response_json) as ReturnType<AppStore["getRoutine"]>;
+  }
+
+  private writeRoutineMutationReceipt(
+    mutationId: string,
+    householdId: string,
+    kind: RoutineMutationKind,
+    digest: string,
+    response: unknown,
+  ): void {
+    this.db
+      .prepare(
+        `INSERT INTO routine_mutation_receipts
+         (mutation_id, household_id, kind, payload_digest, response_json, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        mutationId,
+        householdId,
+        kind,
+        digest,
+        JSON.stringify(response),
+        nowUtcIso(),
+      );
+  }
+
   private validateRoutineInput(ctx: AuthContext, input: RoutineInput): void {
     const check = validateRoutineSteps(input.steps);
     if (!check.ok) fail("VALIDATION", check.message);
@@ -1907,11 +2298,13 @@ export class AppStore {
     if (new Set(input.weekdays).size !== input.weekdays.length) {
       fail("VALIDATION", "Weekdays must be unique");
     }
-    if (input.assigneeMemberIds.length === 0) {
-      fail("VALIDATION", "At least one assignee is required");
+    const assigneeMemberIds = input.assigneeMemberIds ?? [];
+    const assigneeGroupIds = input.assigneeGroupIds ?? [];
+    if (assigneeMemberIds.length === 0 && assigneeGroupIds.length === 0) {
+      fail("VALIDATION", "At least one person or group is required");
     }
-    const uniqueAssignees = new Set(input.assigneeMemberIds);
-    if (uniqueAssignees.size !== input.assigneeMemberIds.length) {
+    const uniqueAssignees = new Set(assigneeMemberIds);
+    if (uniqueAssignees.size !== assigneeMemberIds.length) {
       fail("VALIDATION", "Assignees must be unique");
     }
     for (const membershipId of uniqueAssignees) {
@@ -1923,6 +2316,22 @@ export class AppStore {
           .get(membershipId, ctx.householdId)
       ) {
         fail("VALIDATION", "An assignee is not a household membership");
+      }
+    }
+    const uniqueGroups = new Set(assigneeGroupIds);
+    if (uniqueGroups.size !== assigneeGroupIds.length) {
+      fail("VALIDATION", "Groups must be unique");
+    }
+    for (const groupId of uniqueGroups) {
+      if (
+        !this.db
+          .prepare(
+            `SELECT 1 FROM household_groups
+             WHERE id = ? AND household_id = ? AND deleted_at IS NULL`,
+          )
+          .get(groupId, ctx.householdId)
+      ) {
+        fail("VALIDATION", "A selected group was not found");
       }
     }
     const logicalIds = input.steps
@@ -2010,6 +2419,12 @@ export class AppStore {
       );
       for (const memberId of input.assigneeMemberIds) {
         insertAssignee.run(revisionId, memberId);
+      }
+      const insertGroup = this.db.prepare(
+        "INSERT INTO revision_group_sources (revision_id, group_id) VALUES (?, ?)",
+      );
+      for (const groupId of input.assigneeGroupIds) {
+        insertGroup.run(revisionId, groupId);
       }
     });
     tx();

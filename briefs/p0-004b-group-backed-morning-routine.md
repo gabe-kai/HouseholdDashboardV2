@@ -1,7 +1,7 @@
 # BRIEF P0-004B - Group-backed Morning Routine
 
 **Revision:** 1
-**Status:** READY
+**Status:** IMPLEMENTED
 
 Recommended lifecycle: DRAFT -> IN REVIEW -> READY -> IMPLEMENTING -> IMPLEMENTED -> ACCEPTED
 

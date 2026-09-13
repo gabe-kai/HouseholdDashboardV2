@@ -55,6 +55,10 @@ invalidation/reconciliation semantics.
 | PB-18 | Structure manage vs enroll authority | `tests/integration/p0-004a.test.ts` HTTP matrix | Developer |
 | PB-19 | Groups are structural only (no grants/assignments) | `tests/integration/p0-004a.test.ts`; e2e group edit | Developer + PR |
 | PB-20 | Fixture-free normal bootstrap; opt-in seed; provenance-safe cleanup | `tests/integration/p0-004a.test.ts` (r3) | Developer + PR |
+| PB-21 | Group-backed Morning Routine audience (direct + group sources; dated membership resolution) | `tests/integration/p0-004b.test.ts`; e2e `z-group-backed-routine.spec.ts`; `src/domain/participation.test.ts` | Developer + PR |
+| PB-22 | Future checklist status guard (reject future household dates; no report/receipt) | `tests/integration/p0-004b.test.ts` | Developer |
+| PB-23 | Referenced group delete blocked while operative/scheduled Routine selects the group | `tests/integration/p0-004b.test.ts` | Developer + PR |
+| PB-24 | Routine create/revision mutationId replay (same household+kind+digest returns original; mismatch conflicts without disclosure) | `tests/integration/p0-004b.test.ts` | Developer |
 
 ### Environment-specific (not counted as automated acceptance)
 
@@ -77,12 +81,12 @@ Duplicate, late, and missed events must be safe.
 | DELETE `/people/:id/setup` | claim revoked | `membership` | people | — | revoke actionable | fetch people |
 | POST `/people` | pending membership | `membership` | people | — | same `mutationId` replay | fetch people |
 | PATCH `/people/:id` | membership fields | `membership` | people | — | version conflict | fetch people |
-| POST `/groups` | group + members | `group` | groups, people detail | — | same `mutationId` replay | fetch groups |
-| PATCH `/groups/:id` | group + members | `group` | groups, people detail | — | expectedVersion conflict | fetch groups |
-| DELETE `/groups/:id` | group removed | `group` | groups, people detail | — | delete once | fetch groups |
-| POST `/routines` | definition+revision | `routine` | routines, today, preview | — | create once | fetch routines/today |
-| POST `/routines/:id/revisions` | revision | `routine` | routines, today, preview | — | append revision | fetch routines/today |
-| POST `/occurrences/.../status` | occurrence step + report | `occurrence` (+version) | today, history | membership outbox overlay | same `mutationId` idempotent | refresh today; flush outbox |
+| POST `/groups` | group + members + baseline membership version | `group` | groups, people detail, routines, previews | — | same `mutationId` replay | fetch groups + routines |
+| PATCH `/groups/:id` | group + members; dated membership version when set changes | `group` | groups, people detail, routines, previews | — | expectedVersion conflict | fetch groups + routines |
+| DELETE `/groups/:id` | group tombstoned (or CONFLICT if referenced) | `group` | groups, people detail, routines, previews | — | delete once; referenced → CONFLICT | fetch groups + routines |
+| POST `/routines` | definition+revision (+ group sources) | `routine` | routines, today, preview | — | same `mutationId` replay (household+kind+digest) | fetch routines/today |
+| POST `/routines/:id/revisions` | revision (+ group sources) | `routine` | routines, today, preview | — | same `mutationId` replay (household+kind+digest) | fetch routines/today |
+| POST `/occurrences/.../status` | occurrence step + report | `occurrence` (+version) | today, history | membership outbox overlay | same `mutationId` idempotent; future/non-participant rejected (no receipt) | refresh today; flush outbox |
 | PUT `/personal-layer` | personal layer revision | `routine` | preview, future today | — | new layer revision | preview/today |
 | POST `/proposals` | proposal pending | `proposal` | proposals | — | new proposal | fetch proposals |
 | POST `/proposals/:id/decide` | proposal (+ optional layer) | `proposal`; `routine` if approved | proposals, preview | — | same decision idempotent; opposite conflicts | fetch proposals + preview |

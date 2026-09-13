@@ -296,9 +296,11 @@ describe("P0-002 HTTP isolation, grants, and composition", () => {
         url: `/api/v1/routines/${foreignRoutine}/revisions`,
         headers,
         payload: {
+          mutationId: randomUUID(),
           title: "Hijack",
           weekdays: [1],
           assigneeMemberIds: [manager.membershipId],
+          assigneeGroupIds: [],
           steps: [{ text: "Nope", obligation: "required" }],
         },
       });
@@ -378,9 +380,11 @@ describe("P0-002 HTTP isolation, grants, and composition", () => {
         url: "/api/v1/routines",
         headers,
         payload: {
+          mutationId: randomUUID(),
           title: "Morning Routine",
           weekdays: [1, 2, 3, 4, 5, 6, 7],
           assigneeMemberIds: [IDS.morgan, IDS.avery],
+          assigneeGroupIds: [],
           steps: [{ text: "Make bed", obligation: "required" }],
         },
       });
@@ -460,9 +464,11 @@ describe("P0-002 HTTP isolation, grants, and composition", () => {
         url: "/api/v1/routines",
         headers: mgrHeaders,
         payload: {
+          mutationId: randomUUID(),
           title: "Morning Routine",
           weekdays: [1, 2, 3, 4, 5, 6, 7],
           assigneeMemberIds: [IDS.avery, IDS.casey, IDS.morgan],
+          assigneeGroupIds: [],
           steps: [
             { text: "Make bed", obligation: "required" },
             { text: "Stretch", obligation: "optional" },
@@ -542,9 +548,11 @@ describe("P0-002 HTTP isolation, grants, and composition", () => {
             url: `/api/v1/routines/${routineId}/revisions`,
             headers: authHeaders(harness, casey),
             payload: {
+              mutationId: randomUUID(),
               title: "Nope",
               weekdays: [1],
               assigneeMemberIds: [IDS.casey],
+              assigneeGroupIds: [],
               steps: [{ text: "X", obligation: "required" }],
             },
           })
@@ -628,9 +636,11 @@ describe("P0-002 HTTP isolation, grants, and composition", () => {
         "Avery Reed",
       );
       harness.store.createRoutine(managerAuth.context, {
+        mutationId: randomUUID(),
         title: "Morning Routine",
         weekdays: [1, 2, 3, 4, 5, 6, 7],
         assigneeMemberIds: [IDS.avery],
+        assigneeGroupIds: [],
         steps: [
           { text: "Make bed", obligation: "required" },
           { text: "Stretch", obligation: "optional" },
@@ -651,9 +661,11 @@ describe("P0-002 HTTP isolation, grants, and composition", () => {
       const routine = harness.store.getRoutine(managerAuth.context.householdId)!;
       const sharedIds = routine.revisions[0]!.steps.map((s) => s.logicalItemId);
       harness.store.createRevision(managerAuth.context, routine.id, {
+        mutationId: randomUUID(),
         title: "Morning Routine+",
         weekdays: [1, 2, 3, 4, 5, 6, 7],
         assigneeMemberIds: [IDS.avery],
+        assigneeGroupIds: [],
         steps: [
           { text: "Make bed", obligation: "required", logicalItemId: sharedIds[0] },
           { text: "Brush teeth", obligation: "required" },
@@ -674,9 +686,11 @@ describe("P0-002 HTTP isolation, grants, and composition", () => {
       // Child cannot create shared revision (required shared structure stays manager-only)
       expect(() =>
         harness.store.createRevision(avery.context, routine.id, {
+          mutationId: randomUUID(),
           title: "Hijack",
           weekdays: [1],
           assigneeMemberIds: [IDS.avery],
+          assigneeGroupIds: [],
           steps: [{ text: "Only me", obligation: "required" }],
         }),
       ).toThrow(/authority/i);

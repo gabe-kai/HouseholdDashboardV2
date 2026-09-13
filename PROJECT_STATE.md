@@ -19,7 +19,7 @@
 
 ## Current focus
 
-Engineering resolved Architecture **FIX REQUIRED** on `P0-004B r1` (same contract) and updated `reports/P0-004B-r1-build-report.md`. Waiting on Architecture re-acceptance.
+Architecture technically accepted `P0-004B r1` after Engineering resolved the same-revision findings; Product/Project Lead evaluation and integration remain separate.
 
 ## Internal work status
 
@@ -29,7 +29,7 @@ Engineering resolved Architecture **FIX REQUIRED** on `P0-004B r1` (same contrac
 | P0-002 - Authenticated Household Authority | r1 | ACCEPTED | Project Lead evaluation | `brief/p0-002-authenticated-household-authority` | Product evaluation; future hosted release candidates require the hosted smoke/evidence gate |
 | P0-003 - Regression Safety and Contract Hardening | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #6 | Product evaluation; optional required-check configuration |
 | P0-004A - People & Groups UX Completion | r3 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #8 | Product phone evaluation |
-| P0-004B - Group-backed Morning Routine | r1 | IMPLEMENTED | Architecture | `brief/p0-004b-group-backed-morning-routine` | Architecture re-acceptance after FIX REQUIRED |
+| P0-004B - Group-backed Morning Routine | r1 | ACCEPTED | Project Lead evaluation | `brief/p0-004b-group-backed-morning-routine` | Product evaluation and integration |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -53,7 +53,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Architecture re-reviews `reports/P0-004B-r1-build-report.md` after FIX REQUIRED and either accepts r1 or returns further FIX REQUIRED.
+P0-004B r1 is technically accepted; Product/Project Lead may evaluate the group-backed Routine journey and decide whether to integrate it.
 
 ## Notes for all teams
 

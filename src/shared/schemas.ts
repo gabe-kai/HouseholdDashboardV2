@@ -63,16 +63,33 @@ export const ChecklistStepInputSchema = z.object({
   logicalItemId: UuidSchema.optional(),
 });
 
-export const CreateRoutineSchema = z.object({
+const CreateRoutineFieldsSchema = z.object({
+  mutationId: UuidSchema,
   title: z.string().trim().min(1),
-  assigneeMemberIds: z.array(UuidSchema).min(1),
+  assigneeMemberIds: z.array(UuidSchema).default([]),
+  assigneeGroupIds: z.array(UuidSchema).default([]),
   weekdays: z.array(IsoWeekdaySchema).min(1),
   steps: z.array(ChecklistStepInputSchema).min(1),
 });
 
-export const CreateRevisionSchema = CreateRoutineSchema.extend({
+const atLeastOneAudienceSource = (
+  data: { assigneeMemberIds: string[]; assigneeGroupIds: string[] },
+  ctx: z.RefinementCtx,
+) => {
+  if (data.assigneeMemberIds.length === 0 && data.assigneeGroupIds.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "At least one person or group is required",
+      path: ["assigneeMemberIds"],
+    });
+  }
+};
+
+export const CreateRoutineSchema = CreateRoutineFieldsSchema.superRefine(atLeastOneAudienceSource);
+
+export const CreateRevisionSchema = CreateRoutineFieldsSchema.extend({
   effectiveDate: HouseholdDateSchema.optional(),
-});
+}).superRefine(atLeastOneAudienceSource);
 
 export const SetStepStatusSchema = z.object({
   mutationId: UuidSchema,
@@ -232,7 +249,44 @@ export type GroupPublic = {
   id: string;
   name: string;
   version: number;
+  /** Latest configured member set (People & Groups projection). */
   membershipIds: string[];
+  /** Members effective for Morning Routine on the current household date. */
+  effectiveMembershipIds: string[];
+  /**
+   * When configured members differ from today's effective set, the household date
+   * when the configured set begins affecting Morning Routine.
+   */
+  membershipPendingFromDate?: string | null;
   createdAt: string;
   updatedAt: string;
+  /** True when an operative or scheduled Morning Routine revision selects this group. */
+  usedByMorningRoutine?: boolean;
+  /** Next household day when membership changes affect Morning Routine; null when unused. */
+  routineEffectFromDate?: string | null;
+};
+
+/** Shared Morning Routine revision shape returned to clients. */
+export type RoutineRevisionPublic = {
+  id: string;
+  effectiveDate: string;
+  title: string;
+  weekdays: number[];
+  createdAt: string;
+  steps: Array<{
+    id: string;
+    logicalItemId: string;
+    position: number;
+    text: string;
+    obligation: ObligationMeaning;
+  }>;
+  /** Direct membership sources only (not expanded through groups). */
+  assigneeMemberIds: string[];
+  assigneeGroupIds: string[];
+  /** Unique resolved participants for the current household date. */
+  resolvedMemberIds?: string[];
+  /** Unique resolved participants for the next household day when it differs from today. */
+  upcomingResolvedMemberIds?: string[];
+  /** Household date when upcomingResolvedMemberIds begins; null when same as today. */
+  upcomingParticipationFromDate?: string | null;
 };

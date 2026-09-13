@@ -60,7 +60,12 @@ export type Routine = {
     weekdays: number[];
     createdAt: string;
     steps: RoutineStep[];
+    /** Direct membership sources only. */
     assigneeMemberIds: string[];
+    assigneeGroupIds: string[];
+    resolvedMemberIds?: string[];
+    upcomingResolvedMemberIds?: string[];
+    upcomingParticipationFromDate?: string | null;
   }>;
 };
 
@@ -351,8 +356,10 @@ export async function fetchRoutine() {
 }
 
 export async function createRoutine(body: {
+  mutationId: string;
   title: string;
-  assigneeMemberIds: string[];
+  assigneeMemberIds?: string[];
+  assigneeGroupIds?: string[];
   weekdays: number[];
   steps: Array<{
     text: string;
@@ -369,8 +376,10 @@ export async function createRoutine(body: {
 export async function createRevision(
   definitionId: string,
   body: {
+    mutationId: string;
     title: string;
-    assigneeMemberIds: string[];
+    assigneeMemberIds?: string[];
+    assigneeGroupIds?: string[];
     weekdays: number[];
     steps: Array<{
       text: string;

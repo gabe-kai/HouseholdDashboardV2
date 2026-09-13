@@ -60,9 +60,11 @@ async function ensureSharedRoutine(request: APIRequestContext, assignees = [MORG
   const created = await request.post("/api/v1/routines", {
     headers: await mutatingHeaders(request),
     data: {
+      mutationId: crypto.randomUUID(),
       title: "Morning Routine",
       weekdays: [1, 2, 3, 4, 5, 6, 7],
       assigneeMemberIds: assignees,
+      assigneeGroupIds: [],
       steps: [
         { text: "Make bed", obligation: "required" },
         { text: "Pack lunch", obligation: "as_needed" },
@@ -624,9 +626,11 @@ test.describe("P0-002 authenticated household", () => {
     const denied = await page.request.post(`/api/v1/routines/${routineId}/revisions`, {
       headers: await mutatingHeaders(page.request),
       data: {
+        mutationId: crypto.randomUUID(),
         title: "Hijack",
         weekdays: [1],
         assigneeMemberIds: [AVERY_ID],
+        assigneeGroupIds: [],
         steps: [{ text: "Nope", obligation: "required" }],
       },
     });

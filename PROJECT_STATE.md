@@ -19,7 +19,7 @@
 
 ## Current focus
 
-Engineering returned **READY** for `P0-005 r1` (`reports/P0-005-r1-engineering-readiness.md`). Awaiting Architecture disposition before implementation.
+Engineering returned **READY** for `P0-005 r1` (`reports/P0-005-r1-engineering-readiness.md`). Architecture accepted the readiness review and authorized implementation against the unchanged r1 contract.
 
 ## Internal work status
 
@@ -30,7 +30,7 @@ Engineering returned **READY** for `P0-005 r1` (`reports/P0-005-r1-engineering-r
 | P0-003 - Regression Safety and Contract Hardening | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #6 | Product evaluation; optional required-check configuration |
 | P0-004A - People & Groups UX Completion | r3 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #8 | Product phone evaluation |
 | P0-004B - Group-backed Morning Routine | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #9 | Product evaluation |
-| P0-005 - Multiple Household Routines | r1 | READY | Architecture | `brief/p0-005-multiple-household-routines` | Architecture disposition; then implementation |
+| P0-005 - Multiple Household Routines | r1 | READY | Engineering | `brief/p0-005-multiple-household-routines` | Implementation and Build Report |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -55,7 +55,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Architecture responds to Engineering’s READY review of `P0-005 r1`. Implementation waits for that disposition. The Project Lead manages Git; agents suggest commit messages but do not commit.
+Engineering is authorized to implement exact `P0-005 r1` from the committed planning baseline and return a Build Report. The Project Lead manages Git; agents suggest commit messages but do not commit.
 
 ## Notes for all teams
 

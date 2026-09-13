@@ -42,7 +42,7 @@ Goal: prove that a real recurring household routine can be used quickly by six d
 
 - [ ] **Outcome: Multiple Routines.** A parent creates Morning, After School, Bedtime, and other named routines; children use all applicable routines independently, with per-routine personalization and trustworthy history.
   - **Brief:** `P0-005 r1 - Multiple Household Routines` (`briefs/p0-005-multiple-household-routines.md`).
-  - **Status:** IN REVIEW; awaiting Engineering readiness against the integrated P0-004B baseline.
+  - **Status:** READY; Engineering readiness accepted, implementation authorized from the integrated P0-004B baseline.
   - **Evidence target:** A populated migration plus an automated phone journey proves create/find/edit, independent execution, weekdays/dayparts, group propagation, personal isolation, safe archival, and realtime recovery locally.
 
 ### LIKELY NEXT

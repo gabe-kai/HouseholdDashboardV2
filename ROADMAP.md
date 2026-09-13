@@ -32,24 +32,28 @@ Goal: prove that a real recurring household routine can be used quickly by six d
 
 - [x] **P0-004A — People & Groups UX Completion:** A parent can navigate focused people, access, group, and household-activity states while normal bootstrap remains fixture-free and demo cleanup remains provenance-safe.
   - **Brief:** `P0-004A r3 - People & Groups UX Completion` (`briefs/p0-004a-people-groups-access.md`)
-  - **Result:** Technically accepted through `b4256ac` and correction `b20744e`; Product phone evaluation and branch integration remain separate.
+  - **Result:** Technically accepted through `b4256ac` and correction `b20744e`; merged to `main` through PR #8. Product evaluation remains separate.
+
+- [x] **P0-004B — Group-backed Morning Routine:** Named groups supply prospective participation without flattening selected sources, duplicating occurrences, or rewriting history.
+  - **Brief:** `P0-004B r1 - Group-backed Morning Routine` (`briefs/p0-004b-group-backed-morning-routine.md`).
+  - **Result:** Technically accepted through correction `ac41538`; merged to `main` at `93ef494` through PR #9. Product evaluation remains separate.
 
 ### CURRENT
 
-- [ ] **Outcome:** Morning Routine can consume a named group as a clear audience, giving each current group member one future occurrence while preserving overlap, prospective-change, and historical invariants.
-  - **Brief:** `P0-004B r1 - Group-backed Morning Routine` (`briefs/p0-004b-group-backed-morning-routine.md`).
-  - **Status:** Technically accepted by Architecture after same-revision corrections; Product/Project Lead evaluation and integration remain separate.
-  - **Evidence target:** A deterministic phone-width journey proves source-preserving group selection, unique occurrence resolution, next-day membership changes, stable today/history, deletion safety, and realtime convergence.
+- [ ] **Outcome: Multiple Routines.** A parent creates Morning, After School, Bedtime, and other named routines; children use all applicable routines independently, with per-routine personalization and trustworthy history.
+  - **Brief:** `P0-005 r1 - Multiple Household Routines` (`briefs/p0-005-multiple-household-routines.md`).
+  - **Status:** IN REVIEW; awaiting Engineering readiness against the integrated P0-004B baseline.
+  - **Evidence target:** A populated migration plus an automated phone journey proves create/find/edit, independent execution, weekdays/dayparts, group propagation, personal isolation, safe archival, and realtime recovery locally.
 
 ### LIKELY NEXT
 
-- [ ] **Outcome:** Today can present more than one real household responsibility, such as Kitchen, Cats, or Bathroom, without cloning Morning Routine-specific concepts or weakening authority/history. Exact assignment/rotation behavior should follow P0-004B evidence.
+- [ ] **Outcome: Multi-Responsibility Today.** Build on a day containing several routines to distinguish completed, next/current, later, and anytime work. Ordinary responsibilities such as Kitchen, Cats, and Bathroom may enter here; assignment sophistication follows concrete examples and P0-005 evaluation.
 
 ### LATER
 
-- [ ] Add only the rotation, eligibility, or choose-one behavior justified by concrete multi-responsibility examples.
-- [ ] Add retrospective completion, helper/cover/reassignment, and explicit credit while retaining the original assignment.
-- [ ] Support household exception days and contextual schedule additions/previews without a global weekday/weekend classification.
+- Richer scheduling, assignment, shared execution, and personal work, driven by household evidence.
+- Broader-release privacy, recovery, offline behavior, and operational confidence.
+- Detailed unscheduled product memory: [`PRODUCT.md` — Deferred / Preserved Product Directions](PRODUCT.md#deferred--preserved-product-directions). This inventory is not a sequence of implementation commitments.
 
 ## Milestone 1 - Core Value
 
@@ -69,9 +73,4 @@ Goal: prove that a real recurring household routine can be used quickly by six d
 
 ## Later / Parking Lot
 
-Ideas we like but are not committed to yet:
-
-- Alternating households, temporary absence, household departure, and personal-data portability.
-- Calendar/school context ingestion.
-- Sibling cover requests, swaps, reciprocal promises, and any household-economy behavior.
-- Meal planning, pet inventory, renovation projects, and other adjacent household domains.
+See [`PRODUCT.md` — Deferred / Preserved Product Directions](PRODUCT.md#deferred--preserved-product-directions) for the detailed unscheduled inventory. Preserve those ideas there; promote only evidence-justified outcomes into CURRENT or LIKELY NEXT.

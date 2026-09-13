@@ -388,3 +388,69 @@ Checklist execution is rejected for a future household date and for a cached occ
 **Related briefs:**
 
 - P0-004B
+
+---
+
+## D-020 - Routine identity scopes configuration, personal layers, and commands
+
+**Status:** Active
+
+**Decision:** P0-005 generalizes the existing definition model to multiple routines per household. A stable definition ID, independent of title or daypart, scopes shared revisions, participant resolution, personal layers, proposals, previews, mutation targets, and history. Keep the existing occurrence uniqueness by definition/date/accountable membership; scope personal revision uniqueness and selection by membership/definition/date. Proposals acquire their definition identity when created, and approval uses that stored identity. Administrative replay binds the target definition as well as household, command kind, and payload; state and receipt commit atomically.
+
+**Reason:** The existing database already represents routine identity in revisions and occurrences, but singleton lookups, personal date uniqueness, implicit proposal association, and target-free receipt digests would make multiple routines interfere. Three special routine types or independent copies of the application would preserve the underlying problem.
+
+**Implications:** Forward migrations preserve the existing Morning definition and all valid IDs/relationships, snapshots, personal content, execution facts, and receipts. Deterministically associate legacy proposals with the sole pre-upgrade definition and cross-check decided layers; retain unresolved legacy records read-only rather than guessing or deleting. Extend the named supported migration baseline with populated authenticated P0-004B data while retaining P0-001 migration coverage. Normal API/client flows carry explicit routine IDs. Existing authority, personal-overlay restrictions, and D-018 group-source semantics apply per routine. Shared/personal edits remain append-only and future-effective; date selection and conflicts are scoped to the affected definition or personal membership/definition pair and shown to the user.
+
+**Alternatives considered:**
+
+- Three hard-coded Morning/After School/Bedtime types would not support household-defined names without repeated special cases.
+- Cloning a singleton service or personal layer for each routine would encourage content, history, and permission divergence.
+- A backend-only enabling brief would not prove that the household can create and execute multiple routines; one vertical brief uses internal implementation checkpoints instead.
+
+**Related briefs:**
+
+- P0-005 r1 (planned implementation)
+
+---
+
+## D-021 - Routines use weekday recurrence and snapshotted dayparts
+
+**Status:** Active
+
+**Decision:** Each P0-005 shared routine revision contains a nonempty ISO-weekday set and a separate daypart. The initial ordered daypart vocabulary is Morning, After school, Evening, Bedtime, Anytime. Schedule presets are conveniences over weekdays, not different recurrence models. Materialization snapshots the selected daypart on each occurrence; Today orders those snapshots deterministically. Routine names/types are not derived from dayparts. Dayparts neither require exact times nor prevent execution of applicable work earlier in the day.
+
+**Reason:** Families need meaningful day structure without fake clock times or an early calendar/rule engine. A generic Routine supports any household-defined name while a small daypart vocabulary provides sufficient ordering for the interim Today experience.
+
+**Implications:** Existing Morning revisions/occurrences retain Morning. New routines may visibly default to Every day / Anytime. Later edits do not relabel old snapshots. A current/upcoming summary resolves both the definition revision and group membership for the displayed household date. Exact times, contextual calendars, and the full next/later hierarchy remain deferred in `PRODUCT.md`.
+
+**Alternatives considered:**
+
+- Exact-time scheduling would require product decisions that these routines do not need.
+- A special routine kind per daypart would couple identity to schedule and make ordinary new routine names unnecessarily difficult.
+- Deriving historical daypart from current configuration would rewrite history when the parent changes a schedule.
+
+**Related briefs:**
+
+- P0-005 r1 (planned implementation)
+
+---
+
+## D-022 - Routine archival stops participation prospectively and retains history
+
+**Status:** Active
+
+**Decision:** Archiving a routine removes it from the active configuration list immediately and records an exclusive participation cutoff at the next household date. Today remains available; on/after the cutoff no occurrence is assigned or executable, including retained rows materialized before archival. Before-cutoff history and valid delayed reports remain supported. Archive requires the existing shared-management capability, conflict protection, explicit user confirmation, and replay-safe state change. The definition remains inspectable in a secondary archived view; physical deletion and restoration are outside P0-005 r1.
+
+**Reason:** Product needs to stop using a routine without destroying household history. A household-date cutoff preserves the prospective convention and avoids a current-day checklist disappearing partway through use. Filtering only at creation would leave pre-materialized future work active and would not satisfy archive behavior.
+
+**Implications:** Lifecycle applies to date reads, materialization, preview applicability, cached-ID status authorization, and group reference intervals. An archived routine's current-day group reference survives until cutoff; another active routine's reference still blocks deletion. Archived future configuration and new personal changes/proposals cannot be written, and pending proposals cannot be approved into the archived routine. Preserve their audit and allow rejection; already committed decision replays remain idempotent. Restore is deferred because group tombstones and skipped dates require an additional lifecycle contract, not merely clearing an archive flag. This is an explicit extension of D-019's future-participation exclusion, not permission to rewrite snapshots.
+
+**Alternatives considered:**
+
+- Destructive deletion would lose responsibility history.
+- Immediate removal from today's execution would violate the prospective day boundary.
+- A current archive flag checked only during creation would fail for retained future occurrences and delayed commands.
+
+**Related briefs:**
+
+- P0-005 r1 (planned implementation)

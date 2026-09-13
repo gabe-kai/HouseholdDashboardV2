@@ -64,6 +64,8 @@ export type Routine = {
     assigneeMemberIds: string[];
     assigneeGroupIds: string[];
     resolvedMemberIds?: string[];
+    upcomingResolvedMemberIds?: string[];
+    upcomingParticipationFromDate?: string | null;
   }>;
 };
 

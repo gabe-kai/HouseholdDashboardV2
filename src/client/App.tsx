@@ -613,6 +613,7 @@ export function App() {
       {tab === "routine" && canManageShared ? (
         <RoutineEditor
           memberships={memberships}
+          today={householdDate || session.householdDate}
           refreshToken={routineRefreshToken}
           onSaved={(routine) => {
             const latest = routine.revisions.at(-1);

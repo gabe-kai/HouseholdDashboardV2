@@ -1063,8 +1063,24 @@ export class AppStore {
       revisions: revisions.map((revision) => {
         const assigneeMemberIds = this.revisionAssignees(revision.id);
         const assigneeGroupIds = this.revisionGroupSources(revision.id);
-        const groupMemberIdSets = assigneeGroupIds.map((groupId) =>
+        const todaySets = assigneeGroupIds.map((groupId) =>
           this.groupMembersOnDate(groupId, today),
+        );
+        const tomorrow = addHouseholdDays(today, 1);
+        const tomorrowSets = assigneeGroupIds.map((groupId) =>
+          this.groupMembersOnDate(groupId, tomorrow),
+        );
+        const resolvedMemberIds = resolveParticipants({
+          directMemberIds: assigneeMemberIds,
+          groupMemberIdSets: todaySets,
+        });
+        const upcomingResolvedMemberIds = resolveParticipants({
+          directMemberIds: assigneeMemberIds,
+          groupMemberIdSets: tomorrowSets,
+        });
+        const upcomingDiffers = !sameMembershipSet(
+          resolvedMemberIds,
+          upcomingResolvedMemberIds,
         );
         return {
           id: revision.id,
@@ -1075,10 +1091,9 @@ export class AppStore {
           steps: this.revisionSteps(revision.id),
           assigneeMemberIds,
           assigneeGroupIds,
-          resolvedMemberIds: resolveParticipants({
-            directMemberIds: assigneeMemberIds,
-            groupMemberIdSets,
-          }),
+          resolvedMemberIds,
+          upcomingResolvedMemberIds: upcomingDiffers ? upcomingResolvedMemberIds : undefined,
+          upcomingParticipationFromDate: upcomingDiffers ? tomorrow : null,
         };
       }),
     };
@@ -1980,12 +1995,19 @@ export class AppStore {
         )
         .all(row.id) as Array<{ membership_id: string }>
     ).map((entry) => entry.membership_id);
+    const effectiveMembershipIds = this.groupMembersOnDate(row.id, today);
+    const pending =
+      !sameMembershipSet(membershipIds, effectiveMembershipIds)
+        ? this.nextMembershipEffectDate(row.id, today)
+        : null;
     const usedByMorningRoutine = this.groupActivelyReferenced(row.id, today);
     return {
       id: row.id,
       name: row.name,
       version: row.version,
       membershipIds,
+      effectiveMembershipIds,
+      membershipPendingFromDate: pending,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       usedByMorningRoutine,
@@ -2127,6 +2149,20 @@ export class AppStore {
 
   private householdDateFor(householdId: string, now = new Date()): HouseholdDate {
     return householdDateFromInstant(now, this.householdTimezone(householdId));
+  }
+
+  private nextMembershipEffectDate(
+    groupId: string,
+    today: HouseholdDate,
+  ): HouseholdDate | null {
+    const row = this.db
+      .prepare(
+        `SELECT MIN(effective_date) AS effect_date
+         FROM group_membership_versions
+         WHERE group_id = ? AND effective_date > ?`,
+      )
+      .get(groupId, today) as { effect_date: string | null } | undefined;
+    return (row?.effect_date as HouseholdDate | null) ?? addHouseholdDays(today, 1);
   }
 
   private groupMembersOnDate(groupId: string, date: HouseholdDate): string[] {

@@ -1,7 +1,7 @@
 # BRIEF P0-005 - Multiple Household Routines
 
 **Revision:** 1
-**Status:** IN REVIEW
+**Status:** READY
 
 Lifecycle: DRAFT -> IN REVIEW -> READY -> IMPLEMENTING -> IMPLEMENTED -> ACCEPTED.
 
@@ -177,10 +177,12 @@ Domain/HTTP tests supply edge matrices; browser evidence must actually create an
 
 ## Engineering readiness
 
-**Reviewed revision:** NOT REVIEWED
-**Readiness:** NOT REVIEWED
+**Reviewed revision:** 1  
+**Readiness:** READY  
 
-Perform one consolidated repository-grounded review of P0-005 r1. Report concrete Questions/Blockers and ordinary implementation choices together. Await Architecture's response before implementation.
+Engineering returned READY against revision 1 (see `reports/P0-005-r1-engineering-readiness.md`). Inspection was against `main` @ `93ef494` with planning commit `9cfb89e` on `brief/p0-005-multiple-household-routines` (no `src/`/`db/migrations` delta vs `main`). No blockers; material gaps are intentional contract deltas covered by D-020/D-021/D-022.
+
+**Architecture disposition:** PENDING. Implementation waits for Architecture’s response to this readiness review.
 
 ## Revision history
 

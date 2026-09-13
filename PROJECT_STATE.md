@@ -19,7 +19,7 @@
 
 ## Current focus
 
-P0-004B r1 is technically accepted and merged through PR #9 (`main` at `93ef494`). Architecture has prepared **P0-005 r1 — Multiple Household Routines** from Product's proposal. Awaiting Engineering readiness; implementation is not started. Product's unscheduled directions are preserved in `PRODUCT.md`.
+Engineering returned **READY** for `P0-005 r1` (`reports/P0-005-r1-engineering-readiness.md`). Awaiting Architecture disposition before implementation.
 
 ## Internal work status
 
@@ -30,7 +30,7 @@ P0-004B r1 is technically accepted and merged through PR #9 (`main` at `93ef494`
 | P0-003 - Regression Safety and Contract Hardening | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #6 | Product evaluation; optional required-check configuration |
 | P0-004A - People & Groups UX Completion | r3 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #8 | Product phone evaluation |
 | P0-004B - Group-backed Morning Routine | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #9 | Product evaluation |
-| P0-005 - Multiple Household Routines | r1 | IN REVIEW | Engineering readiness | Planned: `brief/p0-005-multiple-household-routines` | Consolidated readiness review; then Architecture response |
+| P0-005 - Multiple Household Routines | r1 | READY | Architecture | `brief/p0-005-multiple-household-routines` | Architecture disposition; then implementation |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -55,7 +55,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Engineering reviews `briefs/p0-005-multiple-household-routines.md`, exact **P0-005 r1**, and records one consolidated readiness result. Architecture responds before implementation. The Project Lead manages Git; agents suggest commit messages but do not commit.
+Architecture responds to Engineering’s READY review of `P0-005 r1`. Implementation waits for that disposition. The Project Lead manages Git; agents suggest commit messages but do not commit.
 
 ## Notes for all teams
 

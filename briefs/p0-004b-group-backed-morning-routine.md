@@ -1,7 +1,7 @@
 # BRIEF P0-004B - Group-backed Morning Routine
 
 **Revision:** 1
-**Status:** FIX REQUIRED
+**Status:** ACCEPTED
 
 Recommended lifecycle: DRAFT -> IN REVIEW -> READY -> IMPLEMENTING -> IMPLEMENTED -> ACCEPTED
 
@@ -146,6 +146,8 @@ If a parent changes a group used by Morning Routine, People & Groups explains th
 Engineering returned READY against revision 1 (see `reports/P0-004B-r1-engineering-readiness.md`). Inspection was against `main` @ `9feec29`. No blockers; material gaps are intentional contract deltas covered by D-018/D-019.
 
 **Architecture disposition:** FIX REQUIRED. The contract is unchanged, but the current implementation does not yet satisfy the household-local baseline-date or current-versus-next-day summary contract. Engineering may correct the same r1 directly; no new readiness review is required.
+
+**Architecture reassessment:** ACCEPTED (2026-09-13). Commit `ac41538` resolves the same-revision findings: migration/backfill derives baseline dates in the household timezone with near-UTC-midnight regression evidence; the routine API and editor distinguish effective participation from future configured membership and label the future start date; and focused dual-context e2e evidence proves open group-detail and Routine views converge without reload for source and membership changes. `validate:pr` and `validate:rc` pass. Hosted evidence is not required for this development slice. The Build Report still contains stale wording that the correction is uncommitted; the repository commit is the authoritative status.
 
 ## Revision history
 

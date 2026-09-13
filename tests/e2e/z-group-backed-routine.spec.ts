@@ -80,7 +80,126 @@ async function openAsManager(page: Page) {
   await expect(page.locator(".topbar")).toContainText("Morgan Reed", { timeout: 20_000 });
 }
 
+async function nextFreeRevisionDate(request: APIRequestContext): Promise<string> {
+  const session = await request.get("/api/v1/auth/session");
+  expect(session.ok()).toBeTruthy();
+  const today = ((await session.json()) as { householdDate: string }).householdDate;
+  const listed = await request.get("/api/v1/routines");
+  expect(listed.ok()).toBeTruthy();
+  const routine = ((await listed.json()) as { routine: Routine | null }).routine;
+  const used = new Set(routine?.revisions.map((revision) => revision.effectiveDate) ?? []);
+  let candidate = addDays(today, 1);
+  while (used.has(candidate)) candidate = addDays(candidate, 1);
+  return candidate;
+}
+
+type Routine = {
+  id: string;
+  revisions: Array<{
+    effectiveDate: string;
+    title: string;
+    weekdays: number[];
+    assigneeMemberIds: string[];
+    assigneeGroupIds: string[];
+    steps: Array<{ text: string; obligation: string; logicalItemId?: string }>;
+  }>;
+};
+
+function addDays(date: string, days: number): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const utc = new Date(Date.UTC(y, m - 1, d + days, 12, 0, 0));
+  const yy = utc.getUTCFullYear();
+  const mm = String(utc.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(utc.getUTCDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}
+
 test.describe("P0-004B group-backed Morning Routine", () => {
+  test("open Routine and group views converge after membership and source changes", async ({
+    browser,
+  }) => {
+    const managerA = await browser.newContext();
+    const managerB = await browser.newContext();
+    const pageA = await managerA.newPage();
+    const pageB = await managerB.newPage();
+    await pageA.setViewportSize({ width: 390, height: 844 });
+    await pageB.setViewportSize({ width: 390, height: 844 });
+
+    await openAsManager(pageA);
+    await openAsManager(pageB);
+
+    const suffix = Date.now().toString(36);
+    const childName = `Sync Child ${suffix}`;
+    const groupName = `Sync Crew ${suffix}`;
+
+    await pageA.getByRole("button", { name: "People & Groups" }).click();
+    await pageA.getByRole("button", { name: "Add person" }).click();
+    await pageA.getByLabel("Name").fill(childName);
+    await pageA.getByRole("radio", { name: "Child" }).check();
+    await pageA.getByRole("button", { name: "Add person" }).click();
+    await expect(pageA.getByRole("heading", { name: childName })).toBeVisible();
+    await pageA.getByRole("button", { name: "Back to People & Groups" }).click();
+
+    await pageA.getByRole("button", { name: "Create group" }).click();
+    await pageA.getByLabel("Group name").fill(groupName);
+    await pageA.getByRole("checkbox", { name: childName }).check();
+    await pageA.getByRole("button", { name: "Save group" }).click();
+    await expect(pageA.getByRole("heading", { name: groupName })).toBeVisible();
+    await expect(pageA.getByText("Used by Morning Routine")).toHaveCount(0);
+
+    await pageB.getByRole("button", { name: "Routine", exact: true }).click();
+    await expect(pageB.getByRole("heading", { name: "Who does this routine?" })).toBeVisible();
+
+    // Routine-source update while group detail stays open: assign via API on a free date,
+    // then prove the open group view converges without reload.
+    const groups = await pageB.request.get("/api/v1/groups");
+    expect(groups.ok()).toBeTruthy();
+    const groupId = (
+      (await groups.json()) as { groups: Array<{ id: string; name: string }> }
+    ).groups.find((group) => group.name === groupName)!.id;
+    const listed = await pageB.request.get("/api/v1/routines");
+    const routine = ((await listed.json()) as { routine: Routine }).routine;
+    const latest = routine.revisions.at(-1)!;
+    const revised = await pageB.request.post(`/api/v1/routines/${routine.id}/revisions`, {
+      headers: {
+        "x-csrf-token": await csrf(pageB.request),
+        Origin: requestOrigin(pageB.request),
+      },
+      data: {
+        mutationId: crypto.randomUUID(),
+        effectiveDate: await nextFreeRevisionDate(pageB.request),
+        title: latest.title,
+        weekdays: latest.weekdays,
+        assigneeMemberIds: latest.assigneeMemberIds,
+        assigneeGroupIds: [...new Set([...(latest.assigneeGroupIds ?? []), groupId])],
+        steps: latest.steps.map((step) => ({
+          text: step.text,
+          obligation: step.obligation,
+          logicalItemId: step.logicalItemId,
+        })),
+      },
+    });
+    expect(revised.ok(), await revised.text()).toBeTruthy();
+
+    await expect(pageA.getByText("Used by Morning Routine")).toBeVisible({ timeout: 15_000 });
+    await expect(pageB.getByText(groupName).first()).toBeVisible({ timeout: 15_000 });
+
+    await pageA.getByRole("button", { name: "Edit group" }).click();
+    await pageA.getByRole("checkbox", { name: "Morgan Reed" }).check();
+    await pageA.getByRole("button", { name: "Save group" }).click();
+    await expect(
+      pageA.getByText(/Morning Routine will use the new members starting/i),
+    ).toBeVisible({ timeout: 10_000 });
+
+    await expect(pageB.getByText(/Starting \d{4}-\d{2}-\d{2}/i).first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(pageB.getByText(/Morgan Reed/i).first()).toBeVisible();
+
+    await managerA.close();
+    await managerB.close();
+  });
+
   test("phone journey configures The Boys and shows used-group feedback", async ({
     page,
   }, testInfo) => {
@@ -121,16 +240,22 @@ test.describe("P0-004B group-backed Morning Routine", () => {
 
     // Clear prior direct assignees from earlier e2e suites, then select only The Boys.
     const peopleBox = page.locator("fieldset").filter({ hasText: "People" });
+    const groupsBox = page.locator("fieldset").filter({ hasText: "Groups" });
+    for (const checkbox of await groupsBox.getByRole("checkbox").all()) {
+      if (await checkbox.isChecked()) await checkbox.uncheck();
+    }
     for (const checkbox of await peopleBox.getByRole("checkbox").all()) {
       if ((await checkbox.isChecked()) && !(await checkbox.isDisabled())) {
         await checkbox.uncheck();
       }
     }
-    const groupsBox = page.locator("fieldset").filter({ hasText: "Groups" });
-    for (const checkbox of await groupsBox.getByRole("checkbox").all()) {
-      if (await checkbox.isChecked()) await checkbox.uncheck();
-    }
     await groupsBox.getByRole("checkbox", { name: /The Boys/ }).check();
+    // Re-clear any leftover directs after group selection.
+    for (const checkbox of await peopleBox.getByRole("checkbox").all()) {
+      if ((await checkbox.isChecked()) && !(await checkbox.isDisabled())) {
+        await checkbox.uncheck();
+      }
+    }
     const boysRow = groupsBox.locator("label").filter({ hasText: "The Boys" });
     await expect(boysRow.getByText(/Daniel Boyd/)).toBeVisible();
     await expect(boysRow.getByText(/Eli Boyd/)).toBeVisible();
@@ -144,7 +269,8 @@ test.describe("P0-004B group-backed Morning Routine", () => {
     await page.getByRole("button", { name: "Save who does this" }).click();
     await expect(page.getByRole("heading", { name: "Who does this routine?" })).toBeVisible();
     await expect(page.getByText("The Boys").first()).toBeVisible();
-    await expect(page.getByText(/2 people unique/i)).toBeVisible();
+    await expect(page.getByText(/2 people unique today/i)).toBeVisible();
+    await expect(page.getByText("Direct")).toHaveCount(0);
     await expect(page.getByRole("checkbox", { name: /The Boys/ })).toHaveCount(0);
     if (testInfo.project.name === "chromium") {
       await page.screenshot({

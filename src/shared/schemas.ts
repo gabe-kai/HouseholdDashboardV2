@@ -249,7 +249,15 @@ export type GroupPublic = {
   id: string;
   name: string;
   version: number;
+  /** Latest configured member set (People & Groups projection). */
   membershipIds: string[];
+  /** Members effective for Morning Routine on the current household date. */
+  effectiveMembershipIds: string[];
+  /**
+   * When configured members differ from today's effective set, the household date
+   * when the configured set begins affecting Morning Routine.
+   */
+  membershipPendingFromDate?: string | null;
   createdAt: string;
   updatedAt: string;
   /** True when an operative or scheduled Morning Routine revision selects this group. */
@@ -275,6 +283,10 @@ export type RoutineRevisionPublic = {
   /** Direct membership sources only (not expanded through groups). */
   assigneeMemberIds: string[];
   assigneeGroupIds: string[];
-  /** Unique resolved participants for the current household date, when computed. */
+  /** Unique resolved participants for the current household date. */
   resolvedMemberIds?: string[];
+  /** Unique resolved participants for the next household day when it differs from today. */
+  upcomingResolvedMemberIds?: string[];
+  /** Household date when upcomingResolvedMemberIds begins; null when same as today. */
+  upcomingParticipationFromDate?: string | null;
 };

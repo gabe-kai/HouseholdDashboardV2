@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { addHouseholdDays } from "../../src/domain/time.js";
+import { selectMembershipVersionForDate } from "../../src/domain/participation.js";
 import { migrate, openDatabase } from "../../src/server/db.js";
 import { AppStore } from "../../src/server/store.js";
 import {
@@ -62,18 +63,127 @@ describe("P0-004B group-backed Morning Routine", () => {
       `INSERT INTO household_groups (id, household_id, name, version, created_at, updated_at)
        VALUES (?, ?, 'Legacy Kids', 1, ?, ?)`,
     ).run(groupId, householdId, now, now);
-    // Simulate pre-004 state: no versions for this group — run backfill SQL fragment
-    db.prepare(
-      `INSERT INTO group_membership_versions (id, group_id, version, effective_date, created_at)
-       SELECT ?, ?, 1, substr(?, 1, 10), ?
-       WHERE NOT EXISTS (SELECT 1 FROM group_membership_versions WHERE group_id = ?)`,
-    ).run(`${groupId}:v1`, groupId, now, now, groupId);
+    migrate(db);
 
     const version = db
       .prepare("SELECT version, effective_date FROM group_membership_versions WHERE group_id = ?")
       .get(groupId) as { version: number; effective_date: string };
     expect(version.version).toBe(1);
     expect(version.effective_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("baselines existing groups with household-local dates near UTC midnight", async () => {
+    const dbPath = path.join(os.tmpdir(), `hd-004b-tz-${Date.now()}.sqlite`);
+    temps.push(dbPath);
+    const db = openDatabase(dbPath);
+    migrate(db);
+
+    const householdId = randomUUID();
+    const groupId = randomUUID();
+    const memberId = randomUUID();
+    // 2026-09-13 02:30 UTC is still 2026-09-12 evening in America/New_York.
+    const createdAt = "2026-09-13T02:30:00.000Z";
+    db.prepare(
+      `INSERT INTO households (id, name, timezone) VALUES (?, 'TZ House', 'America/New_York')`,
+    ).run(householdId);
+    db.prepare(
+      `INSERT INTO household_memberships
+         (id, household_id, display_name, status, classification, version, created_at)
+       VALUES (?, ?, 'Local Child', 'pending', 'child', 1, ?)`,
+    ).run(memberId, householdId, createdAt);
+    db.prepare(
+      `INSERT INTO household_groups (id, household_id, name, version, created_at, updated_at)
+       VALUES (?, ?, 'Evening Crew', 1, ?, ?)`,
+    ).run(groupId, householdId, createdAt, createdAt);
+    db.prepare(
+      `INSERT INTO household_group_members (group_id, membership_id) VALUES (?, ?)`,
+    ).run(groupId, memberId);
+
+    // Simulate the pre-fix UTC-substr baseline: on the household-local creation day
+    // no version would apply until migrate repairs the date.
+    db.prepare(
+      `INSERT INTO group_membership_versions (id, group_id, version, effective_date, created_at)
+       VALUES (?, ?, 1, '2026-09-13', ?)`,
+    ).run(`${groupId}:v1`, groupId, createdAt);
+    db.prepare(
+      `INSERT INTO group_membership_version_members (version_id, membership_id) VALUES (?, ?)`,
+    ).run(`${groupId}:v1`, memberId);
+    expect(
+      selectMembershipVersionForDate(
+        [{ id: `${groupId}:v1`, version: 1, effectiveDate: "2026-09-13" }],
+        "2026-09-12",
+      ),
+    ).toBeNull();
+
+    migrate(db);
+
+    const versionRows = db
+      .prepare(
+        `SELECT id, version, effective_date FROM group_membership_versions WHERE group_id = ?`,
+      )
+      .all(groupId) as Array<{ id: string; version: number; effective_date: string }>;
+    expect(versionRows).toHaveLength(1);
+    expect(versionRows[0]!.effective_date).toBe("2026-09-12");
+    expect(versionRows[0]!.effective_date).not.toBe(createdAt.slice(0, 10));
+
+    const selected = selectMembershipVersionForDate(
+      versionRows.map((row) => ({
+        id: row.id,
+        version: row.version,
+        effectiveDate: row.effective_date,
+      })),
+      "2026-09-12",
+    );
+    expect(selected?.effectiveDate).toBe("2026-09-12");
+    const members = db
+      .prepare(
+        `SELECT membership_id FROM group_membership_version_members WHERE version_id = ?`,
+      )
+      .all(selected!.id) as Array<{ membership_id: string }>;
+    expect(members.map((row) => row.membership_id)).toEqual([memberId]);
+  });
+
+  it("keeps today effective members distinct from tomorrow's configured set", async () => {
+    const { store } = freshStore();
+    const manager = await claimManager(store);
+    const boys = store.createGroup(manager.context, {
+      mutationId: randomUUID(),
+      name: "The Boys",
+      membershipIds: [IDS.avery, IDS.jordan],
+    });
+    store.createRoutine(manager.context, {
+      mutationId: randomUUID(),
+      title: "Morning Routine",
+      assigneeMemberIds: [],
+      assigneeGroupIds: [boys.id],
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      steps,
+    });
+    const before = store.getRoutine(manager.context.householdId)!;
+    const todayResolved = before.revisions[0]!.resolvedMemberIds!.sort();
+    expect(todayResolved).toEqual([IDS.avery, IDS.jordan].sort());
+    expect(before.revisions[0]!.upcomingParticipationFromDate ?? null).toBeNull();
+
+    store.updateGroup(manager.context, boys.id, {
+      name: "The Boys",
+      membershipIds: [IDS.jordan, IDS.casey],
+      expectedVersion: boys.version,
+    });
+    const group = store.getGroup(manager.context.householdId, boys.id);
+    expect(group.membershipIds.sort()).toEqual([IDS.casey, IDS.jordan].sort());
+    expect(group.effectiveMembershipIds.sort()).toEqual([IDS.avery, IDS.jordan].sort());
+    expect(group.membershipPendingFromDate).toBe(
+      addHouseholdDays(store.householdDateNow(manager.context), 1),
+    );
+
+    const after = store.getRoutine(manager.context.householdId)!;
+    expect(after.revisions[0]!.resolvedMemberIds!.sort()).toEqual(todayResolved);
+    expect(after.revisions[0]!.upcomingParticipationFromDate).toBe(
+      addHouseholdDays(store.householdDateNow(manager.context), 1),
+    );
+    expect(after.revisions[0]!.upcomingResolvedMemberIds!.sort()).toEqual(
+      [IDS.casey, IDS.jordan].sort(),
+    );
   });
 
   it("persists group+direct sources and replays routine mutations", async () => {

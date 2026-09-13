@@ -44,26 +44,6 @@ CREATE TABLE IF NOT EXISTS routine_mutation_receipts (
   created_at TEXT NOT NULL
 );
 
--- Baseline dated membership version for every existing group (current members unchanged).
--- effective_date uses the UTC calendar date of group creation so today and history resolve.
-INSERT INTO group_membership_versions (id, group_id, version, effective_date, created_at)
-SELECT
-  g.id || ':v1',
-  g.id,
-  1,
-  substr(g.created_at, 1, 10),
-  g.created_at
-FROM household_groups g
-WHERE NOT EXISTS (
-  SELECT 1 FROM group_membership_versions v WHERE v.group_id = g.id
-);
-
-INSERT INTO group_membership_version_members (version_id, membership_id)
-SELECT v.id, m.membership_id
-FROM group_membership_versions v
-JOIN household_group_members m ON m.group_id = v.group_id
-WHERE v.version = 1
-  AND NOT EXISTS (
-    SELECT 1 FROM group_membership_version_members existing
-    WHERE existing.version_id = v.id AND existing.membership_id = m.membership_id
-  );
+-- Baseline membership versions are inserted by the TypeScript migrate hook
+-- `backfillGroupMembershipBaselines` so effective_date uses each household's
+-- local calendar date (not UTC substr of created_at).

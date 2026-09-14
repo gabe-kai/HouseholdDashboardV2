@@ -8,7 +8,7 @@ import {
   type FormEvent,
   type SetStateAction,
 } from "react";
-import { reconcileOccurrence } from "../domain/reconcile";
+import { mergeAuthoritativeOccurrence, reconcileOccurrence } from "../domain/reconcile";
 import type {
   Grant,
   MemberPublic,
@@ -124,9 +124,14 @@ export function App() {
   const [routineRefreshToken, setRoutineRefreshToken] = useState(0);
   const identityRef = useRef<string | null>(null);
   const occurrencesRef = useRef<OccurrenceView[]>([]);
+  const outboxRef = useRef<OutboxItem[]>([]);
   const refreshGenerationRef = useRef(0);
   const supportingGenerationRef = useRef(0);
   const [, startTransition] = useTransition();
+
+  useEffect(() => {
+    outboxRef.current = outbox;
+  }, [outbox]);
 
   function clearUiCaches() {
     setOccurrences([]);
@@ -135,6 +140,7 @@ export function App() {
     setTasks([]);
     setProposals([]);
     setOutbox([]);
+    outboxRef.current = [];
     setExpanded({});
     setHouseholdDate("");
     setFeedback(null);
@@ -163,15 +169,26 @@ export function App() {
     const data = await fetchToday(date);
     if (identityRef.current !== membershipId) return;
     if (generation !== refreshGenerationRef.current) return;
+    const pendingCommands = outboxRef.current
+      .filter((item) => item.state !== "rejected")
+      .map((item) => ({
+        mutationId: item.mutationId,
+        occurrenceId: item.occurrenceId,
+        stepId: item.stepId,
+        status: item.status,
+      }));
     const priorById = new Map(
       occurrencesRef.current.map((occurrence) => [occurrence.id, occurrence]),
     );
-    occurrencesRef.current = data.occurrences;
+    const merged = data.occurrences.map((occurrence) =>
+      mergeAuthoritativeOccurrence(priorById.get(occurrence.id), occurrence, pendingCommands),
+    );
+    occurrencesRef.current = merged;
     setHouseholdDate(data.householdDate);
-    setOccurrences(data.occurrences);
+    setOccurrences(merged);
     setExpanded((current) => {
       const next = { ...current };
-      for (const occurrence of data.occurrences) {
+      for (const occurrence of merged) {
         const prior = priorById.get(occurrence.id);
         if (next[occurrence.id] === undefined) {
           next[occurrence.id] = !occurrence.completed;
@@ -619,15 +636,18 @@ export function App() {
           today={householdDate || session.householdDate}
           refreshToken={routineRefreshToken}
           onSaved={(routine) => {
-            const latest = routine.revisions.at(-1);
-            if (latest) {
+            const today = householdDate || session.householdDate;
+            const saved =
+              routine.revisions.find((revision) => revision.effectiveDate === today) ??
+              routine.revisions.at(-1);
+            if (saved) {
               setFeedback({
-                message: `"${latest.title}" was saved.`,
+                message: `"${saved.title}" was saved.`,
                 membershipId:
-                  latest.resolvedMemberIds?.[0] ??
-                  latest.assigneeMemberIds[0] ??
+                  saved.resolvedMemberIds?.[0] ??
+                  saved.assigneeMemberIds[0] ??
                   session.member.id,
-                effectiveDate: latest.effectiveDate,
+                effectiveDate: saved.effectiveDate,
                 definitionId: routine.id,
               });
             }

@@ -1,7 +1,7 @@
 # BRIEF P0-005 - Multiple Household Routines
 
 **Revision:** 2
-**Status:** READY
+**Status:** IMPLEMENTED
 
 Lifecycle: DRAFT -> IN REVIEW -> READY -> IMPLEMENTING -> IMPLEMENTED -> ACCEPTED.
 
@@ -184,7 +184,7 @@ Domain/HTTP tests supply edge matrices; browser evidence must actually create an
 - This is broader than a UI-only change, but splitting persistence from executable multi-routine behavior would leave the central outcome unproven. One vertical brief with internal checkpoints is the selected decomposition.
 - SQLite table rebuilds, legacy receipt interpretation, implicit proposal associations, retained future rows, and delayed client responses are the main compatibility risks; the ATs require direct evidence rather than relying on empty-schema success.
 - Archive remains deliberately one-way in r2. Restoring safely after group tombstones and skipped dates requires separate evidence; it is not needed to prove the requested lifecycle.
-- P0-005 r2 is a planning contract, not implemented behavior. Product acceptance of earlier technically accepted slices is not inferred from their merge.
+- P0-005 r2 implementation evidence lives in `reports/P0-005-r2-build-report.md`. Product acceptance of earlier technically accepted slices is not inferred from their merge. Architecture/Product acceptance of this build remain separate.
 
 ## Engineering readiness
 
@@ -193,7 +193,7 @@ Domain/HTTP tests supply edge matrices; browser evidence must actually create an
 
 Engineering returned READY against revision 2 (see `reports/P0-005-r2-engineering-readiness.md`). Inspection was against `brief/p0-005-multiple-household-routines` @ `7704785` (r2 planning atop committed r1 multi-routine implementation; `main` baseline `93ef494`). No blockers; material gaps are intentional D-023 / same-date lock-and-refine deltas. r1 readiness and implementation do not certify r2.
 
-**Architecture disposition:** ACCEPT / PROCEED. Engineering may implement revision 2 locally. This is technical authorization to implement, not Architecture acceptance of the resulting build or Project Lead/product acceptance of the experience.
+**Architecture disposition:** ACCEPTED. The Build Report and evidence-hygiene correction satisfy the r2 technical contract. This is Architecture technical acceptance only; Project Lead/product acceptance and merge remain separate.
 
 ## Revision history
 

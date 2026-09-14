@@ -7,6 +7,7 @@ import {
   fetchGroups,
   fetchRoutine,
   fetchRoutines,
+  fetchToday,
   type Routine,
   type RoutineRevision,
 } from "./api";
@@ -122,19 +123,6 @@ function uniqueFromIds(
     for (const membershipId of ids) set.add(membershipId);
   }
   return set.size;
-}
-
-function nextFreeRevisionDate(routine: Routine | null, today: string): string | undefined {
-  if (!routine) return undefined;
-  const used = new Set(routine.revisions.map((revision) => revision.effectiveDate));
-  const [y, m, d] = today.split("-").map(Number);
-  let cursor = Date.UTC(y, m - 1, d + 1, 12, 0, 0);
-  for (;;) {
-    const date = new Date(cursor);
-    const candidate = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
-    if (!used.has(candidate)) return candidate;
-    cursor += 24 * 60 * 60 * 1000;
-  }
 }
 
 function selectRevisionForDate(
@@ -405,7 +393,8 @@ export function RoutinesView(props: {
         result = await createRevision(definitionId, {
           ...payload,
           expectedVersion: current.version,
-          effectiveDate: nextFreeRevisionDate(current, props.today),
+          // r2: refine the intended household date (default today) without nextFree drift
+          effectiveDate: props.today,
         });
       }
       if (selectedDefinitionRef.current && selectedDefinitionRef.current !== result.routine.id) {
@@ -413,18 +402,53 @@ export function RoutinesView(props: {
       }
       setDetailRoutine(result.routine);
       await loadList();
-      const latest = latestRevision(result.routine);
-      const takesEffect = latest?.effectiveDate;
-      const savedTitle = latest?.title?.trim();
+      const intendedDate = mode === "create" ? undefined : props.today;
+      const savedRevision =
+        (intendedDate
+          ? result.routine.revisions.find((revision) => revision.effectiveDate === intendedDate)
+          : null) ?? latestRevision(result.routine);
+      const takesEffect = savedRevision?.effectiveDate;
+      const savedTitle = savedRevision?.title?.trim();
       if (mode === "create") {
         setStatusMessage(
           savedTitle && takesEffect
             ? `Created “${savedTitle}”. Active from ${takesEffect}.`
             : "Created.",
         );
+      } else if (savedTitle && takesEffect && takesEffect === props.today) {
+        let whoLine =
+          "People who already started this routine keep their current checklist; others see the update now.";
+        try {
+          const today = await fetchToday(props.today);
+          const forRoutine = today.occurrences.filter(
+            (occurrence) => occurrence.definitionId === result.routine.id,
+          );
+          const nameFor = (membershipId: string) =>
+            props.memberships.find((member) => member.id === membershipId)?.displayName ??
+            "Someone";
+          const started = forRoutine
+            .filter((occurrence) => Boolean(occurrence.startedAt))
+            .map((occurrence) => nameFor(occurrence.accountableMemberId));
+          const updated = forRoutine
+            .filter((occurrence) => !occurrence.startedAt)
+            .map((occurrence) => nameFor(occurrence.accountableMemberId));
+          const parts: string[] = [];
+          if (updated.length) parts.push(`Updated for ${updated.join(", ")}`);
+          if (started.length) {
+            parts.push(
+              started.length === 1
+                ? `${started[0]} already started and keeps today’s checklist`
+                : `${started.join(", ")} already started and keep today’s checklists`,
+            );
+          }
+          if (parts.length) whoLine = `${parts.join(". ")}.`;
+        } catch {
+          /* keep generic copy */
+        }
+        setStatusMessage(`Saved “${savedTitle}” for today. ${whoLine}`);
       } else if (savedTitle && takesEffect && takesEffect > props.today) {
         setStatusMessage(
-          `Saved “${savedTitle}”. Takes effect ${takesEffect}. Today’s checklist is unchanged until then.`,
+          `Saved “${savedTitle}”. Takes effect ${takesEffect}. Today’s started checklists stay as they are.`,
         );
       } else if (savedTitle && takesEffect) {
         setStatusMessage(`Saved “${savedTitle}”. Active from ${takesEffect}.`);

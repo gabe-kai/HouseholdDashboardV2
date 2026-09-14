@@ -8,7 +8,7 @@ If this document disagrees with the repository about what exists, the repository
 
 ## Technical overview
 
-- **Current repository truth:** On branch `brief/p0-005-multiple-household-routines` (P0-005 r1 implementation). The application is a single-package TypeScript React/Vite + Fastify + SQLite system with authenticated memberships, capability grants (including `household.structure.manage`), focused People & Groups / access states, multiple independent household routines with weekday schedules and snapshotted dayparts, dated group-backed audiences (P0-004B semantics per definition), definition-scoped personal layers/proposals, prospective archive with retained history, migrations through `005_multiple_household_routines.sql`, P0-003 validation tiers, and Chromium/WebKit coverage. Integrated `main` baseline before this work was `93ef494` (P0-004B via PR #9). The supported runtime is Node.js 24; exact package versions are locked in `package-lock.json`.
+- **Current repository truth:** On branch `brief/p0-005-multiple-household-routines` (P0-005 r2 implementation). Multi-routine definitions, dayparts, archive, and definition-scoped personalization remain from r1. r2 adds first-execution structural locks (`occurrences.started_at`), same-day / same-intended-date revision upsert for unstarted occurrences, per-person lock divergence for group-backed audiences, and client pending-first-action structural protection on Today refresh. Migrations through `006_occurrence_structural_lock.sql`. Integrated `main` baseline before P0-005 was `93ef494`.
 - **Project type:** Mobile-first, responsive household web application with local/LAN development and a provider-neutral secure single-host release target.
 - **Languages/runtimes:** TypeScript throughout on the Node.js 24 LTS line (`engines.node`: `>=24 <25`, `.nvmrc` pins `24`); browser-delivered HTML and CSS.
 - **Frameworks/toolchain:** React + Vite client; Fastify server with `@fastify/websocket`, `@fastify/cookie`, `@fastify/static`; Zod boundary validation; Vitest unit/integration; Playwright Chromium + WebKit e2e. Exact versions are in `package.json` / `package-lock.json`.
@@ -60,15 +60,13 @@ This is approved technical direction for `P0-005 r1`, not current implementation
 - Forward migration after 004 must cover SQLite constraint/table rebuilds and preserve all IDs, references, snapshots, group versions, personal content, reports, receipts, and identities. Add a populated pre-P0-005 fixture alongside the established P0-001 fixture. Unambiguously backfill legacy proposals; preserve unresolved records read-only. Validate foreign keys, post-upgrade writes, semantic idempotency, and backup/isolated restore using disposable data.
 - Implement as one vertical brief with migration/service, API/contracts, UI/execution, and evidence checkpoints. No hosted iteration, new infrastructure, ordinary chore model, or full daily dashboard is needed. Detailed deferred Product direction lives in `PRODUCT.md`.
 
-### P0-005 r2 planned execution-lock contract
+### P0-005 r2 execution-lock contract (implemented)
 
-Planning evaluation identified that date-appending revisions make ordinary same-day corrections impractical. The r2 contract is recorded durably in D-023 and is authoritative through the revised brief, not current behavior.
-
-- An occurrence remains structurally editable until its first committed execution action. Materialization, viewing, or reaching its household date does not lock it.
-- Completing a Required or Optional item, completing an As-needed item, or marking an As-needed item Not needed is a valid first action. Once any first action commits, the occurrence locks monotonically; undo changes completion state but never unlocks structure.
-- Locking is per routine definition, accountable membership, and household date. Group-backed members may differ on the same routine/date. An unstarted occurrence may reconcile the whole intended structure, including title, daypart, audience, steps/order/obligations, and applicable personal content.
-- The server must atomically resolve a structural edit versus the first execution action. Pending local first-execution outbox intent protects the occurrence during recovery; retries, reconnect, and stale responses cannot unlock or cross-apply state.
-- UI copy should describe the boundary in household terms such as “Daniel has already started,” not expose “structural lock” as a user-facing concept.
+- An occurrence remains structurally editable until its first committed locking checklist action. Materialization/viewing does not lock it.
+- Completing Required/Optional/As-needed or marking As-needed Not needed sets `started_at` monotonically; undo never clears it.
+- Locking is per definition × membership × date. Unstarted peers may absorb whole-structure same-date edits; started peers stay frozen.
+- Shared revision upserts at the intended household date (default today) without next-free drift. Client Today refresh preserves local structure while a locking first action is still pending in the outbox.
+- UI copy describes started vs not-started people in household terms rather than exposing lock IDs.
 
 P0-002 deepened the Morning Routine without generalizing the product. One household can use distinct accounts across two personal-authority paths while P0-001 execution and history remain intact.
 

@@ -1,14 +1,10 @@
 import { test, expect, type Page, type APIRequestContext } from "@playwright/test";
-import path from "node:path";
-import fs from "node:fs";
-import { durableScreenshot } from "../helpers/durable-screenshot";
 
 const PASSPHRASE = "unique-passphrase-ok!";
 const MANAGER_LOGIN = "e2e.manager";
 const MORGAN_ID = "22222222-2222-4222-8222-222222222201";
 const AVERY_ID = "22222222-2222-4222-8222-222222222202";
 const JORDAN_ID = "22222222-2222-4222-8222-222222222203";
-const SCREENSHOT_DIR = path.resolve("reports/p0-004b-r1-screenshots");
 
 function requestOrigin(_request?: APIRequestContext): string {
   const base = test.info().project.use.baseURL;
@@ -208,10 +204,9 @@ test.describe("P0-004B group-backed Morning Routine", () => {
 
   test("phone journey configures The Boys and shows used-group feedback", async ({
     page,
-  }, testInfo) => {
+  }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openAsManager(page);
-    fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
     await page.getByRole("button", { name: "People & Groups" }).click();
 
@@ -238,9 +233,6 @@ test.describe("P0-004B group-backed Morning Routine", () => {
     await expect(page.getByRole("heading", { name: "Morning Routine" })).toBeVisible();
     await page.getByRole("button", { name: "Edit routine" }).click();
     await expect(page.getByRole("heading", { name: "Edit routine" })).toBeVisible();
-    if (testInfo.project.name === "chromium") {
-      await durableScreenshot(page, path.join(SCREENSHOT_DIR, "01-compact-summary.png"));
-    }
 
     await page.getByRole("button", { name: /Add people or groups|Edit people or groups/ }).click();
     await expect(page.getByRole("heading", { name: "Who does this routine?" })).toBeVisible();
@@ -267,9 +259,6 @@ test.describe("P0-004B group-backed Morning Routine", () => {
     await expect(boysRow.getByText(/Daniel Boyd/)).toBeVisible();
     await expect(boysRow.getByText(/Eli Boyd/)).toBeVisible();
     await expect(boysRow.getByText(/one routine per member/i)).toBeVisible();
-    if (testInfo.project.name === "chromium") {
-      await durableScreenshot(page, path.join(SCREENSHOT_DIR, "02-focused-picker.png"));
-    }
     await page.getByRole("button", { name: "Apply who does this" }).click();
     await expect(page.getByRole("heading", { name: "Edit routine" })).toBeVisible();
     await expect(page.getByText("The Boys").first()).toBeVisible();
@@ -277,20 +266,13 @@ test.describe("P0-004B group-backed Morning Routine", () => {
     await expect(page.getByRole("heading", { name: "Morning Routine" })).toBeVisible({
       timeout: 15_000,
     });
-    await expect(
-      page.locator(".routine-upcoming").filter({ hasText: "The Boys" }).first(),
-    ).toBeVisible();
+    // r2 same-day refine: audience is active today (not only a future Starting line).
+    await expect(page.getByText("The Boys").first()).toBeVisible();
     await expect(page.getByRole("checkbox", { name: /The Boys/ })).toHaveCount(0);
-    if (testInfo.project.name === "chromium") {
-      await durableScreenshot(page, path.join(SCREENSHOT_DIR, "03-selected-group-summary.png"));
-    }
 
     await page.getByRole("button", { name: "People & Groups" }).click();
     await page.getByRole("button", { name: /The Boys/ }).click();
     await expect(page.getByText("Used by Morning Routine")).toBeVisible();
-    if (testInfo.project.name === "chromium") {
-      await durableScreenshot(page, path.join(SCREENSHOT_DIR, "04-used-group-detail.png"));
-    }
 
     await page.getByRole("button", { name: "Edit group" }).click();
     await expect(page.getByText("Used by Morning Routine")).toBeVisible();
@@ -299,8 +281,5 @@ test.describe("P0-004B group-backed Morning Routine", () => {
     await expect(page.getByText(/Morning Routine will use the new members starting/i)).toBeVisible({
       timeout: 10_000,
     });
-    if (testInfo.project.name === "chromium") {
-      await durableScreenshot(page, path.join(SCREENSHOT_DIR, "05-pending-next-day.png"));
-    }
   });
 });

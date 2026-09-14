@@ -1,5 +1,6 @@
 import type { OccurrenceStepView, OccurrenceView, StepStatus } from "../shared/schemas.js";
 import { isOccurrenceComplete } from "./completion.js";
+import { isLockingStepStatus, isOccurrenceStarted } from "./occurrence-lock.js";
 
 export type PendingStepCommand = {
   mutationId: string;
@@ -7,6 +8,27 @@ export type PendingStepCommand = {
   stepId: string;
   status: StepStatus;
 };
+
+export function hasPendingFirstAction(
+  occurrenceId: string,
+  pending: PendingStepCommand[],
+): boolean {
+  return pending.some(
+    (command) =>
+      command.occurrenceId === occurrenceId && isLockingStepStatus(command.status),
+  );
+}
+
+/** True when server lock or pending first-execution intent protects structure (D-023). */
+export function isStructurallyProtected(
+  occurrence: OccurrenceView,
+  pending: PendingStepCommand[],
+): boolean {
+  return (
+    isOccurrenceStarted(occurrence.startedAt) ||
+    hasPendingFirstAction(occurrence.id, pending)
+  );
+}
 
 /** Overlay still-pending desired-state commands onto an authoritative occurrence snapshot. */
 export function reconcileOccurrence(
@@ -34,4 +56,23 @@ export function reconcileOccurrence(
     steps,
     completed: isOccurrenceComplete(steps),
   };
+}
+
+/**
+ * Merge authoritative Today refresh with local state.
+ * Pending first-action intent keeps local structure (never apply a later structural refresh).
+ */
+export function mergeAuthoritativeOccurrence(
+  previous: OccurrenceView | undefined,
+  authoritative: OccurrenceView,
+  pending: PendingStepCommand[],
+): OccurrenceView {
+  if (
+    previous &&
+    previous.id === authoritative.id &&
+    hasPendingFirstAction(previous.id, pending)
+  ) {
+    return reconcileOccurrence(previous, pending);
+  }
+  return reconcileOccurrence(authoritative, pending);
 }

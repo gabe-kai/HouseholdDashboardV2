@@ -190,7 +190,7 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     csrf: "required",
     grant: "household.structure.manage",
     notes:
-      "Tombstone unreferenced group; CONFLICT if selected by operative/scheduled Morning Routine",
+      "Tombstone unreferenced group; CONFLICT if selected by operative/scheduled routines (archive cutoff intersected)",
   },
   {
     method: "GET",
@@ -199,7 +199,17 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     origin: "none",
     csrf: "n/a",
     grant: null,
-    notes: "Shared Morning Routine definition",
+    notes:
+      "List household routine definitions (active by default; ?includeArchived=1 includes archived)",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/routines/:definitionId",
+    auth: "session",
+    origin: "none",
+    csrf: "n/a",
+    grant: null,
+    notes: "Single routine definition detail by id",
   },
   {
     method: "POST",
@@ -209,7 +219,7 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     csrf: "required",
     grant: "routine.shared.manage",
     notes:
-      "Create shared definition + first revision; mutationId replay-safe; group + direct sources",
+      "Create shared definition + first revision (daypart); mutationId replay-safe; multiple per household",
   },
   {
     method: "POST",
@@ -219,7 +229,17 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     csrf: "required",
     grant: "routine.shared.manage",
     notes:
-      "Append prospective shared revision; mutationId replay-safe; group + direct sources",
+      "Append prospective shared revision for definition; mutationId replay-safe; rejects archived",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/routines/:definitionId/archive",
+    auth: "session",
+    origin: "mutation_when_configured",
+    csrf: "required",
+    grant: "routine.shared.manage",
+    notes:
+      "Prospective archive with tomorrow cutoff; mutationId replay-safe; expectedVersion required",
   },
   {
     method: "GET",
@@ -256,7 +276,7 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     origin: "mutation_when_configured",
     csrf: "required",
     grant: "routine.personalize.direct",
-    notes: "Prospective personal layer for self",
+    notes: "Prospective personal layer for self; requires definitionId",
   },
   {
     method: "GET",
@@ -265,7 +285,7 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     origin: "none",
     csrf: "n/a",
     grant: null,
-    notes: "Composition preview; other-member restricted in store",
+    notes: "Composition preview for definitionId; other-member restricted in store",
   },
   {
     method: "POST",
@@ -274,7 +294,7 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     origin: "mutation_when_configured",
     csrf: "required",
     grant: "routine.personalize.propose",
-    notes: "Create pending personal addition proposal",
+    notes: "Create pending personal addition proposal; requires definitionId",
   },
   {
     method: "GET",

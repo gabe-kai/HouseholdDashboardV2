@@ -8,7 +8,7 @@ If this document disagrees with the repository about what exists, the repository
 
 ## Technical overview
 
-- **Current repository truth:** Inspected `main` at `93ef494` (P0-004B merged through PR #9). The application is a single-package TypeScript React/Vite + Fastify + SQLite system with authenticated memberships, capability grants (including `household.structure.manage`), focused People & Groups / access states, dated group-backed Morning Routine audiences, append-only shared/personal revisions, scoped personal tasks, migrations through `004_group_backed_morning_routine.sql`, P0-003 validation tiers, and Chromium/WebKit coverage. It still supports only one routine definition per household. The supported runtime is Node.js 24; exact package versions are locked in `package-lock.json`.
+- **Current repository truth:** On branch `brief/p0-005-multiple-household-routines` (P0-005 r1 implementation). The application is a single-package TypeScript React/Vite + Fastify + SQLite system with authenticated memberships, capability grants (including `household.structure.manage`), focused People & Groups / access states, multiple independent household routines with weekday schedules and snapshotted dayparts, dated group-backed audiences (P0-004B semantics per definition), definition-scoped personal layers/proposals, prospective archive with retained history, migrations through `005_multiple_household_routines.sql`, P0-003 validation tiers, and Chromium/WebKit coverage. Integrated `main` baseline before this work was `93ef494` (P0-004B via PR #9). The supported runtime is Node.js 24; exact package versions are locked in `package-lock.json`.
 - **Project type:** Mobile-first, responsive household web application with local/LAN development and a provider-neutral secure single-host release target.
 - **Languages/runtimes:** TypeScript throughout on the Node.js 24 LTS line (`engines.node`: `>=24 <25`, `.nvmrc` pins `24`); browser-delivered HTML and CSS.
 - **Frameworks/toolchain:** React + Vite client; Fastify server with `@fastify/websocket`, `@fastify/cookie`, `@fastify/static`; Zod boundary validation; Vitest unit/integration; Playwright Chromium + WebKit e2e. Exact versions are in `package.json` / `package-lock.json`.
@@ -43,6 +43,7 @@ If this document disagrees with the repository about what exists, the repository
 - A group referenced by a Routine revision whose effective interval reaches today or the future cannot be deleted. Once references are historical only, deletion is a current-directory tombstone: stable identity and dated membership remain available to interpret immutable history, while the group disappears from current lists/new selection and its normalized display name may be reused.
 - Routine create/revision writes become household-scoped and replay-safe by mutation ID. Group and Routine invalidations must refresh open People & Groups details, compact Routine summaries/pickers, and relevant previews through authoritative reads; events remain hints rather than state.
 - P0-004B changes only Morning Routine participation. Groups remain named household sets and never confer authority, choose one member, rotate work, or become eligibility/schedule rules.
+- P0-005 generalizes that participation model to every independent routine definition; group edits still flow prospectively to all consuming routines without reopening each editor.
 
 ### P0-005 planned multiple-routine contract
 
@@ -142,8 +143,8 @@ Third-party calendars, notification providers, school systems, cross-household s
 
 ## Major components and data flow
 
-1. **Today client:** Requests the current member's household-local day, presents the active Morning Routine, applies checklist intent immediately, and keeps pending mutations durable in an IndexedDB outbox.
-2. **Routine editor and history client:** Lets an evaluation parent define one recurring Morning Routine, create a future-effective revision, and inspect occurrence history.
+1. **Today client:** Requests the current member's household-local day, presents all applicable routines ordered by daypart, applies checklist intent immediately, and keeps pending mutations durable in an IndexedDB outbox.
+2. **Routines and history client:** Lets an evaluation parent list, create, edit, and archive named household routines; inspect read-first detail; and review occurrence history keyed by routine and accountable member.
 3. **Application API:** Establishes evaluation sessions, authorizes parent/member capabilities, validates typed payloads, and returns authoritative snapshots.
 4. **Routine domain:** Selects the definition revision effective for a household-local date, materializes at most one occurrence per assigned member/date, snapshots expected work, and computes completion from checklist obligation semantics.
 5. **Mutation processor:** Applies idempotent set-state commands transactionally, records actor/performed/recorded facts separately, and returns the committed occurrence version.

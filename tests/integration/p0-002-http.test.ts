@@ -287,8 +287,10 @@ describe("P0-002 HTTP isolation, grants, and composition", () => {
         )
         .run(foreignMembership, foreignHousehold, new Date().toISOString());
       harness.db
-        .prepare("INSERT INTO routine_definitions (id, household_id, kind) VALUES (?, ?, 'morning')")
-        .run(foreignRoutine, foreignHousehold);
+        .prepare(
+          "INSERT INTO routine_definitions (id, household_id, version, created_at) VALUES (?, ?, 1, ?)",
+        )
+        .run(foreignRoutine, foreignHousehold, new Date().toISOString());
 
       const headers = authHeaders(harness, manager);
       const rev = await harness.app.inject({
@@ -497,6 +499,7 @@ describe("P0-002 HTTP isolation, grants, and composition", () => {
             url: "/api/v1/personal-layer",
             headers: authHeaders(harness, avery),
             payload: {
+              definitionId: routineId,
               additions: [
                 {
                   text: "Clean up breakfast",
@@ -513,7 +516,12 @@ describe("P0-002 HTTP isolation, grants, and composition", () => {
         method: "POST",
         url: "/api/v1/proposals",
         headers: authHeaders(harness, casey),
-        payload: { text: "Pack soccer bag", obligation: "as_needed", place: "end" },
+        payload: {
+          definitionId: routineId,
+          text: "Pack soccer bag",
+          obligation: "as_needed",
+          place: "end",
+        },
       });
       expect(proposal.statusCode).toBe(200);
       const proposalId = (proposal.json() as { proposal: { id: string } }).proposal.id;
@@ -566,6 +574,7 @@ describe("P0-002 HTTP isolation, grants, and composition", () => {
             url: "/api/v1/personal-layer",
             headers: authHeaders(harness, casey),
             payload: {
+              definitionId: routineId,
               additions: [{ text: "Direct", obligation: "optional", place: "end" }],
             },
           })
@@ -589,7 +598,12 @@ describe("P0-002 HTTP isolation, grants, and composition", () => {
             method: "POST",
             url: "/api/v1/proposals",
             headers: authHeaders(harness, avery),
-            payload: { text: "Should fail", obligation: "optional", place: "end" },
+            payload: {
+              definitionId: routineId,
+              text: "Should fail",
+              obligation: "optional",
+              place: "end",
+            },
           })
         ).statusCode,
       ).toBe(403);
@@ -638,6 +652,7 @@ describe("P0-002 HTTP isolation, grants, and composition", () => {
       harness.store.createRoutine(managerAuth.context, {
         mutationId: randomUUID(),
         title: "Morning Routine",
+        daypart: "morning",
         weekdays: [1, 2, 3, 4, 5, 6, 7],
         assigneeMemberIds: [IDS.avery],
         assigneeGroupIds: [],
@@ -648,7 +663,9 @@ describe("P0-002 HTTP isolation, grants, and composition", () => {
       });
       const today = harness.store.householdDateNow(managerAuth.context);
       const occ = harness.store.materializeForDate(avery.context, today)[0]!;
+      const routine = harness.store.listRoutines(managerAuth.context.householdId)[0]!;
       harness.store.savePersonalLayer(avery.context, {
+        definitionId: routine.id,
         additions: [
           {
             text: "Clean up breakfast",
@@ -658,11 +675,11 @@ describe("P0-002 HTTP isolation, grants, and composition", () => {
           },
         ],
       });
-      const routine = harness.store.getRoutine(managerAuth.context.householdId)!;
       const sharedIds = routine.revisions[0]!.steps.map((s) => s.logicalItemId);
       harness.store.createRevision(managerAuth.context, routine.id, {
         mutationId: randomUUID(),
         title: "Morning Routine+",
+        daypart: "morning",
         weekdays: [1, 2, 3, 4, 5, 6, 7],
         assigneeMemberIds: [IDS.avery],
         assigneeGroupIds: [],
@@ -674,7 +691,12 @@ describe("P0-002 HTTP isolation, grants, and composition", () => {
       });
       const tomorrow = addHouseholdDays(today, 1);
       // Personal layer is next-day effective; shared revision also next-day — compose both.
-      const preview = harness.store.previewComposition(avery.context, IDS.avery, tomorrow);
+      const preview = harness.store.previewComposition(
+        avery.context,
+        IDS.avery,
+        routine.id,
+        tomorrow,
+      );
       expect(preview.steps.map((s) => s.text)).toEqual([
         "Make bed",
         "Clean up breakfast",

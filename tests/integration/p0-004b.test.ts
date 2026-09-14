@@ -154,12 +154,13 @@ describe("P0-004B group-backed Morning Routine", () => {
     store.createRoutine(manager.context, {
       mutationId: randomUUID(),
       title: "Morning Routine",
+      daypart: "morning",
       assigneeMemberIds: [],
       assigneeGroupIds: [boys.id],
       weekdays: [1, 2, 3, 4, 5, 6, 7],
       steps,
     });
-    const before = store.getRoutine(manager.context.householdId)!;
+    const before = store.listRoutines(manager.context.householdId)[0]!;
     const todayResolved = before.revisions[0]!.resolvedMemberIds!.sort();
     expect(todayResolved).toEqual([IDS.avery, IDS.jordan].sort());
     expect(before.revisions[0]!.upcomingParticipationFromDate ?? null).toBeNull();
@@ -176,7 +177,7 @@ describe("P0-004B group-backed Morning Routine", () => {
       addHouseholdDays(store.householdDateNow(manager.context), 1),
     );
 
-    const after = store.getRoutine(manager.context.householdId)!;
+    const after = store.listRoutines(manager.context.householdId)[0]!;
     expect(after.revisions[0]!.resolvedMemberIds!.sort()).toEqual(todayResolved);
     expect(after.revisions[0]!.upcomingParticipationFromDate).toBe(
       addHouseholdDays(store.householdDateNow(manager.context), 1),
@@ -207,6 +208,7 @@ describe("P0-004B group-backed Morning Routine", () => {
     const routine = store.createRoutine(manager.context, {
       mutationId,
       title: "Morning Routine",
+      daypart: "morning",
       assigneeMemberIds: [IDS.casey],
       assigneeGroupIds: [boys.id],
       weekdays: [1, 2, 3, 4, 5, 6, 7],
@@ -223,6 +225,7 @@ describe("P0-004B group-backed Morning Routine", () => {
     const replay = store.createRoutine(manager.context, {
       mutationId,
       title: "Morning Routine",
+      daypart: "morning",
       assigneeMemberIds: [IDS.casey],
       assigneeGroupIds: [boys.id],
       weekdays: [1, 2, 3, 4, 5, 6, 7],
@@ -235,12 +238,13 @@ describe("P0-004B group-backed Morning Routine", () => {
       store.createRoutine(manager.context, {
         mutationId,
         title: "Different",
+        daypart: "morning",
         assigneeMemberIds: [IDS.casey],
         assigneeGroupIds: [boys.id],
         weekdays: [1, 2, 3, 4, 5, 6, 7],
         steps,
       }),
-    ).toThrow(/Morning Routine couldn't be updated/);
+    ).toThrow(/Routine couldn't be updated/);
 
     const today = store.householdDateNow(manager.context);
     const occurrences = store.materializeForDate(manager.context, today);
@@ -278,6 +282,7 @@ describe("P0-004B group-backed Morning Routine", () => {
     store.createRoutine(manager.context, {
       mutationId: randomUUID(),
       title: "Morning Routine",
+      daypart: "morning",
       assigneeMemberIds: [],
       assigneeGroupIds: [boys.id],
       weekdays: [1, 2, 3, 4, 5, 6, 7],
@@ -337,6 +342,7 @@ describe("P0-004B group-backed Morning Routine", () => {
     store.createRoutine(manager.context, {
       mutationId: randomUUID(),
       title: "Morning Routine",
+      daypart: "morning",
       assigneeMemberIds: [IDS.avery],
       assigneeGroupIds: [],
       weekdays: [1, 2, 3, 4, 5, 6, 7],
@@ -376,18 +382,20 @@ describe("P0-004B group-backed Morning Routine", () => {
     store.createRoutine(manager.context, {
       mutationId: randomUUID(),
       title: "Morning Routine",
+      daypart: "morning",
       assigneeMemberIds: [],
       assigneeGroupIds: [boys.id],
       weekdays: [1, 2, 3, 4, 5, 6, 7],
       steps,
     });
     expect(() => store.deleteGroup(manager.context, boys.id)).toThrow(
-      /Remove this group from Morning Routine/,
+      /Remove this group from routines/,
     );
 
-    store.createRevision(manager.context, store.getRoutine(manager.context.householdId)!.id, {
+    store.createRevision(manager.context, store.listRoutines(manager.context.householdId)[0]!.id, {
       mutationId: randomUUID(),
       title: "Morning Routine",
+      daypart: "morning",
       assigneeMemberIds: [IDS.morgan],
       assigneeGroupIds: [],
       weekdays: [1, 2, 3, 4, 5, 6, 7],
@@ -396,14 +404,14 @@ describe("P0-004B group-backed Morning Routine", () => {
 
     // Still referenced by today's operative revision
     expect(() => store.deleteGroup(manager.context, boys.id)).toThrow(
-      /Remove this group from Morning Routine/,
+      /Remove this group from routines/,
     );
 
     // Fast-forward: make the revision without the group operative by setting its effective date to today
     // (simulate by creating revision effective tomorrow then... actually today still uses first revision.
     // Delete only after today would use the second revision — need second revision effective <= today.
     // createRevision requires next day minimum. So use DB to backdate for this historical test.)
-    const routine = store.getRoutine(manager.context.householdId)!;
+    const routine = store.listRoutines(manager.context.householdId)[0]!;
     const first = routine.revisions[0]!;
     const second = routine.revisions[1]!;
     const today = store.householdDateNow(manager.context);
@@ -443,6 +451,7 @@ describe("P0-004B group-backed Morning Routine", () => {
     const routine = store.createRoutine(manager.context, {
       mutationId: randomUUID(),
       title: "Morning Routine",
+      daypart: "morning",
       assigneeMemberIds: [IDS.jordan],
       assigneeGroupIds: [boys.id],
       weekdays: [1, 2, 3, 4, 5, 6, 7],
@@ -455,12 +464,13 @@ describe("P0-004B group-backed Morning Routine", () => {
       membershipIds: [IDS.avery, IDS.jordan],
       expectedVersion: boys.version,
     });
-    const after = store.getRoutine(manager.context.householdId)!;
+    const after = store.listRoutines(manager.context.householdId)[0]!;
     expect(after.revisions[0]!.assigneeMemberIds).toEqual([IDS.jordan]);
 
     const next = store.createRevision(manager.context, after.id, {
       mutationId: randomUUID(),
       title: "Morning Routine",
+      daypart: "morning",
       assigneeMemberIds: [IDS.jordan],
       assigneeGroupIds: [boys.id],
       weekdays: [1, 2, 3, 4, 5, 6, 7],
@@ -482,6 +492,7 @@ describe("P0-004B group-backed Morning Routine", () => {
     const routine = store.createRoutine(manager.context, {
       mutationId: randomUUID(),
       title: "Morning Routine",
+      daypart: "morning",
       assigneeMemberIds: [],
       assigneeGroupIds: [empty.id],
       weekdays: [1, 2, 3, 4, 5, 6, 7],
@@ -503,6 +514,7 @@ describe("P0-004B group-backed Morning Routine", () => {
     store.createRoutine(manager.context, {
       mutationId: randomUUID(),
       title: "Morning Routine",
+      daypart: "morning",
       assigneeMemberIds: [],
       assigneeGroupIds: [boys.id],
       weekdays: [1, 2, 3, 4, 5, 6, 7],

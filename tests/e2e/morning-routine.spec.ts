@@ -55,13 +55,14 @@ async function mutatingHeaders(request: APIRequestContext): Promise<Record<strin
 async function ensureSharedRoutine(request: APIRequestContext, assignees = [MORGAN_ID, AVERY_ID, JORDAN_ID]) {
   const listed = await request.get("/api/v1/routines");
   expect(listed.ok()).toBeTruthy();
-  const body = (await listed.json()) as { routine: { id: string } | null };
-  if (body.routine) return body.routine;
+  const body = (await listed.json()) as { routines: Array<{ id: string }> };
+  if (body.routines[0]) return body.routines[0];
   const created = await request.post("/api/v1/routines", {
     headers: await mutatingHeaders(request),
     data: {
       mutationId: crypto.randomUUID(),
       title: "Morning Routine",
+      daypart: "morning",
       weekdays: [1, 2, 3, 4, 5, 6, 7],
       assigneeMemberIds: assignees,
       assigneeGroupIds: [],
@@ -203,7 +204,7 @@ test.describe("P0-002 authenticated household", () => {
     await child.goto("/");
     await expect(child.locator(".topbar")).toContainText("Avery Reed", { timeout: 20_000 });
     await expect(
-      child.getByText("No Morning Routine for you on this household date."),
+      child.getByText("No routines for you on this household date."),
     ).toBeVisible();
     await expect(child.locator(".status-pill[data-kind='online']")).toContainText("Online", {
       timeout: 10_000,
@@ -617,17 +618,19 @@ test.describe("P0-002 authenticated household", () => {
     await page.goto("/");
     await expect(page.locator(".topbar")).toContainText("Avery Reed", { timeout: 20_000 });
     await expect(
-      page.getByRole("navigation", { name: "Primary" }).getByRole("button", { name: "Routine", exact: true }),
+      page.getByRole("navigation", { name: "Primary" }).getByRole("button", { name: "Routines", exact: true }),
     ).toHaveCount(0);
 
     const listed = await page.request.get("/api/v1/routines");
-    const routineId = ((await listed.json()) as { routine: { id: string } | null }).routine?.id;
+    const routineId = ((await listed.json()) as { routines: Array<{ id: string }> }).routines[0]
+      ?.id;
     expect(routineId).toBeTruthy();
     const denied = await page.request.post(`/api/v1/routines/${routineId}/revisions`, {
       headers: await mutatingHeaders(page.request),
       data: {
         mutationId: crypto.randomUUID(),
         title: "Hijack",
+        daypart: "morning",
         weekdays: [1],
         assigneeMemberIds: [AVERY_ID],
         assigneeGroupIds: [],
@@ -638,7 +641,7 @@ test.describe("P0-002 authenticated household", () => {
 
     await openAsManager(page);
     await expect(
-      page.getByRole("navigation", { name: "Primary" }).getByRole("button", { name: "Routine", exact: true }),
+      page.getByRole("navigation", { name: "Primary" }).getByRole("button", { name: "Routines", exact: true }),
     ).toBeVisible();
   });
 

@@ -19,7 +19,7 @@
 
 ## Current focus
 
-Engineering returned **IMPLEMENTED** for `P0-005 r1` (`reports/P0-005-r1-build-report.md`). Architecture acceptance of the Build Report is the next technical gate.
+Engineering returned **IMPLEMENTED** for `P0-005 r1` after FIX REQUIRED correction (`reports/P0-005-r1-build-report.md`). Architecture re-acceptance of the Build Report is the next technical gate.
 
 ## Internal work status
 
@@ -30,7 +30,7 @@ Engineering returned **IMPLEMENTED** for `P0-005 r1` (`reports/P0-005-r1-build-r
 | P0-003 - Regression Safety and Contract Hardening | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #6 | Product evaluation; optional required-check configuration |
 | P0-004A - People & Groups UX Completion | r3 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #8 | Product phone evaluation |
 | P0-004B - Group-backed Morning Routine | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #9 | Product evaluation |
-| P0-005 - Multiple Household Routines | r1 | IMPLEMENTED | Architecture | `brief/p0-005-multiple-household-routines` | Architecture Build Report acceptance |
+| P0-005 - Multiple Household Routines | r1 | IMPLEMENTED | Architecture | `brief/p0-005-multiple-household-routines` | Architecture re-acceptance after FIX REQUIRED |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 

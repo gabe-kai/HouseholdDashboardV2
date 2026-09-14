@@ -1,6 +1,7 @@
 import { test, expect, type Page, type APIRequestContext } from "@playwright/test";
 import path from "node:path";
 import fs from "node:fs";
+import { durableScreenshot } from "../helpers/durable-screenshot";
 
 const PASSPHRASE = "unique-passphrase-ok!";
 const MANAGER_LOGIN = "e2e.manager";
@@ -238,10 +239,7 @@ test.describe("P0-004B group-backed Morning Routine", () => {
     await page.getByRole("button", { name: "Edit routine" }).click();
     await expect(page.getByRole("heading", { name: "Edit routine" })).toBeVisible();
     if (testInfo.project.name === "chromium") {
-      await page.screenshot({
-        path: path.join(SCREENSHOT_DIR, "01-compact-summary.png"),
-        fullPage: true,
-      });
+      await durableScreenshot(page, path.join(SCREENSHOT_DIR, "01-compact-summary.png"));
     }
 
     await page.getByRole("button", { name: /Add people or groups|Edit people or groups/ }).click();
@@ -270,10 +268,7 @@ test.describe("P0-004B group-backed Morning Routine", () => {
     await expect(boysRow.getByText(/Eli Boyd/)).toBeVisible();
     await expect(boysRow.getByText(/one routine per member/i)).toBeVisible();
     if (testInfo.project.name === "chromium") {
-      await page.screenshot({
-        path: path.join(SCREENSHOT_DIR, "02-focused-picker.png"),
-        fullPage: true,
-      });
+      await durableScreenshot(page, path.join(SCREENSHOT_DIR, "02-focused-picker.png"));
     }
     await page.getByRole("button", { name: "Apply who does this" }).click();
     await expect(page.getByRole("heading", { name: "Edit routine" })).toBeVisible();
@@ -282,23 +277,19 @@ test.describe("P0-004B group-backed Morning Routine", () => {
     await expect(page.getByRole("heading", { name: "Morning Routine" })).toBeVisible({
       timeout: 15_000,
     });
-    await expect(page.getByText(/Starting .+The Boys/i).first()).toBeVisible();
+    await expect(
+      page.locator(".routine-upcoming").filter({ hasText: "The Boys" }).first(),
+    ).toBeVisible();
     await expect(page.getByRole("checkbox", { name: /The Boys/ })).toHaveCount(0);
     if (testInfo.project.name === "chromium") {
-      await page.screenshot({
-        path: path.join(SCREENSHOT_DIR, "03-selected-group-summary.png"),
-        fullPage: true,
-      });
+      await durableScreenshot(page, path.join(SCREENSHOT_DIR, "03-selected-group-summary.png"));
     }
 
     await page.getByRole("button", { name: "People & Groups" }).click();
     await page.getByRole("button", { name: /The Boys/ }).click();
     await expect(page.getByText("Used by Morning Routine")).toBeVisible();
     if (testInfo.project.name === "chromium") {
-      await page.screenshot({
-        path: path.join(SCREENSHOT_DIR, "04-used-group-detail.png"),
-        fullPage: true,
-      });
+      await durableScreenshot(page, path.join(SCREENSHOT_DIR, "04-used-group-detail.png"));
     }
 
     await page.getByRole("button", { name: "Edit group" }).click();
@@ -309,10 +300,7 @@ test.describe("P0-004B group-backed Morning Routine", () => {
       timeout: 10_000,
     });
     if (testInfo.project.name === "chromium") {
-      await page.screenshot({
-        path: path.join(SCREENSHOT_DIR, "05-pending-next-day.png"),
-        fullPage: true,
-      });
+      await durableScreenshot(page, path.join(SCREENSHOT_DIR, "05-pending-next-day.png"));
     }
   });
 });

@@ -678,6 +678,28 @@ textarea {
   font-size: 1.05rem;
 }
 
+.routines-view .routine-card-upcoming {
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.routines-view .routine-upcoming {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.routines-view .routine-upcoming-title {
+  margin: 0.35rem 0 0.15rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.routines-view .routine-upcoming-steps-heading {
+  margin: 0.85rem 0 0.35rem;
+  font-size: 1rem;
+}
+
 @media (max-width: 420px) {
   .app-shell {
     padding: 0.75rem 0.75rem 2.5rem;

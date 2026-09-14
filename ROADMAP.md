@@ -41,9 +41,9 @@ Goal: prove that a real recurring household routine can be used quickly by six d
 ### CURRENT
 
 - [ ] **Outcome: Multiple Routines.** A parent creates Morning, After School, Bedtime, and other named routines; children use all applicable routines independently, with per-routine personalization and trustworthy history.
-  - **Brief:** `P0-005 r1 - Multiple Household Routines` (`briefs/p0-005-multiple-household-routines.md`).
-  - **Status:** READY; Engineering readiness accepted, implementation authorized from the integrated P0-004B baseline.
-  - **Evidence target:** A populated migration plus an automated phone journey proves create/find/edit, independent execution, weekdays/dayparts, group propagation, personal isolation, safe archival, and realtime recovery locally.
+  - **Brief:** `P0-005 r2 - Multiple Household Routines` (`briefs/p0-005-multiple-household-routines.md`).
+  - **Status:** IN REVIEW; r1 evaluation exposed a material date/locking contract problem, and r2 awaits fresh Engineering readiness.
+  - **Evidence target:** Local evidence proves repeated same-date editing of unstarted occurrences, first-action per-person locking, independent group-backed snapshots, atomic edit/action races, and the existing multi-routine migration, isolation, archive, and recovery behavior.
 
 ### LIKELY NEXT
 

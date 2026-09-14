@@ -47,7 +47,7 @@ If this document disagrees with the repository about what exists, the repository
 
 ### P0-005 planned multiple-routine contract
 
-This is approved technical direction for `P0-005 r1`, not current implementation. The authoritative behavioral/acceptance contract is `briefs/p0-005-multiple-household-routines.md`; D-020–D-022 record durable choices.
+This is approved technical direction for `P0-005 r1`, not current implementation. The authoritative behavioral/acceptance contract is `briefs/p0-005-multiple-household-routines.md`; D-020–D-022 record the r1 durable choices.
 
 - Extend the existing routine definition instead of creating Morning/After School/Bedtime types. Remove singleton storage/service assumptions, retain IDs, and use definition identity throughout API, UI, personalization, proposals, and command replay. Occurrence uniqueness already includes definition/date/accountable membership and remains unchanged.
 - Shared revisions own name, weekdays, daypart, checklist, and selected direct/group sources. Personal revisions are selected/unique by membership, definition, and date. A proposal owns a definition ID from submission through decision; approval cannot select the household's first routine. Shared item anchors and all cross-resource references remain scoped to the intended routine and household.
@@ -59,6 +59,16 @@ This is approved technical direction for `P0-005 r1`, not current implementation
 - Routine create/revise/archive commands bind replay to household, command, target and payload, with atomic receipt/state writes and stale-state guards. Preserve existing receipt evidence and valid checklist retries; never return a different occurrence/routine's receipt. Extend existing invalidation, reconnect, visibility, and authoritative refresh paths instead of adding a second synchronization system.
 - Forward migration after 004 must cover SQLite constraint/table rebuilds and preserve all IDs, references, snapshots, group versions, personal content, reports, receipts, and identities. Add a populated pre-P0-005 fixture alongside the established P0-001 fixture. Unambiguously backfill legacy proposals; preserve unresolved records read-only. Validate foreign keys, post-upgrade writes, semantic idempotency, and backup/isolated restore using disposable data.
 - Implement as one vertical brief with migration/service, API/contracts, UI/execution, and evidence checkpoints. No hosted iteration, new infrastructure, ordinary chore model, or full daily dashboard is needed. Detailed deferred Product direction lives in `PRODUCT.md`.
+
+### P0-005 r2 planned execution-lock contract
+
+Planning evaluation identified that date-appending revisions make ordinary same-day corrections impractical. The r2 contract is recorded durably in D-023 and is authoritative through the revised brief, not current behavior.
+
+- An occurrence remains structurally editable until its first committed execution action. Materialization, viewing, or reaching its household date does not lock it.
+- Completing a Required or Optional item, completing an As-needed item, or marking an As-needed item Not needed is a valid first action. Once any first action commits, the occurrence locks monotonically; undo changes completion state but never unlocks structure.
+- Locking is per routine definition, accountable membership, and household date. Group-backed members may differ on the same routine/date. An unstarted occurrence may reconcile the whole intended structure, including title, daypart, audience, steps/order/obligations, and applicable personal content.
+- The server must atomically resolve a structural edit versus the first execution action. Pending local first-execution outbox intent protects the occurrence during recovery; retries, reconnect, and stale responses cannot unlock or cross-apply state.
+- UI copy should describe the boundary in household terms such as “Daniel has already started,” not expose “structural lock” as a user-facing concept.
 
 P0-002 deepened the Morning Routine without generalizing the product. One household can use distinct accounts across two personal-authority paths while P0-001 execution and history remain intact.
 

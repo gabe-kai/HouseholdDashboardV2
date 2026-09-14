@@ -1,7 +1,7 @@
 # BRIEF P0-005 - Multiple Household Routines
 
 **Revision:** 2
-**Status:** IN REVIEW
+**Status:** READY
 
 Lifecycle: DRAFT -> IN REVIEW -> READY -> IMPLEMENTING -> IMPLEMENTED -> ACCEPTED.
 
@@ -188,10 +188,12 @@ Domain/HTTP tests supply edge matrices; browser evidence must actually create an
 
 ## Engineering readiness
 
-**Reviewed revision:** NOT REVIEWED
-**Readiness:** NOT REVIEWED
+**Reviewed revision:** 2
+**Readiness:** READY
 
-P0-005 r2 changes structural finality and same-date edit behavior materially. The r1 readiness and implementation results do not apply to r2. Engineering must perform a new consolidated readiness review before implementation. Hosted or physical-device evidence is not required during implementation.
+Engineering returned READY against revision 2 (see `reports/P0-005-r2-engineering-readiness.md`). Inspection was against `brief/p0-005-multiple-household-routines` @ `7704785` (r2 planning atop committed r1 multi-routine implementation; `main` baseline `93ef494`). No blockers; material gaps are intentional D-023 / same-date lock-and-refine deltas. r1 readiness and implementation do not certify r2.
+
+**Architecture disposition:** ACCEPT / PROCEED. Engineering may implement revision 2 locally. This is technical authorization to implement, not Architecture acceptance of the resulting build or Project Lead/product acceptance of the experience.
 
 ## Revision history
 

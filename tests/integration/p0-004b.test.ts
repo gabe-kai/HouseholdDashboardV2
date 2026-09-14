@@ -392,6 +392,8 @@ describe("P0-004B group-backed Morning Routine", () => {
       /Remove this group from routines/,
     );
 
+    const today = store.householdDateNow(manager.context);
+    const tomorrow = addHouseholdDays(today, 1);
     store.createRevision(manager.context, store.listRoutines(manager.context.householdId)[0]!.id, {
       mutationId: randomUUID(),
       title: "Morning Routine",
@@ -400,6 +402,7 @@ describe("P0-004B group-backed Morning Routine", () => {
       assigneeGroupIds: [],
       weekdays: [1, 2, 3, 4, 5, 6, 7],
       steps,
+      effectiveDate: tomorrow,
     });
 
     // Still referenced by today's operative revision
@@ -410,11 +413,10 @@ describe("P0-004B group-backed Morning Routine", () => {
     // Fast-forward: make the revision without the group operative by setting its effective date to today
     // (simulate by creating revision effective tomorrow then... actually today still uses first revision.
     // Delete only after today would use the second revision — need second revision effective <= today.
-    // createRevision requires next day minimum. So use DB to backdate for this historical test.)
+    // createRevision can target tomorrow; use DB to backdate for this historical test.)
     const routine = store.listRoutines(manager.context.householdId)[0]!;
     const first = routine.revisions[0]!;
     const second = routine.revisions[1]!;
-    const today = store.householdDateNow(manager.context);
     const yesterday = addHouseholdDays(today, -1);
     db.prepare("UPDATE routine_revisions SET effective_date = ? WHERE id = ?").run(
       yesterday,
@@ -467,6 +469,7 @@ describe("P0-004B group-backed Morning Routine", () => {
     const after = store.listRoutines(manager.context.householdId)[0]!;
     expect(after.revisions[0]!.assigneeMemberIds).toEqual([IDS.jordan]);
 
+    const tomorrow = addHouseholdDays(store.householdDateNow(manager.context), 1);
     const next = store.createRevision(manager.context, after.id, {
       mutationId: randomUUID(),
       title: "Morning Routine",
@@ -475,6 +478,8 @@ describe("P0-004B group-backed Morning Routine", () => {
       assigneeGroupIds: [boys.id],
       weekdays: [1, 2, 3, 4, 5, 6, 7],
       steps,
+      // Normalize against tomorrow's group membership (Jordan already pending in Kids).
+      effectiveDate: tomorrow,
     });
     const latest = next!.revisions.at(-1)!;
     expect(latest.assigneeMemberIds).toEqual([]);

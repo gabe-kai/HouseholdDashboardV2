@@ -62,6 +62,7 @@ invalidation/reconciliation semantics.
 | PB-25 | Multiple independent household routines (definitions, dayparts, scoped personal/proposals, independent Today) | `tests/integration/p0-005.test.ts`; e2e `z-multiple-routines.spec.ts`; `src/domain/daypart.test.ts` | Developer + PR |
 | PB-26 | Prospective routine archive with retained history and cutoff | `tests/integration/p0-005.test.ts`; e2e archive journey | Developer + PR |
 | PB-27 | Populated P0-004B → P0-005 migration (stable IDs, Morning daypart, unresolved orphan proposals) | `tests/helpers/p004b-fixture.ts`; `tests/integration/p0-005.test.ts`; `tests/integration/p0-003-migration.test.ts` | Developer + PR |
+| PB-28 | First-execution structural lock; same-day/same-intended-date refine for unstarted; per-person divergence; pending first-action protection | `tests/integration/p0-005.test.ts` (AT19); `src/domain/occurrence-lock.test.ts`; `src/domain/reconcile.test.ts`; e2e same-day edit discovery | Developer + PR |
 
 ### Environment-specific (not counted as automated acceptance)
 
@@ -88,9 +89,9 @@ Duplicate, late, and missed events must be safe.
 | PATCH `/groups/:id` | group + members; dated membership version when set changes | `group` | groups, people detail, routines, previews | — | expectedVersion conflict | fetch groups + routines |
 | DELETE `/groups/:id` | group tombstoned (or CONFLICT if referenced) | `group` | groups, people detail, routines, previews | — | delete once; referenced → CONFLICT | fetch groups + routines |
 | POST `/routines` | definition+revision (+ group sources) | `routine` (definitionId) | routines list/detail, today, preview, people/group refs | — | same `mutationId` replay (household+kind+definition+digest) | fetch routines/today |
-| POST `/routines/:id/revisions` | revision (+ group sources) | `routine` (definitionId) | routines list/detail, today, preview, people/group refs | — | same `mutationId` replay (household+kind+definition+digest) | fetch routines/today |
+| POST `/routines/:id/revisions` | revision (+ group sources); unstarted same-date occurrences reconciled | `routine` (definitionId) | routines list/detail, today, preview, people/group refs | — | same `mutationId` replay (household+kind+definition+digest); same intended date upserts (no next-free drift) | fetch routines/today; pending locking first-action outbox keeps local structure |
 | POST `/routines/:id/archive` | definition archive cutoff | `routine` (definitionId) | routines list/detail/archived, today, preview, people/group refs | — | same `mutationId` replay (household+archive+definition+digest) | fetch routines/today |
-| POST `/occurrences/.../status` | occurrence step + report | `occurrence` (+version) | today, history | membership outbox overlay | same `mutationId` idempotent; future/non-participant/archived-cutoff rejected (no receipt) | refresh today; flush outbox |
+| POST `/occurrences/.../status` | occurrence step + report; locking statuses set `started_at` once | `occurrence` (+version) | today, history | membership outbox overlay; pending locking action protects structure | same `mutationId` idempotent; future/non-participant/archived-cutoff rejected (no receipt); undo never clears `started_at` | refresh today; flush outbox; merge keeps local structure while locking action pending |
 | PUT `/personal-layer` | personal layer revision (definition-scoped) | `routine` (definitionId) | preview, future today, Personalize | — | new layer revision for that definition | preview/today for definition |
 | POST `/proposals` | proposal pending (definition-scoped) | `proposal` | proposals | — | new proposal bound to definitionId | fetch proposals |
 | POST `/proposals/:id/decide` | proposal (+ optional layer for stored definition) | `proposal`; `routine` if approved | proposals, preview | — | same decision idempotent; opposite conflicts; archived target rejectable | fetch proposals + preview |

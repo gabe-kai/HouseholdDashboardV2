@@ -9,6 +9,10 @@ import {
   type Daypart,
 } from "../domain/daypart.js";
 import {
+  isLockingStepStatus,
+  isOccurrenceStarted,
+} from "../domain/occurrence-lock.js";
+import {
   normalizeDirectSources,
   resolveParticipants,
   revisionIntervalActiveFrom,
@@ -1226,11 +1230,9 @@ export class AppStore {
       fail("CONFLICT", "Routine was updated elsewhere; re-read and try again");
     }
 
-    const minimum = addHouseholdDays(this.householdDateNow(ctx), 1);
-    let effectiveDate = audienceInput.effectiveDate ?? minimum;
-    if (!audienceInput.effectiveDate) {
-      effectiveDate = this.nextFreeRevisionDate(definitionId, minimum);
-    }
+    const today = this.householdDateNow(ctx);
+    // Same-date refine (r2): explicit effectiveDate wins; omit ⇒ today (not tomorrow / nextFree).
+    const effectiveDate = audienceInput.effectiveDate ?? today;
 
     const digest = routinePayloadDigest({
       ...audienceInput,
@@ -1240,19 +1242,24 @@ export class AppStore {
 
     if (
       !isValidHouseholdDate(effectiveDate) ||
-      compareHouseholdDates(effectiveDate, minimum) < 0
+      compareHouseholdDates(effectiveDate, today) < 0
     ) {
-      fail("VALIDATION", "Revision must be effective no earlier than the next household day");
+      fail("VALIDATION", "Revision must be effective no earlier than today");
     }
     const normalized = this.normalizeRoutineAudience(ctx, audienceInput, effectiveDate);
     try {
       const tx = this.db.transaction(() => {
-        this.insertRevision(randomUUID(), definitionId, effectiveDate, normalized);
+        this.upsertRevision(definitionId, effectiveDate, normalized);
         this.db
           .prepare(
             "UPDATE routine_definitions SET version = version + 1 WHERE id = ?",
           )
           .run(definitionId);
+        this.reconcileUnstartedOccurrencesForDate(
+          ctx.householdId,
+          definitionId,
+          effectiveDate,
+        );
       });
       tx();
     } catch (error) {
@@ -1465,12 +1472,28 @@ export class AppStore {
     const recordedAt = nowUtcIso();
     const reportId = randomUUID();
     const tx = this.db.transaction(() => {
+      // Race safety: re-read started_at inside the writer transaction (D-023 lock).
+      const lockRow = this.db
+        .prepare("SELECT started_at FROM occurrences WHERE id = ?")
+        .get(occurrenceId) as { started_at: string | null } | undefined;
+      if (!lockRow) fail("NOT_FOUND", "Occurrence not found");
+
       this.db
         .prepare("UPDATE occurrence_steps SET status = ? WHERE id = ?")
         .run(input.status, stepId);
-      this.db
-        .prepare("UPDATE occurrences SET version = version + 1 WHERE id = ?")
-        .run(occurrenceId);
+      if (isLockingStepStatus(input.status)) {
+        this.db
+          .prepare(
+            `UPDATE occurrences
+             SET started_at = COALESCE(started_at, ?), version = version + 1
+             WHERE id = ?`,
+          )
+          .run(recordedAt, occurrenceId);
+      } else {
+        this.db
+          .prepare("UPDATE occurrences SET version = version + 1 WHERE id = ?")
+          .run(occurrenceId);
+      }
       this.db
         .prepare(
           `INSERT INTO step_reports
@@ -2710,26 +2733,18 @@ export class AppStore {
     }
   }
 
-  private insertRevision(
-    revisionId: string,
-    definitionId: string,
-    effectiveDate: string,
-    input: RoutineInput,
-  ): void {
-    const previousRevision = this.db
-      .prepare(
-        `SELECT id FROM routine_revisions
-         WHERE definition_id = ? AND effective_date < ?
-         ORDER BY effective_date DESC LIMIT 1`,
-      )
-      .get(definitionId, effectiveDate) as { id: string } | undefined;
-    const previousSteps = previousRevision
-      ? this.revisionSteps(previousRevision.id)
-      : [];
+  private resolveRevisionLogicalIds(
+    steps: RoutineStepInput[],
+    previousSteps: Array<{
+      logicalItemId: string;
+      text: string;
+      obligation: ObligationMeaning;
+    }>,
+  ): string[] {
     const usedLogicalIds = new Set(
-      input.steps.map((step) => step.logicalItemId).filter((id): id is string => !!id),
+      steps.map((step) => step.logicalItemId).filter((id): id is string => !!id),
     );
-    const logicalIds = input.steps.map((step, position) => {
+    return steps.map((step, position) => {
       if (step.logicalItemId) return step.logicalItemId;
       const samePosition = previousSteps[position];
       if (
@@ -2751,6 +2766,103 @@ export class AppStore {
       usedLogicalIds.add(logicalId);
       return logicalId;
     });
+  }
+
+  private writeRevisionChildren(
+    revisionId: string,
+    input: RoutineInput,
+    logicalIds: string[],
+  ): void {
+    const insertStep = this.db.prepare(
+      `INSERT INTO revision_steps
+       (id, revision_id, position, text, obligation, logical_item_id)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    );
+    input.steps.forEach((step, position) => {
+      insertStep.run(
+        randomUUID(),
+        revisionId,
+        position,
+        step.text.trim(),
+        step.obligation,
+        logicalIds[position],
+      );
+    });
+    const insertAssignee = this.db.prepare(
+      "INSERT INTO revision_assignees (revision_id, member_id) VALUES (?, ?)",
+    );
+    for (const memberId of input.assigneeMemberIds) {
+      insertAssignee.run(revisionId, memberId);
+    }
+    const insertGroup = this.db.prepare(
+      "INSERT INTO revision_group_sources (revision_id, group_id) VALUES (?, ?)",
+    );
+    for (const groupId of input.assigneeGroupIds) {
+      insertGroup.run(revisionId, groupId);
+    }
+  }
+
+  /** Insert or replace revision content at an exact effective_date (same-date refine). */
+  private upsertRevision(
+    definitionId: string,
+    effectiveDate: string,
+    input: RoutineInput,
+  ): string {
+    const existing = this.db
+      .prepare(
+        `SELECT id FROM routine_revisions
+         WHERE definition_id = ? AND effective_date = ?`,
+      )
+      .get(definitionId, effectiveDate) as { id: string } | undefined;
+    if (existing) {
+      const previousSteps = this.revisionSteps(existing.id);
+      const logicalIds = this.resolveRevisionLogicalIds(input.steps, previousSteps);
+      this.db
+        .prepare(
+          `UPDATE routine_revisions
+           SET title = ?, weekdays_json = ?, daypart = ?
+           WHERE id = ?`,
+        )
+        .run(
+          input.title.trim(),
+          JSON.stringify(input.weekdays),
+          input.daypart,
+          existing.id,
+        );
+      this.db
+        .prepare("DELETE FROM revision_steps WHERE revision_id = ?")
+        .run(existing.id);
+      this.db
+        .prepare("DELETE FROM revision_assignees WHERE revision_id = ?")
+        .run(existing.id);
+      this.db
+        .prepare("DELETE FROM revision_group_sources WHERE revision_id = ?")
+        .run(existing.id);
+      this.writeRevisionChildren(existing.id, input, logicalIds);
+      return existing.id;
+    }
+    const revisionId = randomUUID();
+    this.insertRevision(revisionId, definitionId, effectiveDate, input);
+    return revisionId;
+  }
+
+  private insertRevision(
+    revisionId: string,
+    definitionId: string,
+    effectiveDate: string,
+    input: RoutineInput,
+  ): void {
+    const previousRevision = this.db
+      .prepare(
+        `SELECT id FROM routine_revisions
+         WHERE definition_id = ? AND effective_date < ?
+         ORDER BY effective_date DESC LIMIT 1`,
+      )
+      .get(definitionId, effectiveDate) as { id: string } | undefined;
+    const previousSteps = previousRevision
+      ? this.revisionSteps(previousRevision.id)
+      : [];
+    const logicalIds = this.resolveRevisionLogicalIds(input.steps, previousSteps);
     const tx = this.db.transaction(() => {
       this.db
         .prepare(
@@ -2767,36 +2879,148 @@ export class AppStore {
           input.daypart,
           nowUtcIso(),
         );
-      const insertStep = this.db.prepare(
-        `INSERT INTO revision_steps
-         (id, revision_id, position, text, obligation, logical_item_id)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-      );
-      input.steps.forEach((step, position) => {
-        const rowId = randomUUID();
-        insertStep.run(
-          rowId,
-          revisionId,
-          position,
-          step.text.trim(),
-          step.obligation,
-          logicalIds[position],
-        );
-      });
-      const insertAssignee = this.db.prepare(
-        "INSERT INTO revision_assignees (revision_id, member_id) VALUES (?, ?)",
-      );
-      for (const memberId of input.assigneeMemberIds) {
-        insertAssignee.run(revisionId, memberId);
-      }
-      const insertGroup = this.db.prepare(
-        "INSERT INTO revision_group_sources (revision_id, group_id) VALUES (?, ?)",
-      );
-      for (const groupId of input.assigneeGroupIds) {
-        insertGroup.run(revisionId, groupId);
-      }
+      this.writeRevisionChildren(revisionId, input, logicalIds);
     });
     tx();
+  }
+
+  private insertOccurrenceSteps(
+    occurrenceId: string,
+    revision: {
+      steps: Array<{
+        logicalItemId: string;
+        text: string;
+        obligation: ObligationMeaning;
+      }>;
+    },
+    membershipId: string,
+    definitionId: string,
+    householdDate: string,
+  ): void {
+    const personal = this.getPersonalLayer(
+      membershipId,
+      definitionId,
+      householdDate,
+    );
+    const composed = composeMorningRoutine(
+      revision.steps.map((step) => ({
+        logicalItemId: step.logicalItemId,
+        text: step.text,
+        obligation: step.obligation,
+      })),
+      personal?.additions.map((addition) => ({
+        id: addition.id,
+        text: addition.text,
+        obligation: addition.obligation,
+        anchorLogicalItemId: addition.anchorLogicalItemId,
+        place: addition.place,
+      })) ?? [],
+    );
+    const insert = this.db.prepare(
+      `INSERT INTO occurrence_steps
+       (id, occurrence_id, position, text, obligation, status, source, logical_item_id)
+       VALUES (?, ?, ?, ?, ?, 'open', ?, ?)`,
+    );
+    composed.forEach((step, position) => {
+      insert.run(
+        randomUUID(),
+        occurrenceId,
+        position,
+        step.text,
+        step.obligation,
+        step.source,
+        step.logicalItemId,
+      );
+    });
+  }
+
+  private rewriteUnstartedOccurrence(
+    occurrenceId: string,
+    revision: {
+      id: string;
+      title: string;
+      daypart: Daypart;
+      steps: Array<{
+        logicalItemId: string;
+        text: string;
+        obligation: ObligationMeaning;
+      }>;
+    },
+    membershipId: string,
+    definitionId: string,
+    householdDate: string,
+  ): void {
+    this.db
+      .prepare(
+        `UPDATE occurrences
+         SET revision_id = ?, title = ?, daypart = ?, version = version + 1
+         WHERE id = ?`,
+      )
+      .run(revision.id, revision.title, revision.daypart, occurrenceId);
+    this.db
+      .prepare("DELETE FROM occurrence_steps WHERE occurrence_id = ?")
+      .run(occurrenceId);
+    this.insertOccurrenceSteps(
+      occurrenceId,
+      revision,
+      membershipId,
+      definitionId,
+      householdDate,
+    );
+  }
+
+  /**
+   * Reconcile unstarted occurrences for a definition×date to the revision
+   * active on that date. Started occurrences stay frozen (D-023).
+   */
+  private reconcileUnstartedOccurrencesForDate(
+    householdId: string,
+    definitionId: string,
+    householdDate: HouseholdDate,
+  ): { updated: string[]; protected: string[] } {
+    const updated: string[] = [];
+    const protectedIds: string[] = [];
+    const revisionRow = this.db
+      .prepare(
+        `SELECT id, title, daypart FROM routine_revisions
+         WHERE definition_id = ? AND effective_date = ?`,
+      )
+      .get(definitionId, householdDate) as
+      | { id: string; title: string; daypart: Daypart }
+      | undefined;
+    if (!revisionRow) return { updated, protected: protectedIds };
+
+    const revision = {
+      id: revisionRow.id,
+      title: revisionRow.title,
+      daypart: revisionRow.daypart,
+      steps: this.revisionSteps(revisionRow.id),
+    };
+    const rows = this.db
+      .prepare(
+        `SELECT id, accountable_member_id, started_at FROM occurrences
+         WHERE household_id = ? AND definition_id = ? AND household_date = ?`,
+      )
+      .all(householdId, definitionId, householdDate) as Array<{
+      id: string;
+      accountable_member_id: string;
+      started_at: string | null;
+    }>;
+    for (const row of rows) {
+      if (isOccurrenceStarted(row.started_at)) {
+        protectedIds.push(row.accountable_member_id);
+        continue;
+      }
+      this.rewriteUnstartedOccurrence(
+        row.id,
+        revision,
+        row.accountable_member_id,
+        definitionId,
+        householdDate,
+      );
+      updated.push(row.accountable_member_id);
+    }
+    return { updated, protected: protectedIds };
   }
 
   private ensureOccurrence(
@@ -2817,18 +3041,20 @@ export class AppStore {
   ): OccurrenceView {
     let occurrence = this.db
       .prepare(
-        `SELECT id FROM occurrences
+        `SELECT id, revision_id, started_at FROM occurrences
          WHERE definition_id = ? AND household_date = ? AND accountable_member_id = ?`,
       )
-      .get(definitionId, householdDate, membershipId) as { id: string } | undefined;
+      .get(definitionId, householdDate, membershipId) as
+      | { id: string; revision_id: string; started_at: string | null }
+      | undefined;
     if (!occurrence) {
       const occurrenceId = randomUUID();
       this.db
         .prepare(
           `INSERT INTO occurrences
            (id, household_id, definition_id, revision_id, household_date,
-            accountable_member_id, title, daypart, version)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+            accountable_member_id, title, daypart, version, started_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, NULL)`,
         )
         .run(
           occurrenceId,
@@ -2840,84 +3066,91 @@ export class AppStore {
           revision.title,
           revision.daypart,
         );
-      const personal = this.getPersonalLayer(
+      this.insertOccurrenceSteps(
+        occurrenceId,
+        revision,
         membershipId,
         definitionId,
         householdDate,
       );
-      const composed = composeMorningRoutine(
-        revision.steps.map((step) => ({
-          logicalItemId: step.logicalItemId,
-          text: step.text,
-          obligation: step.obligation,
-        })),
-        personal?.additions.map((addition) => ({
-          id: addition.id,
-          text: addition.text,
-          obligation: addition.obligation,
-          anchorLogicalItemId: addition.anchorLogicalItemId,
-          place: addition.place,
-        })) ?? [],
-      );
-      const insert = this.db.prepare(
-        `INSERT INTO occurrence_steps
-         (id, occurrence_id, position, text, obligation, status, source, logical_item_id)
-         VALUES (?, ?, ?, ?, ?, 'open', ?, ?)`,
-      );
-      composed.forEach((step, position) => {
-        insert.run(
-          randomUUID(),
-          occurrenceId,
-          position,
-          step.text,
-          step.obligation,
-          step.source,
-          step.logicalItemId,
-        );
-      });
-      occurrence = { id: occurrenceId };
-    } else {
-      const occurrenceId = occurrence.id;
-      const existing = this.getOccurrenceById(occurrenceId)!;
+      occurrence = {
+        id: occurrenceId,
+        revision_id: revision.id,
+        started_at: null,
+      };
+    } else if (isOccurrenceStarted(occurrence.started_at)) {
+      // Frozen structure; keep empty-steps backfill for rare edge cases.
+      const existing = this.getOccurrenceById(occurrence.id)!;
       if (existing.steps.length === 0 && revision.steps.length > 0) {
-        const personal = this.getPersonalLayer(
+        this.insertOccurrenceSteps(
+          occurrence.id,
+          revision,
           membershipId,
           definitionId,
           householdDate,
         );
-        const composed = composeMorningRoutine(
-          revision.steps.map((step) => ({
-            logicalItemId: step.logicalItemId,
-            text: step.text,
-            obligation: step.obligation,
-          })),
-          personal?.additions.map((addition) => ({
-            id: addition.id,
-            text: addition.text,
-            obligation: addition.obligation,
-            anchorLogicalItemId: addition.anchorLogicalItemId,
-            place: addition.place,
-          })) ?? [],
+      }
+    } else {
+      // Unstarted: whole-structure reconcile when stale (same-date upsert keeps revision id).
+      const rowMeta = this.db
+        .prepare("SELECT title, daypart FROM occurrences WHERE id = ?")
+        .get(occurrence.id) as { title: string; daypart: Daypart };
+      const stale =
+        occurrence.revision_id !== revision.id ||
+        rowMeta.title !== revision.title ||
+        rowMeta.daypart !== revision.daypart ||
+        !this.occurrenceSharedStepsMatchRevision(occurrence.id, revision.steps);
+      if (stale) {
+        this.rewriteUnstartedOccurrence(
+          occurrence.id,
+          revision,
+          membershipId,
+          definitionId,
+          householdDate,
         );
-        const insert = this.db.prepare(
-          `INSERT INTO occurrence_steps
-           (id, occurrence_id, position, text, obligation, status, source, logical_item_id)
-           VALUES (?, ?, ?, ?, ?, 'open', ?, ?)`,
-        );
-        composed.forEach((step, position) => {
-          insert.run(
-            randomUUID(),
-            occurrenceId,
-            position,
-            step.text,
-            step.obligation,
-            step.source,
-            step.logicalItemId,
+      } else {
+        const existing = this.getOccurrenceById(occurrence.id)!;
+        if (existing.steps.length === 0 && revision.steps.length > 0) {
+          this.insertOccurrenceSteps(
+            occurrence.id,
+            revision,
+            membershipId,
+            definitionId,
+            householdDate,
           );
-        });
+        }
       }
     }
     return this.getOccurrenceById(occurrence.id)!;
+  }
+
+  private occurrenceSharedStepsMatchRevision(
+    occurrenceId: string,
+    revisionSteps: Array<{
+      logicalItemId: string;
+      text: string;
+      obligation: ObligationMeaning;
+    }>,
+  ): boolean {
+    const shared = this.db
+      .prepare(
+        `SELECT logical_item_id, text, obligation
+         FROM occurrence_steps
+         WHERE occurrence_id = ? AND source = 'shared'
+         ORDER BY position`,
+      )
+      .all(occurrenceId) as Array<{
+      logical_item_id: string | null;
+      text: string;
+      obligation: ObligationMeaning;
+    }>;
+    if (shared.length !== revisionSteps.length) return false;
+    return shared.every(
+      (row, index) =>
+        row.logical_item_id === revisionSteps[index]!.logicalItemId &&
+        row.text === revisionSteps[index]!.text &&
+        row.obligation === revisionSteps[index]!.obligation,
+    );
   }
 
   private getOccurrenceView(
@@ -2928,7 +3161,8 @@ export class AppStore {
     const row = this.db
       .prepare(
         `SELECT o.id, o.definition_id, o.revision_id, o.household_date, o.title,
-                o.daypart, o.accountable_member_id, o.version, hm.display_name
+                o.daypart, o.accountable_member_id, o.version, o.started_at,
+                hm.display_name
          FROM occurrences o
          JOIN household_memberships hm ON hm.id = o.accountable_member_id
          WHERE o.definition_id = ? AND o.household_date = ?
@@ -2944,6 +3178,7 @@ export class AppStore {
           daypart: Daypart;
           accountable_member_id: string;
           version: number;
+          started_at: string | null;
           display_name: string;
         }
       | undefined;
@@ -2973,6 +3208,7 @@ export class AppStore {
       accountableMemberId: row.accountable_member_id,
       accountableMemberName: row.display_name,
       version: row.version,
+      startedAt: row.started_at,
       completed: isOccurrenceComplete(steps),
       steps: steps.map((step) => ({
         id: step.id,

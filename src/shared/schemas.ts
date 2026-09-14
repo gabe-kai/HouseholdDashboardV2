@@ -220,6 +220,8 @@ export type OccurrenceView = {
   accountableMemberId: string;
   accountableMemberName: string;
   version: number;
+  /** Set on first locking checklist action; never cleared (D-023). */
+  startedAt: string | null;
   completed: boolean;
   steps: OccurrenceStepView[];
 };

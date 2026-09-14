@@ -218,9 +218,10 @@ describe("P0-002 authenticated authority", () => {
     });
 
     const today = store.householdDateNow(managerAuth.context);
-    store.createRoutine(managerAuth.context, {
+    const routine = store.createRoutine(managerAuth.context, {
       mutationId: crypto.randomUUID(),
       title: "Morning Routine",
+      daypart: "morning",
       assigneeMemberIds: [childId, propId],
       assigneeGroupIds: [],
       weekdays: [1, 2, 3, 4, 5, 6, 7],
@@ -240,6 +241,7 @@ describe("P0-002 authenticated authority", () => {
     const snap = store.occurrenceSnapshotStructure(beforeOcc.id);
 
     store.savePersonalLayer(childAuth.context, {
+      definitionId: routine.id,
       additions: [
         {
           text: "Clean up breakfast",
@@ -252,7 +254,12 @@ describe("P0-002 authenticated authority", () => {
     expect(store.occurrenceSnapshotStructure(beforeOcc.id)).toEqual(snap);
 
     const tomorrow = addHouseholdDays(today, 1);
-    const preview = store.previewComposition(childAuth.context, childId, tomorrow);
+    const preview = store.previewComposition(
+      childAuth.context,
+      childId,
+      routine.id,
+      tomorrow,
+    );
     expect(preview.steps.some((p) => p.text === "Clean up breakfast")).toBe(true);
 
     const propClaim = store.issueEnrollmentClaim(managerAuth.context, {
@@ -267,6 +274,7 @@ describe("P0-002 authenticated authority", () => {
       displayName: "Casey Reed",
     });
     const proposal = store.createProposal(propAuth.context, {
+      definitionId: routine.id,
       text: "Pack soccer bag",
       obligation: "as_needed",
       place: "end",
@@ -369,14 +377,15 @@ describe("P0-002 authenticated authority", () => {
        VALUES (?, ?, NULL, 'Foreign', 'pending', ?)`,
     ).run(foreignMembership, foreignHousehold, new Date().toISOString());
     db.prepare(
-      "INSERT INTO routine_definitions (id, household_id, kind) VALUES (?, ?, 'morning')",
-    ).run(foreignRoutine, foreignHousehold);
+      "INSERT INTO routine_definitions (id, household_id, version, created_at) VALUES (?, ?, 1, ?)",
+    ).run(foreignRoutine, foreignHousehold, new Date().toISOString());
 
-    expect(store.getRoutine(manager.context.householdId)?.id).not.toBe(foreignRoutine);
+    expect(store.listRoutines(manager.context.householdId)[0]?.id).not.toBe(foreignRoutine);
     expect(() =>
       store.createRevision(manager.context, foreignRoutine, {
         mutationId: crypto.randomUUID(),
         title: "Hijack",
+        daypart: "morning",
         weekdays: [1],
         assigneeMemberIds: [manager.context.membershipId],
         assigneeGroupIds: [],

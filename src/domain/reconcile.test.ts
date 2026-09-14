@@ -14,6 +14,7 @@ function baseOccurrence(overrides?: Partial<OccurrenceView>): OccurrenceView {
     accountableMemberId: "mem-1",
     accountableMemberName: "Avery",
     title: "Morning Routine",
+    daypart: "morning",
     scheduleAnchor: "morning",
     version: 1,
     completed: false,

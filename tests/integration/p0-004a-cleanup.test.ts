@@ -186,12 +186,12 @@ describe("P0-004A r3 fixture cleanup inventory", () => {
     const revId = randomUUID();
     const occId = randomUUID();
     db.prepare(
-      `INSERT INTO routine_definitions (id, household_id, kind) VALUES (?, ?, 'morning')`,
-    ).run(defId, SEED.household.id);
+      `INSERT INTO routine_definitions (id, household_id, version, created_at) VALUES (?, ?, 1, ?)`,
+    ).run(defId, SEED.household.id, now);
     db.prepare(
       `INSERT INTO routine_revisions
-       (id, definition_id, effective_date, title, weekdays_json, created_at)
-       VALUES (?, ?, '2026-01-01', 'Morning', '[1]', ?)`,
+       (id, definition_id, effective_date, title, weekdays_json, daypart, created_at)
+       VALUES (?, ?, '2026-01-01', 'Morning', '[1]', 'morning', ?)`,
     ).run(revId, defId, now);
     db.prepare(
       `INSERT INTO revision_assignees (revision_id, member_id) VALUES (?, ?)`,
@@ -199,7 +199,7 @@ describe("P0-004A r3 fixture cleanup inventory", () => {
     db.prepare(
       `INSERT INTO occurrences
        (id, household_id, definition_id, revision_id, household_date, accountable_member_id,
-        title, schedule_anchor, version)
+        title, daypart, version)
        VALUES (?, ?, ?, ?, '2026-01-01', ?, 'Morning', 'morning', 1)`,
     ).run(occId, SEED.household.id, defId, revId, IDS.casey);
 

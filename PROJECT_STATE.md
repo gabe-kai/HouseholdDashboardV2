@@ -19,7 +19,7 @@
 
 ## Current focus
 
-Engineering returned **READY** for `P0-005 r1` (`reports/P0-005-r1-engineering-readiness.md`). Architecture accepted the readiness review and authorized implementation against the unchanged r1 contract.
+Engineering returned **IMPLEMENTED** for `P0-005 r1` (`reports/P0-005-r1-build-report.md`). Architecture acceptance of the Build Report is the next technical gate.
 
 ## Internal work status
 
@@ -30,7 +30,7 @@ Engineering returned **READY** for `P0-005 r1` (`reports/P0-005-r1-engineering-r
 | P0-003 - Regression Safety and Contract Hardening | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #6 | Product evaluation; optional required-check configuration |
 | P0-004A - People & Groups UX Completion | r3 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #8 | Product phone evaluation |
 | P0-004B - Group-backed Morning Routine | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #9 | Product evaluation |
-| P0-005 - Multiple Household Routines | r1 | READY | Engineering | `brief/p0-005-multiple-household-routines` | Implementation and Build Report |
+| P0-005 - Multiple Household Routines | r1 | IMPLEMENTED | Architecture | `brief/p0-005-multiple-household-routines` | Architecture Build Report acceptance |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -44,6 +44,7 @@ This table is the short repository-side coordination index. An external project 
 - P0-003 r1 added protected-behavior traceability, route-policy completeness, focused regression evidence, local PR/RC validation tiers, and a successful GitHub Actions PR gate; Architecture technically accepted it on 2026-09-10.
 - P0-004A r3 established focused People & Groups states, fixture-free normal bootstrap, canonical opt-in demo fixtures, and provenance-safe cleanup; Architecture technically accepted it on 2026-09-11 and it was merged through PR #8.
 - P0-004B r1 added dated group-backed Morning Routine participation and was technically accepted after correction `ac41538`, then merged through PR #9.
+- P0-005 r1 implements multiple independent routines, dayparts, scoped personalization, prospective archive, and populated migration (Build Report pending Architecture acceptance).
 
 ## Known blockers
 
@@ -51,11 +52,11 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next Project Lead decision
 
-- Earlier Product evaluation may continue independently. P0-005 selects a minimal one-way archive with a next-household-day cutoff; restoration remains deferred. Local automated evidence is required; hosted/physical checks apply only to a separately promoted release candidate.
+- Earlier Product evaluation may continue independently. After Architecture accepts P0-005, Product/Project Lead decide commit/PR and evaluation. Hosted/physical checks apply only to a separately promoted release candidate.
 
 ## Next likely handoff
 
-Engineering is authorized to implement exact `P0-005 r1` from the committed planning baseline and return a Build Report. The Project Lead manages Git; agents suggest commit messages but do not commit.
+Architecture reviews `reports/P0-005-r1-build-report.md`. The Project Lead manages Git; agents suggest commit messages but do not commit.
 
 ## Notes for all teams
 

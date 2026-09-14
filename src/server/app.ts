@@ -11,6 +11,7 @@ import Fastify, {
 } from "fastify";
 import { nowUtcIso } from "../domain/time.js";
 import {
+  ArchiveRoutineSchema,
   ClaimSchema,
   CreateGroupSchema,
   CreatePersonSchema,
@@ -472,7 +473,26 @@ export async function buildApp(
   app.get("/api/v1/routines", async (request, reply) => {
     const session = requireSession(request, reply);
     if (!session) return;
-    return { routine: store.getRoutine(session.householdId) };
+    const query = request.query as { includeArchived?: string };
+    const includeArchived =
+      query.includeArchived === "1" || query.includeArchived === "true";
+    return {
+      routines: store.listRoutines(session.householdId, { includeArchived }),
+    };
+  });
+
+  app.get("/api/v1/routines/:definitionId", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const { definitionId } = request.params as { definitionId: string };
+    if (!UuidSchema.safeParse(definitionId).success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid routine id", request.id));
+    }
+    return {
+      routine: store.getRoutineById(session.householdId, definitionId),
+    };
   });
 
   app.post("/api/v1/routines", async (request, reply) => {
@@ -485,7 +505,7 @@ export async function buildApp(
         .send(errorBody("VALIDATION", "Invalid routine", request.id));
     }
     const routine = store.createRoutine(session, parsed.data);
-    broadcast(session, "routine", routine!.id);
+    broadcast(session, "routine", routine.id);
     return { routine };
   });
 
@@ -493,6 +513,11 @@ export async function buildApp(
     const session = requireSession(request, reply);
     if (!session) return;
     const { definitionId } = request.params as { definitionId: string };
+    if (!UuidSchema.safeParse(definitionId).success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid routine id", request.id));
+    }
     const parsed = CreateRevisionSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply
@@ -500,6 +525,26 @@ export async function buildApp(
         .send(errorBody("VALIDATION", "Invalid revision", request.id));
     }
     const routine = store.createRevision(session, definitionId, parsed.data);
+    broadcast(session, "routine", definitionId);
+    return { routine };
+  });
+
+  app.post("/api/v1/routines/:definitionId/archive", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const { definitionId } = request.params as { definitionId: string };
+    if (!UuidSchema.safeParse(definitionId).success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid routine id", request.id));
+    }
+    const parsed = ArchiveRoutineSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid archive request", request.id));
+    }
+    const routine = store.archiveRoutine(session, definitionId, parsed.data);
     broadcast(session, "routine", definitionId);
     return { routine };
   });
@@ -596,8 +641,18 @@ export async function buildApp(
   app.get("/api/v1/personal-layer/preview", async (request, reply) => {
     const session = requireSession(request, reply);
     if (!session) return;
-    const query = request.query as { membershipId?: string; date?: string };
+    const query = request.query as {
+      membershipId?: string;
+      date?: string;
+      definitionId?: string;
+    };
     const membershipId = query.membershipId ?? session.membershipId;
+    const definitionId = query.definitionId;
+    if (!definitionId || !UuidSchema.safeParse(definitionId).success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "definitionId is required", request.id));
+    }
     const parsedDate = HouseholdDateSchema.safeParse(
       query.date ?? store.householdDateNow(session),
     );
@@ -607,7 +662,12 @@ export async function buildApp(
         .send(errorBody("VALIDATION", "Invalid preview date", request.id));
     }
     return {
-      preview: store.previewComposition(session, membershipId, parsedDate.data),
+      preview: store.previewComposition(
+        session,
+        membershipId,
+        definitionId,
+        parsedDate.data,
+      ),
     };
   });
 

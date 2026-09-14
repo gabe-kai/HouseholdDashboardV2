@@ -28,7 +28,7 @@ import {
   fetchPersonalTasks,
   fetchPreview,
   fetchProposals,
-  fetchRoutine,
+  fetchRoutines,
   fetchSession,
   fetchToday,
   login,
@@ -40,11 +40,12 @@ import {
   type PersonalAddition,
   type PersonalTask,
   type Proposal,
+  type Routine,
   type RoutinePreview,
   type SessionInfo,
 } from "./api";
 import { PeopleGroupsView } from "./PeopleGroups";
-import { RoutineEditor } from "./RoutineEditor";
+import { DAYPART_LABELS, RoutinesView } from "./Routines";
 import {
   clearMembershipOutbox,
   enqueueOutbox,
@@ -68,6 +69,7 @@ type ChangeFeedback = {
   message: string;
   membershipId: string;
   effectiveDate: string;
+  definitionId?: string;
 };
 
 function hasGrant(session: SessionInfo, grant: Grant): boolean {
@@ -423,10 +425,10 @@ export function App() {
     if (online) void flushOutbox(membershipId);
   }
 
-  async function openPreview(membershipId: string, date: string) {
+  async function openPreview(membershipId: string, date: string, definitionId: string) {
     setError(null);
     try {
-      const result = await fetchPreview(membershipId, date);
+      const result = await fetchPreview(definitionId, membershipId, date);
       if (identityRef.current !== session?.member.id) return;
       setPreview(result.preview);
       setTab("preview");
@@ -542,7 +544,7 @@ export function App() {
             {canManageShared ? (
               <>
                 <NavButton tab="routine" current={tab} onSelect={selectTab}>
-                  Routine
+                  Routines
                 </NavButton>
                 <NavButton tab="history" current={tab} onSelect={selectTab}>
                   History
@@ -606,12 +608,13 @@ export function App() {
               message: `"${next.text}" was approved.`,
               membershipId: next.membershipId,
               effectiveDate,
+              definitionId: next.definitionId ?? undefined,
             })
           }
         />
       ) : null}
       {tab === "routine" && canManageShared ? (
-        <RoutineEditor
+        <RoutinesView
           memberships={memberships}
           today={householdDate || session.householdDate}
           refreshToken={routineRefreshToken}
@@ -619,15 +622,28 @@ export function App() {
             const latest = routine.revisions.at(-1);
             if (latest) {
               setFeedback({
-                message: "The shared Morning Routine was saved.",
+                message: `"${latest.title}" was saved.`,
                 membershipId:
                   latest.resolvedMemberIds?.[0] ??
                   latest.assigneeMemberIds[0] ??
                   session.member.id,
                 effectiveDate: latest.effectiveDate,
+                definitionId: routine.id,
               });
             }
+            setRoutineRefreshToken((n) => n + 1);
             void refreshToday(session.member.id);
+          }}
+          onArchived={(routine) => {
+            setRoutineRefreshToken((n) => n + 1);
+            void refreshToday(session.member.id);
+            const title = routine.revisions.at(-1)?.title ?? "Routine";
+            setFeedback({
+              message: `"${title}" was archived.`,
+              membershipId: session.member.id,
+              effectiveDate: householdDate || session.householdDate,
+              definitionId: routine.id,
+            });
           }}
         />
       ) : null}
@@ -636,10 +652,11 @@ export function App() {
       ) : null}
       {tab === "personalize" && canDirect ? (
         <DirectPersonalization
-          onPreview={() =>
+          onPreview={(definitionId) =>
             void openPreview(
               session.member.id,
               addDays(householdDate || session.householdDate, 1),
+              definitionId,
             )
           }
           onSaved={(layer) =>
@@ -647,6 +664,7 @@ export function App() {
               message: "Your personal settings were saved.",
               membershipId: layer.membershipId,
               effectiveDate: layer.effectiveDate,
+              definitionId: layer.definitionId,
             })
           }
         />
@@ -661,8 +679,8 @@ export function App() {
         <section className="panel">
           <h1>Personalize</h1>
           <p role="status">
-            This account cannot add personal Morning Routine items. Ask a manager to
-            enroll with a personalizer preset.
+            This account cannot add personal routine items. Ask a manager to enroll with a
+            personalizer preset.
           </p>
         </section>
       ) : null}
@@ -810,10 +828,10 @@ function TodayView(props: {
   return (
     <>
       <section>
-        <h1>Morning Routine</h1>
+        <h1>Today</h1>
         {props.occurrences.length === 0 ? (
           <div className="panel">
-            <p>No Morning Routine for you on this household date.</p>
+            <p>No routines for you on this household date.</p>
           </div>
         ) : (
           <OccurrenceList
@@ -857,7 +875,8 @@ function OccurrenceList(props: {
           <div>
             <h2>{occurrence.title}</h2>
             <div className="meta">
-              {occurrence.accountableMemberName} · {occurrence.householdDate} · Morning ·{" "}
+              {occurrence.accountableMemberName} · {occurrence.householdDate} ·{" "}
+              {DAYPART_LABELS[occurrence.daypart] ?? occurrence.daypart} ·{" "}
               {occurrence.completed ? "Complete" : "In progress"}
             </div>
           </div>
@@ -1030,7 +1049,7 @@ function TaskList(props: {
 
 function ChangeNotice(props: {
   feedback: ChangeFeedback;
-  onPreview: (membershipId: string, date: string) => void;
+  onPreview: (membershipId: string, date: string, definitionId: string) => void;
 }) {
   return (
     <div className="change-notice" role="status">
@@ -1038,18 +1057,21 @@ function ChangeNotice(props: {
         <strong>{props.feedback.message}</strong>
         <div>Effective {props.feedback.effectiveDate}.</div>
       </div>
-      <button
-        type="button"
-        className="secondary"
-        onClick={() =>
-          void props.onPreview(
-            props.feedback.membershipId,
-            props.feedback.effectiveDate,
-          )
-        }
-      >
-        Open read-only preview
-      </button>
+      {props.feedback.definitionId ? (
+        <button
+          type="button"
+          className="secondary"
+          onClick={() =>
+            void props.onPreview(
+              props.feedback.membershipId,
+              props.feedback.effectiveDate,
+              props.feedback.definitionId!,
+            )
+          }
+        >
+          Open read-only preview
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -1127,32 +1149,50 @@ function AdditionFields(props: {
 }
 
 function DirectPersonalization(props: {
-  onPreview: () => void;
+  onPreview: (definitionId: string) => void;
   onSaved: (layer: {
     membershipId: string;
     effectiveDate: string;
+    definitionId: string;
   }) => void;
 }) {
+  const [routines, setRoutines] = useState<Routine[]>([]);
+  const [definitionId, setDefinitionId] = useState("");
   const [anchors, setAnchors] = useState<Array<{ logicalItemId: string; text: string }>>([]);
   const [additions, setAdditions] = useState<Array<Omit<PersonalAddition, "position">>>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    void fetchRoutine().then((result) => {
-      const latest = result.routine?.revisions.at(-1);
-      setAnchors(
-        latest?.steps.map((step) => ({
-          logicalItemId: step.logicalItemId,
-          text: step.text,
-        })) ?? [],
-      );
+    void fetchRoutines(false).then((result) => {
+      setRoutines(result.routines);
+      const first = result.routines[0];
+      if (first) setDefinitionId((current) => current || first.id);
     });
   }, []);
 
+  useEffect(() => {
+    if (!definitionId) {
+      setAnchors([]);
+      return;
+    }
+    const routine = routines.find((item) => item.id === definitionId);
+    const latest = routine?.revisions.at(-1);
+    setAnchors(
+      latest?.steps.map((step) => ({
+        logicalItemId: step.logicalItemId,
+        text: step.text,
+      })) ?? [],
+    );
+  }, [definitionId, routines]);
+
   async function save() {
+    if (!definitionId) {
+      setError("Choose a routine to personalize.");
+      return;
+    }
     setError(null);
     try {
-      const result = await savePersonalLayer(additions);
+      const result = await savePersonalLayer(definitionId, additions);
       setAdditions(result.layer.additions.map(({ position: _position, ...addition }) => addition));
       props.onSaved(result.layer);
     } catch (caught) {
@@ -1160,13 +1200,41 @@ function DirectPersonalization(props: {
     }
   }
 
+  const selectedTitle =
+    routines
+      .find((routine) => routine.id === definitionId)
+      ?.revisions.at(-1)?.title ?? "routine";
+
   return (
     <section className="panel">
       <h1>Personalize settings</h1>
       <p className="meta">
-        Add and arrange your own items. Inherited shared items remain protected.
+        Choose an active routine, then add and arrange your own items. Inherited shared items remain
+        protected.
       </p>
       <div className="form-grid">
+        <label>
+          Routine
+          <select
+            value={definitionId}
+            onChange={(event) => setDefinitionId(event.target.value)}
+          >
+            {routines.length === 0 ? <option value="">No active routines</option> : null}
+            {routines.map((routine) => {
+              const title = routine.revisions.at(-1)?.title ?? "Routine";
+              const daypart = routine.revisions.at(-1)?.daypart;
+              return (
+                <option key={routine.id} value={routine.id}>
+                  {title}
+                  {daypart ? ` (${DAYPART_LABELS[daypart]})` : ""}
+                </option>
+              );
+            })}
+          </select>
+        </label>
+        {definitionId ? (
+          <p className="meta">Editing personal items for {selectedTitle}.</p>
+        ) : null}
         {additions.map((addition, index) => (
           <div className="step-editor" key={addition.id}>
             <AdditionFields
@@ -1245,7 +1313,8 @@ function DirectPersonalization(props: {
         <button
           type="button"
           className="text-button"
-          onClick={props.onPreview}
+          disabled={!definitionId}
+          onClick={() => definitionId && props.onPreview(definitionId)}
         >
           Preview next applicable routine
         </button>
@@ -1259,6 +1328,8 @@ function ProposalPersonalization(props: {
   proposals: Proposal[];
   onCreated: (proposal: Proposal) => void;
 }) {
+  const [routines, setRoutines] = useState<Routine[]>([]);
+  const [definitionId, setDefinitionId] = useState("");
   const [addition, setAddition] = useState<Omit<PersonalAddition, "position">>({
     id: newClientId(),
     text: "",
@@ -1270,22 +1341,37 @@ function ProposalPersonalization(props: {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    void fetchRoutine().then((result) => {
-      setAnchors(
-        result.routine?.revisions.at(-1)?.steps.map((step) => ({
-          logicalItemId: step.logicalItemId,
-          text: step.text,
-        })) ?? [],
-      );
+    void fetchRoutines(false).then((result) => {
+      setRoutines(result.routines);
+      const first = result.routines[0];
+      if (first) setDefinitionId((current) => current || first.id);
     });
   }, []);
 
+  useEffect(() => {
+    if (!definitionId) {
+      setAnchors([]);
+      return;
+    }
+    const routine = routines.find((item) => item.id === definitionId);
+    setAnchors(
+      routine?.revisions.at(-1)?.steps.map((step) => ({
+        logicalItemId: step.logicalItemId,
+        text: step.text,
+      })) ?? [],
+    );
+  }, [definitionId, routines]);
+
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (!definitionId) {
+      setError("Choose a routine for this proposal.");
+      return;
+    }
     setError(null);
     try {
       const { id: _id, ...input } = addition;
-      const result = await createProposal(input);
+      const result = await createProposal({ ...input, definitionId });
       props.onCreated(result.proposal);
       setAddition({
         id: newClientId(),
@@ -1299,10 +1385,36 @@ function ProposalPersonalization(props: {
     }
   }
 
+  const titleByDefinition = new Map(
+    routines.map((routine) => [
+      routine.id,
+      routine.revisions.at(-1)?.title ?? "Routine",
+    ]),
+  );
+
   return (
     <section className="panel">
       <h1>Propose a personal item</h1>
       <form className="form-grid" onSubmit={submit}>
+        <label>
+          Routine
+          <select
+            value={definitionId}
+            onChange={(event) => setDefinitionId(event.target.value)}
+          >
+            {routines.length === 0 ? <option value="">No active routines</option> : null}
+            {routines.map((routine) => {
+              const title = routine.revisions.at(-1)?.title ?? "Routine";
+              const daypart = routine.revisions.at(-1)?.daypart;
+              return (
+                <option key={routine.id} value={routine.id}>
+                  {title}
+                  {daypart ? ` (${DAYPART_LABELS[daypart]})` : ""}
+                </option>
+              );
+            })}
+          </select>
+        </label>
         <AdditionFields addition={addition} anchors={anchors} onChange={setAddition} />
         <button type="submit" className="primary">
           Send proposal
@@ -1313,7 +1425,12 @@ function ProposalPersonalization(props: {
       <ul className="simple-list">
         {props.proposals.map((proposal) => (
           <li key={proposal.id}>
-            <span>{proposal.text}</span>
+            <span>
+              {proposal.text}
+              {proposal.definitionId
+                ? ` · ${titleByDefinition.get(proposal.definitionId) ?? "Routine"}`
+                : ""}
+            </span>
             <span className="status-pill" data-kind={proposal.status === "pending" ? "pending" : "online"}>
               {proposal.status === "approved"
                 ? "Approved"
@@ -1336,18 +1453,37 @@ function ApprovalsView(props: {
   onApproved: (proposal: Proposal, effectiveDate: string) => void;
 }) {
   const [error, setError] = useState<string | null>(null);
+  const [routineTitles, setRoutineTitles] = useState<Map<string, string>>(new Map());
   const pending = props.proposals.filter((proposal) => proposal.status === "pending");
+
+  useEffect(() => {
+    void fetchRoutines(true).then((result) => {
+      const titles = new Map<string, string>();
+      for (const routine of result.routines) {
+        titles.set(routine.id, routine.revisions.at(-1)?.title ?? "Routine");
+      }
+      setRoutineTitles(titles);
+    });
+  }, [props.proposals]);
 
   async function decide(proposal: Proposal, decision: "approved" | "rejected") {
     setError(null);
     try {
       const result = await decideProposal(proposal.id, decision);
       props.onChanged(result.proposal);
-      if (decision === "approved" && result.proposal.personalRevisionId) {
+      if (
+        decision === "approved" &&
+        result.proposal.personalRevisionId &&
+        proposal.definitionId
+      ) {
         let effectiveDate = addDays(props.today, 1);
         for (let offset = 1; offset <= 32; offset += 1) {
           const candidate = addDays(props.today, offset);
-          const preview = await fetchPreview(proposal.membershipId, candidate);
+          const preview = await fetchPreview(
+            proposal.definitionId,
+            proposal.membershipId,
+            candidate,
+          );
           if (preview.preview.personalRevisionId === result.proposal.personalRevisionId) {
             effectiveDate = candidate;
             break;
@@ -1368,35 +1504,44 @@ function ApprovalsView(props: {
           <p>No pending proposals.</p>
         </div>
       ) : null}
-      {pending.map((proposal) => (
-        <article key={proposal.id} className="panel approval-card">
-          <div>
-            <h2>{proposal.text}</h2>
-            <p className="meta">
-              Proposed by{" "}
-              {props.memberships.find((member) => member.id === proposal.membershipId)
-                ?.displayName ?? "Household member"}{" "}
-              · {obligationLabel(proposal.obligation)}
-            </p>
-          </div>
-          <div className="row-actions">
-            <button
-              type="button"
-              className="primary"
-              onClick={() => void decide(proposal, "approved")}
-            >
-              Approve {proposal.text}
-            </button>
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => void decide(proposal, "rejected")}
-            >
-              Reject {proposal.text}
-            </button>
-          </div>
-        </article>
-      ))}
+      {pending.map((proposal) => {
+        const routineTitle = proposal.definitionId
+          ? routineTitles.get(proposal.definitionId)
+          : null;
+        return (
+          <article key={proposal.id} className="panel approval-card">
+            <div>
+              <h2>{proposal.text}</h2>
+              <p className="meta">
+                Proposed by{" "}
+                {props.memberships.find((member) => member.id === proposal.membershipId)
+                  ?.displayName ?? "Household member"}{" "}
+                · {obligationLabel(proposal.obligation)}
+                {routineTitle ? ` · ${routineTitle}` : ""}
+                {proposal.associationStatus === "unresolved"
+                  ? " · routine association unresolved"
+                  : ""}
+              </p>
+            </div>
+            <div className="row-actions">
+              <button
+                type="button"
+                className="primary"
+                onClick={() => void decide(proposal, "approved")}
+              >
+                Approve {proposal.text}
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => void decide(proposal, "rejected")}
+              >
+                Reject {proposal.text}
+              </button>
+            </div>
+          </article>
+        );
+      })}
       {error ? <p role="alert">{error}</p> : null}
     </section>
   );
@@ -1468,6 +1613,7 @@ function HistoryView(props: { initialDate: string }) {
               <h2>{occurrence.title}</h2>
               <div className="meta">
                 {occurrence.accountableMemberName} ·{" "}
+                {DAYPART_LABELS[occurrence.daypart] ?? occurrence.daypart} ·{" "}
                 {occurrence.completed ? "Complete" : "Incomplete"}
               </div>
             </div>

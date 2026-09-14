@@ -50,6 +50,7 @@ describe("P0-001 regression under authenticated authority", () => {
     store.createRoutine(manager.context, {
       mutationId: randomUUID(),
       title: "Morning Routine",
+      daypart: "morning",
       assigneeMemberIds: [IDS.avery, IDS.jordan],
       assigneeGroupIds: [],
       weekdays: [weekday],
@@ -94,6 +95,7 @@ describe("P0-001 regression under authenticated authority", () => {
     store.createRoutine(manager.context, {
       mutationId: randomUUID(),
       title: "Morning Routine",
+      daypart: "morning",
       assigneeMemberIds: [IDS.avery, IDS.jordan],
       assigneeGroupIds: [],
       weekdays: [weekday],
@@ -163,6 +165,7 @@ describe("P0-001 regression under authenticated authority", () => {
     store.createRoutine(manager.context, {
       mutationId: randomUUID(),
       title: "Morning Routine",
+      daypart: "morning",
       assigneeMemberIds: [IDS.avery],
       assigneeGroupIds: [],
       weekdays: [weekday, tomorrowWeekday],
@@ -186,10 +189,11 @@ describe("P0-001 regression under authenticated authority", () => {
     });
 
     const before = store.occurrenceSnapshotStructure(todayOcc.id);
-    const routine = store.getRoutine(manager.context.householdId)!;
+    const routine = store.listRoutines(manager.context.householdId)[0]!;
     store.createRevision(manager.context, routine.id, {
       mutationId: randomUUID(),
       title: "Morning Routine v2",
+      daypart: "morning",
       assigneeMemberIds: [IDS.avery],
       assigneeGroupIds: [],
       weekdays: [weekday, tomorrowWeekday],

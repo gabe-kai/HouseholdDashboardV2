@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  mergeAuthoritativeOccurrence,
   reconcileOccurrence,
   type PendingStepCommand,
 } from "./reconcile.js";
@@ -14,8 +15,10 @@ function baseOccurrence(overrides?: Partial<OccurrenceView>): OccurrenceView {
     accountableMemberId: "mem-1",
     accountableMemberName: "Avery",
     title: "Morning Routine",
+    daypart: "morning",
     scheduleAnchor: "morning",
     version: 1,
+    startedAt: null,
     completed: false,
     steps: [
       {
@@ -107,5 +110,60 @@ describe("reconcileOccurrence (stale/out-of-order intent)", () => {
       },
     ];
     expect(reconcileOccurrence(occurrence, pending).steps[0]?.status).toBe("open");
+  });
+});
+
+describe("mergeAuthoritativeOccurrence (structural protection)", () => {
+  it("keeps local structure when a locking first action is still pending", () => {
+    const local = baseOccurrence({
+      title: "Local structure",
+      steps: [
+        {
+          id: "step-a",
+          position: 0,
+          text: "Make bed",
+          obligation: "required",
+          status: "open",
+          source: "shared",
+          logicalItemId: "logic-a",
+        },
+      ],
+    });
+    const authoritative = baseOccurrence({
+      title: "Edited structure",
+      revisionId: "rev-2",
+      version: 2,
+      steps: [
+        {
+          id: "step-new",
+          position: 0,
+          text: "New step",
+          obligation: "required",
+          status: "open",
+          source: "shared",
+          logicalItemId: "logic-new",
+        },
+      ],
+    });
+    const pending: PendingStepCommand[] = [
+      {
+        mutationId: "m1",
+        occurrenceId: "occ-1",
+        stepId: "step-a",
+        status: "completed",
+      },
+    ];
+    const merged = mergeAuthoritativeOccurrence(local, authoritative, pending);
+    expect(merged.title).toBe("Local structure");
+    expect(merged.steps[0]?.id).toBe("step-a");
+    expect(merged.steps[0]?.status).toBe("completed");
+  });
+
+  it("takes authoritative structure when unstarted and no pending first action", () => {
+    const local = baseOccurrence({ title: "Old" });
+    const authoritative = baseOccurrence({ title: "New", revisionId: "rev-2", version: 2 });
+    const merged = mergeAuthoritativeOccurrence(local, authoritative, []);
+    expect(merged.title).toBe("New");
+    expect(merged.revisionId).toBe("rev-2");
   });
 });

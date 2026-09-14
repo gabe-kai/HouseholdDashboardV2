@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type {
   AccessState,
+  Daypart,
   GrantPreset,
   GroupPublic,
   MemberPublic,
@@ -21,6 +22,14 @@ import {
   type PersonalTask,
 } from "./api";
 import { newClientId } from "./id";
+
+const DAYPART_LABELS: Record<Daypart, string> = {
+  morning: "Morning",
+  after_school: "After school",
+  evening: "Evening",
+  bedtime: "Bedtime",
+  anytime: "Anytime",
+};
 
 type ViewState =
   | { kind: "overview" }
@@ -320,11 +329,16 @@ export function PeopleGroupsView(props: {
             });
             if (
               membersChanged &&
-              group.usedByMorningRoutine &&
+              ((group.usedByRoutines && group.usedByRoutines.length > 0) ||
+                group.usedByMorningRoutine) &&
               group.routineEffectFromDate
             ) {
+              const names =
+                group.usedByRoutines && group.usedByRoutines.length > 0
+                  ? group.usedByRoutines.map((item) => item.title).join(", ")
+                  : "Morning Routine";
               setMessage(
-                `${group.name} updated. Morning Routine will use the new members starting ${group.routineEffectFromDate}.`,
+                `${group.name} updated. ${names} will use the new members starting ${group.routineEffectFromDate}.`,
               );
             } else {
               setMessage(`Saved group ${group.name}.`);
@@ -473,10 +487,22 @@ function PersonDetailState(props: {
           : "None"}
       </p>
       <p className="meta">
-        Morning Routine:{" "}
-        {props.detail.morningRoutine.currentlyAssigned
-          ? `Assigned on current shared revision (${props.detail.morningRoutine.revisionTitle})`
-          : "Not currently assigned on the shared Morning Routine"}
+        Routines:{" "}
+        {props.detail.routines && props.detail.routines.length > 0
+          ? props.detail.routines
+              .map((routine) => {
+                const source =
+                  routine.source === "group"
+                    ? "group"
+                    : routine.source === "both"
+                      ? "direct + group"
+                      : "direct";
+                return `${routine.title} (${source})`;
+              })
+              .join(", ")
+          : props.detail.morningRoutine?.currentlyAssigned
+            ? `Assigned on current shared revision (${props.detail.morningRoutine.revisionTitle})`
+            : "Not currently assigned to a shared routine"}
       </p>
       <div className="button-row">
         {props.canManageStructure ? (
@@ -811,7 +837,21 @@ function GroupDetailState(props: {
       <BackButton label="Back to People & Groups" onClick={props.onBack} />
       <FocusHeading id="group-detail-heading">{props.group.name}</FocusHeading>
       <p className="meta">{memberCountLabel(props.group.membershipIds.length)}</p>
-      {props.group.usedByMorningRoutine ? (
+      {props.group.usedByRoutines && props.group.usedByRoutines.length > 0 ? (
+        <>
+          <p>
+            Used by{" "}
+            {props.group.usedByRoutines.map((routine) => routine.title).join(", ")}
+          </p>
+          <p className="meta">
+            Membership changes update these routines beginning on{" "}
+            {props.group.routineEffectFromDate ??
+              props.group.usedByRoutines
+                .map((routine) => routine.effectFromDate)
+                .find(Boolean)}
+          </p>
+        </>
+      ) : props.group.usedByMorningRoutine ? (
         <>
           <p>Used by Morning Routine</p>
           <p className="meta">
@@ -916,12 +956,22 @@ function GroupFormState(props: {
     <div className="focused-state" aria-labelledby="group-form-heading">
       <BackButton label={backLabel} onClick={props.onBack} />
       <FocusHeading id="group-form-heading">{heading}</FocusHeading>
-      {props.mode === "edit" && props.initial?.usedByMorningRoutine ? (
+      {(props.mode === "edit" &&
+        ((props.initial?.usedByRoutines && props.initial.usedByRoutines.length > 0) ||
+          props.initial?.usedByMorningRoutine)) ? (
         <>
-          <p>Used by Morning Routine</p>
+          <p>
+            Used by{" "}
+            {props.initial?.usedByRoutines && props.initial.usedByRoutines.length > 0
+              ? props.initial.usedByRoutines.map((routine) => routine.title).join(", ")
+              : "Morning Routine"}
+          </p>
           <p className="meta">
-            Membership changes update Morning Routine beginning on{" "}
-            {props.initial.routineEffectFromDate}
+            Membership changes update{" "}
+            {props.initial?.usedByRoutines && props.initial.usedByRoutines.length > 0
+              ? "these routines"
+              : "Morning Routine"}{" "}
+            beginning on {props.initial?.routineEffectFromDate}
           </p>
         </>
       ) : null}
@@ -989,9 +1039,9 @@ function HouseholdActivityState(props: {
       <BackButton label="Back to People & Groups" onClick={props.onBack} />
       <FocusHeading id="household-activity-heading">Household activity</FocusHeading>
 
-      <h3>Morning Routine progress</h3>
+      <h3>Routine progress</h3>
       {props.occurrences.length === 0 ? (
-        <p className="meta">No Morning Routine progress to show right now.</p>
+        <p className="meta">No routine progress to show right now.</p>
       ) : (
         props.occurrences.map((occurrence) => {
           const open = expanded[occurrence.id] ?? !occurrence.completed;
@@ -1011,7 +1061,8 @@ function HouseholdActivityState(props: {
                 <div>
                   <h2>{occurrence.title}</h2>
                   <div className="meta">
-                    {occurrence.accountableMemberName} · {occurrence.householdDate} · Morning ·{" "}
+                    {occurrence.accountableMemberName} · {occurrence.householdDate} ·{" "}
+                    {DAYPART_LABELS[occurrence.daypart] ?? occurrence.daypart} ·{" "}
                     {occurrence.completed ? "Complete" : "In progress"}
                   </div>
                 </div>

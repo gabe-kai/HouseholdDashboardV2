@@ -42,14 +42,21 @@ export function migrate(db: Database.Database): void {
   for (const file of files) {
     if (applied.has(file)) continue;
     const sql = fs.readFileSync(path.join(migrationsDir, file), "utf8");
-    const tx = db.transaction(() => {
-      db.exec(sql);
-      db.prepare("INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)").run(
-        file,
-        new Date().toISOString(),
-      );
-    });
-    tx();
+    // SQLite ignores PRAGMA foreign_keys changes inside an open transaction; disable
+    // around the whole migration so rebuilds in 005+ can drop/rename safely.
+    db.pragma("foreign_keys = OFF");
+    try {
+      const tx = db.transaction(() => {
+        db.exec(sql);
+        db.prepare("INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)").run(
+          file,
+          new Date().toISOString(),
+        );
+      });
+      tx();
+    } finally {
+      db.pragma("foreign_keys = ON");
+    }
     if (file.startsWith("002_")) {
       backfillAuthenticatedAuthority(db);
     }

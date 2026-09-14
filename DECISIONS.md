@@ -413,6 +413,28 @@ Checklist execution is rejected for a future household date and for a cached occ
 
 ---
 
+## D-023 - First execution action locks an occurrence's structure
+
+**Status:** Active
+
+**Decision:** A routine occurrence remains structurally editable until the first committed execution action. Materialization, viewing, and arrival at the household date do not lock it. Completing a Required or Optional item, completing an As-needed item, or marking an As-needed item Not needed is a valid first action. The lock is monotonic: undo may change completion state but never reopens structure. Locking is per routine definition, accountable membership, and household date, so group-backed members can diverge on the same date. Structural edits to an unstarted occurrence reconcile the whole intended structure and preserve the intended date; edits never rewrite a started occurrence or history. The server orders an edit and first action atomically, and pending local first-execution intent protects the occurrence during outbox recovery.
+
+**Reason:** The r1 date-appending rule made routine authoring impractical: correcting a task today or iterating on a future list could move the final version farther away. First execution is the meaningful household boundary, while completion is not required before a list should become stable.
+
+**Implications:** Same-day and same-intended-date edits need explicit replacement/supersession semantics for unstarted structures. Reconciliation, receipts, stale-response handling, reconnect, and authorization must carry occurrence identity and agree on the lock state. Historical snapshots remain immutable. Group membership and schedule changes may affect only unstarted eligible occurrences. Product-facing copy describes a person/date as started rather than exposing internal lock terminology.
+
+**Alternatives considered:**
+
+- Locking at materialization or midnight would prevent harmless corrections before anyone acts.
+- Locking only on completion would allow structural changes after a child has begun work.
+- Locking an entire routine/date would incorrectly couple independently accountable members.
+
+**Related briefs:**
+
+- P0-005 r2 (planned implementation)
+
+---
+
 ## D-021 - Routines use weekday recurrence and snapshotted dayparts
 
 **Status:** Active

@@ -3,6 +3,16 @@ import type Database from "better-sqlite3";
 import { isOccurrenceComplete, assertStatusAllowed } from "../domain/completion.js";
 import { composeMorningRoutine } from "../domain/compose.js";
 import {
+  compareOccurrenceOrder,
+  isBeforeArchiveCutoff,
+  isDaypart,
+  type Daypart,
+} from "../domain/daypart.js";
+import {
+  isLockingStepStatus,
+  isOccurrenceStarted,
+} from "../domain/occurrence-lock.js";
+import {
   normalizeDirectSources,
   resolveParticipants,
   revisionIntervalActiveFrom,
@@ -26,11 +36,13 @@ import type {
   Grant,
   GrantPreset,
   GroupPublic,
+  GroupRoutineReference,
   MemberPublic,
   ObligationMeaning,
   OccurrenceView,
   PersonClassification,
   PersonDetail,
+  RoutineDefinitionPublic,
   StepStatus,
 } from "../shared/schemas.js";
 import {
@@ -71,13 +83,15 @@ type RoutineStepInput = {
 type RoutineInput = {
   mutationId: string;
   title: string;
+  daypart: Daypart;
   assigneeMemberIds: string[];
   assigneeGroupIds: string[];
   weekdays: number[];
   steps: RoutineStepInput[];
+  expectedVersion?: number;
 };
 
-type RoutineMutationKind = "routine_create" | "routine_revision";
+type RoutineMutationKind = "routine_create" | "routine_revision" | "routine_archive";
 
 function sameMembershipSet(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false;
@@ -87,21 +101,32 @@ function sameMembershipSet(a: string[], b: string[]): boolean {
 }
 
 function routinePayloadDigest(input: {
-  title: string;
-  weekdays: number[];
-  steps: RoutineStepInput[];
+  definitionId?: string;
+  title?: string;
+  daypart?: Daypart;
+  weekdays?: number[];
+  steps?: RoutineStepInput[];
   assigneeMemberIds?: string[];
   assigneeGroupIds?: string[];
   effectiveDate?: string;
+  expectedVersion?: number;
 }): string {
   const payload = {
-    title: input.title.trim(),
-    weekdays: [...input.weekdays].sort((a, b) => a - b),
-    steps: input.steps.map((step) => ({
-      text: step.text.trim(),
-      obligation: step.obligation,
-      ...(step.logicalItemId ? { logicalItemId: step.logicalItemId } : {}),
-    })),
+    ...(input.definitionId ? { definitionId: input.definitionId } : {}),
+    ...(input.title !== undefined ? { title: input.title.trim() } : {}),
+    ...(input.daypart ? { daypart: input.daypart } : {}),
+    ...(input.weekdays
+      ? { weekdays: [...input.weekdays].sort((a, b) => a - b) }
+      : {}),
+    ...(input.steps
+      ? {
+          steps: input.steps.map((step) => ({
+            text: step.text.trim(),
+            obligation: step.obligation,
+            ...(step.logicalItemId ? { logicalItemId: step.logicalItemId } : {}),
+          })),
+        }
+      : {}),
     assigneeMemberIds: [...(input.assigneeMemberIds ?? [])].sort((a, b) =>
       a.localeCompare(b),
     ),
@@ -109,6 +134,9 @@ function routinePayloadDigest(input: {
       a.localeCompare(b),
     ),
     ...(input.effectiveDate ? { effectiveDate: input.effectiveDate } : {}),
+    ...(input.expectedVersion !== undefined
+      ? { expectedVersion: input.expectedVersion }
+      : {}),
   };
   return createHash("sha256").update(JSON.stringify(payload), "utf8").digest("hex");
 }
@@ -802,10 +830,31 @@ export class AppStore {
       )
       .all(ctx.householdId, membershipId) as Array<{ id: string; name: string }>;
     const accessMeta = this.accessMetaForMembership(membershipId);
+    const routines = this.personRoutineProjections(ctx, membershipId);
+    const morningDef = routines.find((routine) => routine.daypart === "morning");
+    let morningRoutine: PersonDetail["morningRoutine"] = {
+      currentlyAssigned: false,
+      revisionId: null,
+      revisionTitle: null,
+      effectiveDate: null,
+    };
+    if (morningDef) {
+      const loaded = this.loadRoutineDefinition(ctx.householdId, morningDef.definitionId);
+      const revision = loaded
+        ? selectRevisionForDate(loaded.revisions, this.householdDateNow(ctx))
+        : null;
+      morningRoutine = {
+        currentlyAssigned: morningDef.currentlyAssigned,
+        revisionId: revision?.id ?? null,
+        revisionTitle: morningDef.title,
+        effectiveDate: morningDef.effectiveDate,
+      };
+    }
     return {
       ...person,
       groups,
-      morningRoutine: this.currentDirectMorningRoutine(ctx, membershipId),
+      routines,
+      morningRoutine,
       access: accessMeta,
     };
   }
@@ -1021,7 +1070,7 @@ export class AppStore {
       if (this.groupActivelyReferenced(groupId, today)) {
         fail(
           "CONFLICT",
-          "Remove this group from Morning Routine before deleting it",
+          "Remove this group from routines before deleting it",
         );
       }
       this.db
@@ -1039,102 +1088,86 @@ export class AppStore {
     return { ok: true };
   }
 
-  getRoutine(householdId: string) {
-    const definition = this.db
-      .prepare("SELECT id, kind FROM routine_definitions WHERE household_id = ?")
-      .get(householdId) as { id: string; kind: "morning" } | undefined;
-    if (!definition) return null;
-    const today = this.householdDateFor(householdId);
-    const revisions = this.db
+  listRoutines(
+    householdId: string,
+    options?: { includeArchived?: boolean },
+  ): RoutineDefinitionPublic[] {
+    const includeArchived = options?.includeArchived === true;
+    const rows = this.db
       .prepare(
-        `SELECT id, effective_date, title, weekdays_json, created_at
-         FROM routine_revisions WHERE definition_id = ? ORDER BY effective_date`,
+        `SELECT id FROM routine_definitions
+         WHERE household_id = ?
+           ${includeArchived ? "" : "AND archived_at IS NULL"}
+         ORDER BY created_at, id`,
       )
-      .all(definition.id) as Array<{
-      id: string;
-      effective_date: string;
-      title: string;
-      weekdays_json: string;
-      created_at: string;
-    }>;
-    return {
-      id: definition.id,
-      kind: definition.kind,
-      revisions: revisions.map((revision) => {
-        const assigneeMemberIds = this.revisionAssignees(revision.id);
-        const assigneeGroupIds = this.revisionGroupSources(revision.id);
-        const todaySets = assigneeGroupIds.map((groupId) =>
-          this.groupMembersOnDate(groupId, today),
-        );
-        const tomorrow = addHouseholdDays(today, 1);
-        const tomorrowSets = assigneeGroupIds.map((groupId) =>
-          this.groupMembersOnDate(groupId, tomorrow),
-        );
-        const resolvedMemberIds = resolveParticipants({
-          directMemberIds: assigneeMemberIds,
-          groupMemberIdSets: todaySets,
-        });
-        const upcomingResolvedMemberIds = resolveParticipants({
-          directMemberIds: assigneeMemberIds,
-          groupMemberIdSets: tomorrowSets,
-        });
-        const upcomingDiffers = !sameMembershipSet(
-          resolvedMemberIds,
-          upcomingResolvedMemberIds,
-        );
-        return {
-          id: revision.id,
-          effectiveDate: revision.effective_date,
-          title: revision.title,
-          weekdays: JSON.parse(revision.weekdays_json) as number[],
-          createdAt: revision.created_at,
-          steps: this.revisionSteps(revision.id),
-          assigneeMemberIds,
-          assigneeGroupIds,
-          resolvedMemberIds,
-          upcomingResolvedMemberIds: upcomingDiffers ? upcomingResolvedMemberIds : undefined,
-          upcomingParticipationFromDate: upcomingDiffers ? tomorrow : null,
-        };
-      }),
-    };
+      .all(householdId) as Array<{ id: string }>;
+    return rows
+      .map((row) => this.loadRoutineDefinition(householdId, row.id))
+      .filter((routine): routine is RoutineDefinitionPublic => routine !== null);
   }
 
-  createRoutine(ctx: AuthContext, input: RoutineInput) {
+  getRoutineById(householdId: string, definitionId: string): RoutineDefinitionPublic {
+    const routine = this.loadRoutineDefinition(householdId, definitionId);
+    if (!routine) fail("NOT_FOUND", "Routine not found");
+    return routine;
+  }
+
+  createRoutine(ctx: AuthContext, input: RoutineInput): RoutineDefinitionPublic {
     this.requireGrant(ctx, "routine.shared.manage");
     const audienceInput: RoutineInput = {
       ...input,
+      daypart: input.daypart,
       assigneeMemberIds: input.assigneeMemberIds ?? [],
       assigneeGroupIds: input.assigneeGroupIds ?? [],
     };
-    const digest = routinePayloadDigest(audienceInput);
-    const replay = this.readRoutineMutationReceipt(
-      audienceInput.mutationId,
-      ctx.householdId,
-      "routine_create",
-      digest,
-    );
-    if (replay) return replay;
+
+    const prior = this.findRoutineMutationReceipt(audienceInput.mutationId);
+    if (prior) {
+      const response = JSON.parse(prior.response_json) as RoutineDefinitionPublic;
+      const effectiveDate =
+        response.revisions[0]?.effectiveDate ?? this.householdDateNow(ctx);
+      const digest = routinePayloadDigest({
+        ...audienceInput,
+        definitionId: prior.definition_id ?? response.id,
+        effectiveDate,
+      });
+      if (
+        prior.household_id !== ctx.householdId ||
+        prior.kind !== "routine_create" ||
+        prior.payload_digest !== digest
+      ) {
+        fail("CONFLICT", "Routine couldn't be updated");
+      }
+      return response;
+    }
 
     this.validateRoutineInput(ctx, audienceInput);
-    if (this.getRoutine(ctx.householdId)) {
-      fail("CONFLICT", "Household already has a Morning Routine");
-    }
-    const effectiveDate = this.householdDateNow(ctx);
-    const normalized = this.normalizeRoutineAudience(ctx, audienceInput, effectiveDate);
+
     const definitionId = randomUUID();
+    const effectiveDate = this.householdDateNow(ctx);
+    const digest = routinePayloadDigest({
+      ...audienceInput,
+      definitionId,
+      effectiveDate,
+    });
+    const normalized = this.normalizeRoutineAudience(ctx, audienceInput, effectiveDate);
+    const createdAt = nowUtcIso();
     const tx = this.db.transaction(() => {
       this.db
         .prepare(
-          "INSERT INTO routine_definitions (id, household_id, kind) VALUES (?, ?, 'morning')",
+          `INSERT INTO routine_definitions
+             (id, household_id, version, archived_at, archive_cutoff_date, created_at)
+           VALUES (?, ?, 1, NULL, NULL, ?)`,
         )
-        .run(definitionId, ctx.householdId);
+        .run(definitionId, ctx.householdId, createdAt);
       this.insertRevision(randomUUID(), definitionId, effectiveDate, normalized);
     });
     tx();
-    const routine = this.getRoutine(ctx.householdId);
+    const routine = this.getRoutineById(ctx.householdId, definitionId);
     this.writeRoutineMutationReceipt(
       audienceInput.mutationId,
       ctx.householdId,
+      definitionId,
       "routine_create",
       digest,
       routine,
@@ -1146,52 +1179,171 @@ export class AppStore {
     ctx: AuthContext,
     definitionId: string,
     input: RoutineInput & { effectiveDate?: string },
-  ) {
+  ): RoutineDefinitionPublic {
     this.requireGrant(ctx, "routine.shared.manage");
     const audienceInput: RoutineInput & { effectiveDate?: string } = {
       ...input,
       assigneeMemberIds: input.assigneeMemberIds ?? [],
       assigneeGroupIds: input.assigneeGroupIds ?? [],
     };
-    const minimum = addHouseholdDays(this.householdDateNow(ctx), 1);
-    const effectiveDate = audienceInput.effectiveDate ?? minimum;
-    const digest = routinePayloadDigest({ ...audienceInput, effectiveDate });
-    const replay = this.readRoutineMutationReceipt(
-      audienceInput.mutationId,
-      ctx.householdId,
-      "routine_revision",
-      digest,
-    );
-    if (replay) return replay;
+
+    const prior = this.findRoutineMutationReceipt(audienceInput.mutationId);
+    if (prior) {
+      const response = JSON.parse(prior.response_json) as RoutineDefinitionPublic;
+      const effectiveDate =
+        audienceInput.effectiveDate ??
+        response.revisions[response.revisions.length - 1]?.effectiveDate;
+      const digest = routinePayloadDigest({
+        ...audienceInput,
+        definitionId: prior.definition_id ?? definitionId,
+        effectiveDate,
+      });
+      if (
+        prior.household_id !== ctx.householdId ||
+        prior.kind !== "routine_revision" ||
+        prior.payload_digest !== digest ||
+        (prior.definition_id !== null && prior.definition_id !== definitionId)
+      ) {
+        fail("CONFLICT", "Routine couldn't be updated");
+      }
+      return response;
+    }
 
     this.validateRoutineInput(ctx, audienceInput);
-    if (
-      !this.db
-        .prepare("SELECT 1 FROM routine_definitions WHERE id = ? AND household_id = ?")
-        .get(definitionId, ctx.householdId)
-    ) {
-      fail("NOT_FOUND", "Routine not found");
+
+    const definition = this.db
+      .prepare(
+        `SELECT id, version, archived_at FROM routine_definitions
+         WHERE id = ? AND household_id = ?`,
+      )
+      .get(definitionId, ctx.householdId) as
+      | { id: string; version: number; archived_at: string | null }
+      | undefined;
+    if (!definition) fail("NOT_FOUND", "Routine not found");
+    if (definition.archived_at) {
+      fail("CONFLICT", "Archived routines cannot be revised");
     }
     if (
-      !isValidHouseholdDate(effectiveDate) ||
-      compareHouseholdDates(effectiveDate, minimum) < 0
+      audienceInput.expectedVersion !== undefined &&
+      audienceInput.expectedVersion !== definition.version
     ) {
-      fail("VALIDATION", "Revision must be effective no earlier than the next household day");
+      fail("CONFLICT", "Routine was updated elsewhere; re-read and try again");
+    }
+
+    const today = this.householdDateNow(ctx);
+    // Same-date refine (r2): explicit effectiveDate wins; omit ⇒ today (not tomorrow / nextFree).
+    const effectiveDate = audienceInput.effectiveDate ?? today;
+
+    const digest = routinePayloadDigest({
+      ...audienceInput,
+      definitionId,
+      effectiveDate,
+    });
+
+    if (
+      !isValidHouseholdDate(effectiveDate) ||
+      compareHouseholdDates(effectiveDate, today) < 0
+    ) {
+      fail("VALIDATION", "Revision must be effective no earlier than today");
     }
     const normalized = this.normalizeRoutineAudience(ctx, audienceInput, effectiveDate);
     try {
-      this.insertRevision(randomUUID(), definitionId, effectiveDate, normalized);
+      const tx = this.db.transaction(() => {
+        this.upsertRevision(definitionId, effectiveDate, normalized);
+        this.db
+          .prepare(
+            "UPDATE routine_definitions SET version = version + 1 WHERE id = ?",
+          )
+          .run(definitionId);
+        this.reconcileUnstartedOccurrencesForDate(
+          ctx.householdId,
+          definitionId,
+          effectiveDate,
+        );
+      });
+      tx();
     } catch (error) {
       if (error instanceof Error && error.message.includes("UNIQUE")) {
         fail("CONFLICT", "A revision already exists for that effective date");
       }
       throw error;
     }
-    const routine = this.getRoutine(ctx.householdId);
+    const routine = this.getRoutineById(ctx.householdId, definitionId);
     this.writeRoutineMutationReceipt(
       audienceInput.mutationId,
       ctx.householdId,
+      definitionId,
       "routine_revision",
+      digest,
+      routine,
+    );
+    return routine;
+  }
+
+  archiveRoutine(
+    ctx: AuthContext,
+    definitionId: string,
+    input: { mutationId: string; expectedVersion: number },
+  ): RoutineDefinitionPublic {
+    this.requireGrant(ctx, "routine.shared.manage");
+
+    const prior = this.findRoutineMutationReceipt(input.mutationId);
+    if (prior) {
+      const response = JSON.parse(prior.response_json) as RoutineDefinitionPublic;
+      const digest = routinePayloadDigest({
+        definitionId: prior.definition_id ?? definitionId,
+        effectiveDate: response.archiveCutoffDate ?? undefined,
+        expectedVersion: input.expectedVersion,
+      });
+      if (
+        prior.household_id !== ctx.householdId ||
+        prior.kind !== "routine_archive" ||
+        prior.payload_digest !== digest ||
+        (prior.definition_id !== null && prior.definition_id !== definitionId)
+      ) {
+        fail("CONFLICT", "Routine couldn't be updated");
+      }
+      return response;
+    }
+
+    const definition = this.db
+      .prepare(
+        `SELECT id, version, archived_at FROM routine_definitions
+         WHERE id = ? AND household_id = ?`,
+      )
+      .get(definitionId, ctx.householdId) as
+      | { id: string; version: number; archived_at: string | null }
+      | undefined;
+    if (!definition) fail("NOT_FOUND", "Routine not found");
+
+    const archiveCutoffDate = addHouseholdDays(this.householdDateNow(ctx), 1);
+    const digest = routinePayloadDigest({
+      definitionId,
+      effectiveDate: archiveCutoffDate,
+      expectedVersion: input.expectedVersion,
+    });
+
+    if (definition.archived_at) {
+      fail("CONFLICT", "Routine is already archived");
+    }
+    if (input.expectedVersion !== definition.version) {
+      fail("CONFLICT", "Routine was updated elsewhere; re-read and try again");
+    }
+
+    const archivedAt = nowUtcIso();
+    this.db
+      .prepare(
+        `UPDATE routine_definitions
+         SET archived_at = ?, archive_cutoff_date = ?, version = version + 1
+         WHERE id = ?`,
+      )
+      .run(archivedAt, archiveCutoffDate, definitionId);
+    const routine = this.getRoutineById(ctx.householdId, definitionId);
+    this.writeRoutineMutationReceipt(
+      input.mutationId,
+      ctx.householdId,
+      definitionId,
+      "routine_archive",
       digest,
       routine,
     );
@@ -1200,33 +1352,38 @@ export class AppStore {
 
   materializeForDate(ctx: AuthContext, householdDate: HouseholdDate): OccurrenceView[] {
     if (!isValidHouseholdDate(householdDate)) fail("VALIDATION", "Invalid household date");
-    const routine = this.getRoutine(ctx.householdId);
-    if (!routine) return [];
-    const revision = selectRevisionForDate(routine.revisions, householdDate);
-    if (!revision || !isDateApplicable(householdDate, revision.weekdays)) return [];
-
-    const participants = resolveParticipants({
-      directMemberIds: revision.assigneeMemberIds,
-      groupMemberIdSets: revision.assigneeGroupIds.map((groupId) =>
-        this.groupMembersOnDate(groupId, householdDate),
-      ),
-    });
-
+    const definitions = this.listRoutines(ctx.householdId, { includeArchived: true });
     const results: OccurrenceView[] = [];
     const tx = this.db.transaction(() => {
-      for (const membershipId of participants) {
-        results.push(
-          this.ensureOccurrence(
-            ctx.householdId,
-            routine.id,
-            revision,
-            householdDate,
-            membershipId,
+      for (const routine of definitions) {
+        if (!isBeforeArchiveCutoff(householdDate, routine.archiveCutoffDate)) {
+          continue;
+        }
+        const revision = selectRevisionForDate(routine.revisions, householdDate);
+        if (!revision || !isDateApplicable(householdDate, revision.weekdays)) {
+          continue;
+        }
+        const participants = resolveParticipants({
+          directMemberIds: revision.assigneeMemberIds,
+          groupMemberIdSets: revision.assigneeGroupIds.map((groupId) =>
+            this.groupMembersOnDate(groupId, householdDate),
           ),
-        );
+        });
+        for (const membershipId of participants) {
+          results.push(
+            this.ensureOccurrence(
+              ctx.householdId,
+              routine.id,
+              revision,
+              householdDate,
+              membershipId,
+            ),
+          );
+        }
       }
     });
     tx();
+    results.sort(compareOccurrenceOrder);
     if (this.hasGrant(ctx, "routine.shared.manage")) return results;
     if (!this.hasGrant(ctx, "routine.execute.own")) return [];
     return results.filter((item) => item.accountableMemberId === ctx.membershipId);
@@ -1240,8 +1397,11 @@ export class AppStore {
   ) {
     const occurrence = this.db
       .prepare(
-        `SELECT id, household_id, accountable_member_id, household_date, revision_id
-         FROM occurrences WHERE id = ?`,
+        `SELECT o.id, o.household_id, o.accountable_member_id, o.household_date,
+                o.revision_id, o.definition_id, d.archive_cutoff_date
+         FROM occurrences o
+         JOIN routine_definitions d ON d.id = o.definition_id
+         WHERE o.id = ?`,
       )
       .get(occurrenceId) as
       | {
@@ -1250,6 +1410,8 @@ export class AppStore {
           accountable_member_id: string;
           household_date: string;
           revision_id: string;
+          definition_id: string;
+          archive_cutoff_date: string | null;
         }
       | undefined;
     if (!occurrence || occurrence.household_id !== ctx.householdId) {
@@ -1263,6 +1425,14 @@ export class AppStore {
     if (compareHouseholdDates(occurrence.household_date, today) > 0) {
       fail("VALIDATION", "This checklist isn't available yet");
     }
+    if (
+      !isBeforeArchiveCutoff(
+        occurrence.household_date,
+        occurrence.archive_cutoff_date,
+      )
+    ) {
+      fail("FORBIDDEN", "This routine is no longer available for that day");
+    }
     const participants = this.resolveParticipantsForRevision(
       occurrence.revision_id,
       occurrence.household_date,
@@ -1270,7 +1440,7 @@ export class AppStore {
     if (!participants.includes(occurrence.accountable_member_id)) {
       fail(
         "FORBIDDEN",
-        "This person is no longer on Morning Routine for that day",
+        "This person is no longer on this routine for that day",
       );
     }
     const receipt = this.db
@@ -1302,12 +1472,28 @@ export class AppStore {
     const recordedAt = nowUtcIso();
     const reportId = randomUUID();
     const tx = this.db.transaction(() => {
+      // Race safety: re-read started_at inside the writer transaction (D-023 lock).
+      const lockRow = this.db
+        .prepare("SELECT started_at FROM occurrences WHERE id = ?")
+        .get(occurrenceId) as { started_at: string | null } | undefined;
+      if (!lockRow) fail("NOT_FOUND", "Occurrence not found");
+
       this.db
         .prepare("UPDATE occurrence_steps SET status = ? WHERE id = ?")
         .run(input.status, stepId);
-      this.db
-        .prepare("UPDATE occurrences SET version = version + 1 WHERE id = ?")
-        .run(occurrenceId);
+      if (isLockingStepStatus(input.status)) {
+        this.db
+          .prepare(
+            `UPDATE occurrences
+             SET started_at = COALESCE(started_at, ?), version = version + 1
+             WHERE id = ?`,
+          )
+          .run(recordedAt, occurrenceId);
+      } else {
+        this.db
+          .prepare("UPDATE occurrences SET version = version + 1 WHERE id = ?")
+          .run(occurrenceId);
+      }
       this.db
         .prepare(
           `INSERT INTO step_reports
@@ -1358,7 +1544,7 @@ export class AppStore {
   occurrenceSnapshotStructure(occurrenceId: string) {
     const occurrence = this.db
       .prepare(
-        `SELECT id, revision_id, title, schedule_anchor, accountable_member_id, household_date
+        `SELECT id, revision_id, title, daypart, accountable_member_id, household_date
          FROM occurrences WHERE id = ?`,
       )
       .get(occurrenceId);
@@ -1404,11 +1590,18 @@ export class AppStore {
 
   savePersonalLayer(
     ctx: AuthContext,
-    input: { additions: PersonalAdditionInput[]; effectiveDate?: string },
+    input: {
+      definitionId: string;
+      additions: PersonalAdditionInput[];
+      effectiveDate?: string;
+    },
   ): PersonalLayer {
     this.requireGrant(ctx, "routine.personalize.direct");
-    const routine = this.getRoutine(ctx.householdId);
+    const routine = this.loadRoutineDefinition(ctx.householdId, input.definitionId);
     if (!routine) fail("NOT_FOUND", "Routine not found");
+    if (routine.archived) {
+      fail("CONFLICT", "Archived routines cannot accept personal changes");
+    }
     const minimum = addHouseholdDays(this.householdDateNow(ctx), 1);
     const effectiveDate = input.effectiveDate ?? minimum;
     if (
@@ -1426,15 +1619,19 @@ export class AppStore {
     );
   }
 
-  getPersonalLayer(membershipId: string, date: string): PersonalLayer | null {
+  getPersonalLayer(
+    membershipId: string,
+    definitionId: string,
+    date: string,
+  ): PersonalLayer | null {
     const row = this.db
       .prepare(
         `SELECT id, membership_id, definition_id, effective_date, created_at
          FROM personal_routine_revisions
-         WHERE membership_id = ? AND effective_date <= ?
+         WHERE membership_id = ? AND definition_id = ? AND effective_date <= ?
          ORDER BY effective_date DESC LIMIT 1`,
       )
-      .get(membershipId, date) as
+      .get(membershipId, definitionId, date) as
       | {
           id: string;
           membership_id: string;
@@ -1474,13 +1671,21 @@ export class AppStore {
     };
   }
 
-  previewComposition(ctx: AuthContext, membershipId: string, date: string) {
+  previewComposition(
+    ctx: AuthContext,
+    membershipId: string,
+    definitionId: string,
+    date: string,
+  ) {
     this.authorizeMembershipView(ctx, membershipId);
-    const routine = this.getRoutine(ctx.householdId);
+    const routine = this.loadRoutineDefinition(ctx.householdId, definitionId);
     if (!routine) fail("NOT_FOUND", "Routine not found");
+    if (!isBeforeArchiveCutoff(date, routine.archiveCutoffDate)) {
+      fail("VALIDATION", "This routine is archived for that date");
+    }
     const revision = selectRevisionForDate(routine.revisions, date);
     if (!revision) fail("NOT_FOUND", "No routine revision applies");
-    const layer = this.getPersonalLayer(membershipId, date);
+    const layer = this.getPersonalLayer(membershipId, definitionId, date);
     return {
       householdDate: date,
       membershipId,
@@ -1488,6 +1693,7 @@ export class AppStore {
       revisionId: revision.id,
       personalRevisionId: layer?.id ?? null,
       title: revision.title,
+      daypart: revision.daypart,
       weekdays: revision.weekdays,
       steps: composeMorningRoutine(
         revision.steps.map((step) => ({
@@ -1508,23 +1714,30 @@ export class AppStore {
 
   createProposal(
     ctx: AuthContext,
-    input: Omit<PersonalAdditionInput, "id">,
+    input: Omit<PersonalAdditionInput, "id"> & { definitionId: string },
   ) {
     this.requireGrant(ctx, "routine.personalize.propose");
     this.validatePersonalAdditions([input]);
+    const routine = this.loadRoutineDefinition(ctx.householdId, input.definitionId);
+    if (!routine) fail("NOT_FOUND", "Routine not found");
+    if (routine.archived) {
+      fail("CONFLICT", "Archived routines cannot accept new proposals");
+    }
     const id = randomUUID();
     const proposedAt = nowUtcIso();
     this.db
       .prepare(
         `INSERT INTO routine_proposals
-         (id, household_id, membership_id, text, obligation, anchor_logical_item_id,
+         (id, household_id, membership_id, definition_id, association_status,
+          text, obligation, anchor_logical_item_id,
           place, status, proposed_at, decided_at, decider_membership_id, personal_revision_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, NULL, NULL, NULL)`,
+         VALUES (?, ?, ?, ?, 'resolved', ?, ?, ?, ?, 'pending', ?, NULL, NULL, NULL)`,
       )
       .run(
         id,
         ctx.householdId,
         ctx.membershipId,
+        input.definitionId,
         input.text.trim(),
         input.obligation,
         input.anchorLogicalItemId ?? null,
@@ -1566,8 +1779,20 @@ export class AppStore {
     }
 
     const decidedAt = nowUtcIso();
-    const routine = this.getRoutine(ctx.householdId);
-    if (!routine) fail("NOT_FOUND", "Routine not found");
+    if (!proposal.definitionId || proposal.associationStatus === "unresolved") {
+      if (input.decision === "approved") {
+        fail("CONFLICT", "This proposal is not linked to a routine");
+      }
+    }
+    const routine = proposal.definitionId
+      ? this.loadRoutineDefinition(ctx.householdId, proposal.definitionId)
+      : null;
+    if (input.decision === "approved") {
+      if (!routine) fail("NOT_FOUND", "Routine not found");
+      if (routine.archived) {
+        fail("CONFLICT", "Archived routines cannot accept approved proposals");
+      }
+    }
     let personalRevisionId: string | null = null;
     const tx = this.db.transaction(() => {
       const current = this.getProposal(proposalId)!;
@@ -1576,21 +1801,26 @@ export class AppStore {
         fail("CONFLICT", "Proposal has already been decided");
       }
       if (input.decision === "approved") {
+        const definitionId = proposal.definitionId!;
         let effectiveDate = addHouseholdDays(this.householdDateNow(ctx), 1);
         while (
           this.db
             .prepare(
               `SELECT 1 FROM personal_routine_revisions
-               WHERE membership_id = ? AND effective_date = ?`,
+               WHERE membership_id = ? AND definition_id = ? AND effective_date = ?`,
             )
-            .get(proposal.membershipId, effectiveDate)
+            .get(proposal.membershipId, definitionId, effectiveDate)
         ) {
           effectiveDate = addHouseholdDays(effectiveDate, 1);
         }
-        const prior = this.getPersonalLayer(proposal.membershipId, effectiveDate);
+        const prior = this.getPersonalLayer(
+          proposal.membershipId,
+          definitionId,
+          effectiveDate,
+        );
         const layer = this.insertPersonalLayer(
           proposal.membershipId,
-          routine.id,
+          definitionId,
           effectiveDate,
           [
             ...(prior?.additions ?? []),
@@ -1924,57 +2154,34 @@ export class AppStore {
     };
   }
 
-  private currentDirectMorningRoutine(
+  private personRoutineProjections(
     ctx: AuthContext,
     membershipId: string,
-  ): PersonDetail["morningRoutine"] {
-    const definition = this.db
-      .prepare("SELECT id FROM routine_definitions WHERE household_id = ?")
-      .get(ctx.householdId) as { id: string } | undefined;
-    if (!definition) {
-      return {
-        currentlyAssigned: false,
-        revisionId: null,
-        revisionTitle: null,
-        effectiveDate: null,
-      };
+  ): PersonDetail["routines"] {
+    const today = this.householdDateNow(ctx);
+    const definitions = this.listRoutines(ctx.householdId, { includeArchived: true });
+    const results: PersonDetail["routines"] = [];
+    for (const definition of definitions) {
+      if (!isBeforeArchiveCutoff(today, definition.archiveCutoffDate)) continue;
+      const revision = selectRevisionForDate(definition.revisions, today);
+      if (!revision) continue;
+      const direct = revision.assigneeMemberIds.includes(membershipId);
+      const viaGroup = revision.assigneeGroupIds.some((groupId) =>
+        this.groupMembersOnDate(groupId, today).includes(membershipId),
+      );
+      if (!direct && !viaGroup) continue;
+      const source: "direct" | "group" | "both" =
+        direct && viaGroup ? "both" : direct ? "direct" : "group";
+      results.push({
+        definitionId: definition.id,
+        title: revision.title,
+        daypart: revision.daypart,
+        currentlyAssigned: true,
+        source,
+        effectiveDate: revision.effectiveDate,
+      });
     }
-    const revisions = this.db
-      .prepare(
-        `SELECT id, effective_date, title, weekdays_json
-         FROM routine_revisions WHERE definition_id = ? ORDER BY effective_date`,
-      )
-      .all(definition.id) as Array<{
-      id: string;
-      effective_date: string;
-      title: string;
-      weekdays_json: string;
-    }>;
-    const householdDate = this.householdDateNow(ctx);
-    const selected = selectRevisionForDate(
-      revisions.map((revision) => ({
-        id: revision.id,
-        effectiveDate: revision.effective_date,
-        weekdays: JSON.parse(revision.weekdays_json) as number[],
-      })),
-      householdDate,
-    );
-    if (!selected) {
-      return {
-        currentlyAssigned: false,
-        revisionId: null,
-        revisionTitle: null,
-        effectiveDate: null,
-      };
-    }
-    const participants = this.resolveParticipantsForRevision(selected.id, householdDate);
-    const revision = revisions.find((row) => row.id === selected.id)!;
-    return {
-      currentlyAssigned: participants.includes(membershipId),
-      revisionId: revision.id,
-      revisionTitle: revision.title,
-      effectiveDate: revision.effective_date,
-    };
+    return results;
   }
 
   private toGroupPublic(
@@ -2000,7 +2207,7 @@ export class AppStore {
       !sameMembershipSet(membershipIds, effectiveMembershipIds)
         ? this.nextMembershipEffectDate(row.id, today)
         : null;
-    const usedByMorningRoutine = this.groupActivelyReferenced(row.id, today);
+    const usedByRoutines = this.listGroupRoutineReferences(row.id, today);
     return {
       id: row.id,
       name: row.name,
@@ -2010,8 +2217,10 @@ export class AppStore {
       membershipPendingFromDate: pending,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
-      usedByMorningRoutine,
-      routineEffectFromDate: usedByMorningRoutine ? addHouseholdDays(today, 1) : null,
+      usedByRoutines,
+      usedByMorningRoutine: usedByRoutines.length > 0,
+      routineEffectFromDate:
+        usedByRoutines.length > 0 ? addHouseholdDays(today, 1) : null,
     };
   }
 
@@ -2211,19 +2420,38 @@ export class AppStore {
   }
 
   private groupActivelyReferenced(groupId: string, today: HouseholdDate): boolean {
+    return this.listGroupRoutineReferences(groupId, today).length > 0;
+  }
+
+  private listGroupRoutineReferences(
+    groupId: string,
+    today: HouseholdDate,
+  ): GroupRoutineReference[] {
     const revisions = this.db
       .prepare(
-        `SELECT rr.id, rr.definition_id, rr.effective_date
+        `SELECT rr.id, rr.definition_id, rr.effective_date, rr.title, rr.daypart,
+                d.archived_at, d.archive_cutoff_date
          FROM revision_group_sources rgs
          JOIN routine_revisions rr ON rr.id = rgs.revision_id
-         WHERE rgs.group_id = ?`,
+         JOIN routine_definitions d ON d.id = rr.definition_id
+         WHERE rgs.group_id = ?
+         ORDER BY rr.definition_id, rr.effective_date`,
       )
       .all(groupId) as Array<{
       id: string;
       definition_id: string;
       effective_date: string;
+      title: string;
+      daypart: Daypart;
+      archived_at: string | null;
+      archive_cutoff_date: string | null;
     }>;
+
+    const byDefinition = new Map<string, GroupRoutineReference>();
     for (const revision of revisions) {
+      if (!isBeforeArchiveCutoff(today, revision.archive_cutoff_date)) {
+        continue;
+      }
       const next = this.db
         .prepare(
           `SELECT effective_date FROM routine_revisions
@@ -2234,16 +2462,25 @@ export class AppStore {
         | { effective_date: string }
         | undefined;
       if (
-        revisionIntervalActiveFrom(
+        !revisionIntervalActiveFrom(
           revision.effective_date,
           next?.effective_date ?? null,
           today,
         )
       ) {
-        return true;
+        continue;
       }
+      byDefinition.set(revision.definition_id, {
+        definitionId: revision.definition_id,
+        title: revision.title,
+        daypart: revision.daypart,
+        archived: revision.archived_at !== null,
+        effectFromDate: revision.effective_date,
+      });
     }
-    return false;
+    return [...byDefinition.values()].sort((a, b) =>
+      a.definitionId.localeCompare(b.definitionId),
+    );
   }
 
   private normalizeRoutineAudience(
@@ -2268,39 +2505,155 @@ export class AppStore {
     };
   }
 
-  private readRoutineMutationReceipt(
-    mutationId: string,
+  private nextFreeRevisionDate(
+    definitionId: string,
+    minimum: HouseholdDate,
+  ): HouseholdDate {
+    let effectiveDate = minimum;
+    while (
+      this.db
+        .prepare(
+          `SELECT 1 FROM routine_revisions
+           WHERE definition_id = ? AND effective_date = ?`,
+        )
+        .get(definitionId, effectiveDate)
+    ) {
+      effectiveDate = addHouseholdDays(effectiveDate, 1);
+    }
+    return effectiveDate;
+  }
+
+  private loadRoutineDefinition(
     householdId: string,
-    kind: RoutineMutationKind,
-    digest: string,
-  ): ReturnType<AppStore["getRoutine"]> | null {
+    definitionId: string,
+  ): RoutineDefinitionPublic | null {
+    const definition = this.db
+      .prepare(
+        `SELECT id, version, archived_at, archive_cutoff_date
+         FROM routine_definitions
+         WHERE id = ? AND household_id = ?`,
+      )
+      .get(definitionId, householdId) as
+      | {
+          id: string;
+          version: number;
+          archived_at: string | null;
+          archive_cutoff_date: string | null;
+        }
+      | undefined;
+    if (!definition) return null;
+    const today = this.householdDateFor(householdId);
+    const revisions = this.db
+      .prepare(
+        `SELECT id, effective_date, title, weekdays_json, daypart, created_at
+         FROM routine_revisions WHERE definition_id = ? ORDER BY effective_date`,
+      )
+      .all(definition.id) as Array<{
+      id: string;
+      effective_date: string;
+      title: string;
+      weekdays_json: string;
+      daypart: Daypart;
+      created_at: string;
+    }>;
+    return {
+      id: definition.id,
+      version: definition.version,
+      archived: definition.archived_at !== null,
+      archiveCutoffDate: definition.archive_cutoff_date,
+      archivedAt: definition.archived_at,
+      revisions: revisions.map((revision) => {
+        const assigneeMemberIds = this.revisionAssignees(revision.id);
+        const assigneeGroupIds = this.revisionGroupSources(revision.id);
+        const todaySets = assigneeGroupIds.map((groupId) =>
+          this.groupMembersOnDate(groupId, today),
+        );
+        const tomorrow = addHouseholdDays(today, 1);
+        const tomorrowSets = assigneeGroupIds.map((groupId) =>
+          this.groupMembersOnDate(groupId, tomorrow),
+        );
+        const resolvedMemberIds = resolveParticipants({
+          directMemberIds: assigneeMemberIds,
+          groupMemberIdSets: todaySets,
+        });
+        const upcomingResolvedMemberIds = resolveParticipants({
+          directMemberIds: assigneeMemberIds,
+          groupMemberIdSets: tomorrowSets,
+        });
+        const upcomingDiffers = !sameMembershipSet(
+          resolvedMemberIds,
+          upcomingResolvedMemberIds,
+        );
+        return {
+          id: revision.id,
+          effectiveDate: revision.effective_date,
+          title: revision.title,
+          daypart: revision.daypart,
+          weekdays: JSON.parse(revision.weekdays_json) as number[],
+          createdAt: revision.created_at,
+          steps: this.revisionSteps(revision.id),
+          assigneeMemberIds,
+          assigneeGroupIds,
+          resolvedMemberIds,
+          upcomingResolvedMemberIds: upcomingDiffers
+            ? upcomingResolvedMemberIds
+            : undefined,
+          upcomingParticipationFromDate: upcomingDiffers ? tomorrow : null,
+        };
+      }),
+    };
+  }
+
+  private findRoutineMutationReceipt(mutationId: string): {
+    household_id: string;
+    definition_id: string | null;
+    kind: string;
+    payload_digest: string;
+    response_json: string;
+  } | null {
     const row = this.db
       .prepare(
-        `SELECT household_id, kind, payload_digest, response_json
+        `SELECT household_id, definition_id, kind, payload_digest, response_json
          FROM routine_mutation_receipts WHERE mutation_id = ?`,
       )
       .get(mutationId) as
       | {
           household_id: string;
+          definition_id: string | null;
           kind: string;
           payload_digest: string;
           response_json: string;
         }
       | undefined;
+    return row ?? null;
+  }
+
+  private readRoutineMutationReceipt(
+    mutationId: string,
+    householdId: string,
+    definitionId: string | null,
+    kind: RoutineMutationKind,
+    digest: string,
+  ): RoutineDefinitionPublic | null {
+    const row = this.findRoutineMutationReceipt(mutationId);
     if (!row) return null;
     if (
       row.household_id !== householdId ||
       row.kind !== kind ||
-      row.payload_digest !== digest
+      row.payload_digest !== digest ||
+      (definitionId !== null &&
+        row.definition_id !== null &&
+        row.definition_id !== definitionId)
     ) {
-      fail("CONFLICT", "Morning Routine couldn't be updated");
+      fail("CONFLICT", "Routine couldn't be updated");
     }
-    return JSON.parse(row.response_json) as ReturnType<AppStore["getRoutine"]>;
+    return JSON.parse(row.response_json) as RoutineDefinitionPublic;
   }
 
   private writeRoutineMutationReceipt(
     mutationId: string,
     householdId: string,
+    definitionId: string | null,
     kind: RoutineMutationKind,
     digest: string,
     response: unknown,
@@ -2308,12 +2661,13 @@ export class AppStore {
     this.db
       .prepare(
         `INSERT INTO routine_mutation_receipts
-         (mutation_id, household_id, kind, payload_digest, response_json, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+         (mutation_id, household_id, definition_id, kind, payload_digest, response_json, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         mutationId,
         householdId,
+        definitionId,
         kind,
         digest,
         JSON.stringify(response),
@@ -2325,6 +2679,7 @@ export class AppStore {
     const check = validateRoutineSteps(input.steps);
     if (!check.ok) fail("VALIDATION", check.message);
     if (!input.title.trim()) fail("VALIDATION", "Routine title is required");
+    if (!isDaypart(input.daypart)) fail("VALIDATION", "Invalid daypart");
     if (
       input.weekdays.length === 0 ||
       input.weekdays.some((day) => !Number.isInteger(day) || day < 1 || day > 7)
@@ -2378,26 +2733,18 @@ export class AppStore {
     }
   }
 
-  private insertRevision(
-    revisionId: string,
-    definitionId: string,
-    effectiveDate: string,
-    input: RoutineInput,
-  ): void {
-    const previousRevision = this.db
-      .prepare(
-        `SELECT id FROM routine_revisions
-         WHERE definition_id = ? AND effective_date < ?
-         ORDER BY effective_date DESC LIMIT 1`,
-      )
-      .get(definitionId, effectiveDate) as { id: string } | undefined;
-    const previousSteps = previousRevision
-      ? this.revisionSteps(previousRevision.id)
-      : [];
+  private resolveRevisionLogicalIds(
+    steps: RoutineStepInput[],
+    previousSteps: Array<{
+      logicalItemId: string;
+      text: string;
+      obligation: ObligationMeaning;
+    }>,
+  ): string[] {
     const usedLogicalIds = new Set(
-      input.steps.map((step) => step.logicalItemId).filter((id): id is string => !!id),
+      steps.map((step) => step.logicalItemId).filter((id): id is string => !!id),
     );
-    const logicalIds = input.steps.map((step, position) => {
+    return steps.map((step, position) => {
       if (step.logicalItemId) return step.logicalItemId;
       const samePosition = previousSteps[position];
       if (
@@ -2419,12 +2766,109 @@ export class AppStore {
       usedLogicalIds.add(logicalId);
       return logicalId;
     });
+  }
+
+  private writeRevisionChildren(
+    revisionId: string,
+    input: RoutineInput,
+    logicalIds: string[],
+  ): void {
+    const insertStep = this.db.prepare(
+      `INSERT INTO revision_steps
+       (id, revision_id, position, text, obligation, logical_item_id)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    );
+    input.steps.forEach((step, position) => {
+      insertStep.run(
+        randomUUID(),
+        revisionId,
+        position,
+        step.text.trim(),
+        step.obligation,
+        logicalIds[position],
+      );
+    });
+    const insertAssignee = this.db.prepare(
+      "INSERT INTO revision_assignees (revision_id, member_id) VALUES (?, ?)",
+    );
+    for (const memberId of input.assigneeMemberIds) {
+      insertAssignee.run(revisionId, memberId);
+    }
+    const insertGroup = this.db.prepare(
+      "INSERT INTO revision_group_sources (revision_id, group_id) VALUES (?, ?)",
+    );
+    for (const groupId of input.assigneeGroupIds) {
+      insertGroup.run(revisionId, groupId);
+    }
+  }
+
+  /** Insert or replace revision content at an exact effective_date (same-date refine). */
+  private upsertRevision(
+    definitionId: string,
+    effectiveDate: string,
+    input: RoutineInput,
+  ): string {
+    const existing = this.db
+      .prepare(
+        `SELECT id FROM routine_revisions
+         WHERE definition_id = ? AND effective_date = ?`,
+      )
+      .get(definitionId, effectiveDate) as { id: string } | undefined;
+    if (existing) {
+      const previousSteps = this.revisionSteps(existing.id);
+      const logicalIds = this.resolveRevisionLogicalIds(input.steps, previousSteps);
+      this.db
+        .prepare(
+          `UPDATE routine_revisions
+           SET title = ?, weekdays_json = ?, daypart = ?
+           WHERE id = ?`,
+        )
+        .run(
+          input.title.trim(),
+          JSON.stringify(input.weekdays),
+          input.daypart,
+          existing.id,
+        );
+      this.db
+        .prepare("DELETE FROM revision_steps WHERE revision_id = ?")
+        .run(existing.id);
+      this.db
+        .prepare("DELETE FROM revision_assignees WHERE revision_id = ?")
+        .run(existing.id);
+      this.db
+        .prepare("DELETE FROM revision_group_sources WHERE revision_id = ?")
+        .run(existing.id);
+      this.writeRevisionChildren(existing.id, input, logicalIds);
+      return existing.id;
+    }
+    const revisionId = randomUUID();
+    this.insertRevision(revisionId, definitionId, effectiveDate, input);
+    return revisionId;
+  }
+
+  private insertRevision(
+    revisionId: string,
+    definitionId: string,
+    effectiveDate: string,
+    input: RoutineInput,
+  ): void {
+    const previousRevision = this.db
+      .prepare(
+        `SELECT id FROM routine_revisions
+         WHERE definition_id = ? AND effective_date < ?
+         ORDER BY effective_date DESC LIMIT 1`,
+      )
+      .get(definitionId, effectiveDate) as { id: string } | undefined;
+    const previousSteps = previousRevision
+      ? this.revisionSteps(previousRevision.id)
+      : [];
+    const logicalIds = this.resolveRevisionLogicalIds(input.steps, previousSteps);
     const tx = this.db.transaction(() => {
       this.db
         .prepare(
           `INSERT INTO routine_revisions
-           (id, definition_id, effective_date, title, weekdays_json, created_at)
-           VALUES (?, ?, ?, ?, ?, ?)`,
+           (id, definition_id, effective_date, title, weekdays_json, daypart, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           revisionId,
@@ -2432,38 +2876,151 @@ export class AppStore {
           effectiveDate,
           input.title.trim(),
           JSON.stringify(input.weekdays),
+          input.daypart,
           nowUtcIso(),
         );
-      const insertStep = this.db.prepare(
-        `INSERT INTO revision_steps
-         (id, revision_id, position, text, obligation, logical_item_id)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-      );
-      input.steps.forEach((step, position) => {
-        const rowId = randomUUID();
-        insertStep.run(
-          rowId,
-          revisionId,
-          position,
-          step.text.trim(),
-          step.obligation,
-          logicalIds[position],
-        );
-      });
-      const insertAssignee = this.db.prepare(
-        "INSERT INTO revision_assignees (revision_id, member_id) VALUES (?, ?)",
-      );
-      for (const memberId of input.assigneeMemberIds) {
-        insertAssignee.run(revisionId, memberId);
-      }
-      const insertGroup = this.db.prepare(
-        "INSERT INTO revision_group_sources (revision_id, group_id) VALUES (?, ?)",
-      );
-      for (const groupId of input.assigneeGroupIds) {
-        insertGroup.run(revisionId, groupId);
-      }
+      this.writeRevisionChildren(revisionId, input, logicalIds);
     });
     tx();
+  }
+
+  private insertOccurrenceSteps(
+    occurrenceId: string,
+    revision: {
+      steps: Array<{
+        logicalItemId: string;
+        text: string;
+        obligation: ObligationMeaning;
+      }>;
+    },
+    membershipId: string,
+    definitionId: string,
+    householdDate: string,
+  ): void {
+    const personal = this.getPersonalLayer(
+      membershipId,
+      definitionId,
+      householdDate,
+    );
+    const composed = composeMorningRoutine(
+      revision.steps.map((step) => ({
+        logicalItemId: step.logicalItemId,
+        text: step.text,
+        obligation: step.obligation,
+      })),
+      personal?.additions.map((addition) => ({
+        id: addition.id,
+        text: addition.text,
+        obligation: addition.obligation,
+        anchorLogicalItemId: addition.anchorLogicalItemId,
+        place: addition.place,
+      })) ?? [],
+    );
+    const insert = this.db.prepare(
+      `INSERT INTO occurrence_steps
+       (id, occurrence_id, position, text, obligation, status, source, logical_item_id)
+       VALUES (?, ?, ?, ?, ?, 'open', ?, ?)`,
+    );
+    composed.forEach((step, position) => {
+      insert.run(
+        randomUUID(),
+        occurrenceId,
+        position,
+        step.text,
+        step.obligation,
+        step.source,
+        step.logicalItemId,
+      );
+    });
+  }
+
+  private rewriteUnstartedOccurrence(
+    occurrenceId: string,
+    revision: {
+      id: string;
+      title: string;
+      daypart: Daypart;
+      steps: Array<{
+        logicalItemId: string;
+        text: string;
+        obligation: ObligationMeaning;
+      }>;
+    },
+    membershipId: string,
+    definitionId: string,
+    householdDate: string,
+  ): void {
+    this.db
+      .prepare(
+        `UPDATE occurrences
+         SET revision_id = ?, title = ?, daypart = ?, version = version + 1
+         WHERE id = ?`,
+      )
+      .run(revision.id, revision.title, revision.daypart, occurrenceId);
+    this.db
+      .prepare("DELETE FROM occurrence_steps WHERE occurrence_id = ?")
+      .run(occurrenceId);
+    this.insertOccurrenceSteps(
+      occurrenceId,
+      revision,
+      membershipId,
+      definitionId,
+      householdDate,
+    );
+  }
+
+  /**
+   * Reconcile unstarted occurrences for a definition×date to the revision
+   * active on that date. Started occurrences stay frozen (D-023).
+   */
+  private reconcileUnstartedOccurrencesForDate(
+    householdId: string,
+    definitionId: string,
+    householdDate: HouseholdDate,
+  ): { updated: string[]; protected: string[] } {
+    const updated: string[] = [];
+    const protectedIds: string[] = [];
+    const revisionRow = this.db
+      .prepare(
+        `SELECT id, title, daypart FROM routine_revisions
+         WHERE definition_id = ? AND effective_date = ?`,
+      )
+      .get(definitionId, householdDate) as
+      | { id: string; title: string; daypart: Daypart }
+      | undefined;
+    if (!revisionRow) return { updated, protected: protectedIds };
+
+    const revision = {
+      id: revisionRow.id,
+      title: revisionRow.title,
+      daypart: revisionRow.daypart,
+      steps: this.revisionSteps(revisionRow.id),
+    };
+    const rows = this.db
+      .prepare(
+        `SELECT id, accountable_member_id, started_at FROM occurrences
+         WHERE household_id = ? AND definition_id = ? AND household_date = ?`,
+      )
+      .all(householdId, definitionId, householdDate) as Array<{
+      id: string;
+      accountable_member_id: string;
+      started_at: string | null;
+    }>;
+    for (const row of rows) {
+      if (isOccurrenceStarted(row.started_at)) {
+        protectedIds.push(row.accountable_member_id);
+        continue;
+      }
+      this.rewriteUnstartedOccurrence(
+        row.id,
+        revision,
+        row.accountable_member_id,
+        definitionId,
+        householdDate,
+      );
+      updated.push(row.accountable_member_id);
+    }
+    return { updated, protected: protectedIds };
   }
 
   private ensureOccurrence(
@@ -2472,6 +3029,7 @@ export class AppStore {
     revision: {
       id: string;
       title: string;
+      daypart: Daypart;
       steps: Array<{
         logicalItemId: string;
         text: string;
@@ -2483,18 +3041,20 @@ export class AppStore {
   ): OccurrenceView {
     let occurrence = this.db
       .prepare(
-        `SELECT id FROM occurrences
+        `SELECT id, revision_id, started_at FROM occurrences
          WHERE definition_id = ? AND household_date = ? AND accountable_member_id = ?`,
       )
-      .get(definitionId, householdDate, membershipId) as { id: string } | undefined;
+      .get(definitionId, householdDate, membershipId) as
+      | { id: string; revision_id: string; started_at: string | null }
+      | undefined;
     if (!occurrence) {
       const occurrenceId = randomUUID();
       this.db
         .prepare(
           `INSERT INTO occurrences
            (id, household_id, definition_id, revision_id, household_date,
-            accountable_member_id, title, schedule_anchor, version)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'morning', 1)`,
+            accountable_member_id, title, daypart, version, started_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, NULL)`,
         )
         .run(
           occurrenceId,
@@ -2504,77 +3064,93 @@ export class AppStore {
           householdDate,
           membershipId,
           revision.title,
+          revision.daypart,
         );
-      const personal = this.getPersonalLayer(membershipId, householdDate);
-      const composed = composeMorningRoutine(
-        revision.steps.map((step) => ({
-          logicalItemId: step.logicalItemId,
-          text: step.text,
-          obligation: step.obligation,
-        })),
-        personal?.additions.map((addition) => ({
-          id: addition.id,
-          text: addition.text,
-          obligation: addition.obligation,
-          anchorLogicalItemId: addition.anchorLogicalItemId,
-          place: addition.place,
-        })) ?? [],
+      this.insertOccurrenceSteps(
+        occurrenceId,
+        revision,
+        membershipId,
+        definitionId,
+        householdDate,
       );
-      const insert = this.db.prepare(
-        `INSERT INTO occurrence_steps
-         (id, occurrence_id, position, text, obligation, status, source, logical_item_id)
-         VALUES (?, ?, ?, ?, ?, 'open', ?, ?)`,
-      );
-      composed.forEach((step, position) => {
-        insert.run(
-          randomUUID(),
-          occurrenceId,
-          position,
-          step.text,
-          step.obligation,
-          step.source,
-          step.logicalItemId,
-        );
-      });
-      occurrence = { id: occurrenceId };
-    } else {
-      const occurrenceId = occurrence.id;
-      const existing = this.getOccurrenceById(occurrenceId)!;
+      occurrence = {
+        id: occurrenceId,
+        revision_id: revision.id,
+        started_at: null,
+      };
+    } else if (isOccurrenceStarted(occurrence.started_at)) {
+      // Frozen structure; keep empty-steps backfill for rare edge cases.
+      const existing = this.getOccurrenceById(occurrence.id)!;
       if (existing.steps.length === 0 && revision.steps.length > 0) {
-        const personal = this.getPersonalLayer(membershipId, householdDate);
-        const composed = composeMorningRoutine(
-          revision.steps.map((step) => ({
-            logicalItemId: step.logicalItemId,
-            text: step.text,
-            obligation: step.obligation,
-          })),
-          personal?.additions.map((addition) => ({
-            id: addition.id,
-            text: addition.text,
-            obligation: addition.obligation,
-            anchorLogicalItemId: addition.anchorLogicalItemId,
-            place: addition.place,
-          })) ?? [],
+        this.insertOccurrenceSteps(
+          occurrence.id,
+          revision,
+          membershipId,
+          definitionId,
+          householdDate,
         );
-        const insert = this.db.prepare(
-          `INSERT INTO occurrence_steps
-           (id, occurrence_id, position, text, obligation, status, source, logical_item_id)
-           VALUES (?, ?, ?, ?, ?, 'open', ?, ?)`,
+      }
+    } else {
+      // Unstarted: whole-structure reconcile when stale (same-date upsert keeps revision id).
+      const rowMeta = this.db
+        .prepare("SELECT title, daypart FROM occurrences WHERE id = ?")
+        .get(occurrence.id) as { title: string; daypart: Daypart };
+      const stale =
+        occurrence.revision_id !== revision.id ||
+        rowMeta.title !== revision.title ||
+        rowMeta.daypart !== revision.daypart ||
+        !this.occurrenceSharedStepsMatchRevision(occurrence.id, revision.steps);
+      if (stale) {
+        this.rewriteUnstartedOccurrence(
+          occurrence.id,
+          revision,
+          membershipId,
+          definitionId,
+          householdDate,
         );
-        composed.forEach((step, position) => {
-          insert.run(
-            randomUUID(),
-            occurrenceId,
-            position,
-            step.text,
-            step.obligation,
-            step.source,
-            step.logicalItemId,
+      } else {
+        const existing = this.getOccurrenceById(occurrence.id)!;
+        if (existing.steps.length === 0 && revision.steps.length > 0) {
+          this.insertOccurrenceSteps(
+            occurrence.id,
+            revision,
+            membershipId,
+            definitionId,
+            householdDate,
           );
-        });
+        }
       }
     }
     return this.getOccurrenceById(occurrence.id)!;
+  }
+
+  private occurrenceSharedStepsMatchRevision(
+    occurrenceId: string,
+    revisionSteps: Array<{
+      logicalItemId: string;
+      text: string;
+      obligation: ObligationMeaning;
+    }>,
+  ): boolean {
+    const shared = this.db
+      .prepare(
+        `SELECT logical_item_id, text, obligation
+         FROM occurrence_steps
+         WHERE occurrence_id = ? AND source = 'shared'
+         ORDER BY position`,
+      )
+      .all(occurrenceId) as Array<{
+      logical_item_id: string | null;
+      text: string;
+      obligation: ObligationMeaning;
+    }>;
+    if (shared.length !== revisionSteps.length) return false;
+    return shared.every(
+      (row, index) =>
+        row.logical_item_id === revisionSteps[index]!.logicalItemId &&
+        row.text === revisionSteps[index]!.text &&
+        row.obligation === revisionSteps[index]!.obligation,
+    );
   }
 
   private getOccurrenceView(
@@ -2585,7 +3161,8 @@ export class AppStore {
     const row = this.db
       .prepare(
         `SELECT o.id, o.definition_id, o.revision_id, o.household_date, o.title,
-                o.accountable_member_id, o.version, hm.display_name
+                o.daypart, o.accountable_member_id, o.version, o.started_at,
+                hm.display_name
          FROM occurrences o
          JOIN household_memberships hm ON hm.id = o.accountable_member_id
          WHERE o.definition_id = ? AND o.household_date = ?
@@ -2598,8 +3175,10 @@ export class AppStore {
           revision_id: string;
           household_date: string;
           title: string;
+          daypart: Daypart;
           accountable_member_id: string;
           version: number;
+          started_at: string | null;
           display_name: string;
         }
       | undefined;
@@ -2624,10 +3203,12 @@ export class AppStore {
       revisionId: row.revision_id,
       householdDate: row.household_date,
       title: row.title,
-      scheduleAnchor: "morning",
+      daypart: row.daypart,
+      scheduleAnchor: row.daypart,
       accountableMemberId: row.accountable_member_id,
       accountableMemberName: row.display_name,
       version: row.version,
+      startedAt: row.started_at,
       completed: isOccurrenceComplete(steps),
       steps: steps.map((step) => ({
         id: step.id,
@@ -2661,7 +3242,7 @@ export class AppStore {
     effectiveDate: string,
     additions: PersonalAdditionInput[],
   ): PersonalLayer {
-    const existing = this.getPersonalLayer(membershipId, effectiveDate);
+    const existing = this.getPersonalLayer(membershipId, definitionId, effectiveDate);
     if (existing?.effectiveDate === effectiveDate) {
       const same =
         existing.definitionId === definitionId &&
@@ -2715,7 +3296,7 @@ export class AppStore {
       }
       throw error;
     }
-    return this.getPersonalLayer(membershipId, effectiveDate)!;
+    return this.getPersonalLayer(membershipId, definitionId, effectiveDate)!;
   }
 
   private authorizeMembershipView(ctx: AuthContext, membershipId: string): void {
@@ -2741,6 +3322,8 @@ export class AppStore {
           id: string;
           household_id: string;
           membership_id: string;
+          definition_id: string | null;
+          association_status: "resolved" | "unresolved";
           text: string;
           obligation: ObligationMeaning;
           anchor_logical_item_id: string | null;
@@ -2757,6 +3340,8 @@ export class AppStore {
           id: row.id,
           householdId: row.household_id,
           membershipId: row.membership_id,
+          definitionId: row.definition_id,
+          associationStatus: row.association_status,
           text: row.text,
           obligation: row.obligation,
           anchorLogicalItemId: row.anchor_logical_item_id,

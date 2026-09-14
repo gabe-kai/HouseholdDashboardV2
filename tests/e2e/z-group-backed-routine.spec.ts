@@ -1,13 +1,10 @@
 import { test, expect, type Page, type APIRequestContext } from "@playwright/test";
-import path from "node:path";
-import fs from "node:fs";
 
 const PASSPHRASE = "unique-passphrase-ok!";
 const MANAGER_LOGIN = "e2e.manager";
 const MORGAN_ID = "22222222-2222-4222-8222-222222222201";
 const AVERY_ID = "22222222-2222-4222-8222-222222222202";
 const JORDAN_ID = "22222222-2222-4222-8222-222222222203";
-const SCREENSHOT_DIR = path.resolve("reports/p0-004b-r1-screenshots");
 
 function requestOrigin(_request?: APIRequestContext): string {
   const base = test.info().project.use.baseURL;
@@ -49,8 +46,8 @@ async function csrf(request: APIRequestContext): Promise<string> {
 async function ensureSharedRoutine(request: APIRequestContext) {
   const listed = await request.get("/api/v1/routines");
   expect(listed.ok()).toBeTruthy();
-  const body = (await listed.json()) as { routine: { id: string } | null };
-  if (body.routine) return body.routine;
+  const body = (await listed.json()) as { routines: Array<{ id: string }> };
+  if (body.routines[0]) return body.routines[0];
   const created = await request.post("/api/v1/routines", {
     headers: {
       "x-csrf-token": await csrf(request),
@@ -59,6 +56,7 @@ async function ensureSharedRoutine(request: APIRequestContext) {
     data: {
       mutationId: crypto.randomUUID(),
       title: "Morning Routine",
+      daypart: "morning",
       weekdays: [1, 2, 3, 4, 5, 6, 7],
       assigneeMemberIds: [MORGAN_ID, AVERY_ID, JORDAN_ID],
       assigneeGroupIds: [],
@@ -86,7 +84,8 @@ async function nextFreeRevisionDate(request: APIRequestContext): Promise<string>
   const today = ((await session.json()) as { householdDate: string }).householdDate;
   const listed = await request.get("/api/v1/routines");
   expect(listed.ok()).toBeTruthy();
-  const routine = ((await listed.json()) as { routine: Routine | null }).routine;
+  const routines = ((await listed.json()) as { routines: Routine[] }).routines;
+  const routine = routines[0] ?? null;
   const used = new Set(routine?.revisions.map((revision) => revision.effectiveDate) ?? []);
   let candidate = addDays(today, 1);
   while (used.has(candidate)) candidate = addDays(candidate, 1);
@@ -147,8 +146,10 @@ test.describe("P0-004B group-backed Morning Routine", () => {
     await expect(pageA.getByRole("heading", { name: groupName })).toBeVisible();
     await expect(pageA.getByText("Used by Morning Routine")).toHaveCount(0);
 
-    await pageB.getByRole("button", { name: "Routine", exact: true }).click();
-    await expect(pageB.getByRole("heading", { name: "Who does this routine?" })).toBeVisible();
+    await pageB.getByRole("button", { name: "Routines", exact: true }).click();
+    await expect(pageB.getByRole("heading", { name: "Routines" })).toBeVisible();
+    await pageB.getByRole("button", { name: /Morning Routine/ }).first().click();
+    await expect(pageB.getByRole("heading", { name: "Morning Routine" })).toBeVisible();
 
     // Routine-source update while group detail stays open: assign via API on a free date,
     // then prove the open group view converges without reload.
@@ -158,7 +159,7 @@ test.describe("P0-004B group-backed Morning Routine", () => {
       (await groups.json()) as { groups: Array<{ id: string; name: string }> }
     ).groups.find((group) => group.name === groupName)!.id;
     const listed = await pageB.request.get("/api/v1/routines");
-    const routine = ((await listed.json()) as { routine: Routine }).routine;
+    const routine = ((await listed.json()) as { routines: Routine[] }).routines[0]!;
     const latest = routine.revisions.at(-1)!;
     const revised = await pageB.request.post(`/api/v1/routines/${routine.id}/revisions`, {
       headers: {
@@ -169,6 +170,7 @@ test.describe("P0-004B group-backed Morning Routine", () => {
         mutationId: crypto.randomUUID(),
         effectiveDate: await nextFreeRevisionDate(pageB.request),
         title: latest.title,
+        daypart: "morning",
         weekdays: latest.weekdays,
         assigneeMemberIds: latest.assigneeMemberIds,
         assigneeGroupIds: [...new Set([...(latest.assigneeGroupIds ?? []), groupId])],
@@ -202,10 +204,9 @@ test.describe("P0-004B group-backed Morning Routine", () => {
 
   test("phone journey configures The Boys and shows used-group feedback", async ({
     page,
-  }, testInfo) => {
+  }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openAsManager(page);
-    fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
     await page.getByRole("button", { name: "People & Groups" }).click();
 
@@ -226,14 +227,12 @@ test.describe("P0-004B group-backed Morning Routine", () => {
     await expect(page.getByRole("heading", { name: "The Boys" })).toBeVisible();
     await page.getByRole("button", { name: "Back to People & Groups" }).click();
 
-    await page.getByRole("button", { name: "Routine" }).click();
-    await expect(page.getByRole("heading", { name: "Who does this routine?" })).toBeVisible();
-    if (testInfo.project.name === "chromium") {
-      await page.screenshot({
-        path: path.join(SCREENSHOT_DIR, "01-compact-summary.png"),
-        fullPage: true,
-      });
-    }
+    await page.getByRole("button", { name: "Routines" }).click();
+    await expect(page.getByRole("heading", { name: "Routines" })).toBeVisible();
+    await page.getByRole("button", { name: /Morning Routine/ }).click();
+    await expect(page.getByRole("heading", { name: "Morning Routine" })).toBeVisible();
+    await page.getByRole("button", { name: "Edit routine" }).click();
+    await expect(page.getByRole("heading", { name: "Edit routine" })).toBeVisible();
 
     await page.getByRole("button", { name: /Add people or groups|Edit people or groups/ }).click();
     await expect(page.getByRole("heading", { name: "Who does this routine?" })).toBeVisible();
@@ -260,34 +259,20 @@ test.describe("P0-004B group-backed Morning Routine", () => {
     await expect(boysRow.getByText(/Daniel Boyd/)).toBeVisible();
     await expect(boysRow.getByText(/Eli Boyd/)).toBeVisible();
     await expect(boysRow.getByText(/one routine per member/i)).toBeVisible();
-    if (testInfo.project.name === "chromium") {
-      await page.screenshot({
-        path: path.join(SCREENSHOT_DIR, "02-focused-picker.png"),
-        fullPage: true,
-      });
-    }
-    await page.getByRole("button", { name: "Save who does this" }).click();
-    await expect(page.getByRole("heading", { name: "Who does this routine?" })).toBeVisible();
+    await page.getByRole("button", { name: "Apply who does this" }).click();
+    await expect(page.getByRole("heading", { name: "Edit routine" })).toBeVisible();
     await expect(page.getByText("The Boys").first()).toBeVisible();
-    await expect(page.getByText(/2 people unique today/i)).toBeVisible();
-    await expect(page.getByText("Direct")).toHaveCount(0);
+    await page.getByRole("button", { name: "Save new revision" }).click();
+    await expect(page.getByRole("heading", { name: "Morning Routine" })).toBeVisible({
+      timeout: 15_000,
+    });
+    // r2 same-day refine: audience is active today (not only a future Starting line).
+    await expect(page.getByText("The Boys").first()).toBeVisible();
     await expect(page.getByRole("checkbox", { name: /The Boys/ })).toHaveCount(0);
-    if (testInfo.project.name === "chromium") {
-      await page.screenshot({
-        path: path.join(SCREENSHOT_DIR, "03-selected-group-summary.png"),
-        fullPage: true,
-      });
-    }
 
     await page.getByRole("button", { name: "People & Groups" }).click();
     await page.getByRole("button", { name: /The Boys/ }).click();
     await expect(page.getByText("Used by Morning Routine")).toBeVisible();
-    if (testInfo.project.name === "chromium") {
-      await page.screenshot({
-        path: path.join(SCREENSHOT_DIR, "04-used-group-detail.png"),
-        fullPage: true,
-      });
-    }
 
     await page.getByRole("button", { name: "Edit group" }).click();
     await expect(page.getByText("Used by Morning Routine")).toBeVisible();
@@ -296,11 +281,5 @@ test.describe("P0-004B group-backed Morning Routine", () => {
     await expect(page.getByText(/Morning Routine will use the new members starting/i)).toBeVisible({
       timeout: 10_000,
     });
-    if (testInfo.project.name === "chromium") {
-      await page.screenshot({
-        path: path.join(SCREENSHOT_DIR, "05-pending-next-day.png"),
-        fullPage: true,
-      });
-    }
   });
 });

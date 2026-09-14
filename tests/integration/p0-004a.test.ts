@@ -109,6 +109,7 @@ describe("P0-004A people, groups, and access", () => {
     store.createRoutine(manager.context, {
       mutationId: randomUUID(),
       title: "Morning Routine",
+      daypart: "morning",
       assigneeMemberIds: [IDS.avery],
       assigneeGroupIds: [],
       weekdays: [1, 2, 3, 4, 5, 6, 7],

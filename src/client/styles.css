@@ -647,6 +647,59 @@ textarea {
   border-top: 1px solid var(--line);
 }
 
+.routine-card-list {
+  list-style: none;
+  margin: 1rem 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.routine-card {
+  width: 100%;
+  min-height: var(--touch);
+  padding: 0.85rem 1rem;
+  border: 2px solid var(--line);
+  border-radius: 0.45rem;
+  background: var(--panel);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.routine-card:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.routines-view .routine-card .person-name {
+  font-size: 1.05rem;
+}
+
+.routines-view .routine-card-upcoming {
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.routines-view .routine-upcoming {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.routines-view .routine-upcoming-title {
+  margin: 0.35rem 0 0.15rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.routines-view .routine-upcoming-steps-heading {
+  margin: 0.85rem 0 0.35rem;
+  font-size: 1rem;
+}
+
 @media (max-width: 420px) {
   .app-shell {
     padding: 0.75rem 0.75rem 2.5rem;

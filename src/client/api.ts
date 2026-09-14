@@ -1,4 +1,5 @@
 import type {
+  Daypart,
   Grant,
   GrantPreset,
   MemberPublic,
@@ -48,25 +49,33 @@ export type RoutineStep = {
   obligation: ObligationMeaning;
   position: number;
   logicalItemId: string;
+  id?: string;
 };
 
+export type RoutineRevision = {
+  id: string;
+  effectiveDate: string;
+  title: string;
+  daypart: Daypart;
+  weekdays: number[];
+  createdAt: string;
+  steps: RoutineStep[];
+  /** Direct membership sources only. */
+  assigneeMemberIds: string[];
+  assigneeGroupIds: string[];
+  resolvedMemberIds?: string[];
+  upcomingResolvedMemberIds?: string[];
+  upcomingParticipationFromDate?: string | null;
+};
+
+/** Wire shape for a routine definition (RoutineDefinitionPublic). */
 export type Routine = {
   id: string;
-  kind: "morning";
-  revisions: Array<{
-    id: string;
-    effectiveDate: string;
-    title: string;
-    weekdays: number[];
-    createdAt: string;
-    steps: RoutineStep[];
-    /** Direct membership sources only. */
-    assigneeMemberIds: string[];
-    assigneeGroupIds: string[];
-    resolvedMemberIds?: string[];
-    upcomingResolvedMemberIds?: string[];
-    upcomingParticipationFromDate?: string | null;
-  }>;
+  version: number;
+  archived: boolean;
+  archiveCutoffDate: string | null;
+  archivedAt: string | null;
+  revisions: RoutineRevision[];
 };
 
 export type PersonalAddition = {
@@ -108,6 +117,8 @@ export type Proposal = {
   id: string;
   householdId: string;
   membershipId: string;
+  definitionId: string | null;
+  associationStatus?: "resolved" | "unresolved";
   text: string;
   obligation: ObligationMeaning;
   anchorLogicalItemId: string | null;
@@ -137,6 +148,22 @@ type AdditionInput = {
   obligation: ObligationMeaning;
   anchorLogicalItemId?: string | null;
   place: "before" | "after" | "end";
+};
+
+type RoutineMutationBody = {
+  mutationId: string;
+  title: string;
+  daypart: Daypart;
+  assigneeMemberIds?: string[];
+  assigneeGroupIds?: string[];
+  weekdays: number[];
+  steps: Array<{
+    text: string;
+    obligation: ObligationMeaning;
+    logicalItemId?: string;
+  }>;
+  expectedVersion?: number;
+  effectiveDate?: string;
 };
 
 async function parseJson<T>(res: Response): Promise<T> {
@@ -351,46 +378,37 @@ export async function deleteGroup(groupId: string) {
   return request<{ ok: true }>(`/api/v1/groups/${groupId}`, { method: "DELETE" });
 }
 
-export async function fetchRoutine() {
-  return request<{ routine: Routine | null }>("/api/v1/routines");
+export async function fetchRoutines(includeArchived = false) {
+  const query = includeArchived ? "?includeArchived=1" : "";
+  return request<{ routines: Routine[] }>(`/api/v1/routines${query}`);
 }
 
-export async function createRoutine(body: {
-  mutationId: string;
-  title: string;
-  assigneeMemberIds?: string[];
-  assigneeGroupIds?: string[];
-  weekdays: number[];
-  steps: Array<{
-    text: string;
-    obligation: ObligationMeaning;
-    logicalItemId?: string;
-  }>;
-}) {
+export async function fetchRoutine(definitionId: string) {
+  return request<{ routine: Routine }>(
+    `/api/v1/routines/${encodeURIComponent(definitionId)}`,
+  );
+}
+
+export async function createRoutine(body: RoutineMutationBody) {
   return request<{ routine: Routine }>("/api/v1/routines", {
     method: "POST",
     body: JSON.stringify(body),
   });
 }
 
-export async function createRevision(
-  definitionId: string,
-  body: {
-    mutationId: string;
-    title: string;
-    assigneeMemberIds?: string[];
-    assigneeGroupIds?: string[];
-    weekdays: number[];
-    steps: Array<{
-      text: string;
-      obligation: ObligationMeaning;
-      logicalItemId?: string;
-    }>;
-    effectiveDate?: string;
-  },
-) {
+export async function createRevision(definitionId: string, body: RoutineMutationBody) {
   return request<{ routine: Routine }>(
     `/api/v1/routines/${encodeURIComponent(definitionId)}/revisions`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+export async function archiveRoutine(
+  definitionId: string,
+  body: { mutationId: string; expectedVersion: number },
+) {
+  return request<{ routine: Routine }>(
+    `/api/v1/routines/${encodeURIComponent(definitionId)}/archive`,
     { method: "POST", body: JSON.stringify(body) },
   );
 }
@@ -423,24 +441,33 @@ export async function setStepStatus(
   );
 }
 
-export async function savePersonalLayer(additions: AdditionInput[]) {
+export async function savePersonalLayer(
+  definitionId: string,
+  additions: AdditionInput[],
+) {
   return request<{ layer: PersonalLayer }>("/api/v1/personal-layer", {
     method: "PUT",
-    body: JSON.stringify({ additions }),
+    body: JSON.stringify({ definitionId, additions }),
   });
 }
 
-export async function fetchPreview(membershipId?: string, date?: string) {
+export async function fetchPreview(
+  definitionId: string,
+  membershipId?: string,
+  date?: string,
+) {
   const params = new URLSearchParams();
+  params.set("definitionId", definitionId);
   if (membershipId) params.set("membershipId", membershipId);
   if (date) params.set("date", date);
-  const query = params.size ? `?${params.toString()}` : "";
   return request<{ preview: RoutinePreview }>(
-    `/api/v1/personal-layer/preview${query}`,
+    `/api/v1/personal-layer/preview?${params.toString()}`,
   );
 }
 
-export async function createProposal(body: Omit<AdditionInput, "id">) {
+export async function createProposal(
+  body: Omit<AdditionInput, "id"> & { definitionId: string },
+) {
   return request<{ proposal: Proposal }>("/api/v1/proposals", {
     method: "POST",
     body: JSON.stringify(body),

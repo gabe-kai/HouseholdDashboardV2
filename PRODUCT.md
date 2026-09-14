@@ -26,7 +26,8 @@ Household work is shared, but responsibility, execution, and authority are not i
 
 Describe observable outcomes rather than implementation tasks.
 
-- A real recurring Morning Routine remains easy to execute rapidly on a phone.
+- A parent can create and manage multiple real household routines, including Morning, After School, and Bedtime, with independent people/groups, schedules, dayparts, steps, and history.
+- Each member can execute every applicable routine rapidly on a phone; completing one routine does not complete another.
 - Six people use distinct authenticated identities within one shared household.
 - Household managers retain shared-routine authority while selected children can customize directly and others can propose changes for approval.
 - Personal changes affect only the intended member and future occurrences; shared changes continue to flow without cloning the entire routine.
@@ -37,18 +38,23 @@ Describe observable outcomes rather than implementation tasks.
 
 What do users or operators need to accomplish repeatedly?
 
-1. A household manager defines and prospectively revises the shared Morning Routine.
+1. A household manager opens Routines, creates a named routine, chooses its people/groups, weekdays and daypart, and adds ordered steps. Opening an existing routine shows a read-first summary; editing is explicit.
 2. A member signs in, sees their own Today view, and checks off assigned routine items with immediate feedback.
-3. A directly authorized member adds and orders personal routine items; a restricted member proposes an item and a manager approves or rejects it.
+3. A directly authorized member adds and orders personal items for a selected routine; a restricted member proposes an item for that routine and a manager approves or rejects it.
 4. Any member creates and completes a basic personal task with private or household-visible scope.
 5. A manager moves among their own Today view, household routine status, and pending approvals.
 6. Household members inspect past occurrences without later routine, permission, or membership changes rewriting them.
+7. A manager archives an unused routine while retaining its history and an inspectable archived record.
 
 ## Product behavior
 
 Record behavior that matters to users, including important states, decisions, feedback, and edge cases.
 
-The shared Morning Routine is a household-owned base. Personal routine content is layered over that base for one membership rather than copied into an independent routine. For this milestone, inherited shared items remain protected; directly authorized members may add and reorder their own personal additions, and proposal-authorized members may request an addition. An approved proposal affects future applicable occurrences only and retains proposer, decision maker, and decision time.
+A routine is a household-owned, repeatable ordered checklist for selected people on certain days at a meaningful part of the day. Names are household-defined; Morning Routine is an ordinary instance, not a special routine type. Each routine has independent configuration and history. Group selections retain their relationship to the group; membership changes flow to every consuming routine starting on the next household day while today and history remain stable.
+
+Personal routine content is layered over one selected routine for one membership rather than copied into an independent routine. For this milestone, inherited shared items remain protected; directly authorized members may add and reorder their own personal additions, and proposal-authorized members may request an addition. An approved proposal affects that member's future applicable occurrences of that routine only and retains proposer, decision maker, and decision time.
+
+P0-005 uses Every day, Weekdays, Weekends, and Custom days, with Morning, After school, Evening, Bedtime, and Anytime dayparts. Dayparts convey order without requiring exact times. Creation follows four human questions: name, who, when, and steps. Routines opens to a compact list, with focused summary/create/edit states instead of stacked editors. Today must make every applicable routine independently executable; the richer next/later/urgency experience is subsequent work. Archive preserves previous occurrences and stops future participation; exact lifecycle boundaries are specified in the implementation brief. Duplicate and restore conveniences are optional future work.
 
 Today remains phone-first. Completed work is quiet, the current responsibility is actionable, and later work is visible without dominating the screen. Controls reflect the signed-in member's authority, but server authorization—not hidden controls—decides what is allowed. Checklist taps remain optimistic and durable through ordinary transient disconnection, with committed state reconciling across household devices.
 
@@ -90,13 +96,15 @@ Examples include clarity, responsiveness, accuracy, reliability, explainability,
 ## Explicitly wanted
 
 - Capability-based authority attached to household membership, not inferred from age.
-- One shared base routine with per-member future-effective personalization.
+- Multiple independent shared base routines with per-member, per-routine future-effective personalization.
 - A narrow propose/approve/reject flow for personal additions.
 - Independent personal task creation for every authenticated member.
 - Private and household-visible personal work.
 - Practical secure access from multiple real phones.
 
-## Explicitly out of scope
+## Explicitly out of the current implementation scope
+
+These are deferrals, not rejected product ideas. The inventory below preserves their intended direction.
 
 - Generalized chore rotation, eligibility, helper assignment, swaps, cover, claims, or chore debt.
 - Skip Days, retrospective completion, complete notifications, or calendar ingestion.
@@ -111,6 +119,41 @@ Examples include clarity, responsiveness, accuracy, reliability, explainability,
 - When personal removal is introduced, which shared items may be removable and how should that be communicated?
 - Which account-recovery experience is appropriate for adults and children after the first family evaluation?
 - What should the product retain, export, or delete when a person eventually leaves a household?
+
+## Deferred / Preserved Product Directions
+
+Recorded from Product's P0-005 handoff by Architecture as a writeback of supplied product intent. These directions are wanted or intentionally preserved for future consideration; they are unscheduled unless separately promoted. They are not implementation briefs, promised sequence, target dates, issues, or instructions to build speculative abstractions. CURRENT and LIKELY NEXT live in `ROADMAP.md`.
+
+- **Contextual scheduling:** School mornings/nights, weekend mornings/nights, no-school tomorrow, holidays, and school-calendar exceptions. Friday morning may be school context while Friday evening is weekend context; Sunday evening may be school context while its morning is weekend context. Do not model one global context per date. School/work calendars may eventually inform these distinctions.
+- **Exact times and timezones:** Responsibilities may have exact due times, dayparts, or no time. Household responsibilities stay anchored to the household timezone while devices travel; a future display may show both “6:00 PM home time” and “3:00 PM where you are.” Personal-task timezone policy remains separately resolvable.
+- **Multi-Responsibility Today:** Completed/past work compact and quiet; next actionable work expanded; later work visible at intermediate detail; untimed work under Anytime Today; timed work in time order; a moving current-time indicator where appropriate; urgency communicated through more than color. Useful anchors include Morning, Before School, After School, Dinner, After Dinner, Bedtime, and Anytime Today.
+- **Ordinary household responsibilities:** Kitchen, Bathroom, Cats, Cars, Lawn care, and Trash, described in family language. They must not require users to understand a rule engine.
+- **Base checklists with contextual additions:** Kitchen's daily base plus Weekly Deep Clean on the appropriate day, without duplicated near-identical chores. Additions, overrides, or omissions can follow evidence. Future schedules must be easy to change, such as Friday summer deep cleaning moving to Saturday during school, while past occurrences retain prior rules.
+- **Assignment patterns:** Fixed people, rotation, eligibility sets, exclusions, alternating patterns, and custom schedules. Recurrence and assignment are distinct: a routine may produce one occurrence per group member, while Cats occurs once for the household with a rotating accountable person.
+- **Helpers:** One accountable person with one or more supporting people. On Eli's Cats day another child helps; helper rotation may differ from primary rotation.
+- **Kitchen assignment example:** Most Kitchen days go to the oldest two children; a lighter day may go to a younger child; the youngest may be excluded; weekly deep clean alternates among selected older children. Preserve this example until real multi-responsibility use justifies assignment rules.
+- **Critical work and Skip Day:** Preserve Required, As needed, and Optional, and consider a stronger non-skippable/critical concept for medication, essential pet care, and trash pickup. Parents should be able to suspend ordinary work for a family outing while critical work remains, with feedback such as “12 responsibilities skipped; 3 still require attention.” Exact terminology remains open.
+- **Optional chore debt:** Unfinished work may roll forward, but this is off by default. Earlier experience showed that debt forgiveness can create excessive daily administration.
+- **Swaps, reassignment, and approvals:** Members may exchange or reassign work with authority-dependent request/approval paths. Original assignment remains knowable.
+- **Cover and performance credit:** Someone can do another person's work and receive credit. If Daniel was accountable for litter and Sarah cleaned it, both facts survive; do not rewrite original assignment.
+- **Exploratory household economy:** Older children may request or record exchanges such as “I'll do X if you do Y.” This is exploratory and requires deliberate design before implementation.
+- **Retrospective completion:** A person may report “I did that yesterday.” Preserve claimed performance time separately from recorded time; parents may allow direct claims or require approval per child. Do not algorithmically accuse users of dishonesty.
+- **Rich execution history:** Retain expected work, originally accountable person, helpers, actual performers, step completion, claimed performance time, recorded time, and resulting state as distinct facts.
+- **Growing authority:** Capability settings, not age, govern control. Younger children may propose changes; older children may manage their own routine or contribute to shared content; parents retain required obligations. Authority can grow without rebuilding identity.
+- **Richer personal work:** Tasks, due dates, recurring personal routines, time-of-day work, reminders, laundry timers, renovation/project lists. Children remain active organizers rather than only recipients of assigned work.
+- **Homework:** Due dates, multi-day progress, assignments, independent child entry, and appropriate privacy. Siblings do not automatically receive access to one another's homework.
+- **Visibility and sharing:** Private/household-visible work may expand to selected people, permitted other households, or broader sharing. Visibility stays separate from ownership and assignment.
+- **Pet care:** Preparation such as thawing frozen food the previous day, feeding, litter, flea/tick medication, food/litter quantity tracking, and multi-day dependencies beyond one daily checkbox.
+- **Meals:** Meal scheduling/planning, recipes, family ratings, rankings, and preferences remain adjacent scope outside the current responsibility loop.
+- **Presence across households:** Alternating mom/dad homes, college, temporary absence, custom presence schedules, backup responsibility, and participation in more than one household context.
+- **Departure and portability:** Personal work should be able to follow a child leaving home or moving to college. Household-owned responsibilities stay with the originating household and may become unassigned; prior history remains trustworthy. General departure/archival is future work.
+- **External calendar context:** School calendars, holidays, work schedules, and household calendar information may inform responsibilities without becoming the sole source of historical truth.
+- **Notifications:** Routine and due-time reminders, timer completion, and push notifications should follow observed household need rather than blanket alerting.
+- **Offline and installability:** Stronger offline-first behavior, offline first load, PWA/installability, and clearer retry visibility may extend the current durable-mutation foundation.
+- **Broader-release operations:** Production-quality recovery, account recovery, stronger backup/restore confidence, privacy hardening, operational monitoring, and deployment reliability beyond current family-evaluation evidence.
+- **Family privacy:** Children's identities, routines, personal tasks, homework, and completion history remain private family data. Intentional visibility must survive expansion; household membership does not imply every sibling sees all data.
+- **Experience and tone:** Calm, native-feeling, phone-first, neither corporate nor childish, useful as children grow, with subtle personality/customization and satisfying checklists. No gamification unless deliberately chosen later.
+- **Authoring conveniences:** Duplicate a routine as a starting point for a weekday/weekend variation, and restore an archived routine when a safe lifecycle is designed. These conveniences do not precede proving independent routine definitions.
 
 ## Evaluation discoveries
 

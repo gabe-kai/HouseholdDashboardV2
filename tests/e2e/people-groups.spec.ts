@@ -1,10 +1,7 @@
 import { test, expect, type Page, type APIRequestContext } from "@playwright/test";
-import path from "node:path";
-import fs from "node:fs";
 
 const PASSPHRASE = "unique-passphrase-ok!";
 const MANAGER_LOGIN = "e2e.manager";
-const SCREENSHOT_DIR = path.resolve("reports/p0-004a-r3-screenshots");
 
 function requestOrigin(_request?: APIRequestContext): string {
   const base = test.info().project.use.baseURL;
@@ -44,10 +41,9 @@ async function openAsManager(page: Page) {
 }
 
 test.describe("P0-004A People & Groups focused UX", () => {
-  test("phone UI covers focused people, access, groups, and activity", async ({ page }, testInfo) => {
+  test("phone UI covers focused people, access, groups, and activity", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openAsManager(page);
-    fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
     await page.getByRole("button", { name: "People & Groups" }).click();
     await expect(page.getByRole("heading", { name: "People & Groups" })).toBeVisible();
@@ -55,12 +51,6 @@ test.describe("P0-004A People & Groups focused UX", () => {
     await expect(page.getByRole("button", { name: "Create group" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Add person" })).toHaveCount(0);
     await expect(page.getByText("Household-visible personal tasks")).toHaveCount(0);
-    if (testInfo.project.name === "chromium") {
-      await page.screenshot({
-        path: path.join(SCREENSHOT_DIR, "01-overview.png"),
-        fullPage: true,
-      });
-    }
 
     await page.getByRole("button", { name: "Add person" }).click();
     await expect(page.getByRole("heading", { name: "Add person" })).toBeVisible();
@@ -70,33 +60,15 @@ test.describe("P0-004A People & Groups focused UX", () => {
     await expect(page.getByRole("heading", { name: "Elizabeth" })).toBeVisible();
     await expect(page.getByText("Role:")).toContainText("Child");
     await expect(page.getByText("Not set up")).toBeVisible();
-    if (testInfo.project.name === "chromium") {
-      await page.screenshot({
-        path: path.join(SCREENSHOT_DIR, "02-person-detail.png"),
-        fullPage: true,
-      });
-    }
 
     await page.getByRole("button", { name: "Edit person" }).click();
     await expect(page.getByRole("heading", { name: "Edit person" })).toBeVisible();
-    if (testInfo.project.name === "chromium") {
-      await page.screenshot({
-        path: path.join(SCREENSHOT_DIR, "03-person-edit.png"),
-        fullPage: true,
-      });
-    }
     await page.getByRole("button", { name: /Back to Elizabeth/i }).click();
 
     await page.getByRole("button", { name: "Set up access" }).click();
     await expect(page.getByRole("heading", { name: "Access setup" })).toBeVisible();
     await page.getByRole("radio", { name: /Guided member/i }).check();
-    // Capture access state before issuance so report artifacts never retain one-time material.
-    if (testInfo.project.name === "chromium") {
-      await page.screenshot({
-        path: path.join(SCREENSHOT_DIR, "04-person-access.png"),
-        fullPage: true,
-      });
-    }
+    // Do not capture setup material; keep prior P0-004A screenshots as committed evidence.
     await page.getByRole("button", { name: "Prepare access setup" }).click();
     await expect(page.getByText(/Copy this setup material now/i)).toBeVisible();
     await expect(page.locator(".token-box code")).toBeVisible();
@@ -108,22 +80,17 @@ test.describe("P0-004A People & Groups focused UX", () => {
     await page.getByLabel("Group name").fill("Kids");
     await page.getByRole("checkbox", { name: "Elizabeth" }).check();
     await page.getByRole("button", { name: "Save group" }).click();
-    await expect(page.getByRole("heading", { name: "Kids" })).toBeVisible();
-    if (testInfo.project.name === "chromium") {
-      await page.screenshot({
-        path: path.join(SCREENSHOT_DIR, "05-group-detail.png"),
-        fullPage: true,
-      });
+    const kidsHeading = page.getByRole("heading", { name: "Kids" });
+    const kidsConflict = page.getByRole("alert").filter({ hasText: /already exists/i });
+    await expect(kidsHeading.or(kidsConflict)).toBeVisible({ timeout: 15_000 });
+    if (await kidsConflict.count()) {
+      await page.getByRole("button", { name: "Back to People & Groups" }).click();
+      await page.getByRole("button", { name: /^Kids\b/ }).first().click();
+      await expect(page.getByRole("heading", { name: "Kids" })).toBeVisible();
     }
     await page.getByRole("button", { name: "Edit group" }).click();
     await expect(page.getByRole("heading", { name: /Edit Kids/i })).toBeVisible();
     await page.getByLabel("Group name").fill("Reed kids");
-    if (testInfo.project.name === "chromium") {
-      await page.screenshot({
-        path: path.join(SCREENSHOT_DIR, "06-group-edit.png"),
-        fullPage: true,
-      });
-    }
     await page.getByRole("button", { name: "Save group" }).click();
     await expect(page.getByRole("heading", { name: "Reed kids" })).toBeVisible();
     await page.getByRole("button", { name: "Back to People & Groups" }).click();

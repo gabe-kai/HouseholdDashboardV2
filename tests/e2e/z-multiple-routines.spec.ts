@@ -1,6 +1,7 @@
 import { test, expect, type Page, type APIRequestContext } from "@playwright/test";
 import path from "node:path";
 import fs from "node:fs";
+import { durableScreenshot } from "../helpers/durable-screenshot";
 
 const PASSPHRASE = "unique-passphrase-ok!";
 const MANAGER_LOGIN = "e2e.manager";
@@ -131,10 +132,7 @@ test.describe("P0-005 multiple household routines", () => {
     await expect(page.getByRole("heading", { name: /Routines/i })).toBeVisible();
     await expect(page.getByText(/Morning Routine/i).first()).toBeVisible();
     if (testInfo.project.name === "chromium") {
-      await page.screenshot({
-        path: path.join(SCREENSHOT_DIR, "01-routines-list.png"),
-        fullPage: true,
-      });
+      await durableScreenshot(page, path.join(SCREENSHOT_DIR, "01-routines-list.png"));
     }
 
     // Create After School
@@ -143,10 +141,7 @@ test.describe("P0-005 multiple household routines", () => {
     await page.getByLabel("Daypart").selectOption("after_school");
     await page.getByRole("button", { name: /Add people or groups|Edit people or groups/ }).click();
     if (testInfo.project.name === "chromium") {
-      await page.screenshot({
-        path: path.join(SCREENSHOT_DIR, "02-audience-picker.png"),
-        fullPage: true,
-      });
+      await durableScreenshot(page, path.join(SCREENSHOT_DIR, "02-audience-picker.png"));
     }
     const groupsBox = page.locator("fieldset").filter({ hasText: "Groups" });
     if (await groupsBox.getByRole("checkbox", { name: /Kids/ }).count()) {
@@ -169,10 +164,7 @@ test.describe("P0-005 multiple household routines", () => {
       timeout: 15_000,
     });
     if (testInfo.project.name === "chromium") {
-      await page.screenshot({
-        path: path.join(SCREENSHOT_DIR, "03-after-school-detail.png"),
-        fullPage: true,
-      });
+      await durableScreenshot(page, path.join(SCREENSHOT_DIR, "03-after-school-detail.png"));
     }
     await page.getByRole("button", { name: /Back to Routines/i }).click();
 
@@ -203,10 +195,7 @@ test.describe("P0-005 multiple household routines", () => {
     await expect(page.getByRole("button", { name: /^Bedtime/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /Morning Routine/i })).toBeVisible();
     if (testInfo.project.name === "chromium") {
-      await page.screenshot({
-        path: path.join(SCREENSHOT_DIR, "04-routines-list-three.png"),
-        fullPage: true,
-      });
+      await durableScreenshot(page, path.join(SCREENSHOT_DIR, "04-routines-list-three.png"));
     }
 
     await page.getByRole("button", { name: "Today", exact: true }).click();
@@ -214,10 +203,7 @@ test.describe("P0-005 multiple household routines", () => {
       timeout: 15_000,
     });
     if (testInfo.project.name === "chromium") {
-      await page.screenshot({
-        path: path.join(SCREENSHOT_DIR, "05-today-multi.png"),
-        fullPage: true,
-      });
+      await durableScreenshot(page, path.join(SCREENSHOT_DIR, "05-today-multi.png"));
     }
 
     // Archive Bedtime (native confirm)
@@ -227,10 +213,63 @@ test.describe("P0-005 multiple household routines", () => {
     await page.getByRole("button", { name: "Archive routine" }).click();
     await expect(page.getByText(/Archived/i).first()).toBeVisible({ timeout: 10_000 });
     if (testInfo.project.name === "chromium") {
-      await page.screenshot({
-        path: path.join(SCREENSHOT_DIR, "06-archived-detail.png"),
-        fullPage: true,
-      });
+      await durableScreenshot(page, path.join(SCREENSHOT_DIR, "06-archived-detail.png"));
+    }
+  });
+
+  test("rename and step edits are discoverable after future-effective save", async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openAsManager(page);
+
+    await page.getByRole("button", { name: "Routines", exact: true }).click();
+    await page.getByRole("button", { name: /Morning Routine/ }).first().click();
+    await expect(page.getByRole("heading", { name: "Morning Routine" })).toBeVisible();
+    await page.getByRole("button", { name: "Edit routine" }).click();
+    await expect(page.getByRole("heading", { name: "Edit routine" })).toBeVisible();
+
+    const renamed = `Morning Checklist ${Date.now().toString(36)}`;
+    await page.getByLabel("Name").fill(renamed);
+    const firstStep = page.locator(".step-editor").first();
+    await firstStep.locator("input").fill("Stretch quietly");
+    // Keep at least one required step (validation rule); change a later step's obligation.
+    const secondStep = page.locator(".step-editor").nth(1);
+    await secondStep.locator("input").fill("Pack soft lunch");
+    await secondStep.locator("select").selectOption("optional");
+    await page.getByRole("button", { name: "Save new revision" }).click();
+
+    await expect(
+      page.getByRole("status").filter({ hasText: /Takes effect \d{4}-\d{2}-\d{2}/ }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("status").filter({ hasText: /Takes effect/ })).toContainText(
+      renamed,
+    );
+    await expect(page.getByRole("heading", { name: "Morning Routine" })).toBeVisible();
+    await expect(page.getByText(/Active today/i)).toBeVisible();
+    await expect(page.locator(".routine-upcoming-title").filter({ hasText: renamed })).toBeVisible();
+    await expect(page.locator(".routine-upcoming").filter({ hasText: renamed })).toContainText(
+      "Stretch quietly",
+    );
+    await expect(page.locator(".routine-upcoming").filter({ hasText: renamed })).toContainText(
+      "Pack soft lunch",
+    );
+    await expect(page.locator(".routine-upcoming").filter({ hasText: renamed })).toContainText(
+      "Optional",
+    );
+
+    // Today's steps still show the prior shared text (immutable today).
+    await expect(page.getByRole("heading", { name: "Today's steps" })).toBeVisible();
+    await expect(page.locator(".preview-list").first()).toContainText("Make bed");
+
+    await page.getByRole("button", { name: "Back to Routines" }).click();
+    const card = page.getByRole("button", { name: new RegExp(`Morning Routine[\\s\\S]*Starting .+${renamed}`) });
+    await expect(card).toBeVisible();
+    if (testInfo.project.name === "chromium") {
+      fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
+      await durableScreenshot(page, path.join(SCREENSHOT_DIR, "07-future-edit-list.png"));
+      await card.click();
+      await durableScreenshot(page, path.join(SCREENSHOT_DIR, "08-future-edit-detail.png"));
     }
   });
 });

@@ -152,6 +152,16 @@ function latestRevision(routine: Routine): RoutineRevision | null {
   return routine.revisions.at(-1) ?? null;
 }
 
+function futureRevisions(revisions: RoutineRevision[], today: string): RoutineRevision[] {
+  return revisions.filter((revision) => revision.effectiveDate > today);
+}
+
+function obligationLabel(obligation: RoutineRevision["steps"][number]["obligation"]): string {
+  if (obligation === "as_needed") return "As needed";
+  if (obligation === "required") return "Required";
+  return "Optional";
+}
+
 function draftFromRevision(revision: RoutineRevision): Draft {
   return {
     title: revision.title,
@@ -404,11 +414,23 @@ export function RoutinesView(props: {
       setDetailRoutine(result.routine);
       await loadList();
       const latest = latestRevision(result.routine);
-      setStatusMessage(
-        latest
-          ? `Saved. Changes take effect ${latest.effectiveDate}.`
-          : "Saved.",
-      );
+      const takesEffect = latest?.effectiveDate;
+      const savedTitle = latest?.title?.trim();
+      if (mode === "create") {
+        setStatusMessage(
+          savedTitle && takesEffect
+            ? `Created “${savedTitle}”. Active from ${takesEffect}.`
+            : "Created.",
+        );
+      } else if (savedTitle && takesEffect && takesEffect > props.today) {
+        setStatusMessage(
+          `Saved “${savedTitle}”. Takes effect ${takesEffect}. Today’s checklist is unchanged until then.`,
+        );
+      } else if (savedTitle && takesEffect) {
+        setStatusMessage(`Saved “${savedTitle}”. Active from ${takesEffect}.`);
+      } else {
+        setStatusMessage("Saved.");
+      }
       setView({ kind: "detail", definitionId: result.routine.id });
       props.onSaved(result.routine);
     } catch (caught) {
@@ -820,7 +842,7 @@ export function RoutinesView(props: {
       ? selectRevisionForDate(routine.revisions, props.today)
       : null;
     const upcomingRevisions = routine
-      ? routine.revisions.filter((revision) => revision.effectiveDate > props.today)
+      ? futureRevisions(routine.revisions, props.today)
       : [];
     const title =
       todayRevision?.title ??
@@ -850,12 +872,13 @@ export function RoutinesView(props: {
                 </p>
               ) : null}
               <p className="meta">
-                {DAYPART_LABELS[todayRevision.daypart]} · {weekdaysLabel(todayRevision.weekdays)}
+                Active today · {DAYPART_LABELS[todayRevision.daypart]} ·{" "}
+                {weekdaysLabel(todayRevision.weekdays)}
                 {todayRevision.effectiveDate !== props.today
                   ? ` · configuration from ${todayRevision.effectiveDate}`
                   : ""}
               </p>
-              <h3>Who</h3>
+              <h3>Who today</h3>
               <p>{whoSummary(todayRevision, props.memberships, groups)}</p>
               <p className="meta">
                 {(todayRevision.resolvedMemberIds ?? []).length}{" "}
@@ -870,32 +893,42 @@ export function RoutinesView(props: {
                   {todayRevision.upcomingResolvedMemberIds.length === 1 ? "person" : "people"} unique
                 </p>
               ) : null}
-              {upcomingRevisions.map((upcoming) => (
-                <div key={upcoming.id}>
-                  <p className="meta">
-                    Starting {upcoming.effectiveDate}: {upcoming.title} ·{" "}
-                    {DAYPART_LABELS[upcoming.daypart]} · {weekdaysLabel(upcoming.weekdays)}
-                  </p>
-                  <p className="meta">
-                    Starting {upcoming.effectiveDate}: {whoSummary(upcoming, props.memberships, groups)}
-                  </p>
-                </div>
-              ))}
-              <h3>Steps</h3>
+              <h3>Today&apos;s steps</h3>
               <ol className="preview-list">
                 {todayRevision.steps.map((step) => (
                   <li key={step.id ?? step.logicalItemId}>
                     <strong>{step.text}</strong>
-                    <div className="meta">
-                      {step.obligation === "as_needed"
-                        ? "As needed"
-                        : step.obligation === "required"
-                          ? "Required"
-                          : "Optional"}
-                    </div>
+                    <div className="meta">{obligationLabel(step.obligation)}</div>
                   </li>
                 ))}
               </ol>
+              {upcomingRevisions.map((upcoming) => (
+                <section
+                  key={upcoming.id}
+                  className="routine-upcoming"
+                  aria-labelledby={`upcoming-${upcoming.id}-heading`}
+                >
+                  <h3 id={`upcoming-${upcoming.id}-heading`}>
+                    Starting {upcoming.effectiveDate}
+                  </h3>
+                  <p className="routine-upcoming-title">{upcoming.title}</p>
+                  <p className="meta">
+                    {DAYPART_LABELS[upcoming.daypart]} · {weekdaysLabel(upcoming.weekdays)}
+                  </p>
+                  <p className="meta">
+                    Who: {whoSummary(upcoming, props.memberships, groups)}
+                  </p>
+                  <h4 className="routine-upcoming-steps-heading">Steps from that date</h4>
+                  <ol className="preview-list">
+                    {upcoming.steps.map((step) => (
+                      <li key={step.id ?? step.logicalItemId}>
+                        <strong>{step.text}</strong>
+                        <div className="meta">{obligationLabel(step.obligation)}</div>
+                      </li>
+                    ))}
+                  </ol>
+                </section>
+              ))}
               <div className="button-row">
                 {!routine.archived ? (
                   <>
@@ -981,6 +1014,8 @@ export function RoutinesView(props: {
             {routines.map((routine) => {
               const revision =
                 selectRevisionForDate(routine.revisions, props.today) ?? latestRevision(routine);
+              const upcoming = futureRevisions(routine.revisions, props.today);
+              const nextChange = upcoming.at(-1) ?? null;
               if (!revision) return null;
               return (
                 <li key={routine.id}>
@@ -997,6 +1032,11 @@ export function RoutinesView(props: {
                     <span className="meta">
                       {weekdaysLabel(revision.weekdays)} · {DAYPART_LABELS[revision.daypart]}
                     </span>
+                    {nextChange ? (
+                      <span className="meta routine-card-upcoming">
+                        Starting {nextChange.effectiveDate}: {nextChange.title}
+                      </span>
+                    ) : null}
                   </button>
                 </li>
               );

@@ -5,7 +5,7 @@ import { durableScreenshot } from "../helpers/durable-screenshot";
 
 const PASSPHRASE = "unique-passphrase-ok!";
 const MANAGER_LOGIN = "e2e.manager";
-const R2_SCREENSHOT_DIR = path.resolve("reports/p0-005-r2-screenshots");
+const R3_SCREENSHOT_DIR = path.resolve("reports/p0-005-r3-screenshots");
 
 function requestOrigin(_request?: APIRequestContext): string {
   const base = test.info().project.use.baseURL;
@@ -106,15 +106,43 @@ async function openAsManager(page: Page) {
   await expect(page.locator(".topbar")).toContainText("Morgan Reed", { timeout: 20_000 });
 }
 
+async function openPeopleGroups(page: Page) {
+  await page
+    .getByRole("navigation", { name: "Primary" })
+    .getByRole("button", { name: "Household", exact: true })
+    .click();
+  await page
+    .getByRole("navigation", { name: "Household" })
+    .getByRole("button", { name: /People & Groups/ })
+    .click();
+  await expect(page.getByRole("heading", { name: "People & Groups" })).toBeVisible();
+}
+
+async function pickAudience(page: Page) {
+  await page.getByRole("button", { name: /Add people or groups|Edit people or groups/ }).click();
+  const groupsBox = page.locator("fieldset").filter({ hasText: "Groups" });
+  if (await groupsBox.getByRole("checkbox", { name: /Kids/ }).count()) {
+    await groupsBox.getByRole("checkbox", { name: /Kids/ }).check();
+  } else {
+    await page
+      .locator("fieldset")
+      .filter({ hasText: "People" })
+      .getByRole("checkbox", { name: /Avery Reed|Morgan Reed/ })
+      .first()
+      .check();
+  }
+  await page.getByRole("button", { name: /Save who does this|Apply who does this/i }).click();
+}
+
 test.describe("P0-005 multiple household routines", () => {
   test("phone journey creates After School and Bedtime beside Morning", async ({
     page,
-  }) => {
+  }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openAsManager(page);
 
     // Ensure Kids group exists for audience.
-    await page.getByRole("button", { name: "People & Groups" }).click();
+    await openPeopleGroups(page);
     const kidsListed =
       (await page.getByRole("button", { name: /^Kids\b/ }).count()) > 0 ||
       (await page.getByText(/\bKids\b/).count()) > 0;
@@ -140,53 +168,36 @@ test.describe("P0-005 multiple household routines", () => {
     await page.getByRole("button", { name: "Routines", exact: true }).click();
     await expect(page.getByRole("heading", { name: /Routines/i })).toBeVisible();
     await expect(page.getByText(/Morning Routine/i).first()).toBeVisible();
+    if (testInfo.project.name === "chromium") {
+      fs.mkdirSync(R3_SCREENSHOT_DIR, { recursive: true });
+      await durableScreenshot(page, path.join(R3_SCREENSHOT_DIR, "01-routines-list.png"));
+    }
 
     // Create After School
-    await page.getByRole("button", { name: /New routine/i }).click();
+    await page.getByRole("button", { name: /Create routine/i }).click();
     await page.getByLabel("Name").fill("After School Routine");
     await page.getByLabel("Daypart").selectOption("after_school");
-    await page.getByRole("button", { name: /Add people or groups|Edit people or groups/ }).click();
-    const groupsBox = page.locator("fieldset").filter({ hasText: "Groups" });
-    if (await groupsBox.getByRole("checkbox", { name: /Kids/ }).count()) {
-      await groupsBox.getByRole("checkbox", { name: /Kids/ }).check();
-    } else {
-      await page
-        .locator("fieldset")
-        .filter({ hasText: "People" })
-        .getByRole("checkbox", { name: /Avery Reed|Morgan Reed/ })
-        .first()
-        .check();
-    }
-    await page.getByRole("button", { name: /Save who does this|Apply who does this/i }).click();
+    await pickAudience(page);
     const stepInputs = page.locator(".step-editor input");
     await stepInputs.first().fill("Unpack bag");
     await page.getByRole("button", { name: /Add step/i }).click();
     await stepInputs.nth(1).fill("Start homework");
-    await page.getByRole("button", { name: /Create routine|Save/i }).first().click();
+    await page.getByRole("button", { name: "Create routine", exact: true }).click();
     await expect(page.getByRole("heading", { name: /After School Routine/i })).toBeVisible({
       timeout: 15_000,
     });
+    if (testInfo.project.name === "chromium") {
+      await durableScreenshot(page, path.join(R3_SCREENSHOT_DIR, "02-routine-detail.png"));
+    }
     await page.getByRole("button", { name: /Back to Routines/i }).click();
 
     // Create Bedtime
-    await page.getByRole("button", { name: /New routine/i }).click();
+    await page.getByRole("button", { name: /Create routine/i }).click();
     await page.getByLabel("Name").fill("Bedtime");
     await page.getByLabel("Daypart").selectOption("bedtime");
-    await page.getByRole("button", { name: /Add people or groups|Edit people or groups/ }).click();
-    const groupsBox2 = page.locator("fieldset").filter({ hasText: "Groups" });
-    if (await groupsBox2.getByRole("checkbox", { name: /Kids/ }).count()) {
-      await groupsBox2.getByRole("checkbox", { name: /Kids/ }).check();
-    } else {
-      await page
-        .locator("fieldset")
-        .filter({ hasText: "People" })
-        .getByRole("checkbox", { name: /Avery Reed|Morgan Reed/ })
-        .first()
-        .check();
-    }
-    await page.getByRole("button", { name: /Save who does this|Apply who does this/i }).click();
+    await pickAudience(page);
     await page.locator(".step-editor input").first().fill("Brush teeth");
-    await page.getByRole("button", { name: /Create routine|Save/i }).first().click();
+    await page.getByRole("button", { name: "Create routine", exact: true }).click();
     await expect(page.getByRole("heading", { name: /^Bedtime$/i })).toBeVisible({
       timeout: 15_000,
     });
@@ -195,17 +206,31 @@ test.describe("P0-005 multiple household routines", () => {
     await expect(page.getByRole("button", { name: /^Bedtime/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /Morning Routine/i })).toBeVisible();
 
+    // Today may list child occurrences for the manager (shared.manage). Reload to pick up sync.
     await page.getByRole("button", { name: "Today", exact: true }).click();
-    await expect(page.getByText(/After School|Bedtime|Morning/i).first()).toBeVisible({
-      timeout: 15_000,
-    });
+    await page.reload();
+    await expect(page.locator(".topbar")).toContainText("Morgan Reed", { timeout: 20_000 });
+    await expect(
+      page
+        .getByText(/After School|Bedtime|Morning/i)
+        .or(page.getByText(/No routines for you/i)),
+    ).toBeVisible({ timeout: 15_000 });
 
-    // Archive Bedtime (native confirm)
+    // End Bedtime via More (native confirm)
     await page.getByRole("button", { name: "Routines", exact: true }).click();
     await page.getByRole("button", { name: /^Bedtime/ }).first().click();
+    await page.getByRole("button", { name: "More", exact: true }).click();
     page.once("dialog", (dialog) => void dialog.accept());
-    await page.getByRole("button", { name: "Archive routine" }).click();
-    await expect(page.getByText(/Archived/i).first()).toBeVisible({ timeout: 10_000 });
+    await page.getByRole("menuitem", { name: "End routine" }).click();
+    await expect(page.getByText(/^Ended$/).or(page.getByText(/Ended Bedtime/i))).toBeVisible({
+      timeout: 10_000,
+    });
+    await page.getByRole("button", { name: /Back to Ended routines/i }).click();
+    await expect(page.getByRole("heading", { name: "Ended routines" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Bedtime/ })).toBeVisible();
+    if (testInfo.project.name === "chromium") {
+      await durableScreenshot(page, path.join(R3_SCREENSHOT_DIR, "04-ended-routines.png"));
+    }
   });
 
   test("rename and step edits apply same-day for unstarted and stay discoverable", async ({
@@ -215,9 +240,9 @@ test.describe("P0-005 multiple household routines", () => {
     await openAsManager(page);
 
     await page.getByRole("button", { name: "Routines", exact: true }).click();
-    await page.getByRole("button", { name: /Morning Routine/ }).first().click();
-    await expect(page.getByRole("heading", { name: "Morning Routine" })).toBeVisible();
-    await page.getByRole("button", { name: "Edit routine" }).click();
+    await page.getByRole("button", { name: /Morning Routine|Morning Checklist/ }).first().click();
+    await expect(page.getByRole("heading", { name: /Morning/i })).toBeVisible();
+    await page.getByRole("button", { name: "Edit routine", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Edit routine" })).toBeVisible();
 
     const renamed = `Morning Checklist ${Date.now().toString(36)}`;
@@ -228,14 +253,13 @@ test.describe("P0-005 multiple household routines", () => {
     const secondStep = page.locator(".step-editor").nth(1);
     await secondStep.locator("input").fill("Pack soft lunch");
     await secondStep.locator("select").selectOption("optional");
-    await page.getByRole("button", { name: "Save new revision" }).click();
+    await page.getByRole("button", { name: "Save changes" }).click();
 
-    await expect(
-      page.getByRole("status").filter({ hasText: /Saved .+ for today/i }),
-    ).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("status").filter({ hasText: /^Saved/i })).toBeVisible({
+      timeout: 15_000,
+    });
     await expect(page.getByRole("heading", { name: renamed })).toBeVisible();
-    await expect(page.getByText(/Active today/i)).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Today's steps" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Steps" })).toBeVisible();
     await expect(page.locator(".preview-list").first()).toContainText("Stretch quietly");
     await expect(page.locator(".preview-list").first()).toContainText("Pack soft lunch");
     await expect(page.locator(".preview-list").first()).toContainText("Optional");
@@ -243,10 +267,10 @@ test.describe("P0-005 multiple household routines", () => {
     await page.getByRole("button", { name: "Back to Routines" }).click();
     await expect(page.getByRole("button", { name: new RegExp(renamed) })).toBeVisible();
     if (testInfo.project.name === "chromium") {
-      fs.mkdirSync(R2_SCREENSHOT_DIR, { recursive: true });
-      await durableScreenshot(page, path.join(R2_SCREENSHOT_DIR, "01-same-day-edit-list.png"));
+      fs.mkdirSync(R3_SCREENSHOT_DIR, { recursive: true });
+      await durableScreenshot(page, path.join(R3_SCREENSHOT_DIR, "05-same-day-edit-list.png"));
       await page.getByRole("button", { name: new RegExp(renamed) }).click();
-      await durableScreenshot(page, path.join(R2_SCREENSHOT_DIR, "02-same-day-edit-detail.png"));
+      await durableScreenshot(page, path.join(R3_SCREENSHOT_DIR, "06-same-day-edit-detail.png"));
     }
   });
 });

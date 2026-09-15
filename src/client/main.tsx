@@ -4,6 +4,7 @@ import { App } from "./App";
 import "./styles.css";
 
 if (import.meta.env.DEV) {
+  // Compact Local development indicator (badge + top stripe); same warm theme as release.
   document.documentElement.dataset.appEnv = "development";
 }
 

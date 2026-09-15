@@ -44,7 +44,7 @@ What do users or operators need to accomplish repeatedly?
 4. Any member creates and completes a basic personal task with private or household-visible scope.
 5. A manager moves among their own Today view, household routine status, and pending approvals.
 6. Household members inspect past occurrences without later routine, permission, or membership changes rewriting them.
-7. A manager archives an unused routine while retaining its history and an inspectable archived record.
+7. A manager deletes accidental unused routines when safe, or ends a routine while preserving work already begun and its history.
 
 ## Product behavior
 
@@ -54,11 +54,26 @@ A routine is a household-owned, repeatable ordered checklist for selected people
 
 Personal routine content is layered over one selected routine for one membership rather than copied into an independent routine. For this milestone, inherited shared items remain protected; directly authorized members may add and reorder their own personal additions, and proposal-authorized members may request an addition. An approved proposal affects that member's future applicable occurrences of that routine only and retains proposer, decision maker, and decision time.
 
-P0-005 uses Every day, Weekdays, Weekends, and Custom days, with Morning, After school, Evening, Bedtime, and Anytime dayparts. Dayparts convey order without requiring exact times. Creation follows four human questions: name, who, when, and steps. Routines opens to a compact list, with focused summary/create/edit states instead of stacked editors. Today must make every applicable routine independently executable; the richer next/later/urgency experience is subsequent work. Archive preserves previous occurrences and stops future participation; exact lifecycle boundaries are specified in the implementation brief. Duplicate and restore conveniences are optional future work.
+P0-005 uses Every day, Weekdays, Weekends, and Custom days, with Morning, After school, Evening, Bedtime, and Anytime dayparts. Dayparts convey order without requiring exact times. Creation follows four human questions: name, who, when, and steps. Routines opens to a compact list, with focused summary/create/edit states instead of stacked editors. Today must make every applicable routine independently executable; the richer next/later/urgency experience is subsequent work. The r3 routine lifecycle below supersedes the earlier archive-only workflow. Duplicate and restore conveniences are optional future work.
 
 Today remains phone-first. Completed work is quiet, the current responsibility is actionable, and later work is visible without dominating the screen. Controls reflect the signed-in member's authority, but server authorization—not hidden controls—decides what is allowed. Checklist taps remain optimistic and durable through ordinary transient disconnection, with committed state reconciling across household devices.
 
 Personal tasks are intentionally thin in P0-002: one owner, a title, open/completed state, and private or household-visible scope. Due dates, recurrence, reminders, projects, and generalized workflow are later concerns.
+
+### P0-005 r3 - Cohesive routine management and Calm Household
+
+Recorded by Architecture from the supplied Planning & Design r3 proposal as a recorder of Product intent. This is desired behavior; implementation and Product acceptance remain separate.
+
+- **Today is editable until work begins.** Prospective/editable work includes applicable unstarted occurrences today and later, even when already generated. The first committed checklist action locks one person's occurrence permanently; undo does not unlock it. Different children may start independently. Started/completed work and historical records remain trustworthy.
+- **Edit the current plan normally.** Save changes updates every applicable unstarted occurrence from today until the next intentional scheduled change. It must not require choosing an effective date for every edit or leave stale future work because it was generated early. Current detail shows how the routine works now, never an internal revision chain.
+- **Schedule deliberately.** Schedule for later reveals Starting. Upcoming changes appear only when present; each can be edited repeatedly at the same date, moved, or deleted through ordinary UI. Date conflicts require an explicit choice. Deleting B between current A and later C lets A continue until C's unchanged start. No compensating revision is required to remove a mistake.
+- **Correct and end routines.** A parent can delete an accidental/test routine when it has no protected execution/history. End routine stops prospective unstarted work and upcoming changes while retaining protected work/history. Infrequent actions live under More. Removing/reordering a checklist step is normal editing; locked copies retain it.
+- **View normally. Edit intentionally.** Read-only detail uses quiet ordered rows, concise people/schedule summaries, and an explicit Edit action. The focused editor organizes Name, When, Who, Steps. Confirm consequential deletion/end and discarding unsaved edits; normal saves/step edits need no repeated confirmations. Feedback is compact and explains the actual effect on unstarted versus started people.
+- **One coherent application.** Calm Household means warm, restrained, light surfaces; hierarchy through typography and spacing; consistent accents, controls, notices, focus, and touch behavior. Shared presentation reaches existing Today, Routines, Household, People & Groups, Approvals, History, and supporting screens. It is a modest reusable foundation, not a branding exercise or generic design-system package.
+- **Navigation expresses purpose.** Today is daily execution; Routines manages plans; Household provides structure and oversight. Use compact phone navigation with secondary management destinations and no empty future tabs. Preserve existing personal work and authority paths. Do not build the full Multi-Responsibility Today hierarchy in r3.
+- **Evaluate the connected experience.** Product judges whether the app feels coherent, routines are understandable without an admin form, mistakes are removable, today's unstarted work is easy to change, and destructive actions are available without dominating. Keep P0-005 CURRENT until that evaluation. Automated evidence and screenshots support, but do not replace, this judgment.
+
+The full deferred inventory below remains preserved and unscheduled. Its future domains inform the shared visual/navigation foundation without becoming r3 implementation work.
 
 ## Inputs, outputs, and interfaces
 

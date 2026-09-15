@@ -34,7 +34,12 @@ function writeStoredCsrf(token: string): void {
 /** Survives Vite HMR; empty until login/claim/session restore. */
 let csrfToken = readStoredCsrf();
 
-export type ApiError = Error & { code?: string; requestId?: string };
+export type ApiError = Error & {
+  code?: string;
+  requestId?: string;
+  conflictingScheduleEntryId?: string;
+  occupiedDate?: string;
+};
 
 export type SessionInfo = {
   member: { id: string; displayName: string };
@@ -75,7 +80,33 @@ export type Routine = {
   archived: boolean;
   archiveCutoffDate: string | null;
   archivedAt: string | null;
+  ended: boolean;
+  endMode: "legacy_archive" | "immediate" | null;
+  endedAt: string | null;
+  deletedAt?: string | null;
+  scheduleEntries: ScheduleEntry[];
   revisions: RoutineRevision[];
+};
+
+export type ScheduleEntry = {
+  id: string;
+  startDate: string;
+  revisionId: string;
+  canceledAt: string | null;
+  revision: RoutineRevision;
+};
+
+export type PlanRefineOutcome = {
+  fromDate: string;
+  untilDateExclusive: string | null;
+  updatedMemberIds: string[];
+  protectedMemberIds: string[];
+  excludedMemberIds: string[];
+};
+
+export type RoutineMutationResult = {
+  routine: Routine;
+  refineOutcome?: PlanRefineOutcome;
 };
 
 export type PersonalAddition = {
@@ -164,6 +195,8 @@ type RoutineMutationBody = {
   }>;
   expectedVersion?: number;
   effectiveDate?: string;
+  mode?: "current" | "schedule";
+  scheduleEntryId?: string;
 };
 
 async function parseJson<T>(res: Response): Promise<T> {
@@ -171,11 +204,15 @@ async function parseJson<T>(res: Response): Promise<T> {
     code?: string;
     message?: string;
     requestId?: string;
+    conflictingScheduleEntryId?: string;
+    occupiedDate?: string;
   };
   if (!res.ok) {
     const error = new Error(data.message ?? res.statusText) as ApiError;
     error.code = data.code;
     error.requestId = data.requestId;
+    error.conflictingScheduleEntryId = data.conflictingScheduleEntryId;
+    error.occupiedDate = data.occupiedDate;
     throw error;
   }
   return data;
@@ -397,7 +434,7 @@ export async function createRoutine(body: RoutineMutationBody) {
 }
 
 export async function createRevision(definitionId: string, body: RoutineMutationBody) {
-  return request<{ routine: Routine }>(
+  return request<RoutineMutationResult>(
     `/api/v1/routines/${encodeURIComponent(definitionId)}/revisions`,
     { method: "POST", body: JSON.stringify(body) },
   );
@@ -409,6 +446,48 @@ export async function archiveRoutine(
 ) {
   return request<{ routine: Routine }>(
     `/api/v1/routines/${encodeURIComponent(definitionId)}/archive`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+export async function endRoutine(
+  definitionId: string,
+  body: { mutationId: string; expectedVersion: number },
+) {
+  return request<RoutineMutationResult>(
+    `/api/v1/routines/${encodeURIComponent(definitionId)}/end`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+export async function deleteRoutine(
+  definitionId: string,
+  body: { mutationId: string; expectedVersion: number },
+) {
+  return request<{ deleted: true; definitionId: string }>(
+    `/api/v1/routines/${encodeURIComponent(definitionId)}/delete`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+export async function moveScheduleEntry(
+  definitionId: string,
+  scheduleEntryId: string,
+  body: { mutationId: string; expectedVersion: number; startDate: string },
+) {
+  return request<RoutineMutationResult>(
+    `/api/v1/routines/${encodeURIComponent(definitionId)}/schedule-entries/${encodeURIComponent(scheduleEntryId)}/move`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+export async function deleteScheduleEntry(
+  definitionId: string,
+  scheduleEntryId: string,
+  body: { mutationId: string; expectedVersion: number },
+) {
+  return request<RoutineMutationResult>(
+    `/api/v1/routines/${encodeURIComponent(definitionId)}/schedule-entries/${encodeURIComponent(scheduleEntryId)}/delete`,
     { method: "POST", body: JSON.stringify(body) },
   );
 }

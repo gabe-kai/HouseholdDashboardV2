@@ -56,14 +56,17 @@ import {
 } from "./outbox";
 import { newClientId } from "./id";
 
-type Tab =
-  | "today"
-  | "household"
+type PrimaryTab = "today" | "routines" | "household";
+
+type HouseholdView =
+  | "menu"
+  | "people-groups"
   | "approvals"
-  | "routine"
   | "history"
-  | "personalize"
-  | "preview";
+  | "activity";
+
+/** Secondary destinations reached from Today (not primary nav). */
+type TodaySecondary = "personalize" | "preview" | null;
 
 type ChangeFeedback = {
   message: string;
@@ -71,6 +74,42 @@ type ChangeFeedback = {
   effectiveDate: string;
   definitionId?: string;
 };
+
+const HOUSEHOLD_MENU_ITEMS: Array<{
+  view: Exclude<HouseholdView, "menu">;
+  label: string;
+  description: string;
+  visible: (caps: {
+    canDecide: boolean;
+    canManageShared: boolean;
+    canViewActivity: boolean;
+  }) => boolean;
+}> = [
+  {
+    view: "people-groups",
+    label: "People & Groups",
+    description: "Directory, access, and groups",
+    visible: () => true,
+  },
+  {
+    view: "approvals",
+    label: "Approvals",
+    description: "Review personalization proposals",
+    visible: (caps) => caps.canDecide,
+  },
+  {
+    view: "history",
+    label: "History",
+    description: "Past occurrence checklists",
+    visible: (caps) => caps.canManageShared,
+  },
+  {
+    view: "activity",
+    label: "Household activity",
+    description: "Shared progress and visible tasks",
+    visible: (caps) => caps.canViewActivity,
+  },
+];
 
 function hasGrant(session: SessionInfo, grant: Grant): boolean {
   return session.grants.includes(grant);
@@ -105,7 +144,10 @@ export function App() {
   } | null>(null);
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [restoring, setRestoring] = useState(true);
-  const [tab, setTab] = useState<Tab>("today");
+  const [primaryTab, setPrimaryTab] = useState<PrimaryTab>("today");
+  const [householdView, setHouseholdView] = useState<HouseholdView>("menu");
+  const [todaySecondary, setTodaySecondary] = useState<TodaySecondary>(null);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [occurrences, setOccurrences] = useState<OccurrenceView[]>([]);
   const [memberships, setMemberships] = useState<MemberPublic[]>([]);
   const [tasks, setTasks] = useState<PersonalTask[]>([]);
@@ -148,20 +190,27 @@ export function App() {
     setError(null);
   }
 
+  function resetNavigation() {
+    setPrimaryTab("today");
+    setHouseholdView("menu");
+    setTodaySecondary(null);
+    setAccountMenuOpen(false);
+  }
+
   function establishSession(next: SessionInfo) {
     if (identityRef.current !== next.member.id) clearUiCaches();
     identityRef.current = next.member.id;
     rememberCsrfToken(next.csrfToken);
     setSession(next);
     setHouseholdDate(next.householdDate);
-    setTab("today");
+    resetNavigation();
   }
 
   function expireSession() {
     identityRef.current = null;
     setSession(null);
     clearUiCaches();
-    setTab("today");
+    resetNavigation();
   }
 
   const refreshToday = useEffectEvent(async (membershipId: string, date?: string) => {
@@ -408,7 +457,7 @@ export function App() {
     } finally {
       setSession(null);
       clearUiCaches();
-      setTab("today");
+      resetNavigation();
     }
   }
 
@@ -448,7 +497,8 @@ export function App() {
       const result = await fetchPreview(definitionId, membershipId, date);
       if (identityRef.current !== session?.member.id) return;
       setPreview(result.preview);
-      setTab("preview");
+      setPrimaryTab("today");
+      setTodaySecondary("preview");
     } catch (caught) {
       setError(errorMessage(caught));
     }
@@ -479,6 +529,7 @@ export function App() {
   const manager = canManageShared || canEnroll || canDecide || canManageStructure;
   const canDirect = hasGrant(activeSession, "routine.personalize.direct");
   const canPropose = hasGrant(activeSession, "routine.personalize.propose");
+  const canPersonalize = canDirect || canPropose;
   const projectedOccurrences = occurrences.map((occurrence) =>
     reconcileOccurrence(occurrence, outbox),
   );
@@ -487,31 +538,90 @@ export function App() {
   );
   const pendingCount = outbox.filter((item) => item.state !== "rejected").length;
 
-  function selectTab(next: Tab) {
-    setTab(next);
-    if (next === "personalize" || next === "approvals") {
+  function selectPrimaryTab(next: PrimaryTab) {
+    setPrimaryTab(next);
+    setTodaySecondary(null);
+    setAccountMenuOpen(false);
+    if (next === "household") {
+      setHouseholdView("menu");
+    }
+    if (next === "household" && canDecide) {
       void refreshSupportingData(activeSession);
     }
   }
 
+  function openHouseholdView(view: HouseholdView) {
+    setHouseholdView(view);
+    if (view === "approvals") {
+      void refreshSupportingData(activeSession);
+    }
+  }
+
+  function openPersonalize() {
+    setPrimaryTab("today");
+    setTodaySecondary("personalize");
+    void refreshSupportingData(activeSession);
+  }
+
+  const showRoutinesTab = canManageShared;
+  const householdCaps = {
+    canDecide,
+    canManageShared,
+    canViewActivity: manager,
+  };
+  const visibleHouseholdItems = HOUSEHOLD_MENU_ITEMS.filter((item) =>
+    item.visible(householdCaps),
+  );
+
+  const showingTodayContent = primaryTab === "today" && todaySecondary === null;
+  const showingPersonalize = primaryTab === "today" && todaySecondary === "personalize";
+  const showingPreview = primaryTab === "today" && todaySecondary === "preview";
+
   return (
-    <main className="app-shell">
+    <main className="app-shell has-bottom-nav">
       {meta?.evaluationMode ? (
         <div className="eval-banner" role="status">
           {meta.banner}
         </div>
       ) : null}
       <header className="topbar">
-        <div>
+        <div className="topbar-identity">
           <strong>{session.member.displayName}</strong>
           <div className="meta">
             Signed in · Household date {householdDate || session.householdDate} ·{" "}
             {session.householdTimezone}
           </div>
         </div>
-        <button type="button" className="ghost" onClick={() => void signOut()}>
-          Sign out
-        </button>
+        <div className="topbar-tools">
+          <span className="dev-indicator" role="status">
+            Local development
+          </span>
+          <div className="account-menu">
+            <button
+              type="button"
+              className="account-menu-trigger"
+              aria-expanded={accountMenuOpen}
+              aria-haspopup="menu"
+              onClick={() => setAccountMenuOpen((open) => !open)}
+            >
+              Account
+            </button>
+            {accountMenuOpen ? (
+              <div className="account-menu-panel" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setAccountMenuOpen(false);
+                    void signOut();
+                  }}
+                >
+                  Sign out
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
       </header>
 
       <div className="status-line" aria-live="polite">
@@ -544,50 +654,41 @@ export function App() {
         ) : null}
       </div>
 
-      <nav className="nav" aria-label="Primary">
-        <NavButton tab="today" current={tab} onSelect={selectTab}>
+      <nav className="primary-nav primary-nav--top" aria-label="Primary">
+        <PrimaryNavButton tab="today" current={primaryTab} onSelect={selectPrimaryTab}>
           Today
-        </NavButton>
-        <NavButton tab="household" current={tab} onSelect={selectTab}>
-          People &amp; Groups
-        </NavButton>
-        {manager ? (
-          <>
-            {canDecide ? (
-              <NavButton tab="approvals" current={tab} onSelect={selectTab}>
-                Approvals
-              </NavButton>
-            ) : null}
-            {canManageShared ? (
-              <>
-                <NavButton tab="routine" current={tab} onSelect={selectTab}>
-                  Routines
-                </NavButton>
-                <NavButton tab="history" current={tab} onSelect={selectTab}>
-                  History
-                </NavButton>
-              </>
-            ) : null}
-          </>
+        </PrimaryNavButton>
+        {showRoutinesTab ? (
+          <PrimaryNavButton
+            tab="routines"
+            current={primaryTab}
+            onSelect={selectPrimaryTab}
+          >
+            Routines
+          </PrimaryNavButton>
         ) : null}
-        {canDirect || canPropose ? (
-          <NavButton tab="personalize" current={tab} onSelect={selectTab}>
-            Personalize
-          </NavButton>
-        ) : null}
+        <PrimaryNavButton
+          tab="household"
+          current={primaryTab}
+          onSelect={selectPrimaryTab}
+        >
+          Household
+        </PrimaryNavButton>
       </nav>
 
-      {feedback && tab !== "preview" ? (
+      {feedback && !showingPreview ? (
         <ChangeNotice feedback={feedback} onPreview={openPreview} />
       ) : null}
 
-      {tab === "today" ? (
+      {showingTodayContent ? (
         <TodayView
           occurrences={projectedOwn}
           tasks={tasks.filter((task) => task.ownerMembershipId === session.member.id)}
           expanded={expanded}
           setExpanded={setExpanded}
           canExecute={hasGrant(session, "routine.execute.own")}
+          canPersonalize={canPersonalize}
+          onOpenPersonalize={openPersonalize}
           onStepChange={queueStepChange}
           onTasksChanged={(next) =>
             setTasks((current) => [
@@ -597,24 +698,82 @@ export function App() {
           }
         />
       ) : null}
-      {tab === "household" ? (
+      {primaryTab === "routines" && canManageShared ? (
+        <RoutinesView
+          memberships={memberships}
+          today={householdDate || session.householdDate}
+          refreshToken={routineRefreshToken}
+          onSaved={() => {
+            setRoutineRefreshToken((n) => n + 1);
+            void refreshToday(session.member.id);
+          }}
+          onEnded={() => {
+            setRoutineRefreshToken((n) => n + 1);
+            void refreshToday(session.member.id);
+          }}
+          onDeleted={() => {
+            setRoutineRefreshToken((n) => n + 1);
+            void refreshToday(session.member.id);
+          }}
+        />
+      ) : null}
+      {primaryTab === "household" && householdView === "menu" ? (
+        <section>
+          <h1 className="page-heading">Household</h1>
+          <p className="page-subcopy">
+            People, structure, and oversight for this household.
+          </p>
+          <nav className="household-nav" aria-label="Household">
+            {visibleHouseholdItems.map((item) => (
+              <button
+                key={item.view}
+                type="button"
+                className="list-row"
+                onClick={() => openHouseholdView(item.view)}
+              >
+                <span>{item.label}</span>
+                <span className="meta">{item.description}</span>
+              </button>
+            ))}
+          </nav>
+        </section>
+      ) : null}
+      {primaryTab === "household" && householdView === "people-groups" ? (
         <PeopleGroupsView
           memberships={memberships}
           tasks={tasks.filter((task) => task.visibility === "household")}
           occurrences={projectedOccurrences}
           canManageStructure={canManageStructure}
           canEnroll={canEnroll}
-          canViewActivity={manager}
+          canViewActivity={false}
+          entry="overview"
+          onExit={() => setHouseholdView("menu")}
           onPeopleChanged={() => {
             if (activeSession) void refreshSupportingData(activeSession);
           }}
         />
       ) : null}
-      {tab === "approvals" && canDecide ? (
+      {primaryTab === "household" && householdView === "activity" && manager ? (
+        <PeopleGroupsView
+          memberships={memberships}
+          tasks={tasks.filter((task) => task.visibility === "household")}
+          occurrences={projectedOccurrences}
+          canManageStructure={canManageStructure}
+          canEnroll={canEnroll}
+          canViewActivity={false}
+          entry="activity"
+          onExit={() => setHouseholdView("menu")}
+          onPeopleChanged={() => {
+            if (activeSession) void refreshSupportingData(activeSession);
+          }}
+        />
+      ) : null}
+      {primaryTab === "household" && householdView === "approvals" && canDecide ? (
         <ApprovalsView
           proposals={proposals}
           memberships={memberships}
           today={householdDate || session.householdDate}
+          onBack={() => setHouseholdView("menu")}
           onChanged={(next) => {
             setProposals((current) =>
               current.map((proposal) => (proposal.id === next.id ? next : proposal)),
@@ -630,48 +789,15 @@ export function App() {
           }
         />
       ) : null}
-      {tab === "routine" && canManageShared ? (
-        <RoutinesView
-          memberships={memberships}
-          today={householdDate || session.householdDate}
-          refreshToken={routineRefreshToken}
-          onSaved={(routine) => {
-            const today = householdDate || session.householdDate;
-            const saved =
-              routine.revisions.find((revision) => revision.effectiveDate === today) ??
-              routine.revisions.at(-1);
-            if (saved) {
-              setFeedback({
-                message: `"${saved.title}" was saved.`,
-                membershipId:
-                  saved.resolvedMemberIds?.[0] ??
-                  saved.assigneeMemberIds[0] ??
-                  session.member.id,
-                effectiveDate: saved.effectiveDate,
-                definitionId: routine.id,
-              });
-            }
-            setRoutineRefreshToken((n) => n + 1);
-            void refreshToday(session.member.id);
-          }}
-          onArchived={(routine) => {
-            setRoutineRefreshToken((n) => n + 1);
-            void refreshToday(session.member.id);
-            const title = routine.revisions.at(-1)?.title ?? "Routine";
-            setFeedback({
-              message: `"${title}" was archived.`,
-              membershipId: session.member.id,
-              effectiveDate: householdDate || session.householdDate,
-              definitionId: routine.id,
-            });
-          }}
+      {primaryTab === "household" && householdView === "history" && canManageShared ? (
+        <HistoryView
+          initialDate={householdDate}
+          onBack={() => setHouseholdView("menu")}
         />
       ) : null}
-      {tab === "history" && canManageShared ? (
-        <HistoryView initialDate={householdDate} />
-      ) : null}
-      {tab === "personalize" && canDirect ? (
+      {showingPersonalize && canDirect ? (
         <DirectPersonalization
+          onBack={() => setTodaySecondary(null)}
           onPreview={(definitionId) =>
             void openPreview(
               session.member.id,
@@ -689,37 +815,71 @@ export function App() {
           }
         />
       ) : null}
-      {tab === "personalize" && !canDirect && canPropose ? (
+      {showingPersonalize && !canDirect && canPropose ? (
         <ProposalPersonalization
           proposals={proposals}
+          onBack={() => setTodaySecondary(null)}
           onCreated={(proposal) => setProposals((current) => [proposal, ...current])}
         />
       ) : null}
-      {tab === "personalize" && !canDirect && !canPropose ? (
+      {showingPersonalize && !canDirect && !canPropose ? (
         <section className="panel">
-          <h1>Personalize</h1>
-          <p role="status">
+          <button
+            type="button"
+            className="back-link"
+            onClick={() => setTodaySecondary(null)}
+          >
+            Back to Today
+          </button>
+          <h1 className="page-heading">Personalize</h1>
+          <p className="status-notice" role="status">
             This account cannot add personal routine items. Ask a manager to enroll with a
             personalizer preset.
           </p>
         </section>
       ) : null}
-      {tab === "preview" && preview ? (
-        <PreviewView preview={preview} onBack={() => setTab(feedback ? "personalize" : "today")} />
+      {showingPreview && preview ? (
+        <PreviewView
+          preview={preview}
+          onBack={() => setTodaySecondary(feedback ? "personalize" : null)}
+        />
       ) : null}
+
+      <nav className="primary-nav primary-nav--bottom" aria-label="Primary">
+        <PrimaryNavButton tab="today" current={primaryTab} onSelect={selectPrimaryTab}>
+          Today
+        </PrimaryNavButton>
+        {showRoutinesTab ? (
+          <PrimaryNavButton
+            tab="routines"
+            current={primaryTab}
+            onSelect={selectPrimaryTab}
+          >
+            Routines
+          </PrimaryNavButton>
+        ) : null}
+        <PrimaryNavButton
+          tab="household"
+          current={primaryTab}
+          onSelect={selectPrimaryTab}
+        >
+          Household
+        </PrimaryNavButton>
+      </nav>
     </main>
   );
 }
 
-function NavButton(props: {
-  tab: Tab;
-  current: Tab;
-  onSelect: (tab: Tab) => void;
+function PrimaryNavButton(props: {
+  tab: PrimaryTab;
+  current: PrimaryTab;
+  onSelect: (tab: PrimaryTab) => void;
   children: string;
 }) {
   return (
     <button
       type="button"
+      className="nav-item"
       aria-current={props.current === props.tab ? "page" : undefined}
       onClick={() => props.onSelect(props.tab)}
     >
@@ -766,7 +926,9 @@ function AuthScreen(props: {
       ) : null}
       <section className="panel auth-panel">
         <p className="eyebrow">Household Dashboard</p>
-        <h1>{mode === "login" ? "Sign in" : "Claim your household account"}</h1>
+        <h1 className="page-heading">
+          {mode === "login" ? "Sign in" : "Claim your household account"}
+        </h1>
         <form className="form-grid" onSubmit={submit}>
           {mode === "claim" ? (
             <>
@@ -842,15 +1004,28 @@ function TodayView(props: {
   expanded: Record<string, boolean>;
   setExpanded: Dispatch<SetStateAction<Record<string, boolean>>>;
   canExecute: boolean;
+  canPersonalize: boolean;
+  onOpenPersonalize: () => void;
   onStepChange: (occurrenceId: string, stepId: string, status: StepStatus) => void;
   onTasksChanged: (tasks: PersonalTask[]) => void;
 }) {
   return (
     <>
       <section>
-        <h1>Today</h1>
+        <h1 className="page-heading">Today</h1>
+        {props.canPersonalize ? (
+          <div className="today-actions">
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={props.onOpenPersonalize}
+            >
+              Personalize
+            </button>
+          </div>
+        ) : null}
         {props.occurrences.length === 0 ? (
-          <div className="panel">
+          <div className="empty-state">
             <p>No routines for you on this household date.</p>
           </div>
         ) : (
@@ -1072,7 +1247,7 @@ function ChangeNotice(props: {
   onPreview: (membershipId: string, date: string, definitionId: string) => void;
 }) {
   return (
-    <div className="change-notice" role="status">
+    <div className="change-notice status-notice" role="status">
       <div>
         <strong>{props.feedback.message}</strong>
         <div>Effective {props.feedback.effectiveDate}.</div>
@@ -1169,6 +1344,7 @@ function AdditionFields(props: {
 }
 
 function DirectPersonalization(props: {
+  onBack: () => void;
   onPreview: (definitionId: string) => void;
   onSaved: (layer: {
     membershipId: string;
@@ -1227,7 +1403,10 @@ function DirectPersonalization(props: {
 
   return (
     <section className="panel">
-      <h1>Personalize settings</h1>
+      <button type="button" className="back-link" onClick={props.onBack}>
+        Back to Today
+      </button>
+      <h1 className="page-heading">Personalize settings</h1>
       <p className="meta">
         Choose an active routine, then add and arrange your own items. Inherited shared items remain
         protected.
@@ -1346,6 +1525,7 @@ function DirectPersonalization(props: {
 
 function ProposalPersonalization(props: {
   proposals: Proposal[];
+  onBack: () => void;
   onCreated: (proposal: Proposal) => void;
 }) {
   const [routines, setRoutines] = useState<Routine[]>([]);
@@ -1414,7 +1594,10 @@ function ProposalPersonalization(props: {
 
   return (
     <section className="panel">
-      <h1>Propose a personal item</h1>
+      <button type="button" className="back-link" onClick={props.onBack}>
+        Back to Today
+      </button>
+      <h1 className="page-heading">Propose a personal item</h1>
       <form className="form-grid" onSubmit={submit}>
         <label>
           Routine
@@ -1469,6 +1652,7 @@ function ApprovalsView(props: {
   proposals: Proposal[];
   memberships: MemberPublic[];
   today: string;
+  onBack: () => void;
   onChanged: (proposal: Proposal) => void;
   onApproved: (proposal: Proposal, effectiveDate: string) => void;
 }) {
@@ -1518,9 +1702,12 @@ function ApprovalsView(props: {
 
   return (
     <section>
-      <h1>Approvals</h1>
+      <button type="button" className="back-link" onClick={props.onBack}>
+        Back to Household
+      </button>
+      <h1 className="page-heading">Approvals</h1>
       {pending.length === 0 ? (
-        <div className="panel">
+        <div className="empty-state">
           <p>No pending proposals.</p>
         </div>
       ) : null}
@@ -1570,8 +1757,11 @@ function ApprovalsView(props: {
 function PreviewView(props: { preview: RoutinePreview; onBack: () => void }) {
   return (
     <section className="panel">
+      <button type="button" className="back-link" onClick={props.onBack}>
+        {props.preview ? "Close preview" : "Back"}
+      </button>
       <p className="eyebrow">Read-only preview</p>
-      <h1>{props.preview.title}</h1>
+      <h1 className="page-heading">{props.preview.title}</h1>
       <p className="meta">Effective view for {props.preview.householdDate}</p>
       <ol className="preview-list">
         {props.preview.steps.map((step) => (
@@ -1593,7 +1783,7 @@ function PreviewView(props: { preview: RoutinePreview; onBack: () => void }) {
   );
 }
 
-function HistoryView(props: { initialDate: string }) {
+function HistoryView(props: { initialDate: string; onBack: () => void }) {
   const [date, setDate] = useState(props.initialDate);
   const [occurrences, setOccurrences] = useState<OccurrenceView[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -1614,7 +1804,10 @@ function HistoryView(props: { initialDate: string }) {
 
   return (
     <section className="panel">
-      <h1>Occurrence history</h1>
+      <button type="button" className="back-link" onClick={props.onBack}>
+        Back to Household
+      </button>
+      <h1 className="page-heading">Occurrence history</h1>
       <label className="field-label">
         Household date
         <input

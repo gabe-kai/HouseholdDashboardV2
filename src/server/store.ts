@@ -3390,21 +3390,34 @@ export class AppStore {
     digest: string,
     response: unknown,
   ): void {
-    this.db
-      .prepare(
-        `INSERT INTO routine_mutation_receipts
-         (mutation_id, household_id, definition_id, kind, payload_digest, response_json, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        mutationId,
-        householdId,
-        definitionId,
-        kind,
-        digest,
-        JSON.stringify(response),
-        nowUtcIso(),
-      );
+    try {
+      this.db
+        .prepare(
+          `INSERT INTO routine_mutation_receipts
+           (mutation_id, household_id, definition_id, kind, payload_digest, response_json, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          mutationId,
+          householdId,
+          definitionId,
+          kind,
+          digest,
+          JSON.stringify(response),
+          nowUtcIso(),
+        );
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        /CHECK constraint failed/i.test(error.message)
+      ) {
+        fail(
+          "CONFLICT",
+          "Routine couldn't be updated; apply pending database migrations and retry",
+        );
+      }
+      throw error;
+    }
   }
 
   private validateRoutineInput(ctx: AuthContext, input: RoutineInput): void {

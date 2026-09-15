@@ -19,10 +19,14 @@ import {
   CreateProposalSchema,
   CreateRevisionSchema,
   CreateRoutineSchema,
+  DeleteRoutineSchema,
+  DeleteScheduleEntrySchema,
   DecideProposalSchema,
+  EndRoutineSchema,
   HouseholdDateSchema,
   IssueEnrollmentSchema,
   LoginSchema,
+  MoveScheduleEntrySchema,
   SavePersonalLayerSchema,
   SetPersonalTaskStatusSchema,
   SetStepStatusSchema,
@@ -524,9 +528,9 @@ export async function buildApp(
         .code(400)
         .send(errorBody("VALIDATION", "Invalid revision", request.id));
     }
-    const routine = store.createRevision(session, definitionId, parsed.data);
+    const result = store.createRevision(session, definitionId, parsed.data);
     broadcast(session, "routine", definitionId);
-    return { routine };
+    return result;
   });
 
   app.post("/api/v1/routines/:definitionId/archive", async (request, reply) => {
@@ -548,6 +552,114 @@ export async function buildApp(
     broadcast(session, "routine", definitionId);
     return { routine };
   });
+
+  app.post("/api/v1/routines/:definitionId/end", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const { definitionId } = request.params as { definitionId: string };
+    if (!UuidSchema.safeParse(definitionId).success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid routine id", request.id));
+    }
+    const parsed = EndRoutineSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid end request", request.id));
+    }
+    const result = store.endRoutine(session, definitionId, parsed.data);
+    broadcast(session, "routine", definitionId);
+    return result;
+  });
+
+  app.post("/api/v1/routines/:definitionId/delete", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const { definitionId } = request.params as { definitionId: string };
+    if (!UuidSchema.safeParse(definitionId).success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid routine id", request.id));
+    }
+    const parsed = DeleteRoutineSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid delete request", request.id));
+    }
+    const result = store.deleteRoutine(session, definitionId, parsed.data);
+    broadcast(session, "routine", definitionId);
+    return result;
+  });
+
+  app.post(
+    "/api/v1/routines/:definitionId/schedule-entries/:scheduleEntryId/move",
+    async (request, reply) => {
+      const session = requireSession(request, reply);
+      if (!session) return;
+      const { definitionId, scheduleEntryId } = request.params as {
+        definitionId: string;
+        scheduleEntryId: string;
+      };
+      if (
+        !UuidSchema.safeParse(definitionId).success ||
+        !UuidSchema.safeParse(scheduleEntryId).success
+      ) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid id", request.id));
+      }
+      const parsed = MoveScheduleEntrySchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid move request", request.id));
+      }
+      const result = store.moveScheduleEntry(
+        session,
+        definitionId,
+        scheduleEntryId,
+        parsed.data,
+      );
+      broadcast(session, "routine", definitionId);
+      return result;
+    },
+  );
+
+  app.post(
+    "/api/v1/routines/:definitionId/schedule-entries/:scheduleEntryId/delete",
+    async (request, reply) => {
+      const session = requireSession(request, reply);
+      if (!session) return;
+      const { definitionId, scheduleEntryId } = request.params as {
+        definitionId: string;
+        scheduleEntryId: string;
+      };
+      if (
+        !UuidSchema.safeParse(definitionId).success ||
+        !UuidSchema.safeParse(scheduleEntryId).success
+      ) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid id", request.id));
+      }
+      const parsed = DeleteScheduleEntrySchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid delete request", request.id));
+      }
+      const result = store.deleteScheduleEntry(
+        session,
+        definitionId,
+        scheduleEntryId,
+        parsed.data,
+      );
+      broadcast(session, "routine", definitionId);
+      return result;
+    },
+  );
 
   app.get("/api/v1/today", async (request, reply) => {
     const session = requireSession(request, reply);

@@ -481,7 +481,7 @@ describe("P0-004B group-backed Morning Routine", () => {
       // Normalize against tomorrow's group membership (Jordan already pending in Kids).
       effectiveDate: tomorrow,
     });
-    const latest = next!.revisions.at(-1)!;
+    const latest = next.routine.revisions.at(-1)!;
     expect(latest.assigneeMemberIds).toEqual([]);
     expect(latest.assigneeGroupIds).toEqual([boys.id]);
   });

@@ -78,7 +78,7 @@ describe("P0-005 multiple household routines", () => {
     const migrations = (
       db.prepare("SELECT COUNT(*) AS c FROM schema_migrations").get() as { c: number }
     ).c;
-    expect(migrations).toBe(6);
+    expect(migrations).toBe(7);
   });
 
   it("retains P0-001 upgrade coverage through migration 005", () => {
@@ -293,11 +293,12 @@ describe("P0-005 multiple household routines", () => {
         { text: "Snack", obligation: "optional" },
       ],
       expectedVersion: afterSchool.version,
-      // Same-date refine: omitted effectiveDate defaults to today (r2), not tomorrow drift.
+      // Same-date refine: omitted effectiveDate defaults to today (not tomorrow drift).
     });
-    expect(revised.revisions.at(-1)?.title).toBe("After School Renamed");
-    expect(revised.revisions.at(-1)?.daypart).toBe("evening");
-    expect(revised.revisions.at(-1)?.effectiveDate).toBe(today);
+    expect(revised.routine.revisions.at(-1)?.title).toBe("After School Renamed");
+    expect(revised.routine.revisions.at(-1)?.daypart).toBe("evening");
+    expect(revised.routine.scheduleEntries[0]?.revision.title).toBe("After School Renamed");
+    expect(revised.routine.scheduleEntries[0]?.startDate).toBe(today);
 
     const morningAgain = store.getRoutineById(manager.context.householdId, morning.id)!;
     const bedtimeAgain = store.getRoutineById(manager.context.householdId, bedtime.id)!;
@@ -314,13 +315,14 @@ describe("P0-005 multiple household routines", () => {
       assigneeGroupIds: [],
       weekdays: [1, 2, 3, 4, 5],
       steps: [{ text: "Homework", obligation: "required" }],
-      expectedVersion: revised.version,
-      // Second same-day edit upserts the same intended date (no +1/+2 drift).
+      expectedVersion: revised.routine.version,
+      // Second same-day edit retargets the same current schedule entry.
     });
-    expect(later.revisions.at(-1)?.effectiveDate).toBe(today);
-    expect(later.revisions.at(-1)?.title).toBe("After School Later");
-    // Upsert keeps a single revision row for that date.
-    expect(later.revisions.filter((r) => r.effectiveDate === today)).toHaveLength(1);
+    expect(later.routine.scheduleEntries).toHaveLength(1);
+    expect(later.routine.scheduleEntries[0]!.startDate).toBe(today);
+    expect(later.routine.scheduleEntries[0]!.revision.title).toBe("After School Later");
+    // Immutable content versions may accumulate; schedule entry identity stays one.
+    expect(later.routine.scheduleEntries.filter((e) => e.startDate === today)).toHaveLength(1);
   });
 
   it("blocks group delete while two routines still reference it", async () => {
@@ -559,7 +561,7 @@ describe("P0-005 multiple household routines", () => {
     expect(jordanFinal.steps[0]!.text).toBe("Brand new step");
     expect(jordanFinal.startedAt).toBeNull();
 
-    // Deliberate future date refine while unstarted keeps that date.
+    // Deliberate upcoming schedule while current stays; re-edit thrice keeps one entry.
     const tomorrow = addHouseholdDays(today, 1);
     store.materializeForDate(manager.context, tomorrow);
     const afterFuture = store.getRoutineById(manager.context.householdId, routine.id)!;
@@ -572,6 +574,7 @@ describe("P0-005 multiple household routines", () => {
       weekdays: [1, 2, 3, 4, 5, 6, 7],
       steps: [{ text: "Tomorrow step", obligation: "required" }],
       expectedVersion: afterFuture.version,
+      mode: "schedule",
       effectiveDate: tomorrow,
     });
     store.createRevision(manager.context, routine.id, {
@@ -583,6 +586,7 @@ describe("P0-005 multiple household routines", () => {
       weekdays: [1, 2, 3, 4, 5, 6, 7],
       steps: [{ text: "Tomorrow refined", obligation: "required" }],
       expectedVersion: store.getRoutineById(manager.context.householdId, routine.id)!.version,
+      mode: "schedule",
       effectiveDate: tomorrow,
     });
     const tomorrowOccs = store.materializeForDate(manager.context, tomorrow);
@@ -592,7 +596,7 @@ describe("P0-005 multiple household routines", () => {
     expect(
       store
         .getRoutineById(manager.context.householdId, routine.id)!
-        .revisions.filter((r) => r.effectiveDate === tomorrow),
+        .scheduleEntries.filter((e) => e.startDate === tomorrow),
     ).toHaveLength(1);
     void jordan;
   });
@@ -705,5 +709,324 @@ describe("P0-005 multiple household routines", () => {
       });
       expect(store.getOccurrenceById(occ.id)!.steps[0]!.text).toBe("Revised first");
     }
+  });
+});
+
+describe("P0-005 r3 schedule lifecycle", () => {
+  it("current-plan range updates today and known tomorrow but not scheduled B", async () => {
+    const { store } = freshStore();
+    const manager = await claimManager(store);
+    const today = store.householdDateNow(manager.context);
+    const tomorrow = addHouseholdDays(today, 1);
+    const dayAfter = addHouseholdDays(today, 2);
+    const routine = store.createRoutine(manager.context, {
+      mutationId: randomUUID(),
+      title: "Plan A",
+      daypart: "anytime",
+      assigneeMemberIds: [IDS.morgan],
+      assigneeGroupIds: [],
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      steps,
+    });
+    store.materializeForDate(manager.context, today);
+    store.materializeForDate(manager.context, tomorrow);
+    const scheduled = store.createRevision(manager.context, routine.id, {
+      mutationId: randomUUID(),
+      title: "Plan B",
+      daypart: "anytime",
+      assigneeMemberIds: [IDS.morgan],
+      assigneeGroupIds: [],
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      steps: [{ text: "B step", obligation: "required" }],
+      expectedVersion: routine.version,
+      mode: "schedule",
+      effectiveDate: dayAfter,
+    });
+    expect(scheduled.routine.scheduleEntries).toHaveLength(2);
+
+    const refined = store.createRevision(manager.context, routine.id, {
+      mutationId: randomUUID(),
+      title: "Plan A refined",
+      daypart: "anytime",
+      assigneeMemberIds: [IDS.morgan],
+      assigneeGroupIds: [],
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      steps: [{ text: "A step refined", obligation: "required" }],
+      expectedVersion: scheduled.routine.version,
+      mode: "current",
+    });
+    expect(refined.refineOutcome?.untilDateExclusive).toBe(dayAfter);
+
+    const todayOcc = store
+      .materializeForDate(manager.context, today)
+      .find((o) => o.definitionId === routine.id)!;
+    const tomorrowOcc = store
+      .materializeForDate(manager.context, tomorrow)
+      .find((o) => o.definitionId === routine.id)!;
+    const bOcc = store
+      .materializeForDate(manager.context, dayAfter)
+      .find((o) => o.definitionId === routine.id)!;
+    expect(todayOcc.title).toBe("Plan A refined");
+    expect(tomorrowOcc.title).toBe("Plan A refined");
+    expect(bOcc.title).toBe("Plan B");
+  });
+
+  it("schedule create/edit thrice on same date keeps one entry", async () => {
+    const { store } = freshStore();
+    const manager = await claimManager(store);
+    const today = store.householdDateNow(manager.context);
+    const start = addHouseholdDays(today, 3);
+    const routine = store.createRoutine(manager.context, {
+      mutationId: randomUUID(),
+      title: "Base",
+      daypart: "anytime",
+      assigneeMemberIds: [IDS.morgan],
+      assigneeGroupIds: [],
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      steps,
+    });
+    let version = routine.version;
+    for (const title of ["S1", "S2", "S3"]) {
+      const result = store.createRevision(manager.context, routine.id, {
+        mutationId: randomUUID(),
+        title,
+        daypart: "anytime",
+        assigneeMemberIds: [IDS.morgan],
+        assigneeGroupIds: [],
+        weekdays: [1, 2, 3, 4, 5, 6, 7],
+        steps: [{ text: title, obligation: "required" }],
+        expectedVersion: version,
+        mode: "schedule",
+        effectiveDate: start,
+      });
+      version = result.routine.version;
+      expect(result.routine.scheduleEntries.filter((e) => e.startDate === start)).toHaveLength(
+        1,
+      );
+    }
+    const final = store.getRoutineById(manager.context.householdId, routine.id)!;
+    expect(final.scheduleEntries).toHaveLength(2);
+    expect(final.scheduleEntries.find((e) => e.startDate === start)!.revision.title).toBe("S3");
+  });
+
+  it("delete upcoming B in A/B/C restores A until C", async () => {
+    const { store } = freshStore();
+    const manager = await claimManager(store);
+    const today = store.householdDateNow(manager.context);
+    const bDate = addHouseholdDays(today, 2);
+    const cDate = addHouseholdDays(today, 4);
+    const routine = store.createRoutine(manager.context, {
+      mutationId: randomUUID(),
+      title: "A",
+      daypart: "anytime",
+      assigneeMemberIds: [IDS.morgan],
+      assigneeGroupIds: [],
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      steps: [{ text: "A", obligation: "required" }],
+    });
+    const withB = store.createRevision(manager.context, routine.id, {
+      mutationId: randomUUID(),
+      title: "B",
+      daypart: "anytime",
+      assigneeMemberIds: [IDS.morgan],
+      assigneeGroupIds: [],
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      steps: [{ text: "B", obligation: "required" }],
+      expectedVersion: routine.version,
+      mode: "schedule",
+      effectiveDate: bDate,
+    });
+    const withC = store.createRevision(manager.context, routine.id, {
+      mutationId: randomUUID(),
+      title: "C",
+      daypart: "anytime",
+      assigneeMemberIds: [IDS.morgan],
+      assigneeGroupIds: [],
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      steps: [{ text: "C", obligation: "required" }],
+      expectedVersion: withB.routine.version,
+      mode: "schedule",
+      effectiveDate: cDate,
+    });
+    const bEntry = withC.routine.scheduleEntries.find((e) => e.startDate === bDate)!;
+    store.materializeForDate(manager.context, bDate);
+    const deleted = store.deleteScheduleEntry(manager.context, routine.id, bEntry.id, {
+      mutationId: randomUUID(),
+      expectedVersion: withC.routine.version,
+    });
+    expect(deleted.routine.scheduleEntries.map((e) => e.startDate).sort()).toEqual(
+      [today, cDate].sort(),
+    );
+    expect(
+      store.materializeForDate(manager.context, bDate).find((o) => o.definitionId === routine.id)
+        ?.title,
+    ).toBe("A");
+    expect(
+      store.materializeForDate(manager.context, cDate).find((o) => o.definitionId === routine.id)
+        ?.title,
+    ).toBe("C");
+  });
+
+  it("end cancels today unstarted and keeps started", async () => {
+    const { store } = freshStore();
+    const manager = await claimManager(store);
+    const avery = await enrollAndClaim(
+      store,
+      manager.context,
+      IDS.avery,
+      "direct_personalizer",
+      `av.end.${Date.now().toString(36)}`,
+      "Avery Reed",
+    );
+    const jordan = await enrollAndClaim(
+      store,
+      manager.context,
+      IDS.jordan,
+      "direct_personalizer",
+      `jo.end.${Date.now().toString(36)}`,
+      "Jordan Reed",
+    );
+    const routine = store.createRoutine(manager.context, {
+      mutationId: randomUUID(),
+      title: "End me",
+      daypart: "anytime",
+      assigneeMemberIds: [IDS.avery, IDS.jordan],
+      assigneeGroupIds: [],
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      steps,
+    });
+    const today = store.householdDateNow(manager.context);
+    const occs = store.materializeForDate(manager.context, today);
+    const averyOcc = occs.find((o) => o.accountableMemberId === IDS.avery)!;
+    store.setStepStatus(avery.context, averyOcc.id, averyOcc.steps[0]!.id, {
+      mutationId: randomUUID(),
+      status: "completed",
+      performedAt: new Date().toISOString(),
+    });
+    const ended = store.endRoutine(manager.context, routine.id, {
+      mutationId: randomUUID(),
+      expectedVersion: routine.version,
+    });
+    expect(ended.routine.ended).toBe(true);
+    expect(ended.routine.endMode).toBe("immediate");
+    const after = store.materializeForDate(manager.context, today);
+    expect(after.find((o) => o.accountableMemberId === IDS.avery)?.startedAt).toBeTruthy();
+    expect(after.find((o) => o.accountableMemberId === IDS.jordan)).toBeUndefined();
+    void jordan;
+  });
+
+  it("delete unused succeeds; delete with started is forbidden", async () => {
+    const { store } = freshStore();
+    const manager = await claimManager(store);
+    const unused = store.createRoutine(manager.context, {
+      mutationId: randomUUID(),
+      title: "Unused",
+      daypart: "anytime",
+      assigneeMemberIds: [IDS.morgan],
+      assigneeGroupIds: [],
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      steps,
+    });
+    const deleted = store.deleteRoutine(manager.context, unused.id, {
+      mutationId: randomUUID(),
+      expectedVersion: unused.version,
+    });
+    expect(deleted.deleted).toBe(true);
+    expect(() => store.getRoutineById(manager.context.householdId, unused.id)).toThrow(
+      /not found/i,
+    );
+
+    const avery = await enrollAndClaim(
+      store,
+      manager.context,
+      IDS.avery,
+      "direct_personalizer",
+      `av.del.${Date.now().toString(36)}`,
+      "Avery Reed",
+    );
+    const used = store.createRoutine(manager.context, {
+      mutationId: randomUUID(),
+      title: "Used",
+      daypart: "anytime",
+      assigneeMemberIds: [IDS.avery],
+      assigneeGroupIds: [],
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      steps,
+    });
+    const today = store.householdDateNow(manager.context);
+    const occ = store
+      .materializeForDate(manager.context, today)
+      .find((o) => o.definitionId === used.id)!;
+    store.setStepStatus(avery.context, occ.id, occ.steps[0]!.id, {
+      mutationId: randomUUID(),
+      status: "completed",
+      performedAt: new Date().toISOString(),
+    });
+    expect(() =>
+      store.deleteRoutine(manager.context, used.id, {
+        mutationId: randomUUID(),
+        expectedVersion: used.version,
+      }),
+    ).toThrow(/started work/i);
+  });
+
+  it("started occurrence stays visible after audience removal", async () => {
+    const { store } = freshStore();
+    const manager = await claimManager(store);
+    const avery = await enrollAndClaim(
+      store,
+      manager.context,
+      IDS.avery,
+      "direct_personalizer",
+      `av.vis.${Date.now().toString(36)}`,
+      "Avery Reed",
+    );
+    const _jordan = await enrollAndClaim(
+      store,
+      manager.context,
+      IDS.jordan,
+      "direct_personalizer",
+      `jo.vis.${Date.now().toString(36)}`,
+      "Jordan Reed",
+    );
+    void _jordan;
+    const routine = store.createRoutine(manager.context, {
+      mutationId: randomUUID(),
+      title: "Audience",
+      daypart: "anytime",
+      assigneeMemberIds: [IDS.avery, IDS.jordan],
+      assigneeGroupIds: [],
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      steps,
+    });
+    const today = store.householdDateNow(manager.context);
+    const before = store.materializeForDate(manager.context, today);
+    const averyOcc = before.find((o) => o.accountableMemberId === IDS.avery)!;
+    store.setStepStatus(avery.context, averyOcc.id, averyOcc.steps[0]!.id, {
+      mutationId: randomUUID(),
+      status: "completed",
+      performedAt: new Date().toISOString(),
+    });
+    store.createRevision(manager.context, routine.id, {
+      mutationId: randomUUID(),
+      title: "Audience Jordan only",
+      daypart: "anytime",
+      assigneeMemberIds: [IDS.jordan],
+      assigneeGroupIds: [],
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      steps,
+      expectedVersion: routine.version,
+      mode: "current",
+    });
+    const after = store.materializeForDate(manager.context, today);
+    expect(after.find((o) => o.accountableMemberId === IDS.avery)?.id).toBe(averyOcc.id);
+    expect(after.find((o) => o.accountableMemberId === IDS.jordan)).toBeTruthy();
+    // Avery can still mutate started occurrence after removal from live audience.
+    store.setStepStatus(avery.context, averyOcc.id, averyOcc.steps[0]!.id, {
+      mutationId: randomUUID(),
+      status: "open",
+      performedAt: new Date().toISOString(),
+    });
+    expect(store.getOccurrenceById(averyOcc.id)!.startedAt).toBeTruthy();
   });
 });

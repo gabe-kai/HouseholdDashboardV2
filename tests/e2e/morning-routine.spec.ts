@@ -136,10 +136,32 @@ async function expandAllOccurrences(page: Page) {
 async function openHouseholdActivity(page: Page) {
   await page
     .getByRole("navigation", { name: "Primary" })
-    .getByRole("button", { name: "People & Groups", exact: true })
+    .getByRole("button", { name: "Household", exact: true })
     .click();
-  await page.getByRole("button", { name: "View household activity" }).click();
+  await page
+    .getByRole("navigation", { name: "Household" })
+    .getByRole("button", { name: /Household activity/ })
+    .click();
   await expect(page.getByRole("heading", { name: "Household activity" })).toBeVisible();
+}
+
+async function openApprovals(page: Page) {
+  await page
+    .getByRole("navigation", { name: "Primary" })
+    .getByRole("button", { name: "Household", exact: true })
+    .click();
+  await page
+    .getByRole("navigation", { name: "Household" })
+    .getByRole("button", { name: /Approvals/ })
+    .click();
+}
+
+async function openPersonalize(page: Page) {
+  await page
+    .getByRole("navigation", { name: "Primary" })
+    .getByRole("button", { name: "Today", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Personalize", exact: true }).click();
 }
 
 async function outboxCount(page: Page, membershipId: string): Promise<number> {
@@ -313,7 +335,8 @@ test.describe("P0-002 authenticated household", () => {
     expect(await outboxCount(page, AVERY_ID)).toBeGreaterThan(0);
 
     page.once("dialog", (dialog) => dialog.accept());
-    await page.getByRole("button", { name: "Sign out" }).click();
+    await page.getByRole("button", { name: "Account" }).click();
+    await page.getByRole("menuitem", { name: "Sign out" }).click();
     await expect(page.getByRole("heading", { name: /Sign in|Claim/i }).first()).toBeVisible({
       timeout: 15_000,
     });
@@ -555,10 +578,7 @@ test.describe("P0-002 authenticated household", () => {
     await expect(child.locator(".status-pill[data-kind='online']")).toContainText("Online", {
       timeout: 10_000,
     });
-    await child
-      .getByRole("navigation", { name: "Primary" })
-      .getByRole("button", { name: "Personalize", exact: true })
-      .click();
+    await openPersonalize(child);
     await child.getByLabel("Item text").fill("Pack soccer bag");
     await child.getByRole("button", { name: "Send proposal" }).click();
     await expect(child.getByText("Pack soccer bag")).toBeVisible({ timeout: 10_000 });
@@ -571,10 +591,7 @@ test.describe("P0-002 authenticated household", () => {
     await expect(manager.locator(".status-pill[data-kind='online']")).toContainText("Online", {
       timeout: 10_000,
     });
-    await manager
-      .getByRole("navigation", { name: "Primary" })
-      .getByRole("button", { name: "Approvals", exact: true })
-      .click();
+    await openApprovals(manager);
     await manager.getByRole("button", { name: "Approve Pack soccer bag" }).click();
     await expect(manager.getByText(/Effective/i).first()).toBeVisible({ timeout: 15_000 });
 
@@ -599,10 +616,7 @@ test.describe("P0-002 authenticated household", () => {
     await claimChild(page.request, AVERY_ID, AVERY_LOGIN, "Avery Reed");
     await page.goto("/");
     await expect(page.locator(".topbar")).toContainText("Avery Reed", { timeout: 20_000 });
-    await page
-      .getByRole("navigation", { name: "Primary" })
-      .getByRole("button", { name: "Personalize", exact: true })
-      .click();
+    await openPersonalize(page);
     await page.getByRole("button", { name: "Add personal item" }).click();
     await page.getByLabel("Item text").fill("Clean up breakfast");
     await page.getByRole("button", { name: "Save personal settings" }).click();

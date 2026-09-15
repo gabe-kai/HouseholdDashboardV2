@@ -78,6 +78,18 @@ async function openAsManager(page: Page) {
   await expect(page.locator(".topbar")).toContainText("Morgan Reed", { timeout: 20_000 });
 }
 
+async function openPeopleGroups(page: Page) {
+  await page
+    .getByRole("navigation", { name: "Primary" })
+    .getByRole("button", { name: "Household", exact: true })
+    .click();
+  await page
+    .getByRole("navigation", { name: "Household" })
+    .getByRole("button", { name: /People & Groups/ })
+    .click();
+  await expect(page.getByRole("heading", { name: "People & Groups" })).toBeVisible();
+}
+
 async function nextFreeRevisionDate(request: APIRequestContext): Promise<string> {
   const session = await request.get("/api/v1/auth/session");
   expect(session.ok()).toBeTruthy();
@@ -131,7 +143,7 @@ test.describe("P0-004B group-backed Morning Routine", () => {
     const childName = `Sync Child ${suffix}`;
     const groupName = `Sync Crew ${suffix}`;
 
-    await pageA.getByRole("button", { name: "People & Groups" }).click();
+    await openPeopleGroups(pageA);
     await pageA.getByRole("button", { name: "Add person" }).click();
     await pageA.getByLabel("Name").fill(childName);
     await pageA.getByRole("radio", { name: "Child" }).check();
@@ -168,6 +180,7 @@ test.describe("P0-004B group-backed Morning Routine", () => {
       },
       data: {
         mutationId: crypto.randomUUID(),
+        mode: "schedule",
         effectiveDate: await nextFreeRevisionDate(pageB.request),
         title: latest.title,
         daypart: "morning",
@@ -193,10 +206,11 @@ test.describe("P0-004B group-backed Morning Routine", () => {
       pageA.getByText(/Morning Routine will use the new members starting/i),
     ).toBeVisible({ timeout: 10_000 });
 
+    // Upcoming schedule entry and/or pending group membership should surface a Starting date.
     await expect(pageB.getByText(/Starting \d{4}-\d{2}-\d{2}/i).first()).toBeVisible({
       timeout: 15_000,
     });
-    await expect(pageB.getByText(/Morgan Reed/i).first()).toBeVisible();
+    await expect(pageB.getByText(new RegExp(groupName, "i")).first()).toBeVisible();
 
     await managerA.close();
     await managerB.close();
@@ -208,7 +222,7 @@ test.describe("P0-004B group-backed Morning Routine", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openAsManager(page);
 
-    await page.getByRole("button", { name: "People & Groups" }).click();
+    await openPeopleGroups(page);
 
     for (const name of ["Daniel Boyd", "Eli Boyd"]) {
       await page.getByRole("button", { name: "Add person" }).click();
@@ -231,7 +245,7 @@ test.describe("P0-004B group-backed Morning Routine", () => {
     await expect(page.getByRole("heading", { name: "Routines" })).toBeVisible();
     await page.getByRole("button", { name: /Morning Routine/ }).click();
     await expect(page.getByRole("heading", { name: "Morning Routine" })).toBeVisible();
-    await page.getByRole("button", { name: "Edit routine" }).click();
+    await page.getByRole("button", { name: "Edit routine", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Edit routine" })).toBeVisible();
 
     await page.getByRole("button", { name: /Add people or groups|Edit people or groups/ }).click();
@@ -262,7 +276,7 @@ test.describe("P0-004B group-backed Morning Routine", () => {
     await page.getByRole("button", { name: "Apply who does this" }).click();
     await expect(page.getByRole("heading", { name: "Edit routine" })).toBeVisible();
     await expect(page.getByText("The Boys").first()).toBeVisible();
-    await page.getByRole("button", { name: "Save new revision" }).click();
+    await page.getByRole("button", { name: "Save changes" }).click();
     await expect(page.getByRole("heading", { name: "Morning Routine" })).toBeVisible({
       timeout: 15_000,
     });
@@ -270,7 +284,7 @@ test.describe("P0-004B group-backed Morning Routine", () => {
     await expect(page.getByText("The Boys").first()).toBeVisible();
     await expect(page.getByRole("checkbox", { name: /The Boys/ })).toHaveCount(0);
 
-    await page.getByRole("button", { name: "People & Groups" }).click();
+    await openPeopleGroups(page);
     await page.getByRole("button", { name: /The Boys/ }).click();
     await expect(page.getByText("Used by Morning Routine")).toBeVisible();
 

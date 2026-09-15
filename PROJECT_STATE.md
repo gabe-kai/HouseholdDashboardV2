@@ -19,7 +19,7 @@
 
 ## Current focus
 
-P0-005 r2 is committed at `297b2fd` on `brief/p0-005-multiple-household-routines` and was technically accepted after evidence hygiene correction. Product's subsequent proposal expands the contract to cohesive routine management and a shared application design. Engineering returned READY for **P0-005 r3**; Architecture authorized local implementation. r3 is implementing, not yet technically accepted.
+P0-005 r2 is committed at `297b2fd` (merged to `main` @ `5376b51`) and was technically accepted. Engineering completed local **P0-005 r3** implementation (`reports/P0-005-r3-build-report.md`). Architecture technical acceptance and Project Lead/product acceptance remain pending.
 
 ## Internal work status
 
@@ -30,7 +30,7 @@ P0-005 r2 is committed at `297b2fd` on `brief/p0-005-multiple-household-routines
 | P0-003 - Regression Safety and Contract Hardening | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #6 | Product evaluation; optional required-check configuration |
 | P0-004A - People & Groups UX Completion | r3 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #8 | Product phone evaluation |
 | P0-004B - Group-backed Morning Routine | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #9 | Product evaluation |
-| P0-005 - Cohesive Routine Management | r3 | READY | Engineering | `brief/p0-005-r3-cohesive-routine-management` | Local implementation and Build Report |
+| P0-005 - Cohesive Routine Management | r3 | IMPLEMENTED | Architecture | `brief/p0-005-r3-cohesive-routine-management` | Architecture technical acceptance; Project Lead/product acceptance |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -52,11 +52,11 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next Project Lead decision
 
-- Engineering implements r3 locally and returns its Build Report for Architecture acceptance. Product evaluates the connected experience after technical acceptance; P0-005 stays CURRENT. Hosted/physical checks apply only to a separately promoted release candidate.
+- Architecture reviews `reports/P0-005-r3-build-report.md` for technical acceptance. Product evaluates the connected experience after that; P0-005 stays CURRENT. Hosted/physical checks apply only to a separately promoted release candidate. Project Lead manages Git (implementation still uncommitted).
 
 ## Next likely handoff
 
-Architecture accepted Engineering readiness for `briefs/p0-005-multiple-household-routines.md` **revision 3** (`reports/P0-005-r3-engineering-readiness.md`). Engineering may implement locally and return `reports/P0-005-r3-build-report.md`. Earlier readiness/acceptance does not cover r3. The Project Lead manages Git; agents suggest commit messages but do not commit.
+Engineering returned **IMPLEMENTED** for `briefs/p0-005-multiple-household-routines.md` **revision 3** (`reports/P0-005-r3-build-report.md`) on `brief/p0-005-r3-cohesive-routine-management`. Architecture technical acceptance is next; Project Lead/product acceptance is separate. Suggest commit message is in the Build Report—do not commit unless authorized.
 
 ## Notes for all teams
 

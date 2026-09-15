@@ -1,7 +1,7 @@
 # BRIEF P0-005 - Cohesive Routine Management
 
 **Revision:** 3
-**Status:** IN REVIEW
+**Status:** IMPLEMENTED
 
 Lifecycle: DRAFT -> IN REVIEW -> READY -> IMPLEMENTING -> IMPLEMENTED -> ACCEPTED.
 

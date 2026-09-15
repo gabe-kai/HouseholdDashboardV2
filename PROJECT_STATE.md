@@ -19,7 +19,7 @@
 
 ## Current focus
 
-P0-005 r2 is committed at `297b2fd` (merged to `main` @ `5376b51`) and was technically accepted. Engineering completed local **P0-005 r3** implementation (`reports/P0-005-r3-build-report.md`). Architecture technical acceptance and Project Lead/product acceptance remain pending.
+P0-005 r2 is committed at `297b2fd` (merged to `main` @ `5376b51`) and was technically accepted. Engineering closed Architecture **FIX REQUIRED** on r3 (AT6 browser UI + Delete-upcoming sticky state) and updated `reports/P0-005-r3-build-report.md`. Architecture technical acceptance and Project Lead/product acceptance remain pending.
 
 ## Internal work status
 
@@ -52,11 +52,11 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next Project Lead decision
 
-- Architecture reviews `reports/P0-005-r3-build-report.md` for technical acceptance. Product evaluates the connected experience after that; P0-005 stays CURRENT. Hosted/physical checks apply only to a separately promoted release candidate. Project Lead manages Git (implementation still uncommitted).
+- Architecture reviews the updated `reports/P0-005-r3-build-report.md` for technical acceptance after the FIX REQUIRED close. Product evaluates the connected experience after that; P0-005 stays CURRENT. Hosted/physical checks apply only to a separately promoted release candidate. Project Lead manages Git (FIX REQUIRED delta still uncommitted).
 
 ## Next likely handoff
 
-Engineering returned **IMPLEMENTED** for `briefs/p0-005-multiple-household-routines.md` **revision 3** (`reports/P0-005-r3-build-report.md`) on `brief/p0-005-r3-cohesive-routine-management`. Architecture technical acceptance is next; Project Lead/product acceptance is separate. Suggest commit message is in the Build Report—do not commit unless authorized.
+Engineering returned **IMPLEMENTED** (FIX REQUIRED closed) for `briefs/p0-005-multiple-household-routines.md` **revision 3** (`reports/P0-005-r3-build-report.md`) on `brief/p0-005-r3-cohesive-routine-management`. Architecture technical acceptance is next; Project Lead/product acceptance is separate. Suggest commit message is in the Build Report—do not commit unless authorized.
 
 ## Notes for all teams
 

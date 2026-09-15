@@ -3,45 +3,40 @@
 **Brief revision implemented:** 3  
 **Engineering status:** IMPLEMENTED  
 **Branch:** `brief/p0-005-r3-cohesive-routine-management`  
-**Base:** integrated `main` @ `5376b51` (r2 implementation `297b2fd`); planning `b0b966e` / readiness `0c832d3`  
+**Base:** integrated `main` @ `5376b51` (r2 implementation `297b2fd`); planning `b0b966e` / readiness `0c832d3`; prior r3 implementation commit `4184a21`  
+**FIX REQUIRED close:** Architecture FIX REQUIRED (AT6 UI + Delete-upcoming sticky UI) addressed in this uncommitted delta  
 **Implementation commits:** **uncommitted** at this report authoring (Project Lead manages Git)  
 **Pull request:** N/A  
 
 ## Readiness
 
-**READY** against r3 (`reports/P0-005-r3-engineering-readiness.md`); Architecture **ACCEPT / PROCEED** for local implementation. This report covers the full r3 lifecycle + Calm Household presentation delta on the committed r2 foundation. Prior r1/r2 reports do not certify r3.
+**READY** against r3 (`reports/P0-005-r3-engineering-readiness.md`); Architecture **ACCEPT / PROCEED**, then **FIX REQUIRED** for AT6 browser depth and Delete-upcoming client persistence. This report supersedes the prior r3 Build Report for those items. No new readiness review was required.
 
-## What changed
+## What changed (FIX REQUIRED delta)
 
-### Persistence / migration
-- `db/migrations/007_routine_schedule_lifecycle.sql`: `routine_schedule_entries`; drop `UNIQUE(definition_id, effective_date)` on revisions (immutable content versions); definition `ended_at` / `end_mode` / `deleted_at`; occurrence `canceled_at`; backfill schedule entries from existing revisions; legacy archive → `end_mode=legacy_archive`.
+### Delete upcoming (mutation / client state)
+- Root cause: shared list/detail generation plus refresh-driven `loadDetail` could re-apply a same-version GET that still listed the canceled entry after a successful delete, leaving Delete upcoming clickable again.
+- Fix: separate list/detail generations; version-aware `applyDetailRoutine` (prefer local when same version has fewer active schedule entries); invalidate in-flight detail fetches on delete; defensively strip the deleted entry id from applied state; use freshest `detailRoutine.version` for `expectedVersion`.
+- Regression: `z-routine-lifecycle.spec.ts` asserts the upcoming section and Delete upcoming control are gone, prior plan step remains, and the Starting date line cannot reappear.
 
-### Domain / store / API
-- `src/domain/plan.ts`: schedule selection, governed ranges, affected-date enumeration.
-- `src/server/routine-plan.ts` + store: schedule-aware plan selection; immutable revision inserts with schedule retarget; current-plan **range** reconcile to next boundary; schedule create/edit/move/delete; `endRoutine` (immediate cancel of today unstarted + later + upcoming); `deleteRoutine` (eligibility-gated); started/history visibility when live audience excludes the person; atomic txn + receipts; `PlanRefineOutcome` feedback.
-- Routes: `/end`, `/delete`, schedule-entry move/delete; schemas and route-policy updated.
-- Preserved: D-023 locks, personal tomorrow-floor, group next-day, pending first-action merge, Origin/CSRF/WS.
-
-### Client
-- `Routines.tsx`: read-first current plan from schedule entries; Edit routine / Schedule for later; upcoming Edit/Delete; More → End/Delete; local refineOutcome status (no duplicate ChangeNotice); discard confirm; step reorder via up/down.
-- `App.tsx` + styles: Calm warm tokens; Today | Routines | Household nav (phone bottom bar); Household nesting; Account menu sign-out; Local development indicator (no cool-palette switch).
-
-### Evidence / docs
-- Integration coverage for range reconcile, schedule thrice, delete B, end, delete unused/forbidden, started visibility (plus prior AT19 lock/race).
-- e2e: Household nav updates; `z-routine-lifecycle.spec.ts`; r3 screenshots only under `reports/p0-005-r3-screenshots/`.
-- PB-26–30 + sync matrix; ops note for 007.
+### AT6 through normal UI
+- Move upcoming earlier/later via Edit upcoming + Starting date (`z-routine-schedule-at6.spec.ts`).
+- Occupied-date create collision preserves draft and offers **Choose another date** / **Edit existing change** (server no longer silently retargets schedule-new onto an occupied date).
+- Move to today promotes upcoming content onto the current plan subject to locks (store + UI + integration).
+- Household-date rollover between editor open and save: client re-reads session, keeps draft, recoverable alert.
+- Screenshots `07`–`09` under `reports/p0-005-r3-screenshots/`.
 
 ## Behavior delivered
 
-Parents can edit the current plan so unstarted work updates from today through the next intentional boundary; schedule, re-edit, move, and delete upcoming changes through the UI; delete unused setup or End a used routine (immediate cancel of prospective work while started/history remain); use a calm shared shell with Today / Routines / Household navigation. First-execution locks and personal/group policies from r2 remain.
+Parents can edit the current plan so unstarted work updates from today through the next intentional boundary; schedule, re-edit, move, and delete upcoming changes through the UI (including collision and date-boundary recovery); delete unused setup or End a used routine; use a calm shared shell with Today / Routines / Household navigation. First-execution locks and personal/group policies from r2 remain.
 
 ## Verification performed
 
 | Check | Result |
 | --- | --- |
-| `npm run validate` (via PR/RC) | **PASS** — lint + typecheck + Vitest **100** tests / **22** files |
-| `npm run validate:pr` | **PASS** — Chromium e2e **20/20** |
-| `npm run validate:rc` | **PASS** — Chromium+WebKit e2e **40/40** |
+| `npm run validate` (via PR/RC) | **PASS** — lint + typecheck + Vitest **101** tests / **22** files |
+| `npm run validate:pr` | **PASS** — Chromium e2e **21/21** |
+| `npm run validate:rc` | **PASS** — Chromium+WebKit e2e **42/42** |
 | Hosted / physical device | **NOT RUN** — not required |
 | Local validate logs | Present at `reports/p0-005-r3-validate-pr.log` / `...-rc.log` (gitignored `*.log`) |
 
@@ -53,7 +48,7 @@ Parents can edit the current plan so unstarted work updates from today through t
 | `reports/p0-004b-r1-screenshots/` | Clean vs HEAD |
 | `reports/p0-005-r1-screenshots/` | Clean vs HEAD |
 | `reports/p0-005-r2-screenshots/` | Untouched this pass |
-| `reports/p0-005-r3-screenshots/` | **New** — 01–06 |
+| `reports/p0-005-r3-screenshots/` | 01–09 (07–09 added for AT6) |
 
 ### Product screenshots (fictional, 390×844)
 
@@ -65,6 +60,9 @@ Parents can edit the current plan so unstarted work updates from today through t
 | `04-ended-routines.png` | Ended routines secondary list |
 | `05-same-day-edit-list.png` | After current-plan save (list) |
 | `06-same-day-edit-detail.png` | After current-plan save (detail) |
+| `07-upcoming-moved.png` | After moving an upcoming start date |
+| `08-schedule-collision.png` | Occupied-date collision with alternatives |
+| `09-date-boundary.png` | Household-date rollover conflict (draft kept) |
 
 ## Acceptance tests 1–18
 
@@ -72,40 +70,39 @@ Parents can edit the current plan so unstarted work updates from today through t
 | --- | --- | --- |
 | 1 Populated upgrade | **PASS** | Migration count 7; p004b→p005 fixtures; backup→migrate→restore; legacy archive end_mode |
 | 2 Current-plan interval | **PASS** | Integration range case; UI Edit routine / Save changes |
-| 3 Execution protection | **PASS** | AT19 lock/race retained; started visibility when audience removed |
+| 3 Execution protection | **PASS** | AT19 lock/race retained; started visibility when audience removed; move-to-today preserves started peers |
 | 4 Eligibility changes | **PASS (integration + reuse)** | Range reconcile include/exclude; group next-day e2e retained |
-| 5 Schedule through UI | **PASS** | `z-routine-lifecycle` schedule for later; integration thrice-same-date |
-| 6 Move/collision/date boundary | **PASS (API/integration partial)** | Move route + store; UI move covered lightly—collision copy via API conflict |
-| 7 Delete upcoming | **PASS** | Lifecycle e2e + integration A/B/C delete B |
+| 5 Schedule through UI | **PASS** | Lifecycle schedule for later; thrice-same-date via scheduleEntryId |
+| 6 Move/collision/date boundary | **PASS** | `z-routine-schedule-at6.spec.ts` UI: move, collision+draft alternatives, move-to-today, session date rollover; screenshots 07–09 |
+| 7 Delete upcoming/fallback | **PASS** | Lifecycle e2e: entry disappears, prior plan governs, Delete upcoming gone; integration A/B/C delete B |
 | 8 Step lifecycle/composition | **PASS (partial)** | UI add/reorder/delete steps; personal fallback domain retained |
 | 9 Permanent deletion | **PASS** | Lifecycle e2e delete unused; integration deny-with-started |
 | 10 End/history | **PASS** | End e2e + integration cancel today unstarted; legacy cutoff preserved |
-| 11 Transactions/authority | **PASS (extended)** | Route-policy + prior HTTP matrix; new lifecycle kinds |
+| 11 Transactions/authority | **PASS (extended)** | Route-policy + prior HTTP matrix; lifecycle kinds; occupied-date CONFLICT details |
 | 12 Pending/offline recovery | **PASS (reused + retained)** | Prior outbox/reconnect e2e; mergeAuthoritativeOccurrence |
-| 13 Live projections | **PASS (adapted)** | Dual-view group/routine e2e; sync invalidation retained |
+| 13 Live projections | **PASS (adapted)** | Dual-view group/routine e2e; sync invalidation retained; delete no longer restored by raced refresh |
 | 14 Read-first UX | **PASS** | List/detail/upcoming/More/local status e2e |
 | 15 Navigation/access | **PASS** | Today/Routines/Household nesting; Account sign-out |
 | 16 Shared presentation | **PASS (browser + screenshots)** | Tokens/shell; 390px journeys; no prior PNG pollution |
-| 17 Full Product journey | **PASS** | Chromium+WebKit lifecycle + multi-routine + prior regressions |
+| 17 Full Product journey | **PASS** | Chromium+WebKit lifecycle + AT6 + multi-routine + prior regressions |
 | 18 Regression/artifact gates | **PASS** | Exact `validate:pr` / `validate:rc`; prior screenshot dirs clean |
 
 ## Deviations / known limitations
 
-- Schedule **move** and **occupied-date collision** UX are API-complete; browser coverage is thinner than create/delete upcoming (AT6 partial UI depth).
 - Personal-layer date policy remains tomorrow-floored (unchanged by design).
 - Routine restore/reopen deferred per brief.
 - Hosted/physical RC not run.
-- Implementation remains **uncommitted**.
+- FIX REQUIRED close remains **uncommitted**.
 
 ## FIX REQUIRED
 
-None identified against the r3 contract after local PR/RC. Architecture technical acceptance of this Build Report and Project Lead/product acceptance remain pending.
+None remaining against the Architecture FIX REQUIRED items (AT6 UI + Delete upcoming sticky state). Architecture technical acceptance of this updated Build Report and Project Lead/product acceptance remain pending.
 
 ## Suggested commit message
 
 ```
-P0-005 r3: cohesive routine lifecycle and Calm Household shell
+P0-005 r3: fix upcoming delete sticky UI and AT6 schedule journeys
 
-Add schedule entries with current-plan range reconcile, upcoming
-create/edit/move/delete, Delete vs End, and shared navigation/theme.
+Prevent raced detail refresh from restoring deleted schedule entries;
+add UI move/collision/today-promote/date-boundary evidence.
 ```

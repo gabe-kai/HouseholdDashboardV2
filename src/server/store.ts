@@ -1682,11 +1682,11 @@ export class AppStore {
     }
 
     const today = this.householdDateNow(ctx);
-    if (
-      !isValidHouseholdDate(input.startDate) ||
-      compareHouseholdDates(input.startDate, today) <= 0
-    ) {
-      fail("VALIDATION", "Scheduled changes must start after today");
+    if (!isValidHouseholdDate(input.startDate)) {
+      fail("VALIDATION", "Invalid start date");
+    }
+    if (compareHouseholdDates(input.startDate, today) < 0) {
+      fail("VALIDATION", "Cannot move a schedule entry to a past date");
     }
 
     const definition = this.requireEditableDefinition(
@@ -1725,11 +1725,42 @@ export class AppStore {
           fail("CONFLICT", "Cannot move the current schedule entry");
         }
         const oldStart = entry.start_date;
-        this.db
-          .prepare(
-            `UPDATE routine_schedule_entries SET start_date = ? WHERE id = ?`,
-          )
-          .run(input.startDate, scheduleEntryId);
+        const moveToToday = compareHouseholdDates(input.startDate, today) === 0;
+
+        if (moveToToday) {
+          // Promote upcoming content to the current plan; cancel the upcoming entry.
+          const rows = loadScheduleEntryRows(this.db, definitionId);
+          const current = selectActiveEntryRowForDate(rows, today);
+          if (!current) fail("CONFLICT", "Current schedule entry not found");
+          this.db
+            .prepare(
+              `UPDATE routine_schedule_entries SET revision_id = ? WHERE id = ?`,
+            )
+            .run(entry.revision_id, current.id);
+          this.db
+            .prepare(
+              `UPDATE routine_schedule_entries SET canceled_at = ? WHERE id = ?`,
+            )
+            .run(nowUtcIso(), scheduleEntryId);
+        } else {
+          const occupied = loadScheduleEntryRows(this.db, definitionId).find(
+            (row) =>
+              row.canceled_at == null &&
+              row.id !== scheduleEntryId &&
+              row.start_date === input.startDate,
+          );
+          if (occupied) {
+            fail("CONFLICT", "A schedule entry already exists for that date", {
+              conflictingScheduleEntryId: occupied.id,
+              occupiedDate: input.startDate,
+            });
+          }
+          this.db
+            .prepare(
+              `UPDATE routine_schedule_entries SET start_date = ? WHERE id = ?`,
+            )
+            .run(input.startDate, scheduleEntryId);
+        }
 
         this.db
           .prepare(
@@ -1740,7 +1771,6 @@ export class AppStore {
         const entries = loadScheduleEntryRows(this.db, definitionId).map(
           toScheduleEntryLike,
         );
-        // Reconcile vacated range from old start, and new range from new start.
         const vacatedFrom = compareHouseholdDates(oldStart, input.startDate) < 0
           ? oldStart
           : input.startDate;
@@ -1750,7 +1780,6 @@ export class AppStore {
           vacatedFrom,
           entries,
         );
-        // Also ensure the other side of a move is covered when ranges diverge.
         const otherFrom =
           vacatedFrom === oldStart ? input.startDate : oldStart;
         const refineB =
@@ -3669,27 +3698,10 @@ export class AppStore {
       (r) => r.canceled_at == null && r.start_date === startDate,
     );
     if (conflict) {
-      // Re-edit same upcoming date: retarget existing entry (one entry identity).
-      const revisionId = this.insertImmutableRevision(
-        definitionId,
-        startDate,
-        input,
-        conflict.revision_id,
-      );
-      this.db
-        .prepare(
-          `UPDATE routine_schedule_entries SET revision_id = ? WHERE id = ?`,
-        )
-        .run(revisionId, conflict.id);
-      const entries = loadScheduleEntryRows(this.db, definitionId).map(
-        toScheduleEntryLike,
-      );
-      return this.reconcileGovernedRange(
-        householdId,
-        definitionId,
-        startDate,
-        entries,
-      );
+      fail("CONFLICT", "A schedule entry already exists for that date", {
+        conflictingScheduleEntryId: conflict.id,
+        occupiedDate: startDate,
+      });
     }
 
     const revisionId = this.insertImmutableRevision(definitionId, startDate, input);

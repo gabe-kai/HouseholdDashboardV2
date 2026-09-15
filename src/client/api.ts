@@ -34,7 +34,12 @@ function writeStoredCsrf(token: string): void {
 /** Survives Vite HMR; empty until login/claim/session restore. */
 let csrfToken = readStoredCsrf();
 
-export type ApiError = Error & { code?: string; requestId?: string };
+export type ApiError = Error & {
+  code?: string;
+  requestId?: string;
+  conflictingScheduleEntryId?: string;
+  occupiedDate?: string;
+};
 
 export type SessionInfo = {
   member: { id: string; displayName: string };
@@ -199,11 +204,15 @@ async function parseJson<T>(res: Response): Promise<T> {
     code?: string;
     message?: string;
     requestId?: string;
+    conflictingScheduleEntryId?: string;
+    occupiedDate?: string;
   };
   if (!res.ok) {
     const error = new Error(data.message ?? res.statusText) as ApiError;
     error.code = data.code;
     error.requestId = data.requestId;
+    error.conflictingScheduleEntryId = data.conflictingScheduleEntryId;
+    error.occupiedDate = data.occupiedDate;
     throw error;
   }
   return data;

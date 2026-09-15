@@ -229,7 +229,7 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     csrf: "required",
     grant: "routine.shared.manage",
     notes:
-      "Append prospective shared revision for definition; mutationId replay-safe; rejects archived",
+      "Current or schedule plan mutation; immutable revision content + schedule entry; range reconcile; mutationId replay-safe",
   },
   {
     method: "POST",
@@ -239,7 +239,45 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     csrf: "required",
     grant: "routine.shared.manage",
     notes:
-      "Prospective archive with tomorrow cutoff; mutationId replay-safe; expectedVersion required",
+      "Legacy prospective archive with tomorrow cutoff (end_mode=legacy_archive); mutationId replay-safe",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/routines/:definitionId/end",
+    auth: "session",
+    origin: "mutation_when_configured",
+    csrf: "required",
+    grant: "routine.shared.manage",
+    notes:
+      "Immediate End: cancel today+ unstarted and upcoming schedule entries; keep started; mutationId replay-safe",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/routines/:definitionId/delete",
+    auth: "session",
+    origin: "mutation_when_configured",
+    csrf: "required",
+    grant: "routine.shared.manage",
+    notes:
+      "Hard-delete unused routine graph when no started/reports/personal/proposals; keep deletion receipt",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/routines/:definitionId/schedule-entries/:scheduleEntryId/move",
+    auth: "session",
+    origin: "mutation_when_configured",
+    csrf: "required",
+    grant: "routine.shared.manage",
+    notes: "Move upcoming schedule entry start_date; re-reconcile vacated/new ranges",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/routines/:definitionId/schedule-entries/:scheduleEntryId/delete",
+    auth: "session",
+    origin: "mutation_when_configured",
+    csrf: "required",
+    grant: "routine.shared.manage",
+    notes: "Cancel upcoming schedule entry; recompose vacated interval to previous plan",
   },
   {
     method: "GET",

@@ -40,17 +40,41 @@ async function openAsManager(page: Page) {
   await expect(page.locator(".topbar")).toContainText("Morgan Reed", { timeout: 20_000 });
 }
 
+async function openPeopleGroups(page: Page) {
+  await page
+    .getByRole("navigation", { name: "Primary" })
+    .getByRole("button", { name: "Household", exact: true })
+    .click();
+  await page
+    .getByRole("navigation", { name: "Household" })
+    .getByRole("button", { name: /People & Groups/ })
+    .click();
+  await expect(page.getByRole("heading", { name: "People & Groups" })).toBeVisible();
+}
+
+async function openHouseholdActivity(page: Page) {
+  await page
+    .getByRole("navigation", { name: "Primary" })
+    .getByRole("button", { name: "Household", exact: true })
+    .click();
+  await page
+    .getByRole("navigation", { name: "Household" })
+    .getByRole("button", { name: /Household activity/ })
+    .click();
+  await expect(page.getByRole("heading", { name: "Household activity" })).toBeVisible();
+}
+
 test.describe("P0-004A People & Groups focused UX", () => {
   test("phone UI covers focused people, access, groups, and activity", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openAsManager(page);
 
-    await page.getByRole("button", { name: "People & Groups" }).click();
-    await expect(page.getByRole("heading", { name: "People & Groups" })).toBeVisible();
+    await openPeopleGroups(page);
     await expect(page.getByRole("button", { name: "Add person" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Create group" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Add person" })).toHaveCount(0);
     await expect(page.getByText("Household-visible personal tasks")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Back to Household" })).toBeVisible();
 
     await page.getByRole("button", { name: "Add person" }).click();
     await expect(page.getByRole("heading", { name: "Add person" })).toBeVisible();
@@ -95,9 +119,9 @@ test.describe("P0-004A People & Groups focused UX", () => {
     await expect(page.getByRole("heading", { name: "Reed kids" })).toBeVisible();
     await page.getByRole("button", { name: "Back to People & Groups" }).click();
 
-    await page.getByRole("button", { name: "View household activity" }).click();
-    await expect(page.getByRole("heading", { name: "Household activity" })).toBeVisible();
-    await page.getByRole("button", { name: "Back to People & Groups" }).click();
+    await openHouseholdActivity(page);
+    await page.getByRole("button", { name: "Back to Household" }).click();
+    await openPeopleGroups(page);
     await expect(page.getByRole("button", { name: /Elizabeth/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /Reed kids/ })).toBeVisible();
   });
@@ -112,8 +136,8 @@ test.describe("P0-004A People & Groups focused UX", () => {
 
     await openAsManager(pageA);
     await openAsManager(pageB);
-    await pageA.getByRole("button", { name: "People & Groups" }).click();
-    await pageB.getByRole("button", { name: "People & Groups" }).click();
+    await openPeopleGroups(pageA);
+    await openPeopleGroups(pageB);
 
     const name = `Peer ${Date.now().toString(36)}`;
     await pageA.getByRole("button", { name: "Add person" }).click();
@@ -133,7 +157,7 @@ test.describe("P0-004A People & Groups focused UX", () => {
   test("choice rows and secondary actions meet composed touch geometry", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openAsManager(page);
-    await page.getByRole("button", { name: "People & Groups" }).click();
+    await openPeopleGroups(page);
 
     await page.getByRole("button", { name: "Add person" }).click();
     await page.getByLabel("Name").fill("Geometry Child");

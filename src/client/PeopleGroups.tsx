@@ -133,9 +133,15 @@ export function PeopleGroupsView(props: {
   canManageStructure: boolean;
   canEnroll: boolean;
   canViewActivity: boolean;
+  /** When nested under Household, start on overview or activity. */
+  entry?: "overview" | "activity";
+  /** Return to Household hub when leaving the top of this view. */
+  onExit?: () => void;
   onPeopleChanged: () => void;
 }) {
-  const [view, setView] = useState<ViewState>({ kind: "overview" });
+  const [view, setView] = useState<ViewState>(() =>
+    props.entry === "activity" ? { kind: "household-activity" } : { kind: "overview" },
+  );
   const [groups, setGroups] = useState<GroupPublic[] | null>(null);
   const [detail, setDetail] = useState<PersonDetail | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -173,6 +179,10 @@ export function PeopleGroupsView(props: {
   }, [openPersonId, props.memberships]);
 
   function goOverview() {
+    if (props.entry === "activity" && props.onExit) {
+      props.onExit();
+      return;
+    }
     setView({ kind: "overview" });
   }
 
@@ -198,6 +208,7 @@ export function PeopleGroupsView(props: {
           groups={loadedGroups}
           canManageStructure={props.canManageStructure}
           canViewActivity={props.canViewActivity}
+          onExit={props.onExit}
           onOpenPerson={(personId) => {
             clearFeedback();
             setView({ kind: "person-detail", personId });
@@ -363,7 +374,16 @@ export function PeopleGroupsView(props: {
           memberships={props.memberships}
           tasks={props.tasks}
           occurrences={props.occurrences}
-          onBack={goOverview}
+          backLabel={
+            props.entry === "activity" && props.onExit
+              ? "Back to Household"
+              : "Back to People & Groups"
+          }
+          onBack={
+            props.entry === "activity" && props.onExit
+              ? props.onExit
+              : goOverview
+          }
         />
       ) : null}
     </section>
@@ -375,6 +395,7 @@ function OverviewState(props: {
   groups: GroupPublic[];
   canManageStructure: boolean;
   canViewActivity: boolean;
+  onExit?: () => void;
   onOpenPerson: (personId: string) => void;
   onAddPerson: () => void;
   onOpenGroup: (groupId: string) => void;
@@ -383,7 +404,10 @@ function OverviewState(props: {
 }) {
   return (
     <div className="focused-state">
-      <h1>People &amp; Groups</h1>
+      {props.onExit ? (
+        <BackButton label="Back to Household" onClick={props.onExit} />
+      ) : null}
+      <h1 className="page-heading">People &amp; Groups</h1>
       <p className="meta">
         {props.memberships.length} {props.memberships.length === 1 ? "person" : "people"} ·{" "}
         {props.groups.length} {props.groups.length === 1 ? "group" : "groups"}
@@ -397,7 +421,7 @@ function OverviewState(props: {
             <li key={person.id}>
               <button
                 type="button"
-                className="person-row"
+                className="person-row list-row"
                 onClick={() => props.onOpenPerson(person.id)}
               >
                 <span className="person-name">{person.displayName}</span>
@@ -427,7 +451,7 @@ function OverviewState(props: {
             <li key={group.id}>
               <button
                 type="button"
-                className="person-row"
+                className="person-row list-row"
                 onClick={() => props.onOpenGroup(group.id)}
               >
                 <span className="person-name">{group.name}</span>
@@ -1018,6 +1042,7 @@ function HouseholdActivityState(props: {
   memberships: MemberPublic[];
   tasks: PersonalTask[];
   occurrences: OccurrenceView[];
+  backLabel: string;
   onBack: () => void;
 }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -1036,7 +1061,7 @@ function HouseholdActivityState(props: {
 
   return (
     <div className="focused-state" aria-labelledby="household-activity-heading">
-      <BackButton label="Back to People & Groups" onClick={props.onBack} />
+      <BackButton label={props.backLabel} onClick={props.onBack} />
       <FocusHeading id="household-activity-heading">Household activity</FocusHeading>
 
       <h3>Routine progress</h3>

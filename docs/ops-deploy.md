@@ -24,7 +24,7 @@ npm run start            # with APP_PROFILE=hosted and required env
 ```
 
 Before applying a new migration on a populated database, run `npm run db:backup`.
-P0-005 adds `005_multiple_household_routines.sql` (lifts singleton Morning constraints, adds dayparts/archive, scopes personal layers and proposals) and `006_occurrence_structural_lock.sql` (`occurrences.started_at` with backfill from locking step reports). Rehearse on disposable copies: backup → migrate → restore to an isolated path. Do not rewrite live household data as part of brief acceptance.
+P0-005 adds `005_multiple_household_routines.sql` (multi-routine/dayparts/archive), `006_occurrence_structural_lock.sql` (`occurrences.started_at`), and `007_routine_schedule_lifecycle.sql` (schedule entries, immutable revision content, End/Delete lifecycle, occurrence soft-cancel). Rehearse on disposable copies: backup → migrate → restore to an isolated path. Do not rewrite live household data as part of brief acceptance.
 
 Normal local development uses `AUTO_SEED=0` (see `.env.example`). Explicit `npm run db:seed` or `AUTO_SEED=1` creates the canonical demo fixture. Fixture cleanup is operator-driven: dry-run by default, `--apply` after backup, and never runs on startup. Do not apply cleanup to a live household database without an explicit Project Lead decision.
 

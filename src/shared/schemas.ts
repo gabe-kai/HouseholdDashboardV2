@@ -100,11 +100,36 @@ export const CreateRoutineSchema = CreateRoutineFieldsSchema.superRefine(atLeast
 
 export const CreateRevisionSchema = CreateRoutineFieldsSchema.extend({
   effectiveDate: HouseholdDateSchema.optional(),
+  /** current = refine live plan; schedule = create/edit upcoming boundary */
+  mode: z.enum(["current", "schedule"]).optional(),
+  /** When mode=schedule, edit this upcoming entry instead of creating */
+  scheduleEntryId: UuidSchema.optional(),
 }).superRefine(atLeastOneAudienceSource);
 
 export const ArchiveRoutineSchema = z.object({
   mutationId: UuidSchema,
   expectedVersion: z.number().int().positive(),
+});
+
+export const EndRoutineSchema = z.object({
+  mutationId: UuidSchema,
+  expectedVersion: z.number().int().positive(),
+});
+
+export const DeleteRoutineSchema = z.object({
+  mutationId: UuidSchema,
+  expectedVersion: z.number().int().positive(),
+});
+
+export const DeleteScheduleEntrySchema = z.object({
+  mutationId: UuidSchema,
+  expectedVersion: z.number().int().positive(),
+});
+
+export const MoveScheduleEntrySchema = z.object({
+  mutationId: UuidSchema,
+  expectedVersion: z.number().int().positive(),
+  startDate: HouseholdDateSchema,
 });
 
 export const SetStepStatusSchema = z.object({
@@ -299,15 +324,6 @@ export type GroupPublic = {
   routineEffectFromDate?: string | null;
 };
 
-export type RoutineDefinitionPublic = {
-  id: string;
-  version: number;
-  archived: boolean;
-  archiveCutoffDate: string | null;
-  archivedAt: string | null;
-  revisions: RoutineRevisionPublic[];
-};
-
 export type RoutineRevisionPublic = {
   id: string;
   effectiveDate: string;
@@ -327,4 +343,40 @@ export type RoutineRevisionPublic = {
   resolvedMemberIds?: string[];
   upcomingResolvedMemberIds?: string[];
   upcomingParticipationFromDate?: string | null;
+};
+
+export type ScheduleEntryPublic = {
+  id: string;
+  startDate: string;
+  revisionId: string;
+  canceledAt: string | null;
+  revision: RoutineRevisionPublic;
+};
+
+export type RoutineDefinitionPublic = {
+  id: string;
+  version: number;
+  archived: boolean;
+  archiveCutoffDate: string | null;
+  archivedAt: string | null;
+  ended: boolean;
+  endMode: "legacy_archive" | "immediate" | null;
+  endedAt: string | null;
+  deletedAt?: string | null;
+  scheduleEntries: ScheduleEntryPublic[];
+  revisions: RoutineRevisionPublic[];
+};
+
+/** Outcome of a plan reconcile for truthful save feedback. */
+export type PlanRefineOutcome = {
+  fromDate: string;
+  untilDateExclusive: string | null;
+  updatedMemberIds: string[];
+  protectedMemberIds: string[];
+  excludedMemberIds: string[];
+};
+
+export type RoutineMutationResult = {
+  routine: RoutineDefinitionPublic;
+  refineOutcome?: PlanRefineOutcome;
 };

@@ -19,7 +19,7 @@
 
 ## Current focus
 
-Engineering completed local implementation of `P0-005 r2` (`reports/P0-005-r2-build-report.md`). Architecture technically accepted the Build Report after the evidence-hygiene correction; Project Lead/product acceptance remains pending.
+P0-005 r2 is committed at `297b2fd` on `brief/p0-005-multiple-household-routines` and was technically accepted after evidence hygiene correction. Product's subsequent proposal expands the contract to cohesive routine management and a shared application design. Architecture prepared **P0-005 r3**, now awaiting fresh Engineering readiness. r3 is planned, not implemented.
 
 ## Internal work status
 
@@ -30,7 +30,7 @@ Engineering completed local implementation of `P0-005 r2` (`reports/P0-005-r2-bu
 | P0-003 - Regression Safety and Contract Hardening | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #6 | Product evaluation; optional required-check configuration |
 | P0-004A - People & Groups UX Completion | r3 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #8 | Product phone evaluation |
 | P0-004B - Group-backed Morning Routine | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #9 | Product evaluation |
-| P0-005 - Multiple Household Routines | r2 | ACCEPTED | Project Lead | `brief/p0-005-multiple-household-routines` | Commit/PR decision and product evaluation |
+| P0-005 - Cohesive Routine Management | r3 | IN REVIEW | Engineering readiness | `brief/p0-005-multiple-household-routines` | Consolidated readiness against r3; then Architecture disposition |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -44,7 +44,7 @@ This table is the short repository-side coordination index. An external project 
 - P0-003 r1 added protected-behavior traceability, route-policy completeness, focused regression evidence, local PR/RC validation tiers, and a successful GitHub Actions PR gate; Architecture technically accepted it on 2026-09-10.
 - P0-004A r3 established focused People & Groups states, fixture-free normal bootstrap, canonical opt-in demo fixtures, and provenance-safe cleanup; Architecture technically accepted it on 2026-09-11 and it was merged through PR #8.
 - P0-004B r1 added dated group-backed Morning Routine participation and was technically accepted after correction `ac41538`, then merged through PR #9.
-- P0-005 r1 multi-routine implementation exists on the brief branch; Product evaluation drove r2 (D-023 structural lock / same-date refine). Engineering implemented r2 locally; see `reports/P0-005-r2-build-report.md`.
+- P0-005 r1/r2 established multiple routines and first-action locks; r2 is committed at `297b2fd` and technically accepted. Product evaluation prompted r3's full routine lifecycle, current-plan ranges, and shared visual/navigation foundation.
 
 ## Known blockers
 
@@ -52,11 +52,11 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next Project Lead decision
 
-- Earlier Product evaluation may continue independently. With P0-005 r2 technically accepted, the Project Lead decides commit/PR and product evaluation. Hosted/physical checks apply only to a separately promoted release candidate.
+- Review/commit the r3 planning files and carry the exact revision to Engineering. Product evaluates the connected experience after technical acceptance; P0-005 stays CURRENT. Hosted/physical checks apply only to a separately promoted release candidate.
 
 ## Next likely handoff
 
-Architecture accepted the P0-005 r2 Build Report (`reports/P0-005-r2-build-report.md`). The Project Lead manages Git; agents suggest commit messages but do not commit.
+Engineering reviews `briefs/p0-005-multiple-household-routines.md` **revision 3** against the committed r2 foundation and returns `reports/P0-005-r3-engineering-readiness.md` before implementation. Earlier readiness/acceptance does not cover r3. The Project Lead manages Git; agents suggest commit messages but do not commit.
 
 ## Notes for all teams
 

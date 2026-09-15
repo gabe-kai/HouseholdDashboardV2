@@ -42,7 +42,7 @@ Goal: prove that a real recurring household routine can be used quickly by six d
 
 - [ ] **Outcome: Cohesive Routine Management.** A parent understands and edits current routines, manages intentional upcoming changes, removes mistakes, and ends used routines within one coherent phone experience; started work and history remain trustworthy.
   - **Brief:** `P0-005 r3 - Cohesive Routine Management` (`briefs/p0-005-multiple-household-routines.md`).
-  - **Status:** IN REVIEW; r1/r2 are the implemented foundation (r2 committed at `297b2fd` and technically accepted). Fresh r3 Engineering readiness is next.
+  - **Status:** READY for local implementation; r1/r2 are the implemented foundation (r2 committed at `297b2fd` and technically accepted), and r3 readiness is accepted.
   - **Evidence target:** Local browser lifecycle proves current-plan reconciliation through the next scheduled boundary, upcoming create/edit/move/delete, safe Delete/End, locks/recovery/history, and consistent navigation/presentation across existing screens. Product then evaluates the connected experience. Keep P0-005 CURRENT until that evaluation.
 
 ### LIKELY NEXT

@@ -19,7 +19,7 @@
 
 ## Current focus
 
-P0-005 r2 is committed at `297b2fd` on `brief/p0-005-multiple-household-routines` and was technically accepted after evidence hygiene correction. Product's subsequent proposal expands the contract to cohesive routine management and a shared application design. Architecture prepared **P0-005 r3**, now awaiting fresh Engineering readiness. r3 is planned, not implemented.
+P0-005 r2 is committed at `297b2fd` on `brief/p0-005-multiple-household-routines` and was technically accepted after evidence hygiene correction. Product's subsequent proposal expands the contract to cohesive routine management and a shared application design. Engineering returned READY for **P0-005 r3**; Architecture authorized local implementation. r3 is implementing, not yet technically accepted.
 
 ## Internal work status
 
@@ -30,7 +30,7 @@ P0-005 r2 is committed at `297b2fd` on `brief/p0-005-multiple-household-routines
 | P0-003 - Regression Safety and Contract Hardening | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #6 | Product evaluation; optional required-check configuration |
 | P0-004A - People & Groups UX Completion | r3 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #8 | Product phone evaluation |
 | P0-004B - Group-backed Morning Routine | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #9 | Product evaluation |
-| P0-005 - Cohesive Routine Management | r3 | IN REVIEW | Engineering readiness | `brief/p0-005-multiple-household-routines` | Consolidated readiness against r3; then Architecture disposition |
+| P0-005 - Cohesive Routine Management | r3 | READY | Engineering | `brief/p0-005-r3-cohesive-routine-management` | Local implementation and Build Report |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -44,7 +44,7 @@ This table is the short repository-side coordination index. An external project 
 - P0-003 r1 added protected-behavior traceability, route-policy completeness, focused regression evidence, local PR/RC validation tiers, and a successful GitHub Actions PR gate; Architecture technically accepted it on 2026-09-10.
 - P0-004A r3 established focused People & Groups states, fixture-free normal bootstrap, canonical opt-in demo fixtures, and provenance-safe cleanup; Architecture technically accepted it on 2026-09-11 and it was merged through PR #8.
 - P0-004B r1 added dated group-backed Morning Routine participation and was technically accepted after correction `ac41538`, then merged through PR #9.
-- P0-005 r1/r2 established multiple routines and first-action locks; r2 is committed at `297b2fd` and technically accepted. Product evaluation prompted r3's full routine lifecycle, current-plan ranges, and shared visual/navigation foundation.
+- P0-005 r1/r2 established multiple routines and first-action locks; r2 implementation is `297b2fd`, merged to `main` at `5376b51`, and technically accepted. Product evaluation prompted r3's full routine lifecycle, current-plan ranges, and shared visual/navigation foundation.
 
 ## Known blockers
 
@@ -52,11 +52,11 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next Project Lead decision
 
-- Review/commit the r3 planning files and carry the exact revision to Engineering. Product evaluates the connected experience after technical acceptance; P0-005 stays CURRENT. Hosted/physical checks apply only to a separately promoted release candidate.
+- Engineering implements r3 locally and returns its Build Report for Architecture acceptance. Product evaluates the connected experience after technical acceptance; P0-005 stays CURRENT. Hosted/physical checks apply only to a separately promoted release candidate.
 
 ## Next likely handoff
 
-Engineering reviews `briefs/p0-005-multiple-household-routines.md` **revision 3** against the committed r2 foundation and returns `reports/P0-005-r3-engineering-readiness.md` before implementation. Earlier readiness/acceptance does not cover r3. The Project Lead manages Git; agents suggest commit messages but do not commit.
+Architecture accepted Engineering readiness for `briefs/p0-005-multiple-household-routines.md` **revision 3** (`reports/P0-005-r3-engineering-readiness.md`). Engineering may implement locally and return `reports/P0-005-r3-build-report.md`. Earlier readiness/acceptance does not cover r3. The Project Lead manages Git; agents suggest commit messages but do not commit.
 
 ## Notes for all teams
 

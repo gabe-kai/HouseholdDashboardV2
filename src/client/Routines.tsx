@@ -9,6 +9,7 @@ import {
   fetchGroups,
   fetchRoutine,
   fetchRoutines,
+  fetchSession,
   moveScheduleEntry,
   type ApiError,
   type PlanRefineOutcome,
@@ -356,20 +357,42 @@ export function RoutinesView(props: {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [deleteOfferEnd, setDeleteOfferEnd] = useState(false);
-  const loadGenerationRef = useRef(0);
+  const [scheduleCollision, setScheduleCollision] = useState<{
+    occupiedDate: string;
+    conflictingScheduleEntryId: string;
+  } | null>(null);
+  const listGenerationRef = useRef(0);
+  const detailGenerationRef = useRef(0);
   const selectedDefinitionRef = useRef<string | null>(null);
+  const editorHouseholdDateRef = useRef(props.today);
   const moreMenuRef = useRef<HTMLDivElement>(null);
 
   const dirty = baselineSnapshot !== "" && draftSnapshot(draft) !== baselineSnapshot;
 
+  function applyDetailRoutine(next: Routine) {
+    setDetailRoutine((prev) => {
+      if (prev && prev.id === next.id && prev.version > next.version) {
+        return prev;
+      }
+      // Same version: keep local if it already dropped canceled/deleted upcoming rows
+      // that a raced GET might still include.
+      if (prev && prev.id === next.id && prev.version === next.version) {
+        const prevUpcoming = prev.scheduleEntries.filter((e) => e.canceledAt == null).length;
+        const nextUpcoming = next.scheduleEntries.filter((e) => e.canceledAt == null).length;
+        if (prevUpcoming < nextUpcoming) return prev;
+      }
+      return next;
+    });
+  }
+
   async function loadList() {
-    const generation = ++loadGenerationRef.current;
+    const generation = ++listGenerationRef.current;
     const [activeResult, allResult, groupsResult] = await Promise.all([
       fetchRoutines(false),
       fetchRoutines(true),
       fetchGroups(),
     ]);
-    if (generation !== loadGenerationRef.current) return;
+    if (generation !== listGenerationRef.current) return;
     setGroups(groupsResult.groups);
     setRoutines(activeResult.routines.filter((routine) => !isInactiveRoutine(routine)));
     setEndedRoutines(allResult.routines.filter((routine) => isInactiveRoutine(routine)));
@@ -377,15 +400,15 @@ export function RoutinesView(props: {
 
   async function loadDetail(definitionId: string) {
     selectedDefinitionRef.current = definitionId;
-    const generation = ++loadGenerationRef.current;
+    const generation = ++detailGenerationRef.current;
     const [routineResult, groupsResult] = await Promise.all([
       fetchRoutine(definitionId),
       fetchGroups(),
     ]);
-    if (generation !== loadGenerationRef.current) return;
+    if (generation !== detailGenerationRef.current) return;
     if (selectedDefinitionRef.current !== definitionId) return;
     setGroups(groupsResult.groups);
-    setDetailRoutine(routineResult.routine);
+    applyDetailRoutine(routineResult.routine);
   }
 
   useEffect(() => {
@@ -431,6 +454,8 @@ export function RoutinesView(props: {
   function beginDraft(next: Draft) {
     setDraft(next);
     setBaselineSnapshot(draftSnapshot(next));
+    editorHouseholdDateRef.current = props.today;
+    setScheduleCollision(null);
   }
 
   function openCreate() {
@@ -448,7 +473,7 @@ export function RoutinesView(props: {
     setStatusMessage(null);
     setDeleteOfferEnd(false);
     beginDraft(draftFromRevision(current, props.today));
-    setDetailRoutine(routine);
+    applyDetailRoutine(routine);
     setView({ kind: "edit", definitionId: routine.id, mode: "current" });
   }
 
@@ -459,7 +484,7 @@ export function RoutinesView(props: {
     setStatusMessage(null);
     setDeleteOfferEnd(false);
     beginDraft(draftFromRevision(current, addDays(props.today, 1)));
-    setDetailRoutine(routine);
+    applyDetailRoutine(routine);
     setView({ kind: "edit", definitionId: routine.id, mode: "schedule-new" });
   }
 
@@ -468,7 +493,7 @@ export function RoutinesView(props: {
     setStatusMessage(null);
     setDeleteOfferEnd(false);
     beginDraft(draftFromRevision(entry.revision, entry.startDate));
-    setDetailRoutine(routine);
+    applyDetailRoutine(routine);
     setView({
       kind: "edit",
       definitionId: routine.id,
@@ -585,12 +610,21 @@ export function RoutinesView(props: {
     if (busy || !validateDraft()) return;
     setBusy(true);
     setError(null);
+    setScheduleCollision(null);
     try {
+      const session = await fetchSession();
+      if (session && session.householdDate !== editorHouseholdDateRef.current) {
+        setError(
+          `The household date changed to ${session.householdDate}. Your draft is kept — review Starting/today and save again.`,
+        );
+        setBusy(false);
+        return;
+      }
       const result = await createRoutine(mutationPayload());
       if (selectedDefinitionRef.current && selectedDefinitionRef.current !== result.routine.id) {
         return;
       }
-      setDetailRoutine(result.routine);
+      applyDetailRoutine(result.routine);
       await loadList();
       const revision = currentRevision(result.routine, props.today);
       setStatusMessage(
@@ -615,7 +649,17 @@ export function RoutinesView(props: {
     const scheduleEntryId = view.scheduleEntryId;
     setBusy(true);
     setError(null);
+    setScheduleCollision(null);
     try {
+      const session = await fetchSession();
+      if (session && session.householdDate !== editorHouseholdDateRef.current) {
+        setError(
+          `The household date changed to ${session.householdDate}. Your draft is kept — review the date and save again.`,
+        );
+        setBusy(false);
+        return;
+      }
+
       const current =
         detailRoutine ?? (await fetchRoutine(definitionId)).routine;
       if (!current) throw new Error("Routine not found");
@@ -660,8 +704,8 @@ export function RoutinesView(props: {
           scheduleEntryId,
         });
         if (draft.startingDate !== originalDate) {
-          if (draft.startingDate <= props.today) {
-            setError("Scheduled changes must start after today.");
+          if (draft.startingDate < props.today) {
+            setError("Cannot move a scheduled change to a past date.");
             setBusy(false);
             return;
           }
@@ -670,7 +714,15 @@ export function RoutinesView(props: {
             expectedVersion: result.routine.version,
             startDate: draft.startingDate,
           });
-          setStatusMessage(`Upcoming change moved to ${draft.startingDate}.`);
+          setStatusMessage(
+            draft.startingDate === props.today
+              ? formatRefineStatus(
+                  `Moved to today`,
+                  result.refineOutcome,
+                  props.memberships,
+                )
+              : `Upcoming change moved to ${draft.startingDate}.`,
+          );
         } else {
           setStatusMessage(`Upcoming change for ${originalDate} saved.`);
         }
@@ -682,13 +734,35 @@ export function RoutinesView(props: {
       ) {
         return;
       }
-      setDetailRoutine(result.routine);
+      applyDetailRoutine(result.routine);
       await loadList();
       setBaselineSnapshot(draftSnapshot(draft));
+      setScheduleCollision(null);
       setView({ kind: "detail", definitionId: result.routine.id });
       props.onSaved(result.routine);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Routine couldn't be saved.");
+      const apiErr = caught as ApiError;
+      if (
+        apiErr.code === "CONFLICT" &&
+        /already exists for that date/i.test(apiErr.message ?? "")
+      ) {
+        const occupiedDate = apiErr.occupiedDate ?? draft.startingDate;
+        const conflictingScheduleEntryId =
+          apiErr.conflictingScheduleEntryId ??
+          detailRoutine?.scheduleEntries.find(
+            (entry) =>
+              entry.startDate === occupiedDate &&
+              entry.id !== scheduleEntryId,
+          )?.id;
+        if (conflictingScheduleEntryId) {
+          setScheduleCollision({ occupiedDate, conflictingScheduleEntryId });
+        }
+        setError(
+          `A change already starts on ${occupiedDate}. Choose another date or edit the existing change. Your draft is kept.`,
+        );
+      } else {
+        setError(caught instanceof Error ? caught.message : "Routine couldn't be saved.");
+      }
     } finally {
       setBusy(false);
     }
@@ -705,14 +779,27 @@ export function RoutinesView(props: {
     setBusy(true);
     setError(null);
     try {
+      const expectedVersion =
+        detailRoutine?.id === routine.id ? detailRoutine.version : routine.version;
       const result = await deleteScheduleEntry(routine.id, entry.id, {
         mutationId: newClientId(),
-        expectedVersion: routine.version,
+        expectedVersion,
       });
+      // Defensively drop the deleted entry even if a stale refresh races in.
+      const cleaned: Routine = {
+        ...result.routine,
+        scheduleEntries: result.routine.scheduleEntries.filter(
+          (item) => item.id !== entry.id && item.canceledAt == null,
+        ),
+      };
+      // Invalidate in-flight detail fetches so they cannot restore the entry.
+      detailGenerationRef.current += 1;
+      applyDetailRoutine(cleaned);
       setStatusMessage(`Deleted upcoming change for ${entry.startDate}.`);
-      setDetailRoutine(result.routine);
       await loadList();
-      props.onSaved(result.routine);
+      props.onSaved(cleaned);
+      // Re-read once after list refresh; version guard keeps our newer state.
+      void loadDetail(routine.id).catch(() => undefined);
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : "Upcoming change couldn't be deleted.",
@@ -745,7 +832,7 @@ export function RoutinesView(props: {
       });
       setStatusMessage(`Ended ${title}.`);
       await loadList();
-      setDetailRoutine(result.routine);
+      applyDetailRoutine(result.routine);
       setView({ kind: "detail", definitionId: result.routine.id });
       props.onEnded?.(result.routine);
     } catch (caught) {
@@ -1022,10 +1109,48 @@ export function RoutinesView(props: {
               : view.mode === "schedule-new"
                 ? "Scheduling copies this draft into a future change. Today's plan stays as it is."
                 : view.mode === "schedule-edit"
-                  ? "Changes apply to this upcoming entry. You can also move its Starting date."
+                  ? "Changes apply to this upcoming entry. You can move its Starting date, including to today."
                   : "Save changes updates applicable unstarted work from today forward. Started checklists stay unchanged."}
           </p>
           {error ? <p role="alert">{error}</p> : null}
+          {scheduleCollision ? (
+            <div className="status-notice" role="status">
+              <p>
+                {scheduleCollision.occupiedDate} already has an upcoming change.
+              </p>
+              <div className="button-row">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScheduleCollision(null);
+                    setError(null);
+                    const starting = document.getElementById("routine-starting-date");
+                    starting?.focus();
+                  }}
+                >
+                  Choose another date
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const routine = detailRoutine;
+                    const entry = routine?.scheduleEntries.find(
+                      (item) => item.id === scheduleCollision.conflictingScheduleEntryId,
+                    );
+                    if (!routine || !entry) {
+                      setError("Could not open the existing change. Choose another date.");
+                      return;
+                    }
+                    if (dirty && !confirmDiscard()) return;
+                    setScheduleCollision(null);
+                    openEditUpcoming(routine, entry);
+                  }}
+                >
+                  Edit existing change
+                </button>
+              </div>
+            </div>
+          ) : null}
           <div className="form-grid">
             <label>
               Name
@@ -1041,9 +1166,14 @@ export function RoutinesView(props: {
               <label>
                 Starting
                 <input
+                  id="routine-starting-date"
                   type="date"
                   value={draft.startingDate}
-                  min={addDays(props.today, 1)}
+                  min={
+                    editing && view.kind === "edit" && view.mode === "schedule-edit"
+                      ? props.today
+                      : addDays(props.today, 1)
+                  }
                   onChange={(event) =>
                     setDraft((current) => ({
                       ...current,

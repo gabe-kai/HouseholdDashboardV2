@@ -55,8 +55,15 @@ const AUTH_ORIGIN_REQUIRED = new Set([
   "/api/v1/auth/claim",
 ]);
 
-function errorBody(code: string, message: string, requestId: string) {
-  return { code, message, requestId };
+function errorBody(
+  code: string,
+  message: string,
+  requestId: string,
+  details?: Record<string, unknown>,
+) {
+  return details && Object.keys(details).length > 0
+    ? { code, message, requestId, ...details }
+    : { code, message, requestId };
 }
 
 function statusForCode(code: string): number {
@@ -927,6 +934,8 @@ function sendStoreError(
     code?: string;
     retryAfterSec?: number;
     statusCode?: number;
+    conflictingScheduleEntryId?: string;
+    occupiedDate?: string;
   };
   const rateLimited =
     candidate.statusCode === 429 || candidate.code === "FST_ERR_RATE_LIMIT";
@@ -952,7 +961,14 @@ function sendStoreError(
   if (code === "THROTTLED" && candidate.retryAfterSec) {
     reply.header("Retry-After", candidate.retryAfterSec);
   }
+  const details: Record<string, unknown> = {};
+  if (typeof candidate.conflictingScheduleEntryId === "string") {
+    details.conflictingScheduleEntryId = candidate.conflictingScheduleEntryId;
+  }
+  if (typeof candidate.occupiedDate === "string") {
+    details.occupiedDate = candidate.occupiedDate;
+  }
   return reply
     .code(statusForCode(code))
-    .send(errorBody(code, message, requestId));
+    .send(errorBody(code, message, requestId, details));
 }

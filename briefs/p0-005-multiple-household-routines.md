@@ -244,7 +244,7 @@ Product evaluates the connected application after technical evidence: Today, Rou
 
 **Report:** `reports/P0-005-r3-engineering-readiness.md`
 
-**Architecture disposition:** ACCEPT / PROCEED. Engineering may implement revision 3 locally against the committed r2 foundation. This authorizes implementation only; Architecture acceptance of the resulting Build Report and Project Lead/product acceptance remain separate.
+**Architecture disposition:** FIX REQUIRED against revision 3. AT6 must be demonstrated through the normal browser UI, including moving upcoming entries, resolving occupied-date collisions with preserved drafts and explicit alternatives, and recovering from date-boundary conflicts. In addition, the manual lifecycle check found that accepting `Delete upcoming` can report success while leaving the upcoming entry visible and deletable again; this must be reproduced and corrected with regression evidence. The contract is unchanged; Engineering may continue on the same revision. Architecture technical acceptance and Project Lead/product acceptance remain separate.
 
 ## Revision history
 

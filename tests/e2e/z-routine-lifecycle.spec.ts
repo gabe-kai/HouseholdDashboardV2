@@ -112,6 +112,11 @@ test.describe("P0-005 r3 routine lifecycle UI", () => {
       page.getByRole("status").filter({ hasText: /Deleted upcoming change/i }),
     ).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("heading", { name: /Upcoming change/i })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Delete upcoming", exact: true })).toHaveCount(0);
+    // Prior plan governs again — current detail still shows the original step.
+    await expect(page.getByText("Lifecycle step")).toBeVisible();
+    // Repetition is impossible: no upcoming row remains to delete again.
+    await expect(page.getByText(new RegExp(`Starting ${tomorrow}`))).toHaveCount(0);
 
     // --- Create + delete unused test routine ---
     await page.getByRole("button", { name: /Back to Routines/i }).click();

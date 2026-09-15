@@ -19,7 +19,7 @@
 
 ## Current focus
 
-P0-005 r2 is committed at `297b2fd` (merged to `main` @ `5376b51`) and was technically accepted. Engineering closed Architecture **FIX REQUIRED** on r3 upcoming-delete (HTTP 500 from narrow receipt CHECK on long-lived DBs; migration `008`) and updated `reports/P0-005-r3-build-report.md`. Architecture technical acceptance and Project Lead/product acceptance remain pending.
+P0-005 r2 is committed at `297b2fd` (merged to `main` @ `5376b51`) and was technically accepted. Engineering closed Architecture **FIX REQUIRED** on r3 upcoming-delete (HTTP 500 from narrow receipt CHECK on long-lived DBs; migration `008`) and updated `reports/P0-005-r3-build-report.md`. Architecture technically accepted r3 after the successful local manual delete retest; Project Lead/product acceptance remains separate.
 
 ## Internal work status
 
@@ -30,7 +30,7 @@ P0-005 r2 is committed at `297b2fd` (merged to `main` @ `5376b51`) and was techn
 | P0-003 - Regression Safety and Contract Hardening | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #6 | Product evaluation; optional required-check configuration |
 | P0-004A - People & Groups UX Completion | r3 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #8 | Product phone evaluation |
 | P0-004B - Group-backed Morning Routine | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #9 | Product evaluation |
-| P0-005 - Cohesive Routine Management | r3 | IMPLEMENTED | Architecture | `brief/p0-005-r3-cohesive-routine-management` | Architecture technical acceptance; Project Lead/product acceptance |
+| P0-005 - Cohesive Routine Management | r3 | ACCEPTED | Project Lead | `brief/p0-005-r3-cohesive-routine-management` | Product/UX evaluation and release decision |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -52,11 +52,11 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next Project Lead decision
 
-- Architecture reviews the updated `reports/P0-005-r3-build-report.md` for technical acceptance after the FIX REQUIRED close. Product evaluates the connected experience after that; P0-005 stays CURRENT. Hosted/physical checks apply only to a separately promoted release candidate. Project Lead manages Git (FIX REQUIRED delta still uncommitted).
+- Product evaluates the connected P0-005 r3 experience and decides whether to promote it or return focused product feedback. P0-005 stays CURRENT until that evaluation. Hosted/physical checks apply only to a separately promoted release candidate. Project Lead manages Git.
 
 ## Next likely handoff
 
-Engineering returned **IMPLEMENTED** (FIX REQUIRED closed) for `briefs/p0-005-multiple-household-routines.md` **revision 3** (`reports/P0-005-r3-build-report.md`) on `brief/p0-005-r3-cohesive-routine-management`. Architecture technical acceptance is next; Project Lead/product acceptance is separate. Suggest commit message is in the Build Report—do not commit unless authorized.
+Engineering returned **IMPLEMENTED** (FIX REQUIRED closed) for `briefs/p0-005-multiple-household-routines.md` **revision 3** (`reports/P0-005-r3-build-report.md`) on `brief/p0-005-r3-cohesive-routine-management`. Architecture technically accepted r3 after the successful local manual delete retest; Product/Project Lead evaluation is next.
 
 ## Notes for all teams
 

@@ -49,6 +49,8 @@ For new decisions, copy `templates/DECISION_TEMPLATE.md` into this file and assi
 
 **Status:** Active
 
+**Scope refinement:** D-023 and D-024 replace materialization-time immutability with first-execution protection for current/future work. Historical versions and execution facts remain preserved; eligible unstarted occurrences may reconcile under those later decisions.
+
 **Decision:** A recurring responsibility has a stable definition identity and append-only, household-local effective-dated revisions. Occurrences are materialized idempotently per applicable household date and accountable member, reference the selected revision, and snapshot the expected title, schedule context, assignment, checklist order, and obligation meanings. Definition edits never mutate existing occurrence snapshots. Assignment, acting member, claimed performance time, server record time, and resulting execution state remain distinct facts.
 
 **Reason:** Product requires prospective change without historical rewriting and requires accountability to remain knowable even when execution and credit later diverge.
@@ -165,6 +167,8 @@ The first manager uses a single-use, short-lived operator bootstrap claim. Manag
 ## D-008 - Personal routine changes are effective-dated overlays on stable shared items
 
 **Status:** Active
+
+**Scope refinement:** D-023/D-024 allow recomposition of eligible unstarted occurrences using the personal layer effective on their date. Personal authority, stable anchors, provenance, and the current tomorrow-or-later personal write policy remain. Started/history snapshots are protected.
 
 **Decision:** Shared Morning Routine items receive stable logical identities across definition revisions. Each membership may have a separately append-only, household-date-effective personal layer containing only personal additions and their order/anchor metadata. Occurrence materialization composes the effective shared revision with the effective personal layer and snapshots the resulting order, text, obligation, assignment, and `shared|personal` provenance. It never clones a full shared definition into a detached member routine or recomposes an existing occurrence.
 
@@ -371,6 +375,8 @@ A deliberate Routine save removes a direct source that is redundant through a se
 
 **Status:** Active
 
+**Scope refinement:** D-023/D-024 supersede the blanket no-recomposition rule for shared plan edits and current/future unstarted work. D-018's next-day group member-set policy remains. Started work stays visible/actionable under its original assignment even when current plan participation changes.
+
 **Decision:** The occurrence date is the commitment boundary for group-backed participation. Current-day and past occurrence participation and every materialized checklist/report fact remain fixed. Before a future household date begins, dated group membership may change whether an already-materialized occurrence is returned and actionable. Reconciliation may create a missing future occurrence or exclude a stale one, but it never rewrites or deletes an existing occurrence, step snapshot, execution report, or receipt, and it never recomposes the content of a surviving occurrence.
 
 Checklist execution is rejected for a future household date and for a cached occurrence whose accountable member no longer resolves through that occurrence's stored Routine revision and dated sources. Delayed or offline reports for valid current/past occurrences remain supported.
@@ -394,6 +400,8 @@ Checklist execution is rejected for a future household date and for a cached occ
 ## D-020 - Routine identity scopes configuration, personal layers, and commands
 
 **Status:** Active
+
+**Scope refinement:** D-023/D-024 supersede this decision's original future-only/date-appending edit rule. Routine, membership, command, and personal-layer identity/scoping remain unchanged.
 
 **Decision:** P0-005 generalizes the existing definition model to multiple routines per household. A stable definition ID, independent of title or daypart, scopes shared revisions, participant resolution, personal layers, proposals, previews, mutation targets, and history. Keep the existing occurrence uniqueness by definition/date/accountable membership; scope personal revision uniqueness and selection by membership/definition/date. Proposals acquire their definition identity when created, and approval uses that stored identity. Administrative replay binds the target definition as well as household, command kind, and payload; state and receipt commit atomically.
 
@@ -459,7 +467,7 @@ Checklist execution is rejected for a future household date and for a cached occ
 
 ## D-022 - Routine archival stops participation prospectively and retains history
 
-**Status:** Active
+**Status:** Superseded for new End operations by D-025; retained for interpretation of existing r1/r2 archived records.
 
 **Decision:** Archiving a routine removes it from the active configuration list immediately and records an exclusive participation cutoff at the next household date. Today remains available; on/after the cutoff no occurrence is assigned or executable, including retained rows materialized before archival. Before-cutoff history and valid delayed reports remain supported. Archive requires the existing shared-management capability, conflict protection, explicit user confirmation, and replay-safe state change. The definition remains inspectable in a secondary archived view; physical deletion and restoration are outside P0-005 r1.
 
@@ -476,3 +484,71 @@ Checklist execution is rejected for a future household date and for a cached occ
 **Related briefs:**
 
 - P0-005 r1 (planned implementation)
+
+---
+
+## D-024 - Current plans and intentional scheduled changes govern editable date ranges
+
+**Status:** Active
+
+**Decision:** A routine's current plan governs from household today until the next active intentional scheduled boundary. Ordinary edits update every applicable unstarted occurrence in that range, including today and already-materialized later dates. Multiple upcoming changes are ordered by date, have stable identity independent of immutable content versions, and allow edit/move/delete through ordinary UI. At most one active scheduled entry occupies each routine/date boundary. Repeated editing keeps that boundary; collisions require explicit resolution without overwrite or drift. Removing an entry lets its predecessor govern until the next remaining entry.
+
+**Reason:** Internal date-appending revisions and early materialization made ordinary corrections unpredictable. A family needs to understand the current plan and deliberate future changes; cache timing and internal version counts must not affect behavior.
+
+**Implications:** Use a common plan/interval resolver for date reads, composition, previews, participation, reference checks, and mutations. Save reconciles affected existing rows transactionally, while later reads use the same governing plan without generating an infinite calendar. Retain immutable versions referenced by history; changes never remove started work from Today/History merely because a new plan excludes it. Apply per-date personal layers and group versions independently. Preserve past-date snapshots and first-action locks under D-023. New plan/lifecycle mutations and their receipts commit atomically. Structure-aware status validation and visible outbox conflict recovery prevent stale actions from silently targeting changed steps.
+
+**Migration:** Preserve r2 IDs, snapshots, locks, receipts and existing future dates. Convert each existing future boundary to a manageable scheduled entry without guessing whether it was an accidental edit. Stored snapshots take precedence over mutable r2 revision content for already-protected work.
+
+**Alternatives considered:**
+
+- A single upcoming slot would lose the A/B/C schedule already present in Product's recovery example.
+- Updating only the save date or only newly generated rows leaves stale work and makes results depend on reads.
+- Exposing internal revisions or compensating edits would keep the current user burden.
+
+**Related briefs:**
+
+- P0-005 r3
+
+---
+
+## D-025 - Delete unused routine setup; End preserves protected work
+
+**Status:** Active
+
+**Decision:** routine.shared.manage authorizes two distinct user actions, each with one confirmation and a transactional eligibility/version check. Delete permanently removes unused routine configuration and its unstarted occurrence graph when no started work, execution reports/receipts, or personal/proposal records need retention. Materialization and ordinary administrative save receipts alone do not block deletion. Keep minimal deletion/command evidence so stale retries cannot resurrect the routine. End immediately cancels today's and later unstarted work and active upcoming changes while preserving started work, prior-date history, and personal/proposal audit.
+
+**Reason:** Accidental setup should be removable without forcing archive clutter. Used routines must be stoppable without destroying the household's record of work. Product explicitly includes today's unstarted work in the prospective set.
+
+**Implications:** D-025 replaces D-022's tomorrow cutoff for newly ended routines; migrated archived records retain their recorded cutoffs. Started occurrences remain completable/undoable under original authority; ended routines cannot generate new work or accept new plans/personal approvals. Pending proposals remain auditable/rejectable. Normal views show Ended routines secondarily; internal archive terminology is not required user vocabulary. Deletion inspects all references, including JSON receipt targets, and never deletes people/groups or unrelated routines. End/Delete compete atomically with first execution. Group-reference projections consider active scheduled intervals and retained history separately. Restore is deferred.
+
+**Alternatives considered:**
+
+- Archiving every unused test routine leaves avoidable clutter.
+- Deleting a routine with reports/personal audit would lose household records.
+- Keeping today's unstarted work after a new End contradicts Product's r3 prospective-work definition.
+
+**Related briefs:**
+
+- P0-005 r3
+
+---
+
+## D-026 - Shared Calm Household presentation and purpose-based navigation
+
+**Status:** Active
+
+**Decision:** Establish a modest local CSS token and shared UI layer using the existing React application: warm light surfaces, restrained separation, consistent typography/spacing, one accent, semantic status colors/icons/text, visible focus, and at least 44px interaction targets. Use primary Today / Routines / Household destinations, with a compact labeled bottom navigation on phones. Household groups structure/oversight destinations; Personalize stays reachable from Today. Destination reachability continues to follow grants.
+
+**Reason:** The current button-like tabs, repeated notices, and per-feature styling make related screens feel disconnected. Product needs a common experience that can accommodate later household work without building those features now.
+
+**Implications:** View normally and edit intentionally. Share shell/navigation, heading/back, control variants, notices, empty states, and confirmation behavior only where presently useful. Apply tokens across existing screens, including supporting auth/personal views, without changing their domain policies. Keep identity/outbox/sync above navigation so switching screens does not reset them. Typed local navigation is sufficient; URL routing and a standalone design-system package are unnecessary for r3. Use the same theme locally and in releases with an explicit Local development indicator. Require semantic/responsive/focus evidence and representative fictional screenshots; Product decides visual coherence.
+
+**Alternatives considered:**
+
+- Styling only Routines would leave the connected experience inconsistent.
+- A growing row of primary feature buttons would repeat the current navigation problem.
+- A generic component library, full branding, or empty future destinations would expand scope beyond current evidence.
+
+**Related briefs:**
+
+- P0-005 r3

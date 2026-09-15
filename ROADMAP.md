@@ -40,18 +40,18 @@ Goal: prove that a real recurring household routine can be used quickly by six d
 
 ### CURRENT
 
-- [ ] **Outcome: Multiple Routines.** A parent creates Morning, After School, Bedtime, and other named routines; children use all applicable routines independently, with per-routine personalization and trustworthy history.
-  - **Brief:** `P0-005 r2 - Multiple Household Routines` (`briefs/p0-005-multiple-household-routines.md`).
-  - **Status:** Technically accepted in r2; awaiting Project Lead commit/PR and product evaluation.
-  - **Evidence target:** Achieved locally: repeated same-date editing of unstarted occurrences, first-action per-person locking, independent group-backed snapshots, atomic edit/action races, and the existing multi-routine migration, isolation, archive, and recovery behavior.
+- [ ] **Outcome: Cohesive Routine Management.** A parent understands and edits current routines, manages intentional upcoming changes, removes mistakes, and ends used routines within one coherent phone experience; started work and history remain trustworthy.
+  - **Brief:** `P0-005 r3 - Cohesive Routine Management` (`briefs/p0-005-multiple-household-routines.md`).
+  - **Status:** IN REVIEW; r1/r2 are the implemented foundation (r2 committed at `297b2fd` and technically accepted). Fresh r3 Engineering readiness is next.
+  - **Evidence target:** Local browser lifecycle proves current-plan reconciliation through the next scheduled boundary, upcoming create/edit/move/delete, safe Delete/End, locks/recovery/history, and consistent navigation/presentation across existing screens. Product then evaluates the connected experience. Keep P0-005 CURRENT until that evaluation.
 
 ### LIKELY NEXT
 
-- [ ] **Outcome: Multi-Responsibility Today.** Build on a day containing several routines to distinguish completed, next/current, later, and anytime work. Ordinary responsibilities such as Kitchen, Cats, and Bathroom may enter here; assignment sophistication follows concrete examples and P0-005 evaluation.
+- [ ] **Outcome: Multi-Responsibility Today.** After cohesive P0-005 evaluation, build on several routines to distinguish completed, next/current, later, and anytime work. Reuse the shared shell and visual vocabulary. Ordinary responsibilities such as Kitchen, Cats, and Bathroom may enter here; exact scope and assignment behavior follow concrete household evidence.
 
 ### LATER
 
-- Richer scheduling, assignment, shared execution, and personal work, driven by household evidence.
+- Richer scheduling, assignment, shared execution, and personal work, driven by household evidence and using the common application design; no additional feature destinations are prebuilt in r3.
 - Broader-release privacy, recovery, offline behavior, and operational confidence.
 - Detailed unscheduled product memory: [`PRODUCT.md` — Deferred / Preserved Product Directions](PRODUCT.md#deferred--preserved-product-directions). This inventory is not a sequence of implementation commitments.
 

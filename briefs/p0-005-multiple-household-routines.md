@@ -39,7 +39,7 @@ Today, Routines, and Household share navigation, typography, controls, spacing, 
 
 ## Current system
 
-Inspected a clean working tree on branch `brief/p0-005-multiple-household-routines` at `297b2fd` (committed r2 implementation), on top of `ea89035` / `7704785` and r1 `cd887e9` / `2f37485`. The recorded pre-P0-005 integrated baseline is `93ef494`. This brief extends the branch implementation; it does not restart from the singleton baseline.
+Inspected the clean r3 planning branch `brief/p0-005-r3-cohesive-routine-management` at `b0b966e`. Its implementation foundation is the committed r2 result merged to `main` at `5376b51` (implementation `297b2fd`); earlier r2 planning commits are `ea89035` / `7704785`, with r1 `cd887e9` / `2f37485`. The recorded pre-P0-005 integrated baseline is `93ef494`. This brief extends the integrated r2 implementation; it does not restart from the singleton baseline.
 
 | Surface | Verified facts and r3 implication |
 | --- | --- |
@@ -214,7 +214,7 @@ Product evaluates the connected application after technical evidence: Today, Rou
 
 ## Dependencies
 
-- The committed r2 branch foundation at 297b2fd (or its subsequently integrated equivalent), existing local Node 24 / SQLite toolchain, and fresh r3 Engineering readiness.
+- The committed r2 foundation merged to `main` at `5376b51` (implementation `297b2fd`), existing local Node 24 / SQLite toolchain, and fresh r3 Engineering readiness.
 - Product's supplied P0-005 r3 proposal; its durable intent is recorded in PRODUCT.md. No new design service, external account, host, or physical phone is required to implement.
 - Use reports/P0-005-r3-engineering-readiness.md and reports/P0-005-r3-build-report.md. Prior r2 acceptance remains historical evidence only.
 
@@ -236,11 +236,15 @@ Product evaluates the connected application after technical evidence: Today, Rou
 
 ## Engineering readiness
 
-**Reviewed revision:** NOT REVIEWED
+**Reviewed revision:** 3
 
-**Readiness:** NOT REVIEWED
+**Readiness:** READY
 
-**Architecture disposition:** Awaiting a fresh consolidated r3 readiness review before implementation. Prior r1/r2 readiness does not carry forward.
+**Compared against:** `brief/p0-005-r3-cohesive-routine-management` @ `b0b966e`; foundation `main` @ `5376b51` (`297b2fd`)
+
+**Report:** `reports/P0-005-r3-engineering-readiness.md`
+
+**Architecture disposition:** ACCEPT / PROCEED. Engineering may implement revision 3 locally against the committed r2 foundation. This authorizes implementation only; Architecture acceptance of the resulting Build Report and Project Lead/product acceptance remain separate.
 
 ## Revision history
 

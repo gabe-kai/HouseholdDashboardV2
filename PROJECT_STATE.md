@@ -19,7 +19,7 @@
 
 ## Current focus
 
-P0-005 r2 is committed at `297b2fd` (merged to `main` @ `5376b51`) and was technically accepted. Engineering closed Architecture **FIX REQUIRED** on r3 (AT6 browser UI + Delete-upcoming sticky state) and updated `reports/P0-005-r3-build-report.md`. Architecture technical acceptance and Project Lead/product acceptance remain pending.
+P0-005 r2 is committed at `297b2fd` (merged to `main` @ `5376b51`) and was technically accepted. Engineering closed Architecture **FIX REQUIRED** on r3 upcoming-delete (HTTP 500 from narrow receipt CHECK on long-lived DBs; migration `008`) and updated `reports/P0-005-r3-build-report.md`. Architecture technical acceptance and Project Lead/product acceptance remain pending.
 
 ## Internal work status
 

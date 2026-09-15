@@ -78,7 +78,7 @@ describe("P0-005 multiple household routines", () => {
     const migrations = (
       db.prepare("SELECT COUNT(*) AS c FROM schema_migrations").get() as { c: number }
     ).c;
-    expect(migrations).toBe(7);
+    expect(migrations).toBe(8);
   });
 
   it("retains P0-001 upgrade coverage through migration 005", () => {
@@ -1098,5 +1098,129 @@ describe("P0-005 r3 schedule lifecycle", () => {
     expect(after.find((o) => o.accountableMemberId === IDS.avery)?.title).toBe("Current A");
     expect(after.find((o) => o.accountableMemberId === IDS.jordan)?.title).toBe("Future B");
     void jordan;
+  });
+
+  it("008 repairs narrow receipt kinds so upcoming delete succeeds on long-lived DBs", async () => {
+    const dbPath = path.join(
+      os.tmpdir(),
+      `hd-005-receipt-repair-${Date.now()}.sqlite`,
+    );
+    temps.push(dbPath);
+    const db = openDatabase(dbPath);
+    migrate(db);
+
+    // Simulate the production failure mode: 007 applied, but receipts still use the
+    // pre-r3 CHECK that rejects routine_schedule_delete (HTTP 500 / unexpected error).
+    db.pragma("foreign_keys = OFF");
+    db.exec(`
+      CREATE TABLE routine_mutation_receipts_narrow (
+        mutation_id TEXT PRIMARY KEY,
+        household_id TEXT NOT NULL,
+        definition_id TEXT,
+        kind TEXT NOT NULL CHECK (kind IN (
+          'routine_create',
+          'routine_revision',
+          'routine_archive'
+        )),
+        payload_digest TEXT NOT NULL,
+        response_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      INSERT INTO routine_mutation_receipts_narrow
+        (mutation_id, household_id, definition_id, kind, payload_digest, response_json, created_at)
+      SELECT mutation_id, household_id, definition_id, kind, payload_digest, response_json, created_at
+      FROM routine_mutation_receipts;
+      DROP TABLE routine_mutation_receipts;
+      ALTER TABLE routine_mutation_receipts_narrow RENAME TO routine_mutation_receipts;
+    `);
+    db.prepare("DELETE FROM schema_migrations WHERE id = ?").run(
+      "008_widen_routine_mutation_receipt_kinds.sql",
+    );
+    db.pragma("foreign_keys = ON");
+
+    const narrowSql = (
+      db
+        .prepare(
+          "SELECT sql FROM sqlite_master WHERE name = 'routine_mutation_receipts'",
+        )
+        .get() as { sql: string }
+    ).sql;
+    expect(narrowSql).not.toContain("routine_schedule_delete");
+    expect(() =>
+      db
+        .prepare(
+          `INSERT INTO routine_mutation_receipts
+           (mutation_id, household_id, definition_id, kind, payload_digest, response_json, created_at)
+           VALUES (?, 'h', 'd', 'routine_schedule_delete', 'x', '{}', datetime('now'))`,
+        )
+        .run(randomUUID()),
+    ).toThrow(/CHECK constraint failed/i);
+
+    migrate(db);
+
+    const repairedSql = (
+      db
+        .prepare(
+          "SELECT sql FROM sqlite_master WHERE name = 'routine_mutation_receipts'",
+        )
+        .get() as { sql: string }
+    ).sql;
+    expect(repairedSql).toContain("routine_schedule_delete");
+    expect(repairedSql).toContain("routine_schedule_move");
+    expect(repairedSql).toContain("routine_end");
+
+    const store = new AppStore(db);
+    store.seed("America/New_York");
+    const manager = await claimManager(store);
+    const today = store.householdDateNow(manager.context);
+    const tomorrow = addHouseholdDays(today, 1);
+    const routine = store.createRoutine(manager.context, {
+      mutationId: randomUUID(),
+      title: "Receipt Repair",
+      daypart: "anytime",
+      assigneeMemberIds: [IDS.morgan],
+      assigneeGroupIds: [],
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      steps: [{ text: "Current step", obligation: "required" }],
+    });
+    const scheduled = store.createRevision(manager.context, routine.id, {
+      mutationId: randomUUID(),
+      title: "Upcoming B",
+      daypart: "anytime",
+      assigneeMemberIds: [IDS.morgan],
+      assigneeGroupIds: [],
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      steps: [{ text: "Future step", obligation: "required" }],
+      expectedVersion: routine.version,
+      mode: "schedule",
+      effectiveDate: tomorrow,
+    });
+    const entry = scheduled.routine.scheduleEntries.find((e) => e.startDate === tomorrow)!;
+    store.materializeForDate(manager.context, tomorrow);
+    expect(
+      store
+        .materializeForDate(manager.context, tomorrow)
+        .find((o) => o.definitionId === routine.id)?.title,
+    ).toBe("Upcoming B");
+
+    const deleted = store.deleteScheduleEntry(manager.context, routine.id, entry.id, {
+      mutationId: randomUUID(),
+      expectedVersion: scheduled.routine.version,
+    });
+    expect(deleted.routine.scheduleEntries.some((e) => e.id === entry.id)).toBe(false);
+    expect(deleted.routine.scheduleEntries.some((e) => e.startDate === tomorrow)).toBe(
+      false,
+    );
+    expect(
+      store
+        .materializeForDate(manager.context, tomorrow)
+        .find((o) => o.definitionId === routine.id)?.title,
+    ).toBe("Receipt Repair");
+    expect(() =>
+      store.deleteScheduleEntry(manager.context, routine.id, entry.id, {
+        mutationId: randomUUID(),
+        expectedVersion: deleted.routine.version,
+      }),
+    ).toThrow(/not found/i);
   });
 });

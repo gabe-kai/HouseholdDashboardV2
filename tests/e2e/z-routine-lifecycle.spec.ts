@@ -108,6 +108,8 @@ test.describe("P0-005 r3 routine lifecycle UI", () => {
 
     page.once("dialog", (dialog) => void dialog.accept());
     await page.getByRole("button", { name: "Delete upcoming", exact: true }).click();
+    await expect(page.getByText(/unexpected error/i)).toHaveCount(0);
+    await expect(page.getByRole("alert")).toHaveCount(0);
     await expect(
       page.getByRole("status").filter({ hasText: /Deleted upcoming change/i }),
     ).toBeVisible({ timeout: 15_000 });

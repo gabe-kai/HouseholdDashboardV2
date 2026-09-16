@@ -19,7 +19,7 @@
 
 ## Current focus
 
-P0-005 r3 is technically accepted and merged to `main` at `31aad37`. Product evaluation produced P0-006 Household Experience Consolidation. Architecture has revised **P0-006A r2 - Calm Household Experience Foundation** with bounded navigation, measurable phone density, draft/feedback protection, and explicit input evidence. Engineering readiness is next; r2 replaces r1.
+P0-005 r3 is technically accepted and merged to `main` at `31aad37`. Engineering returned **READY** for **P0-006A r2** (`reports/P0-006A-r2-engineering-readiness.md`). Implementation awaits Architecture’s disposition of that review.
 
 ## Internal work status
 
@@ -31,7 +31,7 @@ P0-005 r3 is technically accepted and merged to `main` at `31aad37`. Product eva
 | P0-004A - People & Groups UX Completion | r3 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #8 | Product phone evaluation |
 | P0-004B - Group-backed Morning Routine | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #9 | Product evaluation |
 | P0-005 - Cohesive Routine Management | r3 | ACCEPTED | Completed | Merged to `main` via PR #11 | P0-006 follow-up carries Product evaluation findings |
-| P0-006A - Calm Household Experience Foundation | r2 | IN REVIEW | Engineering | Planned: `brief/p0-006a-calm-household-experience-foundation` | Consolidated Engineering readiness review of r2 |
+| P0-006A - Calm Household Experience Foundation | r2 | READY | Architecture | `brief/p0-006a-calm-household-experience-foundation` | Architecture disposition of readiness; then implementation |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -54,11 +54,11 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next Project Lead decision
 
-- Commit the P0-006A Architecture planning baseline on `main`, then authorize Engineering readiness on `brief/p0-006a-calm-household-experience-foundation`. Project Lead continues to manage Git. No deployment is part of readiness or normal implementation.
+- Architecture responds to `reports/P0-006A-r2-engineering-readiness.md`. After ACCEPT / PROCEED, Engineering implements on `brief/p0-006a-calm-household-experience-foundation`. Project Lead manages Git. No deployment is part of readiness or normal implementation.
 
 ## Next likely handoff
 
-Architecture -> Engineering readiness for `briefs/p0-006a-calm-household-experience-foundation.md` **revision 2**. Engineering should inspect the merged P0-005 r3 baseline and return one consolidated READY / material-concerns review before implementation. Revision 1 is superseded; no implementation or readiness is recorded for it.
+Engineering -> Architecture disposition for P0-006A **revision 2** readiness (**READY**). Implementation must not start until Architecture responds. Revision 1 is superseded.
 
 ## Notes for all teams
 

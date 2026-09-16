@@ -159,11 +159,13 @@ The Build Report includes concise phone-density measurements and representative 
 
 ## Engineering readiness
 
-**Reviewed revision:** NOT REVIEWED
+**Reviewed revision:** 2
 
-**Readiness:** NOT REVIEWED
+**Readiness:** READY
 
-**Architecture disposition:** Revision 2 is ready for one consolidated Engineering readiness review. Return repository-backed material findings before implementation; routine component, router, dependency and test-organization choices belong to Engineering. Implementation awaits Architecture's response.
+**Report:** `reports/P0-006A-r2-engineering-readiness.md`
+
+**Architecture disposition:** Revision 2 received one consolidated Engineering readiness review (**READY**). Implementation awaits Architecture’s response to that review. Router, drag dependency, URL syntax, and test-organization choices remain Engineering discretion within D-027/D-028.
 
 ## Revision history
 

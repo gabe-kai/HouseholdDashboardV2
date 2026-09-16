@@ -896,7 +896,7 @@ export async function buildApp(
     });
   }
 
-  if ((config.isProduction || config.profile === "hosted") && fs.existsSync(config.clientDist)) {
+  if (fs.existsSync(config.clientDist)) {
     await app.register(fastifyStatic, {
       root: config.clientDist,
       wildcard: false,
@@ -905,7 +905,6 @@ export async function buildApp(
 
   app.setNotFoundHandler((request, reply) => {
     if (
-      (config.isProduction || config.profile === "hosted") &&
       fs.existsSync(config.clientDist) &&
       request.method === "GET" &&
       !request.url.startsWith("/api/")

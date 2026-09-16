@@ -65,6 +65,9 @@ invalidation/reconciliation semantics.
 | PB-28 | First-execution structural lock; current-plan range refine for unstarted; per-person divergence; pending first-action protection | `tests/integration/p0-005.test.ts` (AT19 + r3 lifecycle); `src/domain/occurrence-lock.test.ts`; `src/domain/reconcile.test.ts`; `src/domain/plan.test.ts` | Developer + PR |
 | PB-29 | Intentional schedule-entry lifecycle (create/edit/move/delete upcoming; one entry per start date) | `tests/integration/p0-005.test.ts` (r3 schedule lifecycle) | Developer |
 | PB-30 | Safe Delete unused routine; End preserves started visibility/authority | `tests/integration/p0-005.test.ts` (r3 schedule lifecycle) | Developer |
+| PB-31 | Plan-labeled shell + addressable Today/Plan/Household URLs; SPA fallback whenever clientDist exists; signed-out resume; generic unavailable | e2e `z-p0-006a-calm-experience.spec.ts`; `src/client/nav.ts`; `src/server/app.ts` | PR / RC |
+| PB-32 | Focused routine draft sections + outer dirty Keep/Discard; success toast vs durable errors/pending/enrollment | e2e `z-p0-006a-calm-experience.spec.ts`; lifecycle/AT6 e2e adapted to Plan/focused UI | PR / RC |
+| PB-33 | Draft step reorder via drag handle and keyboard Move menu; Personalize additions-only; stable logical IDs | e2e `z-p0-006a-calm-experience.spec.ts`; `OrderedList` + DirectPersonalization | PR / RC |
 
 ### Environment-specific (not counted as automated acceptance)
 

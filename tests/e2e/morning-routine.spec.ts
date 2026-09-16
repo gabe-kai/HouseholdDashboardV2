@@ -1,4 +1,5 @@
 import { test, expect, type Page, type APIRequestContext, type Browser } from "@playwright/test";
+import { expectSignedInAs } from "../helpers/e2e-shell";
 
 const PASSPHRASE = "unique-passphrase-ok!";
 const MANAGER_LOGIN = "e2e.manager";
@@ -81,7 +82,7 @@ async function openAsManager(page: Page) {
   await ensureManagerSession(page.request);
   await ensureSharedRoutine(page.request);
   await page.goto("/");
-  await expect(page.locator(".topbar")).toContainText("Morgan Reed", { timeout: 20_000 });
+  await expectSignedInAs(page, "Morgan Reed");
 }
 
 async function claimChild(
@@ -224,19 +225,15 @@ test.describe("P0-002 authenticated household", () => {
     });
 
     await child.goto("/");
-    await expect(child.locator(".topbar")).toContainText("Avery Reed", { timeout: 20_000 });
+    await expectSignedInAs(child, "Avery Reed");
     await expect(
       child.getByText("No routines for you on this household date."),
     ).toBeVisible();
-    await expect(child.locator(".status-pill[data-kind='online']")).toContainText("Online", {
-      timeout: 10_000,
-    });
+    await expect(child.getByRole("button", { name: "Account" })).toBeVisible();
 
     await manager.goto("/");
-    await expect(manager.locator(".topbar")).toContainText("Morgan Reed", { timeout: 20_000 });
-    await expect(manager.locator(".status-pill[data-kind='online']")).toContainText("Online", {
-      timeout: 10_000,
-    });
+    await expectSignedInAs(manager, "Morgan Reed");
+    await expect(manager.getByRole("button", { name: "Account" })).toBeVisible();
     await openHouseholdActivity(manager);
 
     await ensureSharedRoutine(manager.request, [MORGAN_ID, AVERY_ID, JORDAN_ID]);
@@ -272,7 +269,7 @@ test.describe("P0-002 authenticated household", () => {
   test("child rapid checklist stays optimistic under delayed mutations", async ({ page }) => {
     await claimChild(page.request, AVERY_ID, AVERY_LOGIN, "Avery Reed");
     await page.goto("/?mutationDelayMs=2000");
-    await expect(page.locator(".topbar")).toContainText("Avery Reed", { timeout: 20_000 });
+    await expectSignedInAs(page, "Avery Reed");
     await expandAllOccurrences(page);
 
     const doneButtons = page.getByRole("button", { name: /Mark .+ completed/ });
@@ -300,7 +297,7 @@ test.describe("P0-002 authenticated household", () => {
   test("pending outbox survives reload during API interruption", async ({ page }) => {
     await claimChild(page.request, AVERY_ID, AVERY_LOGIN, "Avery Reed");
     await page.goto("/");
-    await expect(page.locator(".topbar")).toContainText("Avery Reed", { timeout: 20_000 });
+    await expectSignedInAs(page, "Avery Reed");
     await ensureStepOpen(page, "Make bed");
     await ensureStepOpen(page, "Pack lunch");
 
@@ -310,7 +307,7 @@ test.describe("P0-002 authenticated household", () => {
     await expect(page.locator(".status-pill[data-kind='pending']")).toBeVisible();
 
     await page.reload();
-    await expect(page.locator(".topbar")).toContainText("Avery Reed");
+    await expectSignedInAs(page, "Avery Reed");
     await expect(page.locator(".status-pill[data-kind='pending']")).toBeVisible();
     expect(await outboxCount(page, AVERY_ID)).toBeGreaterThan(0);
 
@@ -326,7 +323,7 @@ test.describe("P0-002 authenticated household", () => {
   }) => {
     await claimChild(page.request, AVERY_ID, AVERY_LOGIN, "Avery Reed");
     await page.goto("/");
-    await expect(page.locator(".topbar")).toContainText("Avery Reed", { timeout: 20_000 });
+    await expectSignedInAs(page, "Avery Reed");
     await ensureStepOpen(page, "Make bed");
 
     await page.route("**/api/v1/occurrences/**", (route) => route.abort());
@@ -344,7 +341,7 @@ test.describe("P0-002 authenticated household", () => {
 
     await ensureManagerSession(page.request);
     await page.goto("/");
-    await expect(page.locator(".topbar")).toContainText("Morgan Reed", { timeout: 20_000 });
+    await expectSignedInAs(page, "Morgan Reed");
     expect(await outboxCount(page, MORGAN_ID)).toBe(0);
     expect(await outboxCount(page, AVERY_ID)).toBe(0);
   });
@@ -364,12 +361,12 @@ test.describe("P0-002 authenticated household", () => {
     await claimChild(child.request, AVERY_ID, AVERY_LOGIN, "Avery Reed");
 
     await manager.goto("/");
-    await expect(manager.locator(".topbar")).toContainText("Morgan Reed", { timeout: 20_000 });
+    await expectSignedInAs(manager, "Morgan Reed");
     await openHouseholdActivity(manager);
     await expandAllOccurrences(manager);
 
     await child.goto("/");
-    await expect(child.locator(".topbar")).toContainText("Avery Reed", { timeout: 20_000 });
+    await expectSignedInAs(child, "Avery Reed");
     await ensureStepOpen(child, "Make bed");
     await ensureStepOpen(child, "Pack lunch");
 
@@ -384,10 +381,10 @@ test.describe("P0-002 authenticated household", () => {
       ).__hdSync?.closeForTest();
     });
     await expect(manager.locator(".status-pill[data-kind='online']")).toContainText(
-      /Reconnecting|Online/,
+      /Reconnecting/,
       { timeout: 10_000 },
     );
-    await expect(manager.locator(".status-pill[data-kind='online']")).toContainText("Online", {
+    await expect(manager.locator(".status-pill[data-kind='online']")).toHaveCount(0, {
       timeout: 20_000,
     });
 
@@ -419,12 +416,12 @@ test.describe("P0-002 authenticated household", () => {
     await claimChild(child.request, AVERY_ID, AVERY_LOGIN, "Avery Reed");
 
     await child.goto("/");
-    await expect(child.locator(".topbar")).toContainText("Avery Reed", { timeout: 20_000 });
+    await expectSignedInAs(child, "Avery Reed");
     await ensureStepOpen(child, "Make bed");
     await ensureStepOpen(child, "Pack lunch");
 
     await manager.goto("/");
-    await expect(manager.locator(".topbar")).toContainText("Morgan Reed", { timeout: 20_000 });
+    await expectSignedInAs(manager, "Morgan Reed");
     await openHouseholdActivity(manager);
     await expandAllOccurrences(manager);
     const averyOccurrence = manager.locator(".occurrence").filter({ hasText: "Avery Reed" });
@@ -520,12 +517,14 @@ test.describe("P0-002 authenticated household", () => {
     await claimChild(child.request, AVERY_ID, AVERY_LOGIN, "Avery Reed");
 
     await child.goto("/");
-    await expect(child.locator(".topbar")).toContainText("Avery Reed", { timeout: 20_000 });
+    await expectSignedInAs(child, "Avery Reed");
 
     await child.getByPlaceholder("Add a personal task").fill("Private diary note");
     await child.getByLabel("Task visibility").selectOption("private");
     await child.getByRole("button", { name: "Add", exact: true }).click();
-    await expect(child.getByText("Private diary note")).toBeVisible({ timeout: 10_000 });
+    await expect(child.locator(".task-list").getByText("Private diary note")).toBeVisible({
+      timeout: 10_000,
+    });
     await expect(
       child.locator(".task-list li").filter({ hasText: "Private diary note" }).locator(".meta"),
     ).toHaveText("private");
@@ -539,7 +538,7 @@ test.describe("P0-002 authenticated household", () => {
     ).toHaveText("household");
 
     await manager.goto("/");
-    await expect(manager.locator(".topbar")).toContainText("Morgan Reed", { timeout: 20_000 });
+    await expectSignedInAs(manager, "Morgan Reed");
     await openHouseholdActivity(manager);
     await expect(manager.getByRole("heading", { name: "Household-visible personal tasks" })).toBeVisible();
     await expect(manager.getByText("Shared grocery list")).toBeVisible({ timeout: 10_000 });
@@ -574,10 +573,8 @@ test.describe("P0-002 authenticated household", () => {
     });
 
     await child.goto("/");
-    await expect(child.locator(".topbar")).toContainText("Jordan Reed", { timeout: 20_000 });
-    await expect(child.locator(".status-pill[data-kind='online']")).toContainText("Online", {
-      timeout: 10_000,
-    });
+    await expectSignedInAs(child, "Jordan Reed");
+    await expect(child.getByRole("button", { name: "Account" })).toBeVisible();
     await openPersonalize(child);
     await child.getByLabel("Item text").fill("Pack soccer bag");
     await child.getByRole("button", { name: "Send proposal" }).click();
@@ -587,10 +584,8 @@ test.describe("P0-002 authenticated household", () => {
     ).toBeVisible();
 
     await manager.goto("/");
-    await expect(manager.locator(".topbar")).toContainText("Morgan Reed", { timeout: 20_000 });
-    await expect(manager.locator(".status-pill[data-kind='online']")).toContainText("Online", {
-      timeout: 10_000,
-    });
+    await expectSignedInAs(manager, "Morgan Reed");
+    await expect(manager.getByRole("button", { name: "Account" })).toBeVisible();
     await openApprovals(manager);
     await manager.getByRole("button", { name: "Approve Pack soccer bag" }).click();
     await expect(manager.getByText(/Effective/i).first()).toBeVisible({ timeout: 15_000 });
@@ -600,7 +595,7 @@ test.describe("P0-002 authenticated household", () => {
     ).toBeVisible({ timeout: 4_000 });
 
     // Future-effective: approved item is previewable, but not on Today's executable checklist yet.
-    await manager.getByRole("button", { name: "Open read-only preview" }).click();
+    await manager.getByRole("button", { name: /Preview/i }).first().click();
     await expect(manager.getByText(/Pack soccer bag/i).first()).toBeVisible({ timeout: 10_000 });
     await child
       .getByRole("navigation", { name: "Primary" })
@@ -615,14 +610,14 @@ test.describe("P0-002 authenticated household", () => {
   test("direct personalization shows effective-date feedback and preview", async ({ page }) => {
     await claimChild(page.request, AVERY_ID, AVERY_LOGIN, "Avery Reed");
     await page.goto("/");
-    await expect(page.locator(".topbar")).toContainText("Avery Reed", { timeout: 20_000 });
+    await expectSignedInAs(page, "Avery Reed");
     await openPersonalize(page);
     await page.getByRole("button", { name: "Add personal item" }).click();
     await page.getByLabel("Item text").fill("Clean up breakfast");
     await page.getByRole("button", { name: "Save personal settings" }).click();
     await expect(page.getByText(/Effective/i).first()).toBeVisible({ timeout: 15_000 });
-    await page.getByRole("button", { name: "Open read-only preview" }).click();
-    await expect(page.getByText(/Clean up breakfast|Read-only preview/i).first()).toBeVisible({
+    await page.getByRole("button", { name: /Preview/i }).first().click();
+    await expect(page.getByText(/Clean up breakfast|Read-only preview|Preview/i).first()).toBeVisible({
       timeout: 10_000,
     });
   });
@@ -630,9 +625,9 @@ test.describe("P0-002 authenticated household", () => {
   test("child cannot reach shared routine editor; manager can", async ({ page }) => {
     await claimChild(page.request, AVERY_ID, AVERY_LOGIN, "Avery Reed");
     await page.goto("/");
-    await expect(page.locator(".topbar")).toContainText("Avery Reed", { timeout: 20_000 });
+    await expectSignedInAs(page, "Avery Reed");
     await expect(
-      page.getByRole("navigation", { name: "Primary" }).getByRole("button", { name: "Routines", exact: true }),
+      page.getByRole("navigation", { name: "Primary" }).getByRole("button", { name: "Plan", exact: true }),
     ).toHaveCount(0);
 
     const listed = await page.request.get("/api/v1/routines");
@@ -655,14 +650,14 @@ test.describe("P0-002 authenticated household", () => {
 
     await openAsManager(page);
     await expect(
-      page.getByRole("navigation", { name: "Primary" }).getByRole("button", { name: "Routines", exact: true }),
+      page.getByRole("navigation", { name: "Primary" }).getByRole("button", { name: "Plan", exact: true }),
     ).toBeVisible();
   });
 
   test("phone viewport accessibility basics", async ({ page }) => {
     await claimChild(page.request, JORDAN_ID, JORDAN_LOGIN, "Jordan Reed");
     await page.goto("/");
-    await expect(page.locator(".topbar")).toContainText("Jordan Reed", { timeout: 20_000 });
+    await expectSignedInAs(page, "Jordan Reed");
     await expandAllOccurrences(page);
 
     const overflow = await page.evaluate(
@@ -678,6 +673,6 @@ test.describe("P0-002 authenticated household", () => {
       content: `* { color: #111 !important; background: #fff !important; border-color: #333 !important; }`,
     });
     await expect(page.getByText(/Status:/).first()).toBeVisible();
-    await expect(page.locator(".status-pill").first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Account" })).toBeVisible();
   });
 });

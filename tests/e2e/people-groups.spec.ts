@@ -1,4 +1,5 @@
 import { test, expect, type Page, type APIRequestContext } from "@playwright/test";
+import { expectSignedInAs } from "../helpers/e2e-shell";
 
 const PASSPHRASE = "unique-passphrase-ok!";
 const MANAGER_LOGIN = "e2e.manager";
@@ -37,7 +38,7 @@ async function ensureManagerSession(request: APIRequestContext) {
 async function openAsManager(page: Page) {
   await ensureManagerSession(page.request);
   await page.goto("/");
-  await expect(page.locator(".topbar")).toContainText("Morgan Reed", { timeout: 20_000 });
+  await expectSignedInAs(page, "Morgan Reed");
 }
 
 async function openPeopleGroups(page: Page) {
@@ -78,7 +79,7 @@ test.describe("P0-004A People & Groups focused UX", () => {
 
     await page.getByRole("button", { name: "Add person" }).click();
     await expect(page.getByRole("heading", { name: "Add person" })).toBeVisible();
-    await page.getByLabel("Name").fill("Elizabeth");
+    await page.getByRole("textbox", { name: "Name" }).fill("Elizabeth");
     await page.getByRole("radio", { name: "Child" }).check();
     await page.getByRole("button", { name: "Add person" }).click();
     await expect(page.getByRole("heading", { name: "Elizabeth" })).toBeVisible();
@@ -102,7 +103,7 @@ test.describe("P0-004A People & Groups focused UX", () => {
 
     await page.getByRole("button", { name: "Create group" }).click();
     await page.getByLabel("Group name").fill("Kids");
-    await page.getByRole("checkbox", { name: "Elizabeth" }).check();
+    await page.getByRole("checkbox", { name: "Elizabeth" }).first().check();
     await page.getByRole("button", { name: "Save group" }).click();
     const kidsHeading = page.getByRole("heading", { name: "Kids" });
     const kidsConflict = page.getByRole("alert").filter({ hasText: /already exists/i });
@@ -141,7 +142,7 @@ test.describe("P0-004A People & Groups focused UX", () => {
 
     const name = `Peer ${Date.now().toString(36)}`;
     await pageA.getByRole("button", { name: "Add person" }).click();
-    await pageA.getByLabel("Name").fill(name);
+    await pageA.getByRole("textbox", { name: "Name" }).fill(name);
     await pageA.getByRole("radio", { name: "Child" }).check();
     await pageA.getByRole("button", { name: "Add person" }).click();
     await expect(pageA.getByRole("heading", { name })).toBeVisible();
@@ -160,7 +161,7 @@ test.describe("P0-004A People & Groups focused UX", () => {
     await openPeopleGroups(page);
 
     await page.getByRole("button", { name: "Add person" }).click();
-    await page.getByLabel("Name").fill("Geometry Child");
+    await page.getByRole("textbox", { name: "Name" }).fill("Geometry Child");
     await page.getByRole("radio", { name: "Child" }).check();
     await page.getByRole("button", { name: "Add person" }).click();
     await expect(page.getByRole("heading", { name: "Geometry Child" })).toBeVisible();

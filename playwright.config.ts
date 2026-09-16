@@ -67,6 +67,15 @@ export default defineConfig({
       use: { ...devices["Pixel 7"], baseURL: chromiumURL },
     },
     {
+      name: "chromium-desktop",
+      testMatch: "**/z-p0-006a*.spec.ts",
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1280, height: 800 },
+        baseURL: chromiumURL,
+      },
+    },
+    {
       name: "webkit",
       use: { ...devices["iPhone 13"], baseURL: webkitURL },
     },

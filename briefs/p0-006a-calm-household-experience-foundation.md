@@ -1,7 +1,7 @@
 # BRIEF P0-006A - Calm Household Experience Foundation
 
 **Revision:** 2
-**Status:** READY
+**Status:** FIX REQUIRED
 
 A material contract change increments the revision and requires Engineering readiness for that revision. This file is the authoritative contract; r2 supersedes r1. Technical acceptance and Project Lead/Product acceptance remain separate.
 
@@ -165,7 +165,7 @@ The Build Report includes concise phone-density measurements and representative 
 
 **Report:** `reports/P0-006A-r2-engineering-readiness.md`
 
-**Architecture disposition:** ACCEPT / PROCEED. Engineering may implement revision 2 on the planned branch. The readiness review found no blockers or questions; its risks and ordinary implementation choices remain governed by the r2 contract. Router, drag dependency, URL syntax, and test-organization choices remain Engineering discretion within D-027/D-028. Technical acceptance of the Build Report and Project Lead/Product acceptance remain separate.
+**Architecture disposition:** FIX REQUIRED against revision 2. The implementation direction and automated results are aligned, but required evidence remains incomplete for Vite dev deep-link reload, actual touch-drag persistence/autoscroll, and the 200% text plus 360x800/768x1024 geometry sweep. Engineering may correct the same revision on the existing branch; no new readiness review is required. Hosted or physical-device testing remains out of scope. Technical acceptance of the Build Report and Project Lead/Product acceptance remain separate.
 
 ## Revision history
 

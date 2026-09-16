@@ -19,7 +19,7 @@
 
 ## Current focus
 
-P0-005 r3 is technically accepted and merged to `main` at `31aad37`. Engineering returned **READY** for **P0-006A r2** (`reports/P0-006A-r2-engineering-readiness.md`). Implementation awaits Architecture’s disposition of that review.
+P0-005 r3 is technically accepted and merged to `main` at `31aad37`. **P0-006A r2 - Calm Household Experience Foundation** is READY after Engineering's repository-grounded review; local implementation is next.
 
 ## Internal work status
 
@@ -31,7 +31,7 @@ P0-005 r3 is technically accepted and merged to `main` at `31aad37`. Engineering
 | P0-004A - People & Groups UX Completion | r3 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #8 | Product phone evaluation |
 | P0-004B - Group-backed Morning Routine | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #9 | Product evaluation |
 | P0-005 - Cohesive Routine Management | r3 | ACCEPTED | Completed | Merged to `main` via PR #11 | P0-006 follow-up carries Product evaluation findings |
-| P0-006A - Calm Household Experience Foundation | r2 | READY | Architecture | `brief/p0-006a-calm-household-experience-foundation` | Architecture disposition of readiness; then implementation |
+| P0-006A - Calm Household Experience Foundation | r2 | READY | Engineering | `brief/p0-006a-calm-household-experience-foundation` | Local implementation and Build Report |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -54,11 +54,11 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next Project Lead decision
 
-- Architecture responds to `reports/P0-006A-r2-engineering-readiness.md`. After ACCEPT / PROCEED, Engineering implements on `brief/p0-006a-calm-household-experience-foundation`. Project Lead manages Git. No deployment is part of readiness or normal implementation.
+- Engineering may implement P0-006A r2 locally on `brief/p0-006a-calm-household-experience-foundation` and return `reports/P0-006A-r2-build-report.md` for Architecture acceptance. Project Lead manages Git. No deployment is part of implementation.
 
 ## Next likely handoff
 
-Engineering -> Architecture disposition for P0-006A **revision 2** readiness (**READY**). Implementation must not start until Architecture responds. Revision 1 is superseded.
+Architecture accepted Engineering readiness for P0-006A **revision 2** (**READY**). Engineering may implement locally and return the Build Report; Architecture technical acceptance and Product evaluation remain separate. Revision 1 is superseded.
 
 ## Notes for all teams
 

@@ -19,7 +19,7 @@
 
 ## Current focus
 
-P0-005 r3 is technically accepted and merged to `main` at `31aad37`. **P0-006A r2 - Calm Household Experience Foundation** is implemented locally, but Architecture returned FIX REQUIRED for three required evidence gaps: Vite deep-link reload, real touch-drag persistence/autoscroll, and enlarged-text/midsize geometry.
+P0-005 r3 is technically accepted and merged to `main` at `31aad37`. **P0-006A r2 - Calm Household Experience Foundation** is technically accepted locally; required Vite deep-link, touch-drag, and enlarged-text/midsize geometry evidence is complete. Project Lead/Product evaluation remains.
 
 ## Internal work status
 
@@ -31,7 +31,7 @@ P0-005 r3 is technically accepted and merged to `main` at `31aad37`. **P0-006A r
 | P0-004A - People & Groups UX Completion | r3 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #8 | Product phone evaluation |
 | P0-004B - Group-backed Morning Routine | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #9 | Product evaluation |
 | P0-005 - Cohesive Routine Management | r3 | ACCEPTED | Completed | Merged to `main` via PR #11 | P0-006 follow-up carries Product evaluation findings |
-| P0-006A - Calm Household Experience Foundation | r2 | FIX REQUIRED | Engineering | `brief/p0-006a-calm-household-experience-foundation` | Close required local evidence gaps and update Build Report |
+| P0-006A - Calm Household Experience Foundation | r2 | ACCEPTED | Project Lead/Product | `brief/p0-006a-calm-household-experience-foundation` | Commit/PR and evaluate the connected experience |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -54,11 +54,11 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next Project Lead decision
 
-- Engineering should close the three required local evidence gaps on `brief/p0-006a-calm-household-experience-foundation` and update `reports/P0-006A-r2-build-report.md` for Architecture reassessment. Project Lead manages Git. No deployment is part of implementation.
+- Project Lead should review the complete Build Report and screenshots, commit/PR the implementation, and conduct Product evaluation. No deployment is required for Architecture acceptance.
 
 ## Next likely handoff
 
-Architecture accepted Engineering readiness for P0-006A **revision 2** (**READY**), then reviewed the implementation Build Report and returned **FIX REQUIRED** for incomplete required evidence: Vite dev deep-link reload, actual touch-drag persistence/autoscroll, and 200%/midsize geometry. Engineering may correct the same revision locally; Architecture technical acceptance and Product evaluation remain separate. Revision 1 is superseded.
+Architecture accepted Engineering readiness for P0-006A **revision 2** (**READY**) and now technically accepted the Build Report after all required local evidence was supplied. Project Lead/Product evaluation remains separate. Revision 1 is superseded.
 
 ## Notes for all teams
 

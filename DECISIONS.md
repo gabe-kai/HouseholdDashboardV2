@@ -537,6 +537,8 @@ Checklist execution is rejected for a future household date and for a cached occ
 
 **Status:** Active
 
+**Refinement:** P0-006A's D-027 updates the primary label to Plan, bounds URL navigation, and defines quieter feedback. D-028 defines ordering. The original r3 local-state allowance below describes that earlier slice, not a prohibition on the new contract.
+
 **Decision:** Establish a modest local CSS token and shared UI layer using the existing React application: warm light surfaces, restrained separation, consistent typography/spacing, one accent, semantic status colors/icons/text, visible focus, and at least 44px interaction targets. Use primary Today / Routines / Household destinations, with a compact labeled bottom navigation on phones. Household groups structure/oversight destinations; Personalize stays reachable from Today. Destination reachability continues to follow grants.
 
 **Reason:** The current button-like tabs, repeated notices, and per-feature styling make related screens feel disconnected. Product needs a common experience that can accommodate later household work without building those features now.
@@ -552,3 +554,49 @@ Checklist execution is rejected for a future household date and for a cached occ
 **Related briefs:**
 
 - P0-005 r3
+
+---
+
+## D-027 - Automatic responsive shell and stable saved-destination identity
+
+**Status:** Active
+
+**Decision:** Refine D-026 around one responsive information architecture: Today / Plan / Household. Plan opens the existing Routines list directly and retains `routine.shared.manage` reachability. Layout follows the viewport automatically; no Compact/Wide preference is added. Phones use compact labeled navigation and wider screens may use a restrained top or side treatment. Addressable views are the three primary destinations, routine detail (including ended routines), People & Groups overview, person detail, and group detail. URLs use stable IDs; unsaved drafts remain session-local and are never transferred in links.
+
+**Reason:** Product evaluation found that the current shell still spends too much phone space on healthy-state chrome and feels like feature screens joined by tabs. The same saved household data must be understandable on iPhone, iPad, Windows desktop, and narrow windows without separate application modes or browser-profile synchronization.
+
+**Implications:** Keep session, WebSocket, outbox, and authoritative refresh ownership above destinations. Resize/navigation preserve identity, pending intent, and active drafts. Browser Back/Forward follows visit history; in-app Back goes to the logical parent. Leaving a dirty outer editor is guarded across both paths. Copied links resume after sign-in under the new session's authority; unavailable targets disclose no foreign data. Engineering selects the route adapter, with reload evidence in Vite and the built SPA. No new History/Approval detail model, server rendering, draft synchronization, or QR handoff is required.
+
+**Presentation and feedback:** Keep compact account identity and truthful environment indication; put full identity/date/timezone in Account. Quiet healthy Online state while preserving offline/retry/rejection information. Ordinary server-acknowledged success uses one transient accessible toast across its own completion transition and clears on unrelated navigation/identity changes. Errors, protected-work explanations, one-time access tokens, and effective-date/Preview access remain durable enough to act on; administrative drafts are never described as queued checklist changes. Reuse existing UI patterns without requiring an exhaustive component catalog.
+
+**Alternatives considered:**
+
+- Separate mobile and desktop modes would create divergent behavior and preference hazards.
+- A persisted Wide choice could make another device unusable before there is evidence a manual override is needed.
+- Keeping all destinations only in component-local state prevents ordinary reload/deep-link continuity and makes later navigation growth harder.
+
+**Related briefs:**
+
+- P0-006A r2
+
+---
+
+## D-028 - Manual ordering is touch-first with an equivalent accessible path
+
+**Status:** Active
+
+**Decision:** Reusable ordered-list editing presents a dedicated drag handle for pointer/touch reordering with immediate draft feedback and autoscroll where needed. Drag is never the only mechanism: keyboard and assistive users receive an equally effective ordering path with position announcements and safe boundaries. Large always-visible Move up / Move down buttons are not the primary row presentation. Persist order only through the owning resource's existing save command.
+
+**Reason:** Current routine-step ordering works but consumes excessive space and is awkward on phones. Product wants tactile ordering without excluding keyboard or assistive users or introducing a second persistence path.
+
+**Implications:** Apply it to current/upcoming shared-routine drafts and the existing direct-personalizer additions list. Shared logical IDs survive reorder; personal addition IDs, before/after/end anchors, authority, and effective-date policy remain unchanged. Drag cancellation restores the prior draft order; whole-draft cancellation leaves server state unchanged. Non-drag controls work with both keyboard and touch, with position announcements and focus retention. Touch-event, pointer, and non-drag evidence are distinct; a phone-sized mouse test proves only the pointer path. Family ordering is deferred. Engineering may justify a maintained dependency by accessibility, reliability, and maintenance cost, documenting runtime/bundle/license consequences.
+
+**Alternatives considered:**
+
+- Drag-only ordering is inaccessible and difficult to recover from precisely.
+- Keeping large Move buttons visible on every row preserves function but defeats the compact phone outcome.
+- Saving every drag movement would create unnecessary commands and complicate cancellation and reconciliation.
+
+**Related briefs:**
+
+- P0-006A r2

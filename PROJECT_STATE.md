@@ -19,7 +19,7 @@
 
 ## Current focus
 
-P0-005 r2 is committed at `297b2fd` (merged to `main` @ `5376b51`) and was technically accepted. Engineering closed Architecture **FIX REQUIRED** on r3 upcoming-delete (HTTP 500 from narrow receipt CHECK on long-lived DBs; migration `008`) and updated `reports/P0-005-r3-build-report.md`. Architecture technically accepted r3 after the successful local manual delete retest; Project Lead/product acceptance remains separate.
+P0-005 r3 is technically accepted and merged to `main` at `31aad37`. Product evaluation produced P0-006 Household Experience Consolidation. Architecture has revised **P0-006A r2 - Calm Household Experience Foundation** with bounded navigation, measurable phone density, draft/feedback protection, and explicit input evidence. Engineering readiness is next; r2 replaces r1.
 
 ## Internal work status
 
@@ -30,7 +30,8 @@ P0-005 r2 is committed at `297b2fd` (merged to `main` @ `5376b51`) and was techn
 | P0-003 - Regression Safety and Contract Hardening | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #6 | Product evaluation; optional required-check configuration |
 | P0-004A - People & Groups UX Completion | r3 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #8 | Product phone evaluation |
 | P0-004B - Group-backed Morning Routine | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #9 | Product evaluation |
-| P0-005 - Cohesive Routine Management | r3 | ACCEPTED | Project Lead | `brief/p0-005-r3-cohesive-routine-management` | Product/UX evaluation and release decision |
+| P0-005 - Cohesive Routine Management | r3 | ACCEPTED | Completed | Merged to `main` via PR #11 | P0-006 follow-up carries Product evaluation findings |
+| P0-006A - Calm Household Experience Foundation | r2 | IN REVIEW | Engineering | Planned: `brief/p0-006a-calm-household-experience-foundation` | Consolidated Engineering readiness review of r2 |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -45,6 +46,7 @@ This table is the short repository-side coordination index. An external project 
 - P0-004A r3 established focused People & Groups states, fixture-free normal bootstrap, canonical opt-in demo fixtures, and provenance-safe cleanup; Architecture technically accepted it on 2026-09-11 and it was merged through PR #8.
 - P0-004B r1 added dated group-backed Morning Routine participation and was technically accepted after correction `ac41538`, then merged through PR #9.
 - P0-005 r1/r2 established multiple routines and first-action locks; r2 implementation is `297b2fd`, merged to `main` at `5376b51`, and technically accepted. Product evaluation prompted r3's full routine lifecycle, current-plan ranges, and shared visual/navigation foundation.
+- P0-005 r3 completed the routine lifecycle and Calm Household shell, was technically accepted after AT6 and long-lived-database receipt corrections, and merged through PR #11 at `31aad37`.
 
 ## Known blockers
 
@@ -52,11 +54,11 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next Project Lead decision
 
-- Product evaluates the connected P0-005 r3 experience and decides whether to promote it or return focused product feedback. P0-005 stays CURRENT until that evaluation. Hosted/physical checks apply only to a separately promoted release candidate. Project Lead manages Git.
+- Commit the P0-006A Architecture planning baseline on `main`, then authorize Engineering readiness on `brief/p0-006a-calm-household-experience-foundation`. Project Lead continues to manage Git. No deployment is part of readiness or normal implementation.
 
 ## Next likely handoff
 
-Engineering returned **IMPLEMENTED** (FIX REQUIRED closed) for `briefs/p0-005-multiple-household-routines.md` **revision 3** (`reports/P0-005-r3-build-report.md`) on `brief/p0-005-r3-cohesive-routine-management`. Architecture technically accepted r3 after the successful local manual delete retest; Product/Project Lead evaluation is next.
+Architecture -> Engineering readiness for `briefs/p0-006a-calm-household-experience-foundation.md` **revision 2**. Engineering should inspect the merged P0-005 r3 baseline and return one consolidated READY / material-concerns review before implementation. Revision 1 is superseded; no implementation or readiness is recorded for it.
 
 ## Notes for all teams
 

@@ -600,3 +600,76 @@ Checklist execution is rejected for a future household date and for a cached occ
 **Related briefs:**
 
 - P0-006A r2
+
+---
+
+## D-029 - Step applicability consumes a household school calendar
+
+**Status:** Active
+
+**Decision:** P0-006B adds one closed applicability value to shared steps, personal additions, and proposed additions: Every time (default), School days, No-school days, School nights, Weekdays, Weekends, or Selected days. Routine recurrence and daypart remain separate. School nights means the next household calendar date is a school day; it is included in this slice without hard-coded weekday or daypart assumptions.
+
+One household calendar contains nonoverlapping school-year ranges, usual school weekdays per year, and inclusive no-school date/range exceptions. Exceptions override weekdays. A configured calendar treats dates outside its years as no-school; a never-configured calendar is unknown. Saving school-dependent steps/personal content/proposals requires calendar setup, with a retained draft and actionable validation rather than silently omitting obligations. A preview without an applicable calendar edition reports unresolved context. There is no fallback to Monday-Friday. The same pure evaluator serves execution, reconciliation, and dated previews.
+
+**Reason:** Product wants one routine to cover ordinary school/weekend/break variations and explicitly distinguishes whether a routine runs from whether a step belongs. School-night evaluation is a direct use of the same calendar and date arithmetic, so deferral is unnecessary.
+
+**Implications:** Preserve applicability with stable item identity through edit/reorder and existing personal/proposal authority. Compose the full shared/personal sequence before filtering so a hidden anchor does not erase or relocate its personal additions. Keep configured steps visible in authoring, disclose exclusions in preview, and omit all-filtered results from actionable work/completion totals. Never treat them as completed empty checklists or restore them through empty-list repair. No generic expressions, external feeds, per-person calendars, or new responsibility domain are introduced.
+
+**Alternatives considered:**
+
+- Cloned weekday/weekend routines perpetuate duplicate maintenance.
+- Treating school days as weekdays cannot represent breaks or unusual school weeks.
+- A generic condition engine or a global day/night context flag adds ambiguity and scope; independent small predicates suffice.
+
+**Related briefs:**
+
+- P0-006B r1
+
+---
+
+## D-030 - Context edits reconcile unstarted work and retain historical calendar meaning
+
+**Status:** Active
+
+**Decision:** School-calendar saves append immutable, versioned editions effective from household today; repeated saves refine today without date drift. Resolve the latest edition effective on or before the occurrence date, using that same edition for School-night lookahead. Occurrences retain edition identity or explicit legacy/unconfigured provenance plus the evaluated structural/context facts. Existing past-date and started snapshots are authoritative.
+
+Calendar changes reconcile all affected current/future unstarted work across consuming routine definitions and schedule intervals, selecting each date's own plan, group set, and personal layer. A change to a school date also affects the preceding School-night date when that date is today or later. Shared rule edits retain D-024's governed-range boundary. Calendar edits do not manufacture routine schedule entries. Enumerate affected stored dates and resolve unmaterialized dates lazily.
+
+**Reason:** School breaks are household configuration, but execution locks belong to one routine/person/date. Future caching, midnight, or a History read must not change that distinction or reinterpret prior work.
+
+**Implications:** Calendar/version/occurrence/replay changes commit together and race deterministically with first execution. Semantic no-ops preserve occurrence-step IDs. Started/history evidence and valid receipt replay survive. Pending first-action outbox intent remains visible even when the server's new projection omits an empty occurrence; stale actions receive actionable rejection rather than being redirected. Add explicit context invalidation so previews and Today refresh even when a routine definition version has not changed. No unbounded materialization or historical backfill of guessed school facts.
+
+**Alternatives considered:**
+
+- Reading today's mutable calendar for all history would reinterpret earlier expectations.
+- Limiting a calendar change to a routine's next schedule boundary would leave later plans stale.
+- Always rebuilding all steps would needlessly invalidate pending commands for unchanged work.
+
+**Related briefs:**
+
+- P0-006B r1
+- P0-005 r3 (protected execution and plan lifecycle)
+
+---
+
+## D-031 - Calendar management has explicit authority and preserves upgrade compatibility
+
+**Status:** Active
+
+**Decision:** Add `household.schedule.manage` for calendar writes; active household members may read their household calendar. The manager preset receives this grant. Migration backfills it only to memberships already holding `routine.shared.manage`, whose authority already permits changes to shared routine obligations. Do not infer it from Adult/Child, structure-only, enrollment-only, or personalization grants.
+
+Calendar mutations use session-derived household/actor, Origin/CSRF, optimistic version checks including first creation, mutation-ID replay bound to household/kind/payload, and atomic state/receipt writes. Applicability participates in routine command digests. Forward migrations after 008 default legacy steps/additions/proposals to Every time and preserve successful legacy replay with explicit compatibility handling. Add a populated through-008 migration baseline while retaining the existing P0-001/P0-004B fixtures.
+
+**Reason:** Calendar edits can change many people's obligations. A dedicated capability makes that authority explicit without creating a permission editor; version/replay compatibility prevents upgrade and lost-response behavior from changing the user's intent.
+
+**Implications:** Extend shared grants/presets, policy inventory, sync matrix, and authority tests. Calendar administration is server-acknowledged configuration, not checklist-outbox work. Existing auth, history, personal privacy, group semantics, and local-first validation remain. No real school calendar is seeded or guessed during migration.
+
+**Alternatives considered:**
+
+- Reusing enrollment or age classification would misrepresent the authority boundary.
+- Discarding old receipts or treating new applicability as absent from digests would break replay or conflate different commands.
+- Testing only a fresh database would miss populated schedule/lock/personal-layer compatibility.
+
+**Related briefs:**
+
+- P0-006B r1

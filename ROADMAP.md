@@ -42,20 +42,23 @@ Goal: prove that a real recurring household routine can be used quickly by six d
   - **Brief:** `P0-005 r3 - Cohesive Routine Management` (`briefs/p0-005-multiple-household-routines.md`).
   - **Result:** Technically accepted and merged to `main` at `31aad37` through PR #11 after AT6 and long-lived-database upcoming-delete corrections. Product evaluation produced the P0-006 experience-consolidation direction.
 
+- [x] **P0-006A - Calm Household Experience Foundation:** Compact responsive shell, focused routine editing, quiet feedback, saved destinations, and accessible touch ordering.
+  - **Brief:** `P0-006A r2` (`briefs/p0-006a-calm-household-experience-foundation.md`).
+  - **Result:** Technically accepted; Project Lead reviewed screenshots, tested, and accepted the experience. Local accepted tip is `183bc41`; integration into `main` is not verified.
+
 ### CURRENT
 
-- [ ] **Outcome: Calm Household Experience Foundation.** The existing application feels like one compact, responsive household product on phone and desktop; routine reading/editing is concise, ordinary feedback is quiet, and step ordering is natural by touch without excluding keyboard or assistive users.
-  - **Brief:** `P0-006A r2 - Calm Household Experience Foundation` (`briefs/p0-006a-calm-household-experience-foundation.md`).
-  - **Status:** TECHNICALLY ACCEPTED locally; Product evaluation and Project Lead commit/PR remain.
-  - **Evidence target:** Local Chromium/WebKit phone and desktop journeys prove Today / Plan / Household navigation, bounded saved-view URLs, measured routine compactness, focused drafts, transient feedback with durable error/access states, distinct touch/pointer/keyboard ordering, and unchanged P0-005 lifecycle behavior. Product then evaluates the connected experience.
+- [ ] **Outcome: Let one routine adapt to school days and breaks.** Steps use simple applicability choices and a household school calendar, including School nights. Parents change calendar exceptions without cloning routines or changing a person's work already begun.
+  - **Brief:** `P0-006B r1 - Contextual Routine Applicability` (`briefs/p0-006b-contextual-routine-applicability.md`).
+  - **Status:** IN REVIEW; Engineering readiness is next. Use the accepted A foundation; Project Lead integrates and prepares the brief branch.
+  - **Evidence target:** Local calendar/step/preview journey, current/future unstarted reconciliation across plan boundaries, preserved locks/history, personal/proposal composition, migration/replay, and live context changes. Product evaluates usefulness after technical acceptance.
 
 ### LIKELY NEXT
 
-- [ ] **Outcome: Contextual Routine Applicability.** After evaluating P0-006A, allow selected routine steps to appear for household contexts such as school days without cloning entire routines. Begin with a household-owned school calendar and explicit exceptions while preserving P0-005 locks and keeping recurrence separate from applicability. Exact vocabulary and School Night inclusion depend on Architecture review and P0-006A evidence.
+- [ ] **P0-006C - Household Profiles and Useful History.** Deliver the third slice of the existing P0-006 proposal: friendly/full names, birthday, optional email with token access preserved, family display order, day/person history summaries with evidence drill-down, and manager-authorized evaluation-history clearing while preserving configuration. Architecture will define the clearing/reference contract from the then-current repository. No replacement Product proposal is needed unless new evidence changes the intended outcome.
 
 ### LATER
 
-- **Household Profiles and Useful History:** friendly/full names, birthday, optional email, family display order, day/person history summaries, evidence drill-down, and manager-authorized evaluation-history clearing with configuration preservation.
 - **Multi-Responsibility Today:** completed/current/later/anytime hierarchy and ordinary household responsibilities such as Kitchen, Cats, and Bathroom after the P0-006 foundation is stable.
 - Richer scheduling, assignment, shared execution, and personal work, driven by household evidence and using the common application design; no empty future destinations are prebuilt in P0-006A.
 - Broader-release privacy, recovery, offline behavior, and operational confidence.

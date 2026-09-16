@@ -718,6 +718,8 @@ textarea {
   flex-wrap: wrap;
   gap: var(--space-2);
   align-items: end;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .inline-form {
@@ -732,16 +734,24 @@ textarea {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .grow {
+  /* Prefer wrapping over horizontal overflow at large text zoom (AT6). */
   flex: 1 1 12rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .compact-section {
   margin-top: var(--space-5);
   padding-top: var(--space-4);
   border-top: 1px solid var(--border);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .task-list,

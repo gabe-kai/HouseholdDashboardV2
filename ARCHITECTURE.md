@@ -121,7 +121,7 @@ From the repository root, with Node.js 24:
 - **Run/develop:** `npm run dev` (API on `127.0.0.1:8787`, Vite on `127.0.0.1:5173` with `/api/v1` proxy). Login/claim Origin must match the Vite URL (`http://127.0.0.1:5173` by default).
 - **Phone on LAN:** `npm run dev:lan` (binds Vite/API for LAN; prints `http://<lan-ip>:5173`). With `EVAL_LAN_ACCESS=1`, claim/login also accept other private/loopback HTTP Origins so a mismatched NIC IP does not block the phone. Not for public internet exposure.
 - **Build/package:** `npm run build`.
-- **Test:** `npm test` for unit/integration tests. `npm run test:e2e` installs Playwright Chromium + WebKit for the locked `@playwright/test` version (browser binaries are not shipped by `npm ci`) and then runs the suite against isolated Chromium/WebKit servers. Chromium-only: `npm run test:e2e:chromium`.
+- **Test:** `npm test` for unit/integration tests. `npm run test:e2e` installs Playwright Chromium + WebKit for the locked `@playwright/test` version (browser binaries are not shipped by `npm ci`), runs the suite against isolated Chromium/WebKit production SPA servers, then runs `npm run test:e2e:vite` (Vite-dev deep-link smoke on free ports via `playwright.vite.config.ts`; optional `VITE_API_PROXY_TARGET` overrides the Vite `/api/v1` proxy target). Chromium-only: `npm run test:e2e:chromium` (includes the Vite smoke).
 - **Lint/typecheck/validate:** `npm run lint`, `npm run typecheck`, and aggregate `npm run validate`.
 - **Pull-request validation:** `npm run validate:pr` (validate + build + Chromium e2e).
 - **Release-candidate validation:** `npm run validate:rc` (validate + build + Chromium + WebKit e2e).

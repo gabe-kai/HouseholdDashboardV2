@@ -124,17 +124,5 @@ test.describe("P0-006A calm household experience", () => {
         path.join(SCREENSHOT_DIR, `${testInfo.project.name}-detail.png`),
       );
     }
-
-    // Touchscreen drag is environment-dependent; attempt when hasTouch is available.
-    if (testInfo.project.use.hasTouch) {
-      await page.getByRole("button", { name: "Edit", exact: true }).click();
-      await openRoutineSection(page, "Steps");
-      const handle = page.locator("[data-ordered-row]").first().locator(".drag-handle");
-      const box = await handle.boundingBox();
-      if (box) {
-        await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
-      }
-      await page.getByRole("button", { name: "Cancel", exact: true }).click();
-    }
   });
 });

@@ -1,7 +1,7 @@
 # BRIEF P0-006A - Calm Household Experience Foundation
 
 **Revision:** 2
-**Status:** IN REVIEW
+**Status:** READY
 
 A material contract change increments the revision and requires Engineering readiness for that revision. This file is the authoritative contract; r2 supersedes r1. Technical acceptance and Project Lead/Product acceptance remain separate.
 
@@ -165,7 +165,7 @@ The Build Report includes concise phone-density measurements and representative 
 
 **Report:** `reports/P0-006A-r2-engineering-readiness.md`
 
-**Architecture disposition:** Revision 2 received one consolidated Engineering readiness review (**READY**). Implementation awaits Architecture’s response to that review. Router, drag dependency, URL syntax, and test-organization choices remain Engineering discretion within D-027/D-028.
+**Architecture disposition:** ACCEPT / PROCEED. Engineering may implement revision 2 on the planned branch. The readiness review found no blockers or questions; its risks and ordinary implementation choices remain governed by the r2 contract. Router, drag dependency, URL syntax, and test-organization choices remain Engineering discretion within D-027/D-028. Technical acceptance of the Build Report and Project Lead/Product acceptance remain separate.
 
 ## Revision history
 

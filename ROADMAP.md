@@ -46,7 +46,7 @@ Goal: prove that a real recurring household routine can be used quickly by six d
 
 - [ ] **Outcome: Calm Household Experience Foundation.** The existing application feels like one compact, responsive household product on phone and desktop; routine reading/editing is concise, ordinary feedback is quiet, and step ordering is natural by touch without excluding keyboard or assistive users.
   - **Brief:** `P0-006A r2 - Calm Household Experience Foundation` (`briefs/p0-006a-calm-household-experience-foundation.md`).
-  - **Status:** FIX REQUIRED; local implementation is broadly aligned, but required evidence remains for Vite deep-link reload, real touch-drag persistence/autoscroll, and 200%/midsize geometry.
+  - **Status:** TECHNICALLY ACCEPTED locally; Product evaluation and Project Lead commit/PR remain.
   - **Evidence target:** Local Chromium/WebKit phone and desktop journeys prove Today / Plan / Household navigation, bounded saved-view URLs, measured routine compactness, focused drafts, transient feedback with durable error/access states, distinct touch/pointer/keyboard ordering, and unchanged P0-005 lifecycle behavior. Product then evaluates the connected experience.
 
 ### LIKELY NEXT

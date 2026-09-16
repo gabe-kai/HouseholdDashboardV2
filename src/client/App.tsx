@@ -6,6 +6,7 @@ import {
   useTransition,
   type Dispatch,
   type FormEvent,
+  type ReactNode,
   type SetStateAction,
 } from "react";
 import { mergeAuthoritativeOccurrence, reconcileOccurrence } from "../domain/reconcile";
@@ -55,28 +56,59 @@ import {
   type OutboxItem,
 } from "./outbox";
 import { newClientId } from "./id";
+import {
+  type AppLocation,
+  consumeIntendedPath,
+  locationsEqual,
+  parsePath,
+  pathFor,
+  pushHistory,
+  rememberIntendedPath,
+  replaceHistory,
+} from "./nav";
+import { OrderedList } from "./OrderedList";
+import { ToastHost, useToast } from "./Toast";
 
-type PrimaryTab = "today" | "routines" | "household";
+type PrimaryTab = "today" | "plan" | "household";
 
-type HouseholdView =
-  | "menu"
-  | "people-groups"
-  | "approvals"
-  | "history"
-  | "activity";
+/** Local Household leaves that stay under /household (not URL-addressable in P0-006A). */
+type HouseholdLeaf = "approvals" | "history" | "activity" | null;
 
 /** Secondary destinations reached from Today (not primary nav). */
 type TodaySecondary = "personalize" | "preview" | null;
 
-type ChangeFeedback = {
-  message: string;
-  membershipId: string;
-  effectiveDate: string;
-  definitionId?: string;
-};
+function primaryTabFor(location: AppLocation): PrimaryTab {
+  if (location.name === "plan" || location.name === "plan-routine") return "plan";
+  if (
+    location.name === "household" ||
+    location.name === "household-people" ||
+    location.name === "household-person" ||
+    location.name === "household-group"
+  ) {
+    return "household";
+  }
+  return "today";
+}
+
+function gateLocation(location: AppLocation, session: SessionInfo): AppLocation {
+  const canManageShared = session.grants.includes("routine.shared.manage");
+  if (
+    (location.name === "plan" || location.name === "plan-routine") &&
+    !canManageShared
+  ) {
+    return { name: "unavailable", attemptedPath: pathFor(location) };
+  }
+  return location;
+}
+
+function confirmDiscardDirty(): boolean {
+  return window.confirm(
+    "You have unsaved changes. Discard them?\n\nOK = Discard · Cancel = Keep editing",
+  );
+}
 
 const HOUSEHOLD_MENU_ITEMS: Array<{
-  view: Exclude<HouseholdView, "menu">;
+  id: "people-groups" | "approvals" | "history" | "activity";
   label: string;
   description: string;
   visible: (caps: {
@@ -86,25 +118,25 @@ const HOUSEHOLD_MENU_ITEMS: Array<{
   }) => boolean;
 }> = [
   {
-    view: "people-groups",
+    id: "people-groups",
     label: "People & Groups",
     description: "Directory, access, and groups",
     visible: () => true,
   },
   {
-    view: "approvals",
+    id: "approvals",
     label: "Approvals",
     description: "Review personalization proposals",
     visible: (caps) => caps.canDecide,
   },
   {
-    view: "history",
+    id: "history",
     label: "History",
     description: "Past occurrence checklists",
     visible: (caps) => caps.canManageShared,
   },
   {
-    view: "activity",
+    id: "activity",
     label: "Household activity",
     description: "Shared progress and visible tasks",
     visible: (caps) => caps.canViewActivity,
@@ -144,10 +176,13 @@ export function App() {
   } | null>(null);
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [restoring, setRestoring] = useState(true);
-  const [primaryTab, setPrimaryTab] = useState<PrimaryTab>("today");
-  const [householdView, setHouseholdView] = useState<HouseholdView>("menu");
+  const [location, setLocation] = useState<AppLocation>(() =>
+    parsePath(window.location.pathname),
+  );
+  const [householdLeaf, setHouseholdLeaf] = useState<HouseholdLeaf>(null);
   const [todaySecondary, setTodaySecondary] = useState<TodaySecondary>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [editorDirty, setEditorDirty] = useState(false);
   const [occurrences, setOccurrences] = useState<OccurrenceView[]>([]);
   const [memberships, setMemberships] = useState<MemberPublic[]>([]);
   const [tasks, setTasks] = useState<PersonalTask[]>([]);
@@ -160,8 +195,8 @@ export function App() {
     navigator.onLine ? "connected" : "offline",
   );
   const [error, setError] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<ChangeFeedback | null>(null);
   const [preview, setPreview] = useState<RoutinePreview | null>(null);
+  const [previewReturn, setPreviewReturn] = useState<TodaySecondary>(null);
   const [mutationDelayMs, setMutationDelayMs] = useState(0);
   const [routineRefreshToken, setRoutineRefreshToken] = useState(0);
   const identityRef = useRef<string | null>(null);
@@ -169,11 +204,22 @@ export function App() {
   const outboxRef = useRef<OutboxItem[]>([]);
   const refreshGenerationRef = useRef(0);
   const supportingGenerationRef = useRef(0);
+  const locationRef = useRef(location);
+  const editorDirtyRef = useRef(editorDirty);
+  const { toast, showToast, clearToast } = useToast();
   const [, startTransition] = useTransition();
 
   useEffect(() => {
     outboxRef.current = outbox;
   }, [outbox]);
+
+  useEffect(() => {
+    locationRef.current = location;
+  }, [location]);
+
+  useEffect(() => {
+    editorDirtyRef.current = editorDirty;
+  }, [editorDirty]);
 
   function clearUiCaches() {
     setOccurrences([]);
@@ -185,16 +231,43 @@ export function App() {
     outboxRef.current = [];
     setExpanded({});
     setHouseholdDate("");
-    setFeedback(null);
     setPreview(null);
+    setPreviewReturn(null);
     setError(null);
+    clearToast();
   }
 
-  function resetNavigation() {
-    setPrimaryTab("today");
-    setHouseholdView("menu");
+  function resetLocalOverlays() {
+    setHouseholdLeaf(null);
     setTodaySecondary(null);
     setAccountMenuOpen(false);
+    setEditorDirty(false);
+  }
+
+  function applyLocation(next: AppLocation, historyMode: "push" | "replace" | "none") {
+    const previous = locationRef.current;
+    if (historyMode === "push") pushHistory(next);
+    else if (historyMode === "replace") replaceHistory(next);
+    locationRef.current = next;
+    setLocation(next);
+    if (!locationsEqual(previous, next)) {
+      clearToast();
+      setHouseholdLeaf(null);
+      setTodaySecondary(null);
+      setAccountMenuOpen(false);
+    }
+  }
+
+  function requestNavigate(
+    next: AppLocation,
+    historyMode: "push" | "replace" = "push",
+  ): boolean {
+    if (editorDirtyRef.current && !confirmDiscardDirty()) {
+      return false;
+    }
+    setEditorDirty(false);
+    applyLocation(next, historyMode);
+    return true;
   }
 
   function establishSession(next: SessionInfo) {
@@ -203,14 +276,23 @@ export function App() {
     rememberCsrfToken(next.csrfToken);
     setSession(next);
     setHouseholdDate(next.householdDate);
-    resetNavigation();
+    resetLocalOverlays();
+    clearToast();
+
+    const intended = consumeIntendedPath();
+    const raw = intended
+      ? parsePath(intended)
+      : parsePath(window.location.pathname);
+    const gated = gateLocation(raw, next);
+    applyLocation(gated, "replace");
   }
 
   function expireSession() {
     identityRef.current = null;
     setSession(null);
     clearUiCaches();
-    resetNavigation();
+    resetLocalOverlays();
+    rememberIntendedPath(window.location.pathname);
   }
 
   const refreshToday = useEffectEvent(async (membershipId: string, date?: string) => {
@@ -329,7 +411,7 @@ export function App() {
   });
 
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
+    const params = new URLSearchParams(window.location.search);
     const delay = Number(params.get("mutationDelayMs") ?? 0);
     if (Number.isFinite(delay) && delay > 0) setMutationDelayMs(delay);
     void Promise.allSettled([fetchMeta(), fetchSession()]).then(([metaResult, sessionResult]) => {
@@ -457,7 +539,9 @@ export function App() {
     } finally {
       setSession(null);
       clearUiCaches();
-      resetNavigation();
+      resetLocalOverlays();
+      rememberIntendedPath(window.location.pathname);
+      applyLocation({ name: "today" }, "replace");
     }
   }
 
@@ -496,13 +580,59 @@ export function App() {
     try {
       const result = await fetchPreview(definitionId, membershipId, date);
       if (identityRef.current !== session?.member.id) return;
+      if (editorDirtyRef.current && !confirmDiscardDirty()) return;
+      setEditorDirty(false);
       setPreview(result.preview);
-      setPrimaryTab("today");
+      setPreviewReturn(todaySecondary === "personalize" ? "personalize" : null);
+      if (locationRef.current.name !== "today") {
+        applyLocation({ name: "today" }, "push");
+      }
       setTodaySecondary("preview");
+      setHouseholdLeaf(null);
+      setAccountMenuOpen(false);
     } catch (caught) {
       setError(errorMessage(caught));
     }
   }
+
+  useEffect(() => {
+    function onPopState() {
+      const next = parsePath(window.location.pathname);
+      if (editorDirtyRef.current) {
+        if (!confirmDiscardDirty()) {
+          // Keep editing: restore previous URL without discarding draft.
+          replaceHistory(locationRef.current);
+          return;
+        }
+        setEditorDirty(false);
+      }
+      clearToast();
+      setHouseholdLeaf(null);
+      setTodaySecondary(null);
+      setAccountMenuOpen(false);
+      locationRef.current = next;
+      setLocation(next);
+    }
+
+    function onBeforeUnload(event: BeforeUnloadEvent) {
+      if (!editorDirtyRef.current) return;
+      event.preventDefault();
+      event.returnValue = "";
+    }
+
+    window.addEventListener("popstate", onPopState);
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+      window.removeEventListener("beforeunload", onBeforeUnload);
+    };
+    // clearToast is stable for this owner; bind once.
+  }, []);
+
+  useEffect(() => {
+    if (restoring || session) return;
+    rememberIntendedPath(window.location.pathname);
+  }, [restoring, session]);
 
   if (restoring) {
     return (
@@ -537,33 +667,42 @@ export function App() {
     (occurrence) => occurrence.accountableMemberId === activeSession.member.id,
   );
   const pendingCount = outbox.filter((item) => item.state !== "rejected").length;
+  const primaryTab = primaryTabFor(location);
+  const gatedLocation = gateLocation(location, activeSession);
 
   function selectPrimaryTab(next: PrimaryTab) {
-    setPrimaryTab(next);
-    setTodaySecondary(null);
-    setAccountMenuOpen(false);
-    if (next === "household") {
-      setHouseholdView("menu");
-    }
+    const destination: AppLocation =
+      next === "today"
+        ? { name: "today" }
+        : next === "plan"
+          ? { name: "plan" }
+          : { name: "household" };
+    if (!requestNavigate(destination, "push")) return;
     if (next === "household" && canDecide) {
       void refreshSupportingData(activeSession);
     }
   }
 
-  function openHouseholdView(view: HouseholdView) {
-    setHouseholdView(view);
-    if (view === "approvals") {
+  function openHouseholdLeaf(leaf: Exclude<HouseholdLeaf, null>) {
+    if (editorDirtyRef.current && !confirmDiscardDirty()) return;
+    setEditorDirty(false);
+    if (location.name !== "household") {
+      applyLocation({ name: "household" }, "push");
+    }
+    setHouseholdLeaf(leaf);
+    setTodaySecondary(null);
+    if (leaf === "approvals") {
       void refreshSupportingData(activeSession);
     }
   }
 
   function openPersonalize() {
-    setPrimaryTab("today");
+    if (!requestNavigate({ name: "today" }, "push")) return;
     setTodaySecondary("personalize");
     void refreshSupportingData(activeSession);
   }
 
-  const showRoutinesTab = canManageShared;
+  const showPlanTab = canManageShared;
   const householdCaps = {
     canDecide,
     canManageShared,
@@ -573,9 +712,88 @@ export function App() {
     item.visible(householdCaps),
   );
 
-  const showingTodayContent = primaryTab === "today" && todaySecondary === null;
-  const showingPersonalize = primaryTab === "today" && todaySecondary === "personalize";
-  const showingPreview = primaryTab === "today" && todaySecondary === "preview";
+  const showingTodayContent =
+    gatedLocation.name === "today" && todaySecondary === null;
+  const showingPersonalize =
+    gatedLocation.name === "today" && todaySecondary === "personalize";
+  const showingPreview =
+    gatedLocation.name === "today" && todaySecondary === "preview";
+  const showingPlan =
+    showPlanTab &&
+    (gatedLocation.name === "plan" || gatedLocation.name === "plan-routine");
+  const showingHouseholdMenu =
+    gatedLocation.name === "household" && householdLeaf === null;
+  const showingPeople =
+    gatedLocation.name === "household-people" ||
+    gatedLocation.name === "household-person" ||
+    gatedLocation.name === "household-group";
+  const showingActivity =
+    gatedLocation.name === "household" && householdLeaf === "activity" && manager;
+  const showingApprovals =
+    gatedLocation.name === "household" && householdLeaf === "approvals" && canDecide;
+  const showingHistory =
+    gatedLocation.name === "household" &&
+    householdLeaf === "history" &&
+    canManageShared;
+  const showingUnavailable =
+    gatedLocation.name === "unavailable" ||
+    ((location.name === "plan" || location.name === "plan-routine") && !canManageShared);
+
+  const viewTitle = showingPersonalize
+    ? "Personalize"
+    : showingPreview
+      ? "Preview"
+      : showingApprovals
+        ? "Approvals"
+        : showingHistory
+          ? "History"
+          : showingActivity
+            ? "Activity"
+            : showingPeople
+              ? "People & Groups"
+              : showingUnavailable
+                ? "Unavailable"
+                : primaryTab === "plan"
+                  ? "Plan"
+                  : primaryTab === "household"
+                    ? "Household"
+                    : "Today";
+
+  const statusPills: ReactNode[] = [];
+  if (connection === "offline") {
+    statusPills.push(
+      <span key="offline" className="status-pill" data-kind="offline">
+        Offline
+      </span>,
+    );
+  } else if (connection === "reconnecting") {
+    statusPills.push(
+      <span key="reconnecting" className="status-pill" data-kind="online">
+        Reconnecting
+      </span>,
+    );
+  }
+  if (pendingCount > 0) {
+    statusPills.push(
+      <span key="pending" className="status-pill" data-kind="pending">
+        {pendingCount} pending
+      </span>,
+    );
+  }
+  for (const item of outbox.filter((entry) => entry.state === "rejected")) {
+    statusPills.push(
+      <span key={item.mutationId} className="status-pill" data-kind="error">
+        Rejected: {item.errorMessage ?? "Unable to sync"}
+      </span>,
+    );
+  }
+  if (error) {
+    statusPills.push(
+      <span key="error" className="status-pill" data-kind="error">
+        {error}
+      </span>,
+    );
+  }
 
   return (
     <main className="app-shell has-bottom-nav">
@@ -586,16 +804,9 @@ export function App() {
       ) : null}
       <header className="topbar">
         <div className="topbar-identity">
-          <strong>{session.member.displayName}</strong>
-          <div className="meta">
-            Signed in · Household date {householdDate || session.householdDate} ·{" "}
-            {session.householdTimezone}
-          </div>
+          <strong className="view-title">{viewTitle}</strong>
         </div>
         <div className="topbar-tools">
-          <span className="dev-indicator" role="status">
-            Local development
-          </span>
           <div className="account-menu">
             <button
               type="button"
@@ -608,6 +819,14 @@ export function App() {
             </button>
             {accountMenuOpen ? (
               <div className="account-menu-panel" role="menu">
+                <div className="account-detail">
+                  <strong>{session.member.displayName}</strong>
+                  <span>Household date {householdDate || session.householdDate}</span>
+                  <span>{session.householdTimezone}</span>
+                  <span className="dev-indicator" role="status">
+                    Local development
+                  </span>
+                </div>
                 <button
                   type="button"
                   role="menuitem"
@@ -624,47 +843,19 @@ export function App() {
         </div>
       </header>
 
-      <div className="status-line" aria-live="polite">
-        <span
-          className="status-pill"
-          data-kind={connection === "offline" ? "offline" : "online"}
-        >
-          {connection === "offline"
-            ? "Offline"
-            : connection === "reconnecting"
-              ? "Reconnecting"
-              : "Online"}
-        </span>
-        {pendingCount > 0 ? (
-          <span className="status-pill" data-kind="pending">
-            {pendingCount} pending
-          </span>
-        ) : null}
-        {outbox
-          .filter((item) => item.state === "rejected")
-          .map((item) => (
-            <span key={item.mutationId} className="status-pill" data-kind="error">
-              Rejected: {item.errorMessage ?? "Unable to sync"}
-            </span>
-          ))}
-        {error ? (
-          <span className="status-pill" data-kind="error">
-            {error}
-          </span>
-        ) : null}
-      </div>
+      {statusPills.length > 0 ? (
+        <div className="status-line" aria-live="polite">
+          {statusPills}
+        </div>
+      ) : null}
 
       <nav className="primary-nav primary-nav--top" aria-label="Primary">
         <PrimaryNavButton tab="today" current={primaryTab} onSelect={selectPrimaryTab}>
           Today
         </PrimaryNavButton>
-        {showRoutinesTab ? (
-          <PrimaryNavButton
-            tab="routines"
-            current={primaryTab}
-            onSelect={selectPrimaryTab}
-          >
-            Routines
+        {showPlanTab ? (
+          <PrimaryNavButton tab="plan" current={primaryTab} onSelect={selectPrimaryTab}>
+            Plan
           </PrimaryNavButton>
         ) : null}
         <PrimaryNavButton
@@ -676,11 +867,31 @@ export function App() {
         </PrimaryNavButton>
       </nav>
 
-      {feedback && !showingPreview ? (
-        <ChangeNotice feedback={feedback} onPreview={openPreview} />
+      {showingUnavailable ? (
+        <section className="panel">
+          <h1 className="page-heading">This view is unavailable</h1>
+          <p className="meta">
+            The page you opened is not available for this account, or it no longer exists.
+          </p>
+          <div className="button-row">
+            <button
+              type="button"
+              className="primary"
+              onClick={() => void requestNavigate({ name: "today" })}
+            >
+              Return to Today
+            </button>
+            <button
+              type="button"
+              onClick={() => void requestNavigate({ name: "household" })}
+            >
+              Return to Household
+            </button>
+          </div>
+        </section>
       ) : null}
 
-      {showingTodayContent ? (
+      {!showingUnavailable && showingTodayContent ? (
         <TodayView
           occurrences={projectedOwn}
           tasks={tasks.filter((task) => task.ownerMembershipId === session.member.id)}
@@ -698,11 +909,31 @@ export function App() {
           }
         />
       ) : null}
-      {primaryTab === "routines" && canManageShared ? (
+      {!showingUnavailable && showingPlan ? (
         <RoutinesView
           memberships={memberships}
           today={householdDate || session.householdDate}
           refreshToken={routineRefreshToken}
+          route={
+            gatedLocation.name === "plan-routine"
+              ? { kind: "detail", definitionId: gatedLocation.definitionId }
+              : { kind: "list" }
+          }
+          onRouteChange={(next) => {
+            if (next.kind === "list") {
+              requestNavigate({ name: "plan" });
+            } else {
+              requestNavigate({
+                name: "plan-routine",
+                definitionId: next.definitionId,
+              });
+            }
+          }}
+          onDirtyChange={(dirty) => {
+            editorDirtyRef.current = dirty;
+            setEditorDirty(dirty);
+          }}
+          onSuccessToast={(message) => showToast(message)}
           onSaved={() => {
             setRoutineRefreshToken((n) => n + 1);
             void refreshToday(session.member.id);
@@ -717,7 +948,7 @@ export function App() {
           }}
         />
       ) : null}
-      {primaryTab === "household" && householdView === "menu" ? (
+      {!showingUnavailable && showingHouseholdMenu ? (
         <section>
           <h1 className="page-heading">Household</h1>
           <p className="page-subcopy">
@@ -726,10 +957,16 @@ export function App() {
           <nav className="household-nav" aria-label="Household">
             {visibleHouseholdItems.map((item) => (
               <button
-                key={item.view}
+                key={item.id}
                 type="button"
                 className="list-row"
-                onClick={() => openHouseholdView(item.view)}
+                onClick={() => {
+                  if (item.id === "people-groups") {
+                    requestNavigate({ name: "household-people" });
+                    return;
+                  }
+                  openHouseholdLeaf(item.id);
+                }}
               >
                 <span>{item.label}</span>
                 <span className="meta">{item.description}</span>
@@ -738,7 +975,7 @@ export function App() {
           </nav>
         </section>
       ) : null}
-      {primaryTab === "household" && householdView === "people-groups" ? (
+      {!showingUnavailable && showingPeople ? (
         <PeopleGroupsView
           memberships={memberships}
           tasks={tasks.filter((task) => task.visibility === "household")}
@@ -746,14 +983,40 @@ export function App() {
           canManageStructure={canManageStructure}
           canEnroll={canEnroll}
           canViewActivity={false}
-          entry="overview"
-          onExit={() => setHouseholdView("menu")}
+          entry={
+            gatedLocation.name === "household-person"
+              ? "person"
+              : gatedLocation.name === "household-group"
+                ? "group"
+                : "overview"
+          }
+          personId={
+            gatedLocation.name === "household-person"
+              ? gatedLocation.membershipId
+              : undefined
+          }
+          groupId={
+            gatedLocation.name === "household-group" ? gatedLocation.groupId : undefined
+          }
+          onNavigate={(next) => {
+            if (next.kind === "overview") {
+              requestNavigate({ name: "household-people" });
+            } else if (next.kind === "person") {
+              requestNavigate({
+                name: "household-person",
+                membershipId: next.personId,
+              });
+            } else {
+              requestNavigate({ name: "household-group", groupId: next.groupId });
+            }
+          }}
+          onExit={() => requestNavigate({ name: "household" })}
           onPeopleChanged={() => {
             if (activeSession) void refreshSupportingData(activeSession);
           }}
         />
       ) : null}
-      {primaryTab === "household" && householdView === "activity" && manager ? (
+      {!showingUnavailable && showingActivity ? (
         <PeopleGroupsView
           memberships={memberships}
           tasks={tasks.filter((task) => task.visibility === "household")}
@@ -762,40 +1025,41 @@ export function App() {
           canEnroll={canEnroll}
           canViewActivity={false}
           entry="activity"
-          onExit={() => setHouseholdView("menu")}
+          onExit={() => setHouseholdLeaf(null)}
           onPeopleChanged={() => {
             if (activeSession) void refreshSupportingData(activeSession);
           }}
         />
       ) : null}
-      {primaryTab === "household" && householdView === "approvals" && canDecide ? (
+      {!showingUnavailable && showingApprovals ? (
         <ApprovalsView
           proposals={proposals}
           memberships={memberships}
           today={householdDate || session.householdDate}
-          onBack={() => setHouseholdView("menu")}
+          onBack={() => setHouseholdLeaf(null)}
           onChanged={(next) => {
             setProposals((current) =>
               current.map((proposal) => (proposal.id === next.id ? next : proposal)),
             );
           }}
           onApproved={(next, effectiveDate) =>
-            setFeedback({
-              message: `"${next.text}" was approved.`,
-              membershipId: next.membershipId,
-              effectiveDate,
-              definitionId: next.definitionId ?? undefined,
+            showToast(`"${next.text}" was approved. Effective ${effectiveDate}.`, {
+              actionLabel: next.definitionId ? "Preview" : undefined,
+              onAction: next.definitionId
+                ? () =>
+                    void openPreview(next.membershipId, effectiveDate, next.definitionId!)
+                : undefined,
             })
           }
         />
       ) : null}
-      {primaryTab === "household" && householdView === "history" && canManageShared ? (
+      {!showingUnavailable && showingHistory ? (
         <HistoryView
           initialDate={householdDate}
-          onBack={() => setHouseholdView("menu")}
+          onBack={() => setHouseholdLeaf(null)}
         />
       ) : null}
-      {showingPersonalize && canDirect ? (
+      {!showingUnavailable && showingPersonalize && canDirect ? (
         <DirectPersonalization
           onBack={() => setTodaySecondary(null)}
           onPreview={(definitionId) =>
@@ -806,23 +1070,29 @@ export function App() {
             )
           }
           onSaved={(layer) =>
-            setFeedback({
-              message: "Your personal settings were saved.",
-              membershipId: layer.membershipId,
-              effectiveDate: layer.effectiveDate,
-              definitionId: layer.definitionId,
-            })
+            showToast(
+              `Your personal settings were saved. Effective ${layer.effectiveDate}.`,
+              {
+                actionLabel: "Preview",
+                onAction: () =>
+                  void openPreview(
+                    layer.membershipId,
+                    layer.effectiveDate,
+                    layer.definitionId,
+                  ),
+              },
+            )
           }
         />
       ) : null}
-      {showingPersonalize && !canDirect && canPropose ? (
+      {!showingUnavailable && showingPersonalize && !canDirect && canPropose ? (
         <ProposalPersonalization
           proposals={proposals}
           onBack={() => setTodaySecondary(null)}
           onCreated={(proposal) => setProposals((current) => [proposal, ...current])}
         />
       ) : null}
-      {showingPersonalize && !canDirect && !canPropose ? (
+      {!showingUnavailable && showingPersonalize && !canDirect && !canPropose ? (
         <section className="panel">
           <button
             type="button"
@@ -838,24 +1108,22 @@ export function App() {
           </p>
         </section>
       ) : null}
-      {showingPreview && preview ? (
+      {!showingUnavailable && showingPreview && preview ? (
         <PreviewView
           preview={preview}
-          onBack={() => setTodaySecondary(feedback ? "personalize" : null)}
+          onBack={() => setTodaySecondary(previewReturn)}
         />
       ) : null}
+
+      <ToastHost toast={toast} onDismiss={clearToast} />
 
       <nav className="primary-nav primary-nav--bottom" aria-label="Primary">
         <PrimaryNavButton tab="today" current={primaryTab} onSelect={selectPrimaryTab}>
           Today
         </PrimaryNavButton>
-        {showRoutinesTab ? (
-          <PrimaryNavButton
-            tab="routines"
-            current={primaryTab}
-            onSelect={selectPrimaryTab}
-          >
-            Routines
+        {showPlanTab ? (
+          <PrimaryNavButton tab="plan" current={primaryTab} onSelect={selectPrimaryTab}>
+            Plan
           </PrimaryNavButton>
         ) : null}
         <PrimaryNavButton
@@ -1242,35 +1510,6 @@ function TaskList(props: {
   );
 }
 
-function ChangeNotice(props: {
-  feedback: ChangeFeedback;
-  onPreview: (membershipId: string, date: string, definitionId: string) => void;
-}) {
-  return (
-    <div className="change-notice status-notice" role="status">
-      <div>
-        <strong>{props.feedback.message}</strong>
-        <div>Effective {props.feedback.effectiveDate}.</div>
-      </div>
-      {props.feedback.definitionId ? (
-        <button
-          type="button"
-          className="secondary"
-          onClick={() =>
-            void props.onPreview(
-              props.feedback.membershipId,
-              props.feedback.effectiveDate,
-              props.feedback.definitionId!,
-            )
-          }
-        >
-          Open read-only preview
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
 function AdditionFields(props: {
   addition: Omit<PersonalAddition, "position">;
   anchors: Array<{ logicalItemId: string; text: string }>;
@@ -1434,60 +1673,41 @@ function DirectPersonalization(props: {
         {definitionId ? (
           <p className="meta">Editing personal items for {selectedTitle}.</p>
         ) : null}
-        {additions.map((addition, index) => (
-          <div className="step-editor" key={addition.id}>
-            <AdditionFields
-              addition={addition}
-              anchors={anchors}
-              onChange={(next) =>
-                setAdditions((current) =>
-                  current.map((item, itemIndex) => (itemIndex === index ? next : item)),
-                )
-              }
-            />
-            <div className="row-actions">
-              <button
-                type="button"
-                className="secondary"
-                disabled={index === 0}
-                onClick={() =>
-                  setAdditions((current) => {
-                    const next = [...current];
-                    [next[index - 1], next[index]] = [next[index], next[index - 1]];
-                    return next;
-                  })
+        <OrderedList
+          listLabel="Personal additions"
+          items={additions.map((addition) => ({
+            id: addition.id,
+            label: addition.text.trim() || "Personal item",
+            addition,
+          }))}
+          onReorder={(next) => setAdditions(next.map((item) => item.addition))}
+          renderRow={(item) => (
+            <div className="step-editor">
+              <AdditionFields
+                addition={item.addition}
+                anchors={anchors}
+                onChange={(nextAddition) =>
+                  setAdditions((current) =>
+                    current.map((entry) =>
+                      entry.id === item.id ? nextAddition : entry,
+                    ),
+                  )
                 }
-              >
-                Move up
-              </button>
-              <button
-                type="button"
-                className="secondary"
-                disabled={index === additions.length - 1}
-                onClick={() =>
-                  setAdditions((current) => {
-                    const next = [...current];
-                    [next[index], next[index + 1]] = [next[index + 1], next[index]];
-                    return next;
-                  })
-                }
-              >
-                Move down
-              </button>
+              />
               <button
                 type="button"
                 className="text-button danger-text"
                 onClick={() =>
                   setAdditions((current) =>
-                    current.filter((_, itemIndex) => itemIndex !== index),
+                    current.filter((entry) => entry.id !== item.id),
                   )
                 }
               >
                 Remove
               </button>
             </div>
-          </div>
-        ))}
+          )}
+        />
         <button
           type="button"
           className="secondary"

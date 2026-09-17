@@ -44,13 +44,13 @@ Goal: prove that a real recurring household routine can be used quickly by six d
 
 - [x] **P0-006A - Calm Household Experience Foundation:** Compact responsive shell, focused routine editing, quiet feedback, saved destinations, and accessible touch ordering.
   - **Brief:** `P0-006A r2` (`briefs/p0-006a-calm-household-experience-foundation.md`).
-  - **Result:** Technically accepted; Project Lead reviewed screenshots, tested, and accepted the experience. Local accepted tip is `183bc41`; integration into `main` is not verified.
+  - **Result:** Technically accepted and accepted by the Project Lead after screenshot review and testing. Integrated to `main` at `7cba3a6` via PR #12, including B planning and the A toast/CI correction.
 
 ### CURRENT
 
 - [ ] **Outcome: Let one routine adapt to school days and breaks.** Steps use simple applicability choices and a household school calendar, including School nights. Parents change calendar exceptions without cloning routines or changing a person's work already begun.
   - **Brief:** `P0-006B r1 - Contextual Routine Applicability` (`briefs/p0-006b-contextual-routine-applicability.md`).
-  - **Status:** IN REVIEW; Engineering readiness is next. Use the accepted A foundation; Project Lead integrates and prepares the brief branch.
+  - **Status:** READY; Architecture ACCEPT / PROCEED after Engineering's consolidated review against integrated `main` @ `7cba3a6`. Local implementation and r1 Build Report are next on the existing B branch. Move the card to In Progress when implementation starts.
   - **Evidence target:** Local calendar/step/preview journey, current/future unstarted reconciliation across plan boundaries, preserved locks/history, personal/proposal composition, migration/replay, and live context changes. Product evaluates usefulness after technical acceptance.
 
 ### LIKELY NEXT

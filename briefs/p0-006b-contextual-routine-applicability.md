@@ -1,7 +1,7 @@
 # BRIEF P0-006B - Contextual Routine Applicability
 
 **Revision:** 1
-**Status:** FIX REQUIRED
+**Status:** ACCEPTED
 
 One authoritative contract for this ID. Material changes increment the revision and require Engineering readiness for that revision. Architecture technical acceptance and Project Lead/Product acceptance remain separate.
 
@@ -185,9 +185,9 @@ Browser evidence supplements pure-domain and transactional tests; do not substit
 
 **Report:** `reports/P0-006B-r1-engineering-readiness.md` (committed in `25c3c48`).
 
-**Architecture disposition:** FIX REQUIRED against revision 1. The implementation direction, main workflow, and automated gates are aligned, but two required evidence areas remain incomplete: AT9's injected mid-transaction rollback proof, and browser-level multi-context evidence for AT10 pending first-action retention plus AT11 live calendar invalidation/recovery. Unit and client wiring coverage is useful supporting evidence but does not replace the brief's required connected-browser evidence. Correct the same r1 on the existing branch; no contract change or new readiness review is required. Keep prior screenshot directories clean and update the Build Report. No deployment is required.
+**Architecture disposition:** ACCEPTED. Engineering closed the required AT9–AT11 evidence gaps with injectable transaction-failure rollback coverage and multi-context Chromium/WebKit browser journeys for pending first-action retention, live calendar invalidation, dirty-draft conflict, reconnect, and visibility recovery. `validate:pr` and `validate:rc` pass, prior screenshots remain clean, and no deployment was required. This is Architecture technical acceptance; Project Lead/Product acceptance remains separate.
 
 ## Revision history
 
 - **r1:** Second slice of the approved P0-006 proposal: step applicability including School nights, household school calendar, dated previews, context reconciliation, protected execution/history, and local evidence. Includes personal/proposal rule propagation under existing authority; leaves profile/history redesign and clearing to C.
-- **r1 readiness:** READY against integrated `main` @ `7cba3a6`; Architecture returned FIX REQUIRED after Build Report review. Contract and acceptance tests are unchanged; the same revision remains in the fix loop.
+- **r1 readiness:** READY against integrated `main` @ `7cba3a6`; Architecture accepted the Build Report after the AT9–AT11 evidence correction committed at `8421b31`. Contract and acceptance tests are unchanged.

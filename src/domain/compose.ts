@@ -1,15 +1,18 @@
 import type { ObligationMeaning } from "../shared/schemas.js";
+import type { ApplicabilityRule } from "./applicability.js";
 
 export type SharedComposeItem = {
   logicalItemId: string;
   text: string;
   obligation: ObligationMeaning;
+  applicability: ApplicabilityRule;
 };
 
 export type PersonalComposeAddition = {
   id: string;
   text: string;
   obligation: ObligationMeaning;
+  applicability: ApplicabilityRule;
   anchorLogicalItemId: string | null;
   place: "before" | "after" | "end";
 };
@@ -18,6 +21,7 @@ export type ComposedItem = {
   logicalItemId: string;
   text: string;
   obligation: ObligationMeaning;
+  applicability: ApplicabilityRule;
   source: "shared" | "personal";
   personalAdditionId?: string;
 };
@@ -35,6 +39,7 @@ export function composeMorningRoutine(
     logicalItemId: s.logicalItemId,
     text: s.text,
     obligation: s.obligation,
+    applicability: s.applicability,
     source: "shared" as const,
   }));
 
@@ -43,6 +48,7 @@ export function composeMorningRoutine(
       logicalItemId: addition.id,
       text: addition.text,
       obligation: addition.obligation,
+      applicability: addition.applicability,
       source: "personal",
       personalAdditionId: addition.id,
     };

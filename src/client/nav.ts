@@ -9,6 +9,7 @@
  *   /household/people                   → People & Groups overview
  *   /household/people/:membershipId     → person detail
  *   /household/groups/:groupId          → group detail
+ *   /household/school-calendar          → school calendar
  *
  * Edit/create/picker/ended-list and other secondary surfaces stay in-app local
  * state under their parent URL unless noted. Browser Back follows history;
@@ -23,6 +24,7 @@ export type AppLocation =
   | { name: "household-people" }
   | { name: "household-person"; membershipId: string }
   | { name: "household-group"; groupId: string }
+  | { name: "household-school-calendar" }
   | { name: "unavailable"; attemptedPath: string };
 
 const INTENDED_PATH_KEY = "hd_intended_path";
@@ -56,6 +58,10 @@ export function parsePath(pathname: string): AppLocation {
     return { name: "household-group", groupId: decodeURIComponent(groupMatch[1]) };
   }
 
+  if (path === "/household/school-calendar") {
+    return { name: "household-school-calendar" };
+  }
+
   return { name: "unavailable", attemptedPath: path };
 }
 
@@ -75,6 +81,8 @@ export function pathFor(location: AppLocation): string {
       return `/household/people/${encodeURIComponent(location.membershipId)}`;
     case "household-group":
       return `/household/groups/${encodeURIComponent(location.groupId)}`;
+    case "household-school-calendar":
+      return "/household/school-calendar";
     case "unavailable":
       return location.attemptedPath || "/today";
   }
@@ -90,6 +98,7 @@ export function parentLocation(location: AppLocation): AppLocation {
     case "plan-routine":
       return { name: "plan" };
     case "household-people":
+    case "household-school-calendar":
     case "unavailable":
       return { name: "household" };
     case "household-person":

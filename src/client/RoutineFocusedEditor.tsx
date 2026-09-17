@@ -1,4 +1,9 @@
-import type { Daypart, GroupPublic, MemberPublic } from "../shared/schemas";
+import type { ApplicabilityRule, Daypart, GroupPublic, MemberPublic } from "../shared/schemas";
+import {
+  DEFAULT_APPLICABILITY,
+  applicabilityLabel,
+  normalizeApplicability,
+} from "../domain/applicability";
 import { OrderedList } from "./OrderedList";
 
 const DAYPART_LABELS: Record<Daypart, string> = {
@@ -13,6 +18,7 @@ export type EditorDraftStep = {
   text: string;
   obligation: "required" | "as_needed" | "optional";
   logicalItemId?: string;
+  applicability?: ApplicabilityRule;
 };
 
 export type EditorDraft = {
@@ -97,6 +103,34 @@ function obligationLabel(obligation: EditorDraftStep["obligation"]): string {
   if (obligation === "as_needed") return "As needed";
   if (obligation === "required") return "Required";
   return "Optional";
+}
+
+function stepApplicability(step: EditorDraftStep): ApplicabilityRule {
+  return step.applicability ?? DEFAULT_APPLICABILITY;
+}
+
+const APPLICABILITY_OPTIONS: Array<{ value: ApplicabilityRule["kind"]; label: string }> = [
+  { value: "every_time", label: "Every time" },
+  { value: "school_days", label: "School days" },
+  { value: "no_school_days", label: "No-school days" },
+  { value: "school_nights", label: "School nights" },
+  { value: "weekdays", label: "Weekdays" },
+  { value: "weekends", label: "Weekends" },
+  { value: "selected_days", label: "Selected days" },
+];
+
+function applicabilityFromKind(
+  kind: ApplicabilityRule["kind"],
+  current: ApplicabilityRule,
+): ApplicabilityRule {
+  if (kind === "selected_days") {
+    const weekdays =
+      current.kind === "selected_days" && current.weekdays.length > 0
+        ? [...current.weekdays]
+        : [...WEEKDAY_SET];
+    return { kind: "selected_days", weekdays };
+  }
+  return { kind };
 }
 
 export function RoutineFocusedSummary(props: {
@@ -299,26 +333,30 @@ export function StepsSectionEditor(props: {
             next.map((item) => item.id),
           );
         }}
-        renderRow={(item) => (
-          <button
-            type="button"
-            className="text-button"
-            onClick={() => {
-              const index = props.stepLocalIds.indexOf(item.id);
-              props.onEditStep(index >= 0 ? index : item.index, item.id);
-            }}
-          >
-            <strong>{item.step.text.trim() || "Untitled step"}</strong>
-            <span className="meta"> {obligationLabel(item.step.obligation)}</span>
-          </button>
-        )}
+        renderRow={(item) => {
+          const ruleLabel = applicabilityLabel(stepApplicability(item.step));
+          return (
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => {
+                const index = props.stepLocalIds.indexOf(item.id);
+                props.onEditStep(index >= 0 ? index : item.index, item.id);
+              }}
+            >
+              <strong>{item.step.text.trim() || "Untitled step"}</strong>
+              <span className="meta"> {obligationLabel(item.step.obligation)}</span>
+              {ruleLabel ? <span className="meta"> · {ruleLabel}</span> : null}
+            </button>
+          );
+        }}
       />
       <button
         type="button"
         onClick={() => {
           const localId = `local-${Date.now()}`;
           props.onChange(
-            [...props.steps, { text: "New step", obligation: "required" }],
+            [...props.steps, { text: "New step", obligation: "required", applicability: DEFAULT_APPLICABILITY }],
             [...props.stepLocalIds, localId],
           );
         }}
@@ -345,6 +383,12 @@ export function StepRowEditor(props: {
   onDone: () => void;
   onCancel: () => void;
 }) {
+  const rule = stepApplicability(props.step);
+
+  function setApplicability(next: ApplicabilityRule) {
+    props.onChange({ ...props.step, applicability: normalizeApplicability(next) });
+  }
+
   return (
     <div className="form-grid">
       <label>
@@ -371,6 +415,53 @@ export function StepRowEditor(props: {
           <option value="optional">Optional</option>
         </select>
       </label>
+      <label>
+        Applicability
+        <select
+          value={rule.kind}
+          onChange={(event) =>
+            setApplicability(
+              applicabilityFromKind(
+                event.target.value as ApplicabilityRule["kind"],
+                rule,
+              ),
+            )
+          }
+        >
+          {APPLICABILITY_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      {rule.kind === "selected_days" ? (
+        <fieldset>
+          <legend>Selected days</legend>
+          <div className="weekday-row">
+            {WEEKDAYS.map((day) => (
+              <label key={day.value}>
+                <input
+                  type="checkbox"
+                  checked={rule.weekdays.includes(day.value)}
+                  onChange={(event) => {
+                    const weekdays = event.target.checked
+                      ? [...rule.weekdays, day.value]
+                      : rule.weekdays.filter((value) => value !== day.value);
+                    setApplicability({ kind: "selected_days", weekdays });
+                  }}
+                />
+                {day.label}
+              </label>
+            ))}
+          </div>
+          {rule.weekdays.length === 0 ? (
+            <p className="form-error" role="alert">
+              Choose at least one weekday.
+            </p>
+          ) : null}
+        </fieldset>
+      ) : null}
       <div className="button-row">
         <button type="button" className="primary" onClick={props.onDone}>
           Done

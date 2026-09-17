@@ -22,6 +22,7 @@ export const UuidSchema = z.string().uuid();
 export const GrantSchema = z.enum([
   "household.member.enroll",
   "household.structure.manage",
+  "household.schedule.manage",
   "routine.shared.manage",
   "routine.personalize.direct",
   "routine.personalize.propose",
@@ -66,10 +67,26 @@ export const DaypartSchema = z.enum([
 ]);
 export type Daypart = z.infer<typeof DaypartSchema>;
 
+export const ApplicabilityRuleSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("every_time") }),
+  z.object({ kind: z.literal("school_days") }),
+  z.object({ kind: z.literal("no_school_days") }),
+  z.object({ kind: z.literal("school_nights") }),
+  z.object({ kind: z.literal("weekdays") }),
+  z.object({ kind: z.literal("weekends") }),
+  z.object({
+    kind: z.literal("selected_days"),
+    weekdays: z.array(IsoWeekdaySchema).min(1),
+  }),
+]);
+export type ApplicabilityRule = z.infer<typeof ApplicabilityRuleSchema>;
+
 export const ChecklistStepInputSchema = z.object({
   text: z.string().trim().min(1),
   obligation: ObligationMeaningSchema,
   logicalItemId: UuidSchema.optional(),
+  /** Omitted on legacy clients → Every time for new content; never silently clears stored nondefault. */
+  applicability: ApplicabilityRuleSchema.optional(),
 });
 
 const CreateRoutineFieldsSchema = z.object({
@@ -185,6 +202,7 @@ export const PersonalAdditionSchema = z.object({
   obligation: ObligationMeaningSchema,
   anchorLogicalItemId: UuidSchema.nullable().optional(),
   place: z.enum(["before", "after", "end"]).default("end"),
+  applicability: ApplicabilityRuleSchema.optional(),
 });
 
 export const SavePersonalLayerSchema = z.object({
@@ -196,6 +214,7 @@ export const SavePersonalLayerSchema = z.object({
       obligation: ObligationMeaningSchema,
       anchorLogicalItemId: UuidSchema.nullable().optional(),
       place: z.enum(["before", "after", "end"]).default("end"),
+      applicability: ApplicabilityRuleSchema.optional(),
     }),
   ),
   effectiveDate: HouseholdDateSchema.optional(),
@@ -207,6 +226,7 @@ export const CreateProposalSchema = z.object({
   obligation: ObligationMeaningSchema,
   anchorLogicalItemId: UuidSchema.nullable().optional(),
   place: z.enum(["before", "after", "end"]).default("end"),
+  applicability: ApplicabilityRuleSchema.optional(),
 });
 
 export const DecideProposalSchema = z.object({
@@ -231,6 +251,8 @@ export type OccurrenceStepView = {
   status: StepStatus;
   source: "shared" | "personal";
   logicalItemId: string | null;
+  applicability?: ApplicabilityRule;
+  applicabilityReason?: string | null;
 };
 
 export type OccurrenceView = {
@@ -249,6 +271,8 @@ export type OccurrenceView = {
   startedAt: string | null;
   completed: boolean;
   steps: OccurrenceStepView[];
+  calendarEditionId?: string | null;
+  calendarProvenance?: "legacy" | "unconfigured" | "edition";
 };
 
 export type SyncNotification = {
@@ -260,10 +284,52 @@ export type SyncNotification = {
     | "proposal"
     | "personal_task"
     | "membership"
-    | "group";
+    | "group"
+    | "school_calendar";
   resourceId: string;
   version?: number;
   at: string;
+};
+
+export const SchoolExceptionSchema = z.object({
+  id: UuidSchema.optional(),
+  name: z.string().trim().min(1).max(120),
+  startDate: HouseholdDateSchema,
+  endDate: HouseholdDateSchema,
+});
+
+export const SchoolYearSchema = z.object({
+  id: UuidSchema.optional(),
+  startDate: HouseholdDateSchema,
+  endDate: HouseholdDateSchema,
+  usualWeekdays: z.array(IsoWeekdaySchema).min(1),
+  exceptions: z.array(SchoolExceptionSchema).default([]),
+});
+
+export const SaveSchoolCalendarSchema = z.object({
+  mutationId: UuidSchema,
+  expectedVersion: z.number().int().nonnegative(),
+  years: z.array(SchoolYearSchema).min(1),
+});
+export type SaveSchoolCalendarInput = z.infer<typeof SaveSchoolCalendarSchema>;
+
+export type SchoolCalendarPublic = {
+  configured: boolean;
+  version: number;
+  editionId: string | null;
+  effectiveFrom: string | null;
+  years: Array<{
+    id: string;
+    startDate: string;
+    endDate: string;
+    usualWeekdays: number[];
+    exceptions: Array<{
+      id: string;
+      name: string;
+      startDate: string;
+      endDate: string;
+    }>;
+  }>;
 };
 
 export type MemberPublic = {
@@ -337,6 +403,7 @@ export type RoutineRevisionPublic = {
     position: number;
     text: string;
     obligation: ObligationMeaning;
+    applicability: ApplicabilityRule;
   }>;
   assigneeMemberIds: string[];
   assigneeGroupIds: string[];

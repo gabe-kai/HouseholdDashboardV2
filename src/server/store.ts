@@ -3,6 +3,16 @@ import type Database from "better-sqlite3";
 import { isOccurrenceComplete, assertStatusAllowed } from "../domain/completion.js";
 import { composeMorningRoutine } from "../domain/compose.js";
 import {
+  DEFAULT_APPLICABILITY,
+  evaluateApplicability,
+  isSchoolDayForDate,
+  parseApplicability,
+  ruleNeedsSchoolCalendar,
+  serializeApplicability,
+  type ApplicabilityRule,
+} from "../domain/applicability.js";
+import { validateSchoolCalendarDraft } from "../domain/school-calendar.js";
+import {
   compareOccurrenceOrder,
   isBeforeArchiveCutoff,
   isDaypart,
@@ -30,6 +40,8 @@ import {
   addHouseholdDays,
   compareHouseholdDates,
   householdDateFromInstant,
+  isoWeekdayForHouseholdDate,
+  isValidHouseholdDate,
   nowUtcIso,
   type HouseholdDate,
 } from "../domain/time.js";
@@ -50,6 +62,8 @@ import type {
   RoutineMutationResult,
   RoutineRevisionPublic,
   ScheduleEntryPublic,
+  SaveSchoolCalendarInput,
+  SchoolCalendarPublic,
   StepStatus,
 } from "../shared/schemas.js";
 import {
@@ -93,6 +107,7 @@ type RoutineStepInput = {
   text: string;
   obligation: ObligationMeaning;
   logicalItemId?: string;
+  applicability?: ApplicabilityRule;
 };
 
 type RoutineInput = {
@@ -155,6 +170,7 @@ function routinePayloadDigest(input: {
             text: step.text.trim(),
             obligation: step.obligation,
             ...(step.logicalItemId ? { logicalItemId: step.logicalItemId } : {}),
+            ...(step.applicability ? { applicability: step.applicability } : {}),
           })),
         }
       : {}),
@@ -179,6 +195,7 @@ type PersonalAdditionInput = {
   id?: string;
   text: string;
   obligation: ObligationMeaning;
+  applicability?: ApplicabilityRule;
   anchorLogicalItemId?: string | null;
   place: "before" | "after" | "end";
 };
@@ -194,13 +211,36 @@ type PersonalLayer = {
     position: number;
     text: string;
     obligation: ObligationMeaning;
+    applicability: ApplicabilityRule;
     anchorLogicalItemId: string | null;
     place: "before" | "after" | "end";
   }>;
 };
 
+function calendarPayloadDigest(input: SaveSchoolCalendarInput): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        expectedVersion: input.expectedVersion,
+        years: input.years.map((year) => ({
+          ...(year.id ? { id: year.id } : {}),
+          startDate: year.startDate,
+          endDate: year.endDate,
+          usualWeekdays: [...new Set(year.usualWeekdays)].sort((a, b) => a - b),
+          exceptions: year.exceptions.map((exception) => ({
+            ...(exception.id ? { id: exception.id } : {}),
+            name: exception.name.trim(),
+            startDate: exception.startDate,
+            endDate: exception.endDate,
+          })),
+        })),
+      }),
+      "utf8",
+    )
+    .digest("hex");
+}
+
 const LOGIN_RE = /^[a-z0-9][a-z0-9._-]{2,63}$/;
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const IDLE_MS = 7 * 24 * 60 * 60 * 1_000;
 const ABSOLUTE_MS = 30 * 24 * 60 * 60 * 1_000;
 const CLAIM_MS = 24 * 60 * 60 * 1_000;
@@ -220,17 +260,6 @@ function legacyCapabilities(grants: Grant[]): string {
     grants.includes("routine.shared.manage")
       ? ["manage_routine", "execute_own_occurrence"]
       : ["execute_own_occurrence"],
-  );
-}
-
-function isValidHouseholdDate(value: string): boolean {
-  if (!DATE_RE.test(value)) return false;
-  const [year, month, day] = value.split("-").map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  return (
-    date.getUTCFullYear() === year &&
-    date.getUTCMonth() === month - 1 &&
-    date.getUTCDate() === day
   );
 }
 
@@ -1122,6 +1151,178 @@ export class AppStore {
     return { ok: true };
   }
 
+  getSchoolCalendar(ctx: AuthContext): SchoolCalendarPublic {
+    const current = this.db
+      .prepare("SELECT version FROM household_calendars WHERE household_id = ?")
+      .get(ctx.householdId) as { version: number } | undefined;
+    if (!current || current.version === 0) {
+      return {
+        configured: false,
+        version: 0,
+        editionId: null,
+        effectiveFrom: null,
+        years: [],
+      };
+    }
+    const edition = this.loadCalendarEditionByVersion(
+      ctx.householdId,
+      current.version,
+    );
+    if (!edition) fail("NOT_FOUND", "School calendar edition not found");
+    return {
+      configured: true,
+      version: current.version,
+      editionId: edition.id,
+      effectiveFrom: edition.effectiveFrom,
+      years: edition.years,
+    };
+  }
+
+  saveSchoolCalendar(
+    ctx: AuthContext,
+    input: SaveSchoolCalendarInput,
+  ): SchoolCalendarPublic {
+    this.requireGrant(ctx, "household.schedule.manage");
+    const digest = calendarPayloadDigest(input);
+    const prior = this.db
+      .prepare(
+        `SELECT household_id, kind, payload_digest, response_json
+         FROM calendar_mutation_receipts WHERE mutation_id = ?`,
+      )
+      .get(input.mutationId) as
+      | {
+          household_id: string;
+          kind: string;
+          payload_digest: string;
+          response_json: string;
+        }
+      | undefined;
+    if (prior) {
+      if (
+        prior.household_id !== ctx.householdId ||
+        prior.kind !== "calendar_save" ||
+        prior.payload_digest !== digest
+      ) {
+        fail("CONFLICT", "School calendar couldn't be updated");
+      }
+      return JSON.parse(prior.response_json) as SchoolCalendarPublic;
+    }
+
+    const issues = validateSchoolCalendarDraft(input.years);
+    if (issues.length > 0) {
+      fail("VALIDATION", issues[0]!.message, { validationIssues: issues });
+    }
+    const today = this.householdDateNow(ctx);
+    const createdAt = nowUtcIso();
+    const tx = this.db.transaction(() => {
+      const current = this.db
+        .prepare("SELECT version FROM household_calendars WHERE household_id = ?")
+        .get(ctx.householdId) as { version: number } | undefined;
+      const currentVersion = current?.version ?? 0;
+      if (input.expectedVersion !== currentVersion) {
+        fail("CONFLICT", "School calendar was updated elsewhere; reload and review");
+      }
+      const version = currentVersion + 1;
+      const editionId = randomUUID();
+      this.db
+        .prepare(
+          `INSERT INTO household_calendars (household_id, version, updated_at)
+           VALUES (?, ?, ?)
+           ON CONFLICT(household_id) DO UPDATE SET
+             version = excluded.version, updated_at = excluded.updated_at`,
+        )
+        .run(ctx.householdId, version, createdAt);
+      this.db
+        .prepare(
+          `INSERT INTO school_calendar_editions
+           (id, household_id, version, effective_from, created_at, mutation_id)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .run(editionId, ctx.householdId, version, today, createdAt, input.mutationId);
+      const insertYear = this.db.prepare(
+        `INSERT INTO school_years
+         (id, edition_id, start_date, end_date, usual_weekdays_json, position)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      );
+      const insertException = this.db.prepare(
+        `INSERT INTO school_exceptions
+         (id, year_id, name, start_date, end_date, position)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      );
+      input.years.forEach((year, position) => {
+        // Each edition owns its own year/exception rows. Client-supplied ids are hints for
+        // draft continuity only; reusing a prior edition's primary key would conflict.
+        const yearId = randomUUID();
+        insertYear.run(
+          yearId,
+          editionId,
+          year.startDate,
+          year.endDate,
+          JSON.stringify([...new Set(year.usualWeekdays)].sort((a, b) => a - b)),
+          position,
+        );
+        year.exceptions.forEach((exception, exceptionPosition) => {
+          insertException.run(
+            randomUUID(),
+            yearId,
+            exception.name.trim(),
+            exception.startDate,
+            exception.endDate,
+            exceptionPosition,
+          );
+        });
+      });
+
+      const knownDates = this.db
+        .prepare(
+          `SELECT DISTINCT definition_id, household_date
+           FROM occurrences
+           WHERE household_id = ? AND household_date >= ?
+           ORDER BY household_date`,
+        )
+        .all(ctx.householdId, today) as Array<{
+        definition_id: string;
+        household_date: string;
+      }>;
+      const definitionIds = [...new Set(knownDates.map((row) => row.definition_id))];
+      const dateSet = new Set<string>([today, ...knownDates.map((row) => row.household_date)]);
+      // School-night steps depend on D+1; clip predecessors at today.
+      for (const date of [...dateSet]) {
+        const predecessor = addHouseholdDays(date, -1);
+        if (compareHouseholdDates(predecessor, today) >= 0) {
+          dateSet.add(predecessor);
+        }
+      }
+      const dates = [...dateSet].sort(compareHouseholdDates);
+      for (const definitionId of definitionIds) {
+        for (const householdDate of dates) {
+          this.reconcileUnstartedOccurrencesForDate(
+            ctx.householdId,
+            definitionId,
+            householdDate,
+          );
+        }
+      }
+
+      const result = this.getSchoolCalendar(ctx);
+      this.db
+        .prepare(
+          `INSERT INTO calendar_mutation_receipts
+           (mutation_id, household_id, kind, payload_digest, response_json, created_at)
+           VALUES (?, ?, 'calendar_save', ?, ?, ?)`,
+        )
+        .run(
+          input.mutationId,
+          ctx.householdId,
+          digest,
+          JSON.stringify(result),
+          createdAt,
+        );
+      return result;
+    });
+    return tx();
+  }
+
   listRoutines(
     householdId: string,
     options?: { includeArchived?: boolean },
@@ -1185,7 +1386,12 @@ export class AppStore {
       definitionId,
       effectiveDate,
     });
-    const normalized = this.normalizeRoutineAudience(ctx, audienceInput, effectiveDate);
+    const normalized = this.normalizeRoutineAudience(
+      ctx,
+      this.withDefaultRoutineApplicability(audienceInput),
+      effectiveDate,
+    );
+    this.requireCalendarForSchoolRules(ctx.householdId, normalized.steps);
     const createdAt = nowUtcIso();
     const revisionId = randomUUID();
     const scheduleEntryId = randomUUID();
@@ -1306,7 +1512,20 @@ export class AppStore {
     if (mode === "schedule" && compareHouseholdDates(effectiveDate, today) <= 0) {
       fail("VALIDATION", "Scheduled changes must start after today");
     }
-    const normalized = this.normalizeRoutineAudience(ctx, audienceInput, effectiveDate);
+    const currentRoutine = this.loadRoutineDefinition(ctx.householdId, definitionId)!;
+    const priorRevision =
+      mode === "schedule" && audienceInput.scheduleEntryId
+        ? currentRoutine.scheduleEntries.find(
+            (entry) => entry.id === audienceInput.scheduleEntryId,
+          )?.revision ?? null
+        : this.selectRevisionContentForDate(currentRoutine, effectiveDate);
+    this.rejectOmittedSharedApplicability(audienceInput.steps, priorRevision?.steps ?? []);
+    const normalized = this.normalizeRoutineAudience(
+      ctx,
+      this.withDefaultRoutineApplicability(audienceInput),
+      effectiveDate,
+    );
+    this.requireCalendarForSchoolRules(ctx.householdId, normalized.steps);
 
     try {
       const tx = this.db.transaction(() => {
@@ -1992,15 +2211,16 @@ export class AppStore {
             continue;
           }
           if (!revision) continue;
-          results.push(
-            this.ensureOccurrence(
-              ctx.householdId,
-              routine.id,
-              revision,
-              householdDate,
-              membershipId,
-            ),
+          const view = this.ensureOccurrence(
+            ctx.householdId,
+            routine.id,
+            revision,
+            householdDate,
+            membershipId,
           );
+          // Omit all-filtered unstarted checklists from actionable Today.
+          if (view.steps.length === 0 && !view.startedAt) continue;
+          results.push(view);
         }
       }
     });
@@ -2186,6 +2406,34 @@ export class AppStore {
 
   historyForDate(ctx: AuthContext, householdDate: HouseholdDate): OccurrenceView[] {
     this.requireGrant(ctx, "routine.shared.manage");
+    const today = this.householdDateNow(ctx);
+    // Past dates: stored snapshots only — never rewrite unstarted historical rows.
+    if (compareHouseholdDates(householdDate, today) < 0) {
+      if (!isValidHouseholdDate(householdDate)) fail("VALIDATION", "Invalid household date");
+      const rows = this.db
+        .prepare(
+          `SELECT definition_id, accountable_member_id
+           FROM occurrences
+           WHERE household_id = ? AND household_date = ?
+             AND (canceled_at IS NULL OR started_at IS NOT NULL)
+           ORDER BY definition_id, accountable_member_id`,
+        )
+        .all(ctx.householdId, householdDate) as Array<{
+        definition_id: string;
+        accountable_member_id: string;
+      }>;
+      const results: OccurrenceView[] = [];
+      for (const row of rows) {
+        const view = this.getOccurrenceView(
+          row.definition_id,
+          householdDate,
+          row.accountable_member_id,
+        );
+        if (view) results.push(view);
+      }
+      results.sort(compareOccurrenceOrder);
+      return results;
+    }
     return this.materializeForDate(ctx, householdDate);
   }
 
@@ -2259,6 +2507,7 @@ export class AppStore {
       fail("VALIDATION", "Personal changes must be effective no earlier than tomorrow");
     }
     this.validatePersonalAdditions(input.additions);
+    this.requireCalendarForSchoolRules(ctx.householdId, input.additions);
     return this.insertPersonalLayer(
       ctx.membershipId,
       routine.id,
@@ -2291,7 +2540,7 @@ export class AppStore {
     if (!row) return null;
     const additions = this.db
       .prepare(
-        `SELECT id, position, text, obligation, anchor_logical_item_id, place
+        `SELECT id, position, text, obligation, anchor_logical_item_id, place, applicability_json
          FROM personal_additions WHERE personal_revision_id = ? ORDER BY position`,
       )
       .all(row.id) as Array<{
@@ -2301,6 +2550,7 @@ export class AppStore {
       obligation: ObligationMeaning;
       anchor_logical_item_id: string | null;
       place: "before" | "after" | "end";
+      applicability_json: string | null;
     }>;
     return {
       id: row.id,
@@ -2313,6 +2563,7 @@ export class AppStore {
         position: addition.position,
         text: addition.text,
         obligation: addition.obligation,
+        applicability: parseApplicability(addition.applicability_json),
         anchorLogicalItemId: addition.anchor_logical_item_id,
         place: addition.place,
       })),
@@ -2334,6 +2585,75 @@ export class AppStore {
     const revision = this.selectRevisionContentForDate(routine, date);
     if (!revision) fail("NOT_FOUND", "No routine revision applies");
     const layer = this.getPersonalLayer(membershipId, definitionId, date);
+    const composed = composeMorningRoutine(
+      revision.steps.map((step) => ({
+        logicalItemId: step.logicalItemId,
+        text: step.text,
+        obligation: step.obligation,
+        applicability: step.applicability ?? DEFAULT_APPLICABILITY,
+      })),
+      layer?.additions.map((addition) => ({
+        id: addition.id,
+        text: addition.text,
+        obligation: addition.obligation,
+        applicability: addition.applicability ?? DEFAULT_APPLICABILITY,
+        anchorLogicalItemId: addition.anchorLogicalItemId,
+        place: addition.place,
+      })) ?? [],
+    );
+    const runs = isDateApplicable(date, revision.weekdays);
+    const edition = this.loadCalendarEditionForDate(ctx.householdId, date);
+    const calendarShape =
+      edition.years.length > 0
+        ? {
+            years: edition.years.map((y) => ({
+              startDate: y.startDate,
+              endDate: y.endDate,
+              usualWeekdays: y.usualWeekdays,
+              exceptions: y.exceptions,
+            })),
+          }
+        : null;
+    const iso = isoWeekdayForHouseholdDate(date);
+    const nextDate = addHouseholdDays(date, 1);
+    const nextIso = isoWeekdayForHouseholdDate(nextDate);
+    const schoolToday = isSchoolDayForDate(date, calendarShape, iso);
+    const schoolTomorrow = isSchoolDayForDate(nextDate, calendarShape, nextIso);
+    const evaluated = composed.map((step, position) => {
+      const decision = evaluateApplicability({
+        rule: step.applicability,
+        date,
+        isoWeekday: iso,
+        nextDate,
+        nextIsoWeekday: nextIso,
+        schoolToday,
+        schoolTomorrow,
+      });
+      return {
+        position,
+        text: step.text,
+        obligation: step.obligation,
+        source: step.source,
+        logicalItemId: step.logicalItemId,
+        applicability: step.applicability,
+        included: runs && decision.include,
+        reason: !runs
+          ? "Routine does not run on this date"
+          : decision.reason,
+        unresolved: !runs ? false : "unresolved" in decision && decision.unresolved === true,
+      };
+    });
+    const included = evaluated.filter((step) => step.included);
+    const excluded = evaluated.filter((step) => !step.included);
+    const unresolvedContext = evaluated.some((step) => step.unresolved);
+    let message: string | null = null;
+    if (!runs) {
+      message = "This routine does not run for that date.";
+    } else if (unresolvedContext) {
+      message = "School calendar is not set up for school-dependent steps.";
+    } else if (included.length === 0) {
+      message = "No steps apply on this date";
+    }
     return {
       householdDate: date,
       membershipId,
@@ -2343,20 +2663,11 @@ export class AppStore {
       title: revision.title,
       daypart: revision.daypart,
       weekdays: revision.weekdays,
-      steps: composeMorningRoutine(
-        revision.steps.map((step) => ({
-          logicalItemId: step.logicalItemId,
-          text: step.text,
-          obligation: step.obligation,
-        })),
-        layer?.additions.map((addition) => ({
-          id: addition.id,
-          text: addition.text,
-          obligation: addition.obligation,
-          anchorLogicalItemId: addition.anchorLogicalItemId,
-          place: addition.place,
-        })) ?? [],
-      ).map((step, position) => ({ ...step, position })),
+      runs,
+      unresolvedContext,
+      message,
+      steps: included,
+      excludedSteps: excluded,
     };
   }
 
@@ -2366,6 +2677,7 @@ export class AppStore {
   ) {
     this.requireGrant(ctx, "routine.personalize.propose");
     this.validatePersonalAdditions([input]);
+    this.requireCalendarForSchoolRules(ctx.householdId, [input]);
     const routine = this.loadRoutineDefinition(ctx.householdId, input.definitionId);
     if (!routine) fail("NOT_FOUND", "Routine not found");
     if (routine.archived) {
@@ -2378,8 +2690,9 @@ export class AppStore {
         `INSERT INTO routine_proposals
          (id, household_id, membership_id, definition_id, association_status,
           text, obligation, anchor_logical_item_id,
-          place, status, proposed_at, decided_at, decider_membership_id, personal_revision_id)
-         VALUES (?, ?, ?, ?, 'resolved', ?, ?, ?, ?, 'pending', ?, NULL, NULL, NULL)`,
+          place, status, proposed_at, decided_at, decider_membership_id, personal_revision_id,
+          applicability_json)
+         VALUES (?, ?, ?, ?, 'resolved', ?, ?, ?, ?, 'pending', ?, NULL, NULL, NULL, ?)`,
       )
       .run(
         id,
@@ -2391,6 +2704,7 @@ export class AppStore {
         input.anchorLogicalItemId ?? null,
         input.place,
         proposedAt,
+        serializeApplicability(input.applicability ?? DEFAULT_APPLICABILITY),
       );
     return this.getProposal(id)!;
   }
@@ -2476,6 +2790,7 @@ export class AppStore {
               id: randomUUID(),
               text: proposal.text,
               obligation: proposal.obligation,
+              applicability: proposal.applicability ?? DEFAULT_APPLICABILITY,
               anchorLogicalItemId: proposal.anchorLogicalItemId,
               place: proposal.place,
             },
@@ -2957,7 +3272,7 @@ export class AppStore {
     return (
       this.db
         .prepare(
-          `SELECT id, logical_item_id, position, text, obligation
+          `SELECT id, logical_item_id, position, text, obligation, applicability_json
            FROM revision_steps WHERE revision_id = ? ORDER BY position`,
         )
         .all(revisionId) as Array<{
@@ -2966,6 +3281,7 @@ export class AppStore {
         position: number;
         text: string;
         obligation: ObligationMeaning;
+        applicability_json: string | null;
       }>
     ).map((step) => ({
       id: step.id,
@@ -2973,6 +3289,7 @@ export class AppStore {
       position: step.position,
       text: step.text,
       obligation: step.obligation,
+      applicability: parseApplicability(step.applicability_json),
     }));
   }
 
@@ -3520,8 +3837,8 @@ export class AppStore {
   ): void {
     const insertStep = this.db.prepare(
       `INSERT INTO revision_steps
-       (id, revision_id, position, text, obligation, logical_item_id)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+       (id, revision_id, position, text, obligation, logical_item_id, applicability_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     );
     input.steps.forEach((step, position) => {
       insertStep.run(
@@ -3531,6 +3848,7 @@ export class AppStore {
         step.text.trim(),
         step.obligation,
         logicalIds[position],
+        serializeApplicability(step.applicability ?? DEFAULT_APPLICABILITY),
       );
     });
     const insertAssignee = this.db.prepare(
@@ -3979,6 +4297,7 @@ export class AppStore {
         logicalItemId: string;
         text: string;
         obligation: ObligationMeaning;
+        applicability?: ApplicabilityRule;
       }>;
     },
     membershipId: string,
@@ -3995,21 +4314,63 @@ export class AppStore {
         logicalItemId: step.logicalItemId,
         text: step.text,
         obligation: step.obligation,
+        applicability: step.applicability ?? DEFAULT_APPLICABILITY,
       })),
       personal?.additions.map((addition) => ({
         id: addition.id,
         text: addition.text,
         obligation: addition.obligation,
+        applicability:
+          (addition as { applicability?: ApplicabilityRule }).applicability ??
+          DEFAULT_APPLICABILITY,
         anchorLogicalItemId: addition.anchorLogicalItemId,
         place: addition.place,
       })) ?? [],
     );
+
+    const householdId = (
+      this.db
+        .prepare(`SELECT household_id FROM occurrences WHERE id = ?`)
+        .get(occurrenceId) as { household_id: string } | undefined
+    )?.household_id;
+    const edition = householdId
+      ? this.loadCalendarEditionForDate(householdId, householdDate)
+      : { editionId: null as string | null, provenance: "legacy" as const, years: [] };
+    const iso = isoWeekdayForHouseholdDate(householdDate);
+    const nextDate = addHouseholdDays(householdDate, 1);
+    const nextIso = isoWeekdayForHouseholdDate(nextDate);
+    const calendarShape =
+      edition.years.length > 0
+        ? {
+            years: edition.years.map((y) => ({
+              startDate: y.startDate,
+              endDate: y.endDate,
+              usualWeekdays: y.usualWeekdays,
+              exceptions: y.exceptions,
+            })),
+          }
+        : null;
+    const schoolToday = isSchoolDayForDate(householdDate, calendarShape, iso);
+    const schoolTomorrow = isSchoolDayForDate(nextDate, calendarShape, nextIso);
+
     const insert = this.db.prepare(
       `INSERT INTO occurrence_steps
-       (id, occurrence_id, position, text, obligation, status, source, logical_item_id)
-       VALUES (?, ?, ?, ?, ?, 'open', ?, ?)`,
+       (id, occurrence_id, position, text, obligation, status, source, logical_item_id,
+        applicability_json, applicability_reason)
+       VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?, ?)`,
     );
-    composed.forEach((step, position) => {
+    let position = 0;
+    for (const step of composed) {
+      const decision = evaluateApplicability({
+        rule: step.applicability,
+        date: householdDate,
+        isoWeekday: iso,
+        nextDate,
+        nextIsoWeekday: nextIso,
+        schoolToday,
+        schoolTomorrow,
+      });
+      if (!decision.include) continue;
       insert.run(
         randomUUID(),
         occurrenceId,
@@ -4018,7 +4379,122 @@ export class AppStore {
         step.obligation,
         step.source,
         step.logicalItemId,
+        serializeApplicability(step.applicability),
+        decision.reason,
       );
+      position += 1;
+    }
+
+    this.db
+      .prepare(
+        `UPDATE occurrences
+         SET calendar_edition_id = ?, calendar_provenance = ?
+         WHERE id = ?`,
+      )
+      .run(
+        edition.editionId,
+        edition.provenance,
+        occurrenceId,
+      );
+  }
+
+  private loadCalendarEditionByVersion(householdId: string, version: number) {
+    const edition = this.db
+      .prepare(
+        `SELECT id, effective_from FROM school_calendar_editions
+         WHERE household_id = ? AND version = ?`,
+      )
+      .get(householdId, version) as
+      | { id: string; effective_from: string }
+      | undefined;
+    if (!edition) return null;
+    return {
+      id: edition.id,
+      effectiveFrom: edition.effective_from,
+      years: this.loadYearsForEdition(edition.id),
+    };
+  }
+
+  private loadCalendarEditionForDate(householdId: string, householdDate: string) {
+    const edition = this.db
+      .prepare(
+        `SELECT id FROM school_calendar_editions
+         WHERE household_id = ? AND effective_from <= ?
+         ORDER BY effective_from DESC, version DESC LIMIT 1`,
+      )
+      .get(householdId, householdDate) as { id: string } | undefined;
+    if (!edition) {
+      const any = this.db
+        .prepare(
+          `SELECT COUNT(*) AS c FROM school_calendar_editions WHERE household_id = ?`,
+        )
+        .get(householdId) as { c: number };
+      return {
+        editionId: null as string | null,
+        provenance: (any.c > 0 ? "unconfigured" : "legacy") as
+          | "legacy"
+          | "unconfigured"
+          | "edition",
+        years: [] as Array<{
+          startDate: string;
+          endDate: string;
+          usualWeekdays: number[];
+          exceptions: Array<{ startDate: string; endDate: string }>;
+        }>,
+      };
+    }
+    const years = this.loadYearsForEdition(edition.id);
+    return {
+      editionId: edition.id,
+      provenance: "edition" as const,
+      years: years.map((y) => ({
+        startDate: y.startDate,
+        endDate: y.endDate,
+        usualWeekdays: y.usualWeekdays,
+        exceptions: y.exceptions.map((ex) => ({
+          startDate: ex.startDate,
+          endDate: ex.endDate,
+        })),
+      })),
+    };
+  }
+
+  private loadYearsForEdition(editionId: string) {
+    const years = this.db
+      .prepare(
+        `SELECT id, start_date, end_date, usual_weekdays_json
+         FROM school_years WHERE edition_id = ? ORDER BY position`,
+      )
+      .all(editionId) as Array<{
+      id: string;
+      start_date: string;
+      end_date: string;
+      usual_weekdays_json: string;
+    }>;
+    return years.map((year) => {
+      const exceptions = this.db
+        .prepare(
+          `SELECT id, name, start_date, end_date FROM school_exceptions
+           WHERE year_id = ? ORDER BY position`,
+        )
+        .all(year.id) as Array<{
+        id: string;
+        name: string;
+        start_date: string;
+        end_date: string;
+      }>;
+      return {
+        id: year.id,
+        startDate: year.start_date,
+        endDate: year.end_date,
+        usualWeekdays: JSON.parse(year.usual_weekdays_json) as number[],
+        exceptions: exceptions.map((ex) => ({
+          id: ex.id,
+          name: ex.name,
+          startDate: ex.start_date,
+          endDate: ex.end_date,
+        })),
+      };
     });
   }
 
@@ -4126,17 +4602,7 @@ export class AppStore {
         canceled_at: null,
       };
     } else if (isOccurrenceStarted(occurrence.started_at)) {
-      // Frozen structure; keep empty-steps backfill for rare edge cases.
-      const existing = this.getOccurrenceById(occurrence.id)!;
-      if (existing.steps.length === 0 && revision.steps.length > 0) {
-        this.insertOccurrenceSteps(
-          occurrence.id,
-          revision,
-          membershipId,
-          definitionId,
-          householdDate,
-        );
-      }
+      // Frozen structure — never reinsert filtered-out or empty-evaluated steps.
     } else {
       // Unstarted: whole-structure reconcile when stale.
       const rowMeta = this.db
@@ -4146,7 +4612,12 @@ export class AppStore {
         occurrence.revision_id !== revision.id ||
         rowMeta.title !== revision.title ||
         rowMeta.daypart !== revision.daypart ||
-        !this.occurrenceSharedStepsMatchRevision(occurrence.id, revision.steps);
+        !this.occurrenceSharedStepsMatchRevision(
+          occurrence.id,
+          revision.steps,
+          householdId,
+          householdDate,
+        );
       if (stale) {
         this.rewriteUnstartedOccurrence(
           occurrence.id,
@@ -4155,18 +4626,8 @@ export class AppStore {
           definitionId,
           householdDate,
         );
-      } else {
-        const existing = this.getOccurrenceById(occurrence.id)!;
-        if (existing.steps.length === 0 && revision.steps.length > 0) {
-          this.insertOccurrenceSteps(
-            occurrence.id,
-            revision,
-            membershipId,
-            definitionId,
-            householdDate,
-          );
-        }
       }
+      // Filtered-empty is a valid evaluated result — do not empty-list repair.
     }
     return this.getOccurrenceById(occurrence!.id)!;
   }
@@ -4177,11 +4638,14 @@ export class AppStore {
       logicalItemId: string;
       text: string;
       obligation: ObligationMeaning;
+      applicability?: ApplicabilityRule;
     }>,
+    householdId: string,
+    householdDate: string,
   ): boolean {
     const shared = this.db
       .prepare(
-        `SELECT logical_item_id, text, obligation
+        `SELECT logical_item_id, text, obligation, applicability_json
          FROM occurrence_steps
          WHERE occurrence_id = ? AND source = 'shared'
          ORDER BY position`,
@@ -4190,13 +4654,47 @@ export class AppStore {
       logical_item_id: string | null;
       text: string;
       obligation: ObligationMeaning;
+      applicability_json: string | null;
     }>;
-    if (shared.length !== revisionSteps.length) return false;
+
+    const edition = this.loadCalendarEditionForDate(householdId, householdDate);
+    const iso = isoWeekdayForHouseholdDate(householdDate);
+    const nextDate = addHouseholdDays(householdDate, 1);
+    const nextIso = isoWeekdayForHouseholdDate(nextDate);
+    const calendarShape =
+      edition.years.length > 0
+        ? {
+            years: edition.years.map((y) => ({
+              startDate: y.startDate,
+              endDate: y.endDate,
+              usualWeekdays: y.usualWeekdays,
+              exceptions: y.exceptions,
+            })),
+          }
+        : null;
+    const schoolToday = isSchoolDayForDate(householdDate, calendarShape, iso);
+    const schoolTomorrow = isSchoolDayForDate(nextDate, calendarShape, nextIso);
+    const expected = revisionSteps.filter((step) => {
+      const decision = evaluateApplicability({
+        rule: step.applicability ?? DEFAULT_APPLICABILITY,
+        date: householdDate,
+        isoWeekday: iso,
+        nextDate,
+        nextIsoWeekday: nextIso,
+        schoolToday,
+        schoolTomorrow,
+      });
+      return decision.include;
+    });
+
+    if (shared.length !== expected.length) return false;
     return shared.every(
       (row, index) =>
-        row.logical_item_id === revisionSteps[index]!.logicalItemId &&
-        row.text === revisionSteps[index]!.text &&
-        row.obligation === revisionSteps[index]!.obligation,
+        row.logical_item_id === expected[index]!.logicalItemId &&
+        row.text === expected[index]!.text &&
+        row.obligation === expected[index]!.obligation &&
+        serializeApplicability(parseApplicability(row.applicability_json)) ===
+          serializeApplicability(expected[index]!.applicability ?? DEFAULT_APPLICABILITY),
     );
   }
 
@@ -4232,7 +4730,8 @@ export class AppStore {
     if (!row) return null;
     const steps = this.db
       .prepare(
-        `SELECT id, position, text, obligation, status, source, logical_item_id
+        `SELECT id, position, text, obligation, status, source, logical_item_id,
+                applicability_json, applicability_reason
          FROM occurrence_steps WHERE occurrence_id = ? ORDER BY position`,
       )
       .all(row.id) as Array<{
@@ -4243,7 +4742,16 @@ export class AppStore {
       status: StepStatus;
       source: "shared" | "personal";
       logical_item_id: string | null;
+      applicability_json: string | null;
+      applicability_reason: string | null;
     }>;
+    const meta = this.db
+      .prepare(
+        `SELECT calendar_edition_id, calendar_provenance FROM occurrences WHERE id = ?`,
+      )
+      .get(row.id) as
+      | { calendar_edition_id: string | null; calendar_provenance: string }
+      | undefined;
     return {
       id: row.id,
       definitionId: row.definition_id,
@@ -4257,6 +4765,12 @@ export class AppStore {
       version: row.version,
       startedAt: row.started_at,
       completed: isOccurrenceComplete(steps),
+      calendarEditionId: meta?.calendar_edition_id ?? null,
+      calendarProvenance: (meta?.calendar_provenance as
+        | "legacy"
+        | "unconfigured"
+        | "edition"
+        | undefined) ?? "legacy",
       steps: steps.map((step) => ({
         id: step.id,
         position: step.position,
@@ -4265,6 +4779,8 @@ export class AppStore {
         status: step.status,
         source: step.source,
         logicalItemId: step.logical_item_id,
+        applicability: parseApplicability(step.applicability_json),
+        applicabilityReason: step.applicability_reason,
       })),
     };
   }
@@ -4301,7 +4817,9 @@ export class AppStore {
             requested.text.trim() === saved.text &&
             requested.obligation === saved.obligation &&
             (requested.anchorLogicalItemId ?? null) === saved.anchorLogicalItemId &&
-            requested.place === saved.place
+            requested.place === saved.place &&
+            serializeApplicability(requested.applicability ?? DEFAULT_APPLICABILITY) ===
+              serializeApplicability(saved.applicability ?? DEFAULT_APPLICABILITY)
           );
         });
       if (same) return existing;
@@ -4320,8 +4838,8 @@ export class AppStore {
       const insert = this.db.prepare(
         `INSERT INTO personal_additions
          (id, personal_revision_id, position, text, obligation,
-          anchor_logical_item_id, place)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          anchor_logical_item_id, place, applicability_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       additions.forEach((addition, position) => {
         insert.run(
@@ -4332,6 +4850,7 @@ export class AppStore {
           addition.obligation,
           addition.anchorLogicalItemId ?? null,
           addition.place,
+          serializeApplicability(addition.applicability ?? DEFAULT_APPLICABILITY),
         );
       });
     });
@@ -4380,6 +4899,7 @@ export class AppStore {
           decided_at: string | null;
           decider_membership_id: string | null;
           personal_revision_id: string | null;
+          applicability_json: string | null;
         }
       | undefined;
     return row
@@ -4391,6 +4911,7 @@ export class AppStore {
           associationStatus: row.association_status,
           text: row.text,
           obligation: row.obligation,
+          applicability: parseApplicability(row.applicability_json),
           anchorLogicalItemId: row.anchor_logical_item_id,
           place: row.place,
           status: row.status,
@@ -4400,6 +4921,54 @@ export class AppStore {
           personalRevisionId: row.personal_revision_id,
         }
       : null;
+  }
+
+  private withDefaultRoutineApplicability(input: RoutineInput): RoutineInput {
+    return {
+      ...input,
+      steps: input.steps.map((step) => ({
+        ...step,
+        applicability: step.applicability ?? DEFAULT_APPLICABILITY,
+      })),
+    };
+  }
+
+  private rejectOmittedSharedApplicability(
+    incoming: RoutineStepInput[],
+    priorSteps: Array<{ logicalItemId: string; applicability?: ApplicabilityRule }>,
+  ): void {
+    for (const prior of priorSteps) {
+      const next = incoming.find(
+        (step) => step.logicalItemId && step.logicalItemId === prior.logicalItemId,
+      );
+      if (!next) continue;
+      const priorRule = prior.applicability ?? DEFAULT_APPLICABILITY;
+      if (priorRule.kind !== "every_time" && next.applicability === undefined) {
+        fail(
+          "VALIDATION",
+          "Reload and review: this step has a school or day rule that cannot be cleared by an older client.",
+        );
+      }
+    }
+  }
+
+  private requireCalendarForSchoolRules(
+    householdId: string,
+    steps: Array<{ applicability?: ApplicabilityRule }>,
+  ): void {
+    const needs = steps.some((step) =>
+      ruleNeedsSchoolCalendar(step.applicability ?? DEFAULT_APPLICABILITY),
+    );
+    if (!needs) return;
+    const header = this.db
+      .prepare(`SELECT version FROM household_calendars WHERE household_id = ?`)
+      .get(householdId) as { version: number } | undefined;
+    if (!header || header.version === 0) {
+      fail(
+        "VALIDATION",
+        "Set up School calendar in Household before saving school-day or school-night steps.",
+      );
+    }
   }
 
   private getTask(id: string) {

@@ -61,6 +61,8 @@ export function reconcileOccurrence(
 /**
  * Merge authoritative Today refresh with local state.
  * Pending first-action intent keeps local structure (never apply a later structural refresh).
+ * If the server omits an occurrence (e.g. all steps filtered) while a first action is still
+ * pending, retain the local card until the command is acknowledged or rejected.
  */
 export function mergeAuthoritativeOccurrence(
   previous: OccurrenceView | undefined,
@@ -75,4 +77,26 @@ export function mergeAuthoritativeOccurrence(
     return reconcileOccurrence(previous, pending);
   }
   return reconcileOccurrence(authoritative, pending);
+}
+
+/** Keep local occurrences that vanished from the server while first-action intent is pending. */
+export function retainPendingOmittedOccurrences(
+  previous: OccurrenceView[],
+  authoritative: OccurrenceView[],
+  pending: PendingStepCommand[],
+): OccurrenceView[] {
+  const retained = authoritative.map((occurrence) =>
+    mergeAuthoritativeOccurrence(
+      previous.find((item) => item.id === occurrence.id),
+      occurrence,
+      pending,
+    ),
+  );
+  const authoritativeIds = new Set(authoritative.map((occurrence) => occurrence.id));
+  for (const local of previous) {
+    if (authoritativeIds.has(local.id)) continue;
+    if (!hasPendingFirstAction(local.id, pending)) continue;
+    retained.push(reconcileOccurrence(local, pending));
+  }
+  return retained;
 }

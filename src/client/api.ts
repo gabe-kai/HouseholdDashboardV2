@@ -1,4 +1,5 @@
 import type {
+  ApplicabilityRule,
   Daypart,
   Grant,
   GrantPreset,
@@ -55,6 +56,47 @@ export type RoutineStep = {
   position: number;
   logicalItemId: string;
   id?: string;
+  applicability?: ApplicabilityRule;
+};
+
+export type SchoolExceptionPublic = {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+};
+
+export type SchoolYearPublic = {
+  id: string;
+  startDate: string;
+  endDate: string;
+  usualWeekdays: number[];
+  exceptions: SchoolExceptionPublic[];
+};
+
+export type SchoolCalendarPublic = {
+  configured: boolean;
+  version: number;
+  effectiveFrom: string | null;
+  editionId: string | null;
+  years: SchoolYearPublic[];
+};
+
+export type SaveSchoolCalendarInput = {
+  mutationId: string;
+  expectedVersion: number;
+  years: Array<{
+    id?: string;
+    startDate: string;
+    endDate: string;
+    usualWeekdays: number[];
+    exceptions: Array<{
+      id?: string;
+      name: string;
+      startDate: string;
+      endDate: string;
+    }>;
+  }>;
 };
 
 export type RoutineRevision = {
@@ -114,6 +156,7 @@ export type PersonalAddition = {
   position: number;
   text: string;
   obligation: ObligationMeaning;
+  applicability?: ApplicabilityRule;
   anchorLogicalItemId: string | null;
   place: "before" | "after" | "end";
 };
@@ -135,12 +178,30 @@ export type RoutinePreview = {
   personalRevisionId: string | null;
   title: string;
   weekdays: number[];
+  runs?: boolean;
+  unresolvedContext?: boolean;
+  message?: string | null;
   steps: Array<{
     position: number;
     text: string;
     obligation: ObligationMeaning;
     source: "shared" | "personal";
     logicalItemId: string;
+    applicability?: ApplicabilityRule;
+    included?: boolean;
+    reason?: string;
+    unresolved?: boolean;
+  }>;
+  excludedSteps?: Array<{
+    position: number;
+    text: string;
+    obligation: ObligationMeaning;
+    source: "shared" | "personal";
+    logicalItemId: string;
+    applicability?: ApplicabilityRule;
+    included?: boolean;
+    reason?: string;
+    unresolved?: boolean;
   }>;
 };
 
@@ -152,6 +213,7 @@ export type Proposal = {
   associationStatus?: "resolved" | "unresolved";
   text: string;
   obligation: ObligationMeaning;
+  applicability?: ApplicabilityRule;
   anchorLogicalItemId: string | null;
   place: "before" | "after" | "end";
   status: "pending" | "approved" | "rejected";
@@ -192,6 +254,7 @@ type RoutineMutationBody = {
     text: string;
     obligation: ObligationMeaning;
     logicalItemId?: string;
+    applicability?: ApplicabilityRule;
   }>;
   expectedVersion?: number;
   effectiveDate?: string;
@@ -381,6 +444,17 @@ export async function fetchGroups() {
   return request<{ groups: import("../shared/schemas").GroupPublic[] }>(
     "/api/v1/groups",
   );
+}
+
+export async function fetchSchoolCalendar() {
+  return request<{ calendar: SchoolCalendarPublic }>("/api/v1/school-calendar");
+}
+
+export async function saveSchoolCalendar(input: SaveSchoolCalendarInput) {
+  return request<{ calendar: SchoolCalendarPublic }>("/api/v1/school-calendar", {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
 }
 
 export async function createGroup(body: {

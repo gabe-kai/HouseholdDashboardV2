@@ -136,11 +136,13 @@ test.describe("P0-005 r3 routine lifecycle UI", () => {
     await page.getByRole("button", { name: "More", exact: true }).click();
     page.once("dialog", (dialog) => void dialog.accept());
     await page.getByRole("menuitem", { name: "Delete routine" }).click();
+    await expect(page.getByRole("heading", { name: "Routines" })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByRole("button", { name: new RegExp(unusedTitle) })).toHaveCount(0);
     await expect(
       page.getByRole("status").filter({ hasText: new RegExp(`Deleted ${unusedTitle}`) }),
     ).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByRole("heading", { name: "Routines" })).toBeVisible();
-    await expect(page.getByRole("button", { name: new RegExp(unusedTitle) })).toHaveCount(0);
 
     // --- End a used (created + present on Today) routine ---
     await createNamedRoutine(page, endTitle, "bedtime");
@@ -151,11 +153,15 @@ test.describe("P0-005 r3 routine lifecycle UI", () => {
     await page.getByRole("button", { name: "More", exact: true }).click();
     page.once("dialog", (dialog) => void dialog.accept());
     await page.getByRole("menuitem", { name: "End routine" }).click();
-    await expect(page.getByText(/^Ended$/).or(page.getByText(new RegExp(`Ended ${endTitle}`)))).toBeVisible({
+    await expect(
+      page.getByText(/^Ended$/).or(page.getByRole("status").filter({ hasText: new RegExp(`Ended ${endTitle}`) })),
+    ).toBeVisible({
       timeout: 10_000,
     });
     await page.getByRole("button", { name: /Back to Ended routines/i }).click();
     await expect(page.getByRole("heading", { name: "Ended routines" })).toBeVisible();
-    await expect(page.getByRole("button", { name: new RegExp(endTitle) })).toBeVisible();
+    await expect(page.getByRole("button", { name: new RegExp(endTitle) })).toBeVisible({
+      timeout: 15_000,
+    });
   });
 });

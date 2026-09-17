@@ -1,7 +1,7 @@
 # BRIEF P0-006B - Contextual Routine Applicability
 
 **Revision:** 1
-**Status:** IN REVIEW
+**Status:** ACCEPTED
 
 One authoritative contract for this ID. Material changes increment the revision and require Engineering readiness for that revision. Architecture technical acceptance and Project Lead/Product acceptance remain separate.
 
@@ -33,7 +33,7 @@ In Household -> School calendar, a parent sets school-year dates, usual school w
 
 ## Current system
 
-Inspected checkout: `brief/p0-006a-calm-household-experience-foundation` at `183bc41`, clean before this planning writeback. P0-006A implementation/evidence is committed locally and technically accepted; the Project Lead reported reviewing screenshots, testing, and being satisfied. Local `main` is still `31aad37` (P0-005 r3). Remote integration is **not verified**. These are distinct facts; Engineering must use the accepted A foundation, not the older singleton/editor assumptions in earlier briefs.
+Implementation baseline: integrated `main` at `7cba3a6` (P0-006A r2 merged via PR #12, including B planning and the A toast/CI correction). P0-006A is technically accepted and the Project Lead reported reviewing screenshots, testing, and being satisfied. Architecture verified the existing `brief/p0-006b-contextual-routine-applicability` branch at readiness commit `25c3c48`, with a clean worktree and no source/schema/test differences from that main baseline. The original planning inspection was A at `183bc41`; its integration prerequisite is now satisfied. Repository facts below remain applicable.
 
 | Surface | Verified repository fact and intended delta |
 | --- | --- |
@@ -156,7 +156,7 @@ Browser evidence supplements pure-domain and transactional tests; do not substit
 
 ## Dependencies
 
-- Accepted P0-006A r2 implementation through local `183bc41`, including A's closed evidence gaps and Project Lead acceptance. Before implementation, integrate that foundation and the planning baseline onto `main` under the Project Lead's normal workflow, then branch B from the integrated result. Readiness may inspect the accepted A checkout now; do not silently implement B on stale local `main`. Engineering records the actual base after integration.
+- Accepted P0-006A r2, its closed evidence gaps, Project Lead acceptance, and the B planning baseline are integrated at `main` @ `7cba3a6`. The existing B branch contains committed readiness at `25c3c48`. The integration/branch prerequisite is satisfied; continue that branch and record the actual implementation base in the Build Report.
 - Existing P0-005 r3 plans/locks/lifecycle and local validation tiers. No new Product proposal, paid service, secret, calendar feed, or deployment is needed.
 
 ## Relevant decisions
@@ -179,12 +179,15 @@ Browser evidence supplements pure-domain and transactional tests; do not substit
 
 ## Engineering readiness
 
-**Reviewed revision:** NOT REVIEWED
+**Reviewed revision:** 1
 
-**Readiness:** NOT REVIEWED
+**Readiness:** READY
 
-Engineering reviews **P0-006B revision 1** against the accepted A foundation, returns one consolidated repository-grounded readiness report, and waits for Architecture's disposition before implementation. No new review of A or C is requested.
+**Report:** `reports/P0-006B-r1-engineering-readiness.md` (committed in `25c3c48`).
+
+**Architecture disposition:** ACCEPTED. Engineering closed the required AT9–AT11 evidence gaps with injectable transaction-failure rollback coverage and multi-context Chromium/WebKit browser journeys for pending first-action retention, live calendar invalidation, dirty-draft conflict, reconnect, and visibility recovery. `validate:pr` and `validate:rc` pass, prior screenshots remain clean, and no deployment was required. This is Architecture technical acceptance; Project Lead/Product acceptance remains separate.
 
 ## Revision history
 
 - **r1:** Second slice of the approved P0-006 proposal: step applicability including School nights, household school calendar, dated previews, context reconciliation, protected execution/history, and local evidence. Includes personal/proposal rule propagation under existing authority; leaves profile/history redesign and clearing to C.
+- **r1 readiness:** READY against integrated `main` @ `7cba3a6`; Architecture accepted the Build Report after the AT9–AT11 evidence correction committed at `8421b31`. Contract and acceptance tests are unchanged.

@@ -9,8 +9,10 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
-import { mergeAuthoritativeOccurrence, reconcileOccurrence } from "../domain/reconcile";
+import { isLockingStepStatus } from "../domain/occurrence-lock";
+import { reconcileOccurrence, retainPendingOmittedOccurrences } from "../domain/reconcile";
 import type {
+  ApplicabilityRule,
   Grant,
   MemberPublic,
   OccurrenceView,
@@ -47,10 +49,12 @@ import {
 } from "./api";
 import { PeopleGroupsView } from "./PeopleGroups";
 import { DAYPART_LABELS, RoutinesView } from "./Routines";
+import { SchoolCalendarView } from "./SchoolCalendar";
 import {
   clearMembershipOutbox,
   enqueueOutbox,
   patchOutboxItem,
+  previousOccurrencesFromOutbox,
   readOutbox,
   removeOutboxItem,
   type OutboxItem,
@@ -83,7 +87,8 @@ function primaryTabFor(location: AppLocation): PrimaryTab {
     location.name === "household" ||
     location.name === "household-people" ||
     location.name === "household-person" ||
-    location.name === "household-group"
+    location.name === "household-group" ||
+    location.name === "household-school-calendar"
   ) {
     return "household";
   }
@@ -108,7 +113,7 @@ function confirmDiscardDirty(): boolean {
 }
 
 const HOUSEHOLD_MENU_ITEMS: Array<{
-  id: "people-groups" | "approvals" | "history" | "activity";
+  id: "people-groups" | "school-calendar" | "approvals" | "history" | "activity";
   label: string;
   description: string;
   visible: (caps: {
@@ -121,6 +126,12 @@ const HOUSEHOLD_MENU_ITEMS: Array<{
     id: "people-groups",
     label: "People & Groups",
     description: "Directory, access, and groups",
+    visible: () => true,
+  },
+  {
+    id: "school-calendar",
+    label: "School calendar",
+    description: "School years, weekdays, and breaks",
     visible: () => true,
   },
   {
@@ -199,6 +210,7 @@ export function App() {
   const [previewReturn, setPreviewReturn] = useState<TodaySecondary>(null);
   const [mutationDelayMs, setMutationDelayMs] = useState(0);
   const [routineRefreshToken, setRoutineRefreshToken] = useState(0);
+  const [schoolCalendarRefreshToken, setSchoolCalendarRefreshToken] = useState(0);
   const identityRef = useRef<string | null>(null);
   const occurrencesRef = useRef<OccurrenceView[]>([]);
   const outboxRef = useRef<OutboxItem[]>([]);
@@ -300,19 +312,25 @@ export function App() {
     const data = await fetchToday(date);
     if (identityRef.current !== membershipId) return;
     if (generation !== refreshGenerationRef.current) return;
-    const pendingCommands = outboxRef.current
-      .filter((item) => item.state !== "rejected")
-      .map((item) => ({
-        mutationId: item.mutationId,
-        occurrenceId: item.occurrenceId,
-        stepId: item.stepId,
-        status: item.status,
-      }));
-    const priorById = new Map(
-      occurrencesRef.current.map((occurrence) => [occurrence.id, occurrence]),
-    );
-    const merged = data.occurrences.map((occurrence) =>
-      mergeAuthoritativeOccurrence(priorById.get(occurrence.id), occurrence, pendingCommands),
+    const pendingItems = outboxRef.current.filter((item) => item.state !== "rejected");
+    const pendingCommands = pendingItems.map((item) => ({
+      mutationId: item.mutationId,
+      occurrenceId: item.occurrenceId,
+      stepId: item.stepId,
+      status: item.status,
+    }));
+    const priorById = new Map<string, OccurrenceView>();
+    for (const occurrence of previousOccurrencesFromOutbox(pendingItems)) {
+      priorById.set(occurrence.id, occurrence);
+    }
+    for (const occurrence of occurrencesRef.current) {
+      priorById.set(occurrence.id, occurrence);
+    }
+    const previous = [...priorById.values()];
+    const merged = retainPendingOmittedOccurrences(
+      previous,
+      data.occurrences,
+      pendingCommands,
     );
     occurrencesRef.current = merged;
     setHouseholdDate(data.householdDate);
@@ -363,13 +381,17 @@ export function App() {
     if (identityRef.current !== membershipId) return;
     let items = await readOutbox(membershipId);
     if (identityRef.current !== membershipId) return;
+    outboxRef.current = items;
     setOutbox(items);
     for (const item of items) {
       if (identityRef.current !== membershipId || item.state === "rejected") continue;
       items = await patchOutboxItem(membershipId, item.mutationId, {
         state: "retrying",
       });
-      if (identityRef.current === membershipId) setOutbox(items);
+      if (identityRef.current === membershipId) {
+        outboxRef.current = items;
+        setOutbox(items);
+      }
       try {
         await setStepStatus(
           item.occurrenceId,
@@ -383,6 +405,7 @@ export function App() {
         );
         if (identityRef.current !== membershipId) return;
         items = await removeOutboxItem(membershipId, item.mutationId);
+        outboxRef.current = items;
         setOutbox(items);
       } catch (caught) {
         if (identityRef.current !== membershipId) return;
@@ -392,15 +415,18 @@ export function App() {
             state: "pending",
             errorMessage: "Sign in again to sync this change.",
           });
+          outboxRef.current = items;
           setOutbox(items);
           expireSession();
           return;
         }
-        const rejected = code === "VALIDATION" || code === "FORBIDDEN";
+        const rejected =
+          code === "VALIDATION" || code === "FORBIDDEN" || code === "NOT_FOUND";
         items = await patchOutboxItem(membershipId, item.mutationId, {
           state: rejected ? "rejected" : "pending",
           errorMessage: errorMessage(caught),
         });
+        outboxRef.current = items;
         setOutbox(items);
         break;
       }
@@ -478,14 +504,22 @@ export function App() {
     const disconnect = connectSync(
       (notification) => {
         if (identityRef.current !== membershipId) return;
-        if (notification.resource === "group" || notification.resource === "routine") {
+        if (
+          notification.resource === "group" ||
+          notification.resource === "routine" ||
+          notification.resource === "school_calendar"
+        ) {
           setRoutineRefreshToken((n) => n + 1);
+        }
+        if (notification.resource === "school_calendar") {
+          setSchoolCalendarRefreshToken((n) => n + 1);
         }
         const urgent =
           notification.resource === "proposal" ||
           notification.resource === "routine" ||
           notification.resource === "membership" ||
-          notification.resource === "group";
+          notification.resource === "group" ||
+          notification.resource === "school_calendar";
         refreshAuthoritative({ urgentSupporting: urgent });
       },
       (status) => {
@@ -552,6 +586,7 @@ export function App() {
   ) {
     if (!session) return;
     const membershipId = session.member.id;
+    const base = occurrencesRef.current.find((occurrence) => occurrence.id === occurrenceId);
     const item: OutboxItem = {
       mutationId: newClientId(),
       occurrenceId,
@@ -559,6 +594,10 @@ export function App() {
       status,
       performedAt: new Date().toISOString(),
       state: "pending",
+      occurrenceSnapshot:
+        base && isLockingStepStatus(status)
+          ? (JSON.parse(JSON.stringify(base)) as OccurrenceView)
+          : undefined,
     };
     setOccurrences((current) => {
       const next = current.map((occurrence) =>
@@ -571,6 +610,7 @@ export function App() {
     });
     const next = await enqueueOutbox(membershipId, item);
     if (identityRef.current !== membershipId) return;
+    outboxRef.current = next;
     setOutbox(next);
     if (online) void flushOutbox(membershipId);
   }
@@ -655,6 +695,7 @@ export function App() {
   const canManageShared = hasGrant(activeSession, "routine.shared.manage");
   const canEnroll = hasGrant(activeSession, "household.member.enroll");
   const canManageStructure = hasGrant(activeSession, "household.structure.manage");
+  const canManageSchedule = hasGrant(activeSession, "household.schedule.manage");
   const canDecide = hasGrant(activeSession, "routine.proposal.decide");
   const manager = canManageShared || canEnroll || canDecide || canManageStructure;
   const canDirect = hasGrant(activeSession, "routine.personalize.direct");
@@ -727,6 +768,7 @@ export function App() {
     gatedLocation.name === "household-people" ||
     gatedLocation.name === "household-person" ||
     gatedLocation.name === "household-group";
+  const showingSchoolCalendar = gatedLocation.name === "household-school-calendar";
   const showingActivity =
     gatedLocation.name === "household" && householdLeaf === "activity" && manager;
   const showingApprovals =
@@ -751,7 +793,9 @@ export function App() {
             ? "Activity"
             : showingPeople
               ? "People & Groups"
-              : showingUnavailable
+              : showingSchoolCalendar
+                ? "School calendar"
+                : showingUnavailable
                 ? "Unavailable"
                 : primaryTab === "plan"
                   ? "Plan"
@@ -965,6 +1009,10 @@ export function App() {
                     requestNavigate({ name: "household-people" });
                     return;
                   }
+                  if (item.id === "school-calendar") {
+                    requestNavigate({ name: "household-school-calendar" });
+                    return;
+                  }
                   openHouseholdLeaf(item.id);
                 }}
               >
@@ -974,6 +1022,22 @@ export function App() {
             ))}
           </nav>
         </section>
+      ) : null}
+      {!showingUnavailable && showingSchoolCalendar ? (
+        <SchoolCalendarView
+          today={householdDate || session.householdDate}
+          canManage={canManageSchedule}
+          refreshToken={schoolCalendarRefreshToken}
+          onBack={() => requestNavigate({ name: "household" })}
+          onDirtyChange={(dirty) => {
+            editorDirtyRef.current = dirty;
+            setEditorDirty(dirty);
+          }}
+          onSuccessToast={(message) => {
+            setSchoolCalendarRefreshToken((n) => n + 1);
+            showToast(message);
+          }}
+        />
       ) : null}
       {!showingUnavailable && showingPeople ? (
         <PeopleGroupsView
@@ -1515,6 +1579,7 @@ function AdditionFields(props: {
   anchors: Array<{ logicalItemId: string; text: string }>;
   onChange: (addition: Omit<PersonalAddition, "position">) => void;
 }) {
+  const rule = props.addition.applicability ?? { kind: "every_time" as const };
   return (
     <>
       <label>
@@ -1542,6 +1607,66 @@ function AdditionFields(props: {
           <option value="optional">Optional</option>
         </select>
       </label>
+      <label>
+        Applicability
+        <select
+          value={rule.kind}
+          onChange={(event) => {
+            const kind = event.target.value as ApplicabilityRule["kind"];
+            const next: ApplicabilityRule =
+              kind === "selected_days"
+                ? { kind: "selected_days", weekdays: rule.kind === "selected_days" ? rule.weekdays : [1] }
+                : { kind };
+            props.onChange({ ...props.addition, applicability: next });
+          }}
+        >
+          <option value="every_time">Every time this routine runs</option>
+          <option value="school_days">School days</option>
+          <option value="no_school_days">No-school days</option>
+          <option value="school_nights">School nights</option>
+          <option value="weekdays">Weekdays</option>
+          <option value="weekends">Weekends</option>
+          <option value="selected_days">Selected days</option>
+        </select>
+      </label>
+      {rule.kind === "selected_days" ? (
+        <fieldset className="weekday-fieldset">
+          <legend>Selected days</legend>
+          {[
+            [1, "Mon"],
+            [2, "Tue"],
+            [3, "Wed"],
+            [4, "Thu"],
+            [5, "Fri"],
+            [6, "Sat"],
+            [7, "Sun"],
+          ].map(([value, label]) => {
+            const day = value as number;
+            const checked = rule.weekdays.includes(day);
+            return (
+              <label key={day} className="inline-check">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => {
+                    const weekdays = checked
+                      ? rule.weekdays.filter((item) => item !== day)
+                      : [...rule.weekdays, day].sort((a, b) => a - b);
+                    props.onChange({
+                      ...props.addition,
+                      applicability: {
+                        kind: "selected_days",
+                        weekdays: weekdays.length ? weekdays : [day],
+                      },
+                    });
+                  }}
+                />
+                {label}
+              </label>
+            );
+          })}
+        </fieldset>
+      ) : null}
       <label>
         Position
         <select
@@ -1944,6 +2069,9 @@ function ApprovalsView(props: {
                 {props.memberships.find((member) => member.id === proposal.membershipId)
                   ?.displayName ?? "Household member"}{" "}
                 · {obligationLabel(proposal.obligation)}
+                {proposal.applicability && proposal.applicability.kind !== "every_time"
+                  ? ` · ${proposal.applicability.kind.replaceAll("_", " ")}`
+                  : ""}
                 {routineTitle ? ` · ${routineTitle}` : ""}
                 {proposal.associationStatus === "unresolved"
                   ? " · routine association unresolved"
@@ -1975,6 +2103,7 @@ function ApprovalsView(props: {
 }
 
 function PreviewView(props: { preview: RoutinePreview; onBack: () => void }) {
+  const excluded = props.preview.excludedSteps ?? [];
   return (
     <section className="panel">
       <button type="button" className="back-link" onClick={props.onBack}>
@@ -1983,19 +2112,44 @@ function PreviewView(props: { preview: RoutinePreview; onBack: () => void }) {
       <p className="eyebrow">Read-only preview</p>
       <h1 className="page-heading">{props.preview.title}</h1>
       <p className="meta">Effective view for {props.preview.householdDate}</p>
-      <ol className="preview-list">
-        {props.preview.steps.map((step) => (
-          <li key={`${step.logicalItemId}-${step.position}`}>
-            <div>
-              <strong>{step.text}</strong>
-              <div className="meta">
-                {obligationLabel(step.obligation)} ·{" "}
-                {step.source === "personal" ? "Personal addition" : "Shared routine"}
-              </div>
-            </div>
-          </li>
-        ))}
-      </ol>
+      {props.preview.message ? <p className="meta">{props.preview.message}</p> : null}
+      {props.preview.steps.length > 0 ? (
+        <>
+          <h2 className="section-heading">Included</h2>
+          <ol className="preview-list">
+            {props.preview.steps.map((step) => (
+              <li key={`${step.logicalItemId}-${step.position}`}>
+                <div>
+                  <strong>{step.text}</strong>
+                  <div className="meta">
+                    {obligationLabel(step.obligation)} ·{" "}
+                    {step.source === "personal" ? "Personal addition" : "Shared routine"}
+                    {step.reason ? ` · ${step.reason}` : ""}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </>
+      ) : null}
+      {excluded.length > 0 ? (
+        <>
+          <h2 className="section-heading">Not included</h2>
+          <ol className="preview-list">
+            {excluded.map((step) => (
+              <li key={`ex-${step.logicalItemId}-${step.position}`}>
+                <div>
+                  <strong>{step.text}</strong>
+                  <div className="meta">
+                    {step.reason ?? "Not applicable"}
+                    {step.unresolved ? " · Needs school calendar" : ""}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </>
+      ) : null}
       <button type="button" className="secondary" onClick={props.onBack}>
         Close preview
       </button>

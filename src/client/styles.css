@@ -705,6 +705,18 @@ textarea {
   background: var(--surface);
 }
 
+.calendar-year-block {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px dashed var(--border);
+}
+
+.calendar-exceptions {
+  display: grid;
+  gap: var(--space-2);
+}
+
 .step-editor {
   display: grid;
   gap: var(--space-2);
@@ -1221,7 +1233,7 @@ textarea {
   position: absolute;
   right: 0;
   top: calc(100% + var(--space-1));
-  z-index: 20;
+  z-index: 40;
   min-width: 11rem;
   padding: var(--space-1);
   border: 1px solid var(--border);

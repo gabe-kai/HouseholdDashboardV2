@@ -28,6 +28,7 @@ import {
   LoginSchema,
   MoveScheduleEntrySchema,
   SavePersonalLayerSchema,
+  SaveSchoolCalendarSchema,
   SetPersonalTaskStatusSchema,
   SetStepStatusSchema,
   UpdateGroupSchema,
@@ -200,7 +201,8 @@ export async function buildApp(
       | "proposal"
       | "personal_task"
       | "membership"
-      | "group",
+      | "group"
+      | "school_calendar",
     resourceId: string,
     version?: number,
   ): void {
@@ -708,6 +710,29 @@ export async function buildApp(
       occurrences: store.historyForDate(session, date),
     };
   });
+
+  app.get("/api/v1/school-calendar", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    return { calendar: store.getSchoolCalendar(session) };
+  });
+
+  app.put(
+    "/api/v1/school-calendar",
+    async (request, reply) => {
+      const session = requireSession(request, reply);
+      if (!session) return;
+      const parsed = SaveSchoolCalendarSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid school calendar", request.id));
+      }
+      const calendar = store.saveSchoolCalendar(session, parsed.data);
+      broadcast(session, "school_calendar", session.householdId, calendar.version);
+      return { calendar };
+    },
+  );
 
   app.post(
     "/api/v1/occurrences/:occurrenceId/steps/:stepId/status",

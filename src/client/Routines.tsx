@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import type { Daypart, GroupPublic, MemberPublic } from "../shared/schemas";
+import type { ApplicabilityRule, Daypart, GroupPublic, MemberPublic } from "../shared/schemas";
+import {
+  DEFAULT_APPLICABILITY,
+  applicabilityLabel,
+  normalizeApplicability,
+  parseApplicability,
+  serializeApplicability,
+} from "../domain/applicability";
 import {
   createRevision,
   createRoutine,
@@ -7,6 +14,7 @@ import {
   deleteScheduleEntry,
   endRoutine,
   fetchGroups,
+  fetchPreview,
   fetchRoutine,
   fetchRoutines,
   fetchSession,
@@ -15,6 +23,7 @@ import {
   type PlanRefineOutcome,
   type Routine,
   type RoutineMutationResult,
+  type RoutinePreview,
   type RoutineRevision,
   type ScheduleEntry,
 } from "./api";
@@ -73,6 +82,7 @@ type DraftStep = {
   text: string;
   obligation: "required" | "as_needed" | "optional";
   logicalItemId?: string;
+  applicability?: ApplicabilityRule;
 };
 
 type Draft = {
@@ -92,7 +102,7 @@ function emptyDraft(today: string): Draft {
     weekdays: [...EVERY_DAY],
     assigneeMemberIds: [],
     assigneeGroupIds: [],
-    steps: [{ text: "New step", obligation: "required" }],
+    steps: [{ text: "New step", obligation: "required", applicability: DEFAULT_APPLICABILITY }],
     startingDate: today,
   };
 }
@@ -193,6 +203,11 @@ function draftFromRevision(revision: RoutineRevision, startingDate: string): Dra
       text: step.text,
       obligation: step.obligation,
       logicalItemId: step.logicalItemId,
+      applicability: step.applicability
+        ? normalizeApplicability(step.applicability)
+        : parseApplicability(
+            (step as { applicabilityJson?: string }).applicabilityJson ?? null,
+          ),
     })),
     startingDate,
   };
@@ -209,6 +224,7 @@ function draftSnapshot(draft: Draft): string {
       text: step.text,
       obligation: step.obligation,
       logicalItemId: step.logicalItemId ?? null,
+      applicability: serializeApplicability(step.applicability ?? DEFAULT_APPLICABILITY),
     })),
     startingDate: draft.startingDate,
   });
@@ -377,6 +393,10 @@ export function RoutinesView(props: {
   const [moreOpen, setMoreOpen] = useState(false);
   const [deleteOfferEnd, setDeleteOfferEnd] = useState(false);
   const [stepsExpanded, setStepsExpanded] = useState(false);
+  const [previewDate, setPreviewDate] = useState(props.today);
+  const [previewMemberId, setPreviewMemberId] = useState("");
+  const [planPreview, setPlanPreview] = useState<RoutinePreview | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [editorFocus, setEditorFocus] = useState<EditorFocus>(null);
   const [sectionDraft, setSectionDraft] = useState<Draft | null>(null);
   const [stepLocalIds, setStepLocalIds] = useState<string[]>([]);
@@ -536,6 +556,31 @@ export function RoutinesView(props: {
       setDeleteOfferEnd(false);
     }
   }, [view, props.refreshToken]);
+
+  useEffect(() => {
+    if (!planPreview) return;
+    if (view.kind !== "detail") return;
+    const definitionId = view.definitionId;
+    const membershipId =
+      previewMemberId ||
+      (detailRoutine?.scheduleEntries[0]?.revision.resolvedMemberIds ??
+        detailRoutine?.scheduleEntries[0]?.revision.assigneeMemberIds ??
+        [])[0];
+    if (!membershipId) return;
+    let cancelled = false;
+    void fetchPreview(definitionId, membershipId, previewDate)
+      .then((result) => {
+        if (!cancelled) setPlanPreview(result.preview);
+      })
+      .catch((caught) => {
+        if (!cancelled) {
+          setPreviewError(caught instanceof Error ? caught.message : String(caught));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [props.refreshToken]);
 
   useEffect(() => {
     if (!moreOpen) return;
@@ -719,11 +764,15 @@ export function RoutinesView(props: {
       weekdays: draft.weekdays,
       assigneeMemberIds: draft.assigneeMemberIds,
       assigneeGroupIds: draft.assigneeGroupIds,
-      steps: draft.steps.map((step) => ({
-        text: step.text.trim(),
-        obligation: step.obligation,
-        ...(step.logicalItemId ? { logicalItemId: step.logicalItemId } : {}),
-      })),
+      steps: draft.steps.map((step) => {
+        const rule = normalizeApplicability(step.applicability ?? DEFAULT_APPLICABILITY);
+        return {
+          text: step.text.trim(),
+          obligation: step.obligation,
+          ...(step.logicalItemId ? { logicalItemId: step.logicalItemId } : {}),
+          ...(rule.kind !== "every_time" ? { applicability: rule } : {}),
+        };
+      }),
     };
   }
 
@@ -1610,13 +1659,22 @@ export function RoutinesView(props: {
                 Steps · {todayRevision.steps.length}
               </h3>
               <ol className="compact-step-list">
-                {visibleSteps.map((step, index) => (
-                  <li key={step.id ?? step.logicalItemId} className="compact-step">
-                    <span className="meta">{index + 1}.</span>
-                    <strong>{step.text}</strong>
-                    <span className="meta">{obligationLabel(step.obligation)}</span>
-                  </li>
-                ))}
+                {visibleSteps.map((step, index) => {
+                  const rule = step.applicability
+                    ? normalizeApplicability(step.applicability)
+                    : parseApplicability(
+                        (step as { applicabilityJson?: string }).applicabilityJson ?? null,
+                      );
+                  const ruleLabel = applicabilityLabel(rule);
+                  return (
+                    <li key={step.id ?? step.logicalItemId} className="compact-step">
+                      <span className="meta">{index + 1}.</span>
+                      <strong>{step.text}</strong>
+                      <span className="meta">{obligationLabel(step.obligation)}</span>
+                      {ruleLabel ? <span className="meta"> · {ruleLabel}</span> : null}
+                    </li>
+                  );
+                })}
               </ol>
               {todayRevision.steps.length > 5 ? (
                 <button
@@ -1629,6 +1687,95 @@ export function RoutinesView(props: {
                     : `Show all ${todayRevision.steps.length} steps`}
                 </button>
               ) : null}
+              <section className="plan-preview-section" aria-labelledby="plan-preview-heading">
+                <h3 id="plan-preview-heading">Dated preview</h3>
+                <p className="meta">
+                  Explains which steps apply for a date. Does not create checklist work.
+                </p>
+                <label className="field-label">
+                  Date
+                  <input
+                    type="date"
+                    value={previewDate}
+                    onChange={(event) => setPreviewDate(event.target.value)}
+                  />
+                </label>
+                <label className="field-label">
+                  Person
+                  <select
+                    value={
+                      previewMemberId ||
+                      (todayRevision.resolvedMemberIds ?? todayRevision.assigneeMemberIds)[0] ||
+                      ""
+                    }
+                    onChange={(event) => setPreviewMemberId(event.target.value)}
+                  >
+                    {(todayRevision.resolvedMemberIds ?? todayRevision.assigneeMemberIds).map(
+                      (membershipId) => (
+                        <option key={membershipId} value={membershipId}>
+                          {props.memberships.find((member) => member.id === membershipId)
+                            ?.displayName ?? "Person"}
+                        </option>
+                      ),
+                    )}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => {
+                    const membershipId =
+                      previewMemberId ||
+                      (todayRevision.resolvedMemberIds ?? todayRevision.assigneeMemberIds)[0];
+                    if (!membershipId) {
+                      setPreviewError("Choose a person for this preview.");
+                      return;
+                    }
+                    setPreviewError(null);
+                    void fetchPreview(routine.id, membershipId, previewDate)
+                      .then((result) => setPlanPreview(result.preview))
+                      .catch((caught) =>
+                        setPreviewError(
+                          caught instanceof Error ? caught.message : String(caught),
+                        ),
+                      );
+                  }}
+                >
+                  Show preview
+                </button>
+                {previewError ? <p role="alert">{previewError}</p> : null}
+                {planPreview ? (
+                  <div className="plan-preview-result">
+                    {planPreview.message ? <p className="meta">{planPreview.message}</p> : null}
+                    {planPreview.steps.length > 0 ? (
+                      <ol className="preview-list">
+                        {planPreview.steps.map((step) => (
+                          <li key={`inc-${step.logicalItemId}-${step.position}`}>
+                            <strong>{step.text}</strong>
+                            <span className="meta">
+                              {" "}
+                              · Included{step.reason ? ` · ${step.reason}` : ""}
+                            </span>
+                          </li>
+                        ))}
+                      </ol>
+                    ) : null}
+                    {(planPreview.excludedSteps ?? []).length > 0 ? (
+                      <ul className="simple-list">
+                        {(planPreview.excludedSteps ?? []).map((step) => (
+                          <li key={`exc-${step.logicalItemId}-${step.position}`}>
+                            {step.text}
+                            <span className="meta">
+                              {" "}
+                              · {step.reason ?? "Not included"}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                ) : null}
+              </section>
               {upcoming.length > 0 ? (
                 <section
                   className="upcoming-section"

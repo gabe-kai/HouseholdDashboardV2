@@ -68,6 +68,9 @@ invalidation/reconciliation semantics.
 | PB-31 | Plan-labeled shell + addressable Today/Plan/Household URLs; SPA fallback whenever clientDist exists; signed-out resume; generic unavailable | e2e `z-p0-006a-calm-experience.spec.ts`; `src/client/nav.ts`; `src/server/app.ts` | PR / RC |
 | PB-32 | Focused routine draft sections + outer dirty Keep/Discard; success toast vs durable errors/pending/enrollment | e2e `z-p0-006a-calm-experience.spec.ts`; lifecycle/AT6 e2e adapted to Plan/focused UI | PR / RC |
 | PB-33 | Draft step reorder via drag handle and keyboard Move menu; Personalize additions-only; stable logical IDs | e2e `z-p0-006a-calm-experience.spec.ts`; `OrderedList` + DirectPersonalization | PR / RC |
+| PB-34 | Closed step applicability + household school calendar editions; School nights via D+1 | unit `applicability.test.ts`; integration `p0-006b.test.ts` | PR / RC |
+| PB-35 | Calendar edits reconcile unstarted work; past/started snapshots frozen; filtered-empty omitted from Today | integration `p0-006b.test.ts` History + materialize cases | PR / RC |
+| PB-36 | `household.schedule.manage` write grant; readers without write; migration Every-time default + grant backfill | integration `p0-006b.test.ts` AT1/AT4 | PR / RC |
 
 ### Environment-specific (not counted as automated acceptance)
 
@@ -104,6 +107,8 @@ Duplicate, late, and missed events must be safe.
 | PUT `/personal-layer` | personal layer revision (definition-scoped) | `routine` (definitionId) | preview, future today, Personalize | — | new layer revision for that definition | preview/today for definition |
 | POST `/proposals` | proposal pending (definition-scoped) | `proposal` | proposals | — | new proposal bound to definitionId | fetch proposals |
 | POST `/proposals/:id/decide` | proposal (+ optional layer for stored definition) | `proposal`; `routine` if approved | proposals, preview | — | same decision idempotent; opposite conflicts; archived target rejectable | fetch proposals + preview |
+| GET `/school-calendar` | calendar projection | *(none)* | — | — | read | n/a |
+| PUT `/school-calendar` | calendar edition + unstarted reconcile | `school_calendar` (householdId, version) | today, history previews, open calendar, dated routine previews | draft retained on conflict | same `mutationId` replay; expectedVersion conflict | fetch school-calendar + today |
 | POST `/personal-tasks` | task | `personal_task` | personal-tasks | — | new task | fetch personal-tasks |
 | POST `/personal-tasks/:id/status` | task status | `personal_task` | personal-tasks | — | same `mutationId` idempotent | fetch personal-tasks |
 | POST `/test/bootstrap-claim` | claim | *(none)* | — | — | test-only | n/a |

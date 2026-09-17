@@ -1,5 +1,5 @@
 import { get, set, del, update } from "idb-keyval";
-import type { StepStatus } from "../shared/schemas";
+import type { OccurrenceView, StepStatus } from "../shared/schemas";
 
 export type OutboxItem = {
   mutationId: string;
@@ -9,7 +9,21 @@ export type OutboxItem = {
   performedAt: string;
   state: "pending" | "retrying" | "rejected";
   errorMessage?: string;
+  /** Structural snapshot so omitted Today cards can survive reload while pending. */
+  occurrenceSnapshot?: OccurrenceView;
 };
+
+/** Prior local cards reconstructed from durable first-action outbox snapshots. */
+export function previousOccurrencesFromOutbox(items: OutboxItem[]): OccurrenceView[] {
+  const byId = new Map<string, OccurrenceView>();
+  for (const item of items) {
+    if (item.state === "rejected") continue;
+    if (!item.occurrenceSnapshot) continue;
+    if (item.occurrenceSnapshot.id !== item.occurrenceId) continue;
+    byId.set(item.occurrenceId, item.occurrenceSnapshot);
+  }
+  return [...byId.values()];
+}
 
 /** Membership-scoped IndexedDB key — never share across identities. */
 export function outboxStorageKey(membershipId: string): string {

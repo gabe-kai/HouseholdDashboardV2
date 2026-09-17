@@ -419,6 +419,7 @@ export function RoutinesView(props: {
         if (current.kind === "detail" || current.kind === "edit") {
           return { kind: "list" };
         }
+        // Preserve create / picker / ended while the parent Plan list URL is showing.
         return current;
       });
       setEditorFocus(null);
@@ -430,6 +431,11 @@ export function RoutinesView(props: {
     const definitionId = routeDefinitionId;
     setUnavailableDetail(false);
     setView((current) => {
+      // Ended (and create) are secondary surfaces that may sit under a detail URL
+      // until Back switches the parent route — never force them back to detail.
+      if (current.kind === "ended" || current.kind === "create") {
+        return current;
+      }
       if (
         (current.kind === "edit" || current.kind === "picker" || current.kind === "detail") &&
         "definitionId" in current &&
@@ -742,15 +748,16 @@ export function RoutinesView(props: {
       applyDetailRoutine(result.routine);
       await loadList();
       const revision = currentRevision(result.routine, props.today);
+      setBaselineSnapshot(draftSnapshot(draft));
+      props.onDirtyChange?.(false);
+      // Navigate before toast: App clears toasts on location change.
+      goDetail(result.routine.id);
+      props.onSaved(result.routine);
       announceSuccess(
         revision
           ? `Created “${revision.title}”. Active from ${revision.effectiveDate}.`
           : "Created.",
       );
-      setBaselineSnapshot(draftSnapshot(draft));
-      props.onDirtyChange?.(false);
-      goDetail(result.routine.id);
-      props.onSaved(result.routine);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Routine couldn't be saved.");
     } finally {
@@ -782,6 +789,7 @@ export function RoutinesView(props: {
 
       let result: RoutineMutationResult;
       const payload = mutationPayload();
+      let successMessage = "Saved.";
 
       if (editMode === "current") {
         result = await createRevision(definitionId, {
@@ -790,8 +798,10 @@ export function RoutinesView(props: {
           effectiveDate: props.today,
           mode: "current",
         });
-        announceSuccess(
-          formatRefineStatus("Saved", result.refineOutcome, props.memberships),
+        successMessage = formatRefineStatus(
+          "Saved",
+          result.refineOutcome,
+          props.memberships,
         );
       } else if (editMode === "schedule-new") {
         if (draft.startingDate <= props.today) {
@@ -805,7 +815,7 @@ export function RoutinesView(props: {
           effectiveDate: draft.startingDate,
           mode: "schedule",
         });
-        announceSuccess(`Change scheduled for ${draft.startingDate}.`);
+        successMessage = `Change scheduled for ${draft.startingDate}.`;
       } else {
         if (!scheduleEntryId) throw new Error("Schedule entry not found");
         const originalEntry = current.scheduleEntries.find(
@@ -830,17 +840,16 @@ export function RoutinesView(props: {
             expectedVersion: result.routine.version,
             startDate: draft.startingDate,
           });
-          announceSuccess(
+          successMessage =
             draft.startingDate === props.today
               ? formatRefineStatus(
                   `Moved to today`,
                   result.refineOutcome,
                   props.memberships,
                 )
-              : `Upcoming change moved to ${draft.startingDate}.`,
-          );
+              : `Upcoming change moved to ${draft.startingDate}.`;
         } else {
-          announceSuccess(`Upcoming change for ${originalDate} saved.`);
+          successMessage = `Upcoming change for ${originalDate} saved.`;
         }
       }
 
@@ -855,8 +864,10 @@ export function RoutinesView(props: {
       setBaselineSnapshot(draftSnapshot(draft));
       props.onDirtyChange?.(false);
       setScheduleCollision(null);
+      // Navigate before toast: App clears toasts on location change.
       goDetail(result.routine.id);
       props.onSaved(result.routine);
+      announceSuccess(successMessage);
     } catch (caught) {
       const apiErr = caught as ApiError;
       if (
@@ -947,11 +958,11 @@ export function RoutinesView(props: {
         mutationId: newClientId(),
         expectedVersion: routine.version,
       });
-      announceSuccess(`Ended ${title}.`);
       await loadList();
       applyDetailRoutine(result.routine);
       goDetail(result.routine.id);
       props.onEnded?.(result.routine);
+      announceSuccess(`Ended ${title}.`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Routine couldn't be ended.");
     } finally {
@@ -979,12 +990,13 @@ export function RoutinesView(props: {
         mutationId: newClientId(),
         expectedVersion: routine.version,
       });
-      announceSuccess(`Deleted ${title}.`);
       setDeleteOfferEnd(false);
       await loadList();
       setDetailRoutine(null);
+      // Navigate before toast: App clears toasts on location change.
       goList();
       props.onDeleted?.(routine.id);
+      announceSuccess(`Deleted ${title}.`);
     } catch (caught) {
       const message =
         caught instanceof Error ? caught.message : "Routine couldn't be deleted.";
@@ -1007,7 +1019,8 @@ export function RoutinesView(props: {
     routine: Routine,
     options?: { showCutoff?: boolean },
   ) {
-    const revision = currentRevision(routine, props.today);
+    // Ended routines often have today's schedule entry canceled — still show via fallback.
+    const revision = currentRevision(routine, props.today) ?? fallbackRevision(routine);
     if (!revision) return null;
     return (
       <li key={routine.id}>
@@ -1530,8 +1543,14 @@ export function RoutinesView(props: {
           <BackButton
             label={inactive ? "Back to Ended routines" : "Back to Routines"}
             onClick={() => {
-              if (inactive) setView({ kind: "ended" });
-              else goList();
+              if (inactive) {
+                setView({ kind: "ended" });
+                // Parent Plan list URL; route sync preserves ended secondary view.
+                props.onRouteChange({ kind: "list" });
+                void loadList();
+              } else {
+                goList();
+              }
             }}
           />
           <FocusHeading id="routine-detail-heading">{title}</FocusHeading>

@@ -558,6 +558,31 @@ export function RoutinesView(props: {
   }, [view, props.refreshToken]);
 
   useEffect(() => {
+    if (!planPreview) return;
+    if (view.kind !== "detail") return;
+    const definitionId = view.definitionId;
+    const membershipId =
+      previewMemberId ||
+      (detailRoutine?.scheduleEntries[0]?.revision.resolvedMemberIds ??
+        detailRoutine?.scheduleEntries[0]?.revision.assigneeMemberIds ??
+        [])[0];
+    if (!membershipId) return;
+    let cancelled = false;
+    void fetchPreview(definitionId, membershipId, previewDate)
+      .then((result) => {
+        if (!cancelled) setPlanPreview(result.preview);
+      })
+      .catch((caught) => {
+        if (!cancelled) {
+          setPreviewError(caught instanceof Error ? caught.message : String(caught));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [props.refreshToken]);
+
+  useEffect(() => {
     if (!moreOpen) return;
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") setMoreOpen(false);

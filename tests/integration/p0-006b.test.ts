@@ -795,8 +795,99 @@ describe("P0-006B contextual applicability", () => {
         performedAt: new Date().toISOString(),
       }),
     ).toThrow(/Step not found/i);
+  });
 
-    // Rollback injection is not exposed on AppStore; gap noted in evidence summary.
+  it("AT9: injectable reconcile failure rolls back calendar, occurrences, and receipt", async () => {
+    const { store, db } = freshStore();
+    const manager = await claimManager(store);
+    await enrollAndClaim(
+      store,
+      manager.context,
+      IDS.avery,
+      "direct_personalizer",
+      `avery.rollback.${Date.now().toString(36)}`,
+      "Avery Reed",
+    );
+    store.saveSchoolCalendar(manager.context, {
+      mutationId: randomUUID(),
+      expectedVersion: 0,
+      years: [yearPayload("2026-01-01", "2027-12-31", [1, 2, 3, 4, 5, 6, 7])],
+    });
+    const routine = store.createRoutine(manager.context, {
+      mutationId: randomUUID(),
+      title: "Rollback Morning",
+      daypart: "morning",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      assigneeMemberIds: [IDS.avery],
+      assigneeGroupIds: [],
+      steps: [
+        {
+          text: "Pack Lunchbox",
+          obligation: "required",
+          applicability: { kind: "school_days" },
+        },
+        { text: "Stretch", obligation: "required", applicability: { kind: "every_time" } },
+      ],
+    });
+    const today = store.householdDateNow(manager.context);
+    const beforeOcc = store
+      .materializeForDate(manager.context, today)
+      .find((o) => o.definitionId === routine.id)!;
+    const beforeSteps = JSON.stringify(beforeOcc.steps);
+    const beforeCalendar = store.getSchoolCalendar(manager.context);
+    const beforeEditionCount = (
+      db
+        .prepare(`SELECT COUNT(*) AS c FROM school_calendar_editions WHERE household_id = ?`)
+        .get(manager.context.householdId) as { c: number }
+    ).c;
+    const beforeReceiptCount = (
+      db.prepare(`SELECT COUNT(*) AS c FROM calendar_mutation_receipts`).get() as { c: number }
+    ).c;
+    const failingMutationId = randomUUID();
+
+    store.setCalendarSaveFailureHook(() => {
+      throw Object.assign(new Error("injected calendar reconcile failure"), {
+        code: "INTERNAL",
+      });
+    });
+    try {
+      expect(() =>
+        store.saveSchoolCalendar(manager.context, {
+          mutationId: failingMutationId,
+          expectedVersion: 1,
+          years: [
+            yearPayload("2026-01-01", "2027-12-31", [1, 2, 3, 4, 5, 6, 7], [
+              { name: "Injected break", startDate: today, endDate: today },
+            ]),
+          ],
+        }),
+      ).toThrow(/injected calendar reconcile failure/i);
+    } finally {
+      store.setCalendarSaveFailureHook(null);
+    }
+
+    expect(store.getSchoolCalendar(manager.context)).toEqual(beforeCalendar);
+    expect(
+      (
+        db
+          .prepare(`SELECT COUNT(*) AS c FROM school_calendar_editions WHERE household_id = ?`)
+          .get(manager.context.householdId) as { c: number }
+      ).c,
+    ).toBe(beforeEditionCount);
+    expect(
+      (db.prepare(`SELECT COUNT(*) AS c FROM calendar_mutation_receipts`).get() as { c: number })
+        .c,
+    ).toBe(beforeReceiptCount);
+    expect(
+      db
+        .prepare(`SELECT 1 AS ok FROM calendar_mutation_receipts WHERE mutation_id = ?`)
+        .get(failingMutationId),
+    ).toBeUndefined();
+    const afterOcc = store
+      .materializeForDate(manager.context, today)
+      .find((o) => o.definitionId === routine.id)!;
+    expect(JSON.stringify(afterOcc.steps)).toBe(beforeSteps);
+    expect(afterOcc.steps.some((s) => s.text === "Pack Lunchbox")).toBe(true);
   });
 
   it("AT6/AT8: filtered-empty omit from Today; past history snapshots stay frozen", async () => {

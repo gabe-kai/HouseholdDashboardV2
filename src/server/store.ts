@@ -279,6 +279,16 @@ function isUniqueViolation(error: unknown): boolean {
 export class AppStore {
   constructor(private readonly db: Database.Database) {}
 
+  /**
+   * Test-only: invoked inside the calendar-save transaction after reconcile and
+   * before the mutation receipt. Throwing rolls back calendar + occurrence writes.
+   */
+  private calendarSaveFailureHook: (() => void) | null = null;
+
+  setCalendarSaveFailureHook(hook: (() => void) | null): void {
+    this.calendarSaveFailureHook = hook;
+  }
+
   hasGrant(ctx: AuthContext, grant: Grant): boolean {
     return ctx.grants.includes(grant);
   }
@@ -1303,6 +1313,8 @@ export class AppStore {
           );
         }
       }
+
+      this.calendarSaveFailureHook?.();
 
       const result = this.getSchoolCalendar(ctx);
       this.db

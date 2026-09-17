@@ -4,7 +4,7 @@
 **Engineering status:** IMPLEMENTED (local; pending technical / Project Lead acceptance)  
 **Branch:** `brief/p0-006b-contextual-routine-applicability`  
 **Base:** integrated `main` @ `7cba3a6` (accepted P0-006A r2); readiness ACCEPT at `2d7cdd6`  
-**Implementation commits:** **uncommitted** (Project Lead manages Git; do not deploy)  
+**Implementation commits:** `1fb192d`, `f6a4e6a`, and `8421b31` (committed locally; Project Lead manages integration)
 **Pull request:** N/A  
 
 ## Readiness

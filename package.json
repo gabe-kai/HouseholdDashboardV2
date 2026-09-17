@@ -25,8 +25,9 @@
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit",
     "test": "vitest run",
-    "test:e2e": "playwright install chromium webkit && playwright test",
-    "test:e2e:chromium": "playwright install chromium && playwright test --project=chromium",
+    "test:e2e": "playwright install chromium webkit && playwright test && npm run test:e2e:vite",
+    "test:e2e:chromium": "playwright install chromium && playwright test --project=chromium --project=chromium-desktop && npm run test:e2e:vite",
+    "test:e2e:vite": "playwright install chromium && playwright test -c playwright.vite.config.ts",
     "validate": "npm run lint && npm run typecheck && npm test",
     "validate:pr": "npm run validate && npm run build && npm run test:e2e:chromium",
     "validate:rc": "npm run validate && npm run build && npm run test:e2e"

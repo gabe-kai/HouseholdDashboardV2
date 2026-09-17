@@ -31,10 +31,27 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit and integration tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
       - name: Install Playwright Chromium OS deps
         run: npx playwright install --with-deps chromium
 
-      - name: Run pull-request validation
-        run: npm run validate:pr
+      - name: E2E Chromium (phone + desktop)
+        run: npx playwright test --project=chromium --project=chromium-desktop
+        env:
+          CI: true
+
+      - name: E2E Vite deep-link smoke
+        run: npm run test:e2e:vite
         env:
           CI: true

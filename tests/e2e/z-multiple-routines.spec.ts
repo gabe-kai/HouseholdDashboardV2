@@ -2,9 +2,12 @@ import { test, expect, type Page, type APIRequestContext } from "@playwright/tes
 import path from "node:path";
 import fs from "node:fs";
 import { durableScreenshot } from "../helpers/durable-screenshot";
+import { expectSignedInAs, openRoutineSection } from "../helpers/e2e-shell";
 
 const PASSPHRASE = "unique-passphrase-ok!";
 const MANAGER_LOGIN = "e2e.manager";
+/** P0-006A: do not rewrite prior P0-005 screenshot evidence (AT12 zero-diff). */
+const CAPTURE_LEGACY_R3_SCREENSHOTS = false;
 const R3_SCREENSHOT_DIR = path.resolve("reports/p0-005-r3-screenshots");
 
 function requestOrigin(_request?: APIRequestContext): string {
@@ -103,7 +106,7 @@ async function openAsManager(page: Page) {
   await ensureManagerSession(page.request);
   await ensureMorningRoutine(page.request);
   await page.goto("/");
-  await expect(page.locator(".topbar")).toContainText("Morgan Reed", { timeout: 20_000 });
+  await expectSignedInAs(page, "Morgan Reed");
 }
 
 async function openPeopleGroups(page: Page) {
@@ -119,19 +122,18 @@ async function openPeopleGroups(page: Page) {
 }
 
 async function pickAudience(page: Page) {
-  await page.getByRole("button", { name: /Add people or groups|Edit people or groups/ }).click();
-  const groupsBox = page.locator("fieldset").filter({ hasText: "Groups" });
+  await page.getByRole("button", { name: /^Who/ }).click();
+  const groupsBox = page.getByRole("group", { name: "Groups" });
+  const peopleBox = page.getByRole("group", { name: "People" });
   if (await groupsBox.getByRole("checkbox", { name: /Kids/ }).count()) {
-    await groupsBox.getByRole("checkbox", { name: /Kids/ }).check();
+    await groupsBox.getByRole("checkbox", { name: /Kids/ }).first().check();
   } else {
-    await page
-      .locator("fieldset")
-      .filter({ hasText: "People" })
+    await peopleBox
       .getByRole("checkbox", { name: /Avery Reed|Morgan Reed/ })
       .first()
       .check();
   }
-  await page.getByRole("button", { name: /Save who does this|Apply who does this/i }).click();
+  await page.getByRole("button", { name: /Apply who does this/i }).click();
 }
 
 test.describe("P0-005 multiple household routines", () => {
@@ -165,38 +167,55 @@ test.describe("P0-005 multiple household routines", () => {
       }
     }
 
-    await page.getByRole("button", { name: "Routines", exact: true }).click();
+    await page.getByRole("button", { name: "Plan", exact: true }).click();
     await expect(page.getByRole("heading", { name: /Routines/i })).toBeVisible();
     await expect(page.getByText(/Morning Routine/i).first()).toBeVisible();
-    if (testInfo.project.name === "chromium") {
+    if (CAPTURE_LEGACY_R3_SCREENSHOTS && testInfo.project.name === "chromium") {
       fs.mkdirSync(R3_SCREENSHOT_DIR, { recursive: true });
       await durableScreenshot(page, path.join(R3_SCREENSHOT_DIR, "01-routines-list.png"));
     }
 
     // Create After School
     await page.getByRole("button", { name: /Create routine/i }).click();
-    await page.getByLabel("Name").fill("After School Routine");
+    await openRoutineSection(page, "Name");
+    await page.getByRole("textbox", { name: "Name" }).fill("After School Routine");
+    await page.getByRole("button", { name: "Done", exact: true }).click();
+    await openRoutineSection(page, "When");
     await page.getByLabel("Daypart").selectOption("after_school");
+    await page.getByRole("button", { name: "Done", exact: true }).click();
     await pickAudience(page);
-    const stepInputs = page.locator(".step-editor input");
-    await stepInputs.first().fill("Unpack bag");
+    await openRoutineSection(page, "Steps");
+    await page.locator("[data-ordered-row]").first().locator(".ordered-row-body button").click();
+    await page.getByRole("textbox", { name: "Step text" }).fill("Unpack bag");
+    await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("button", { name: /Add step/i }).click();
-    await stepInputs.nth(1).fill("Start homework");
+    await page.locator("[data-ordered-row]").nth(1).locator(".ordered-row-body button").click();
+    await page.getByRole("textbox", { name: "Step text" }).fill("Start homework");
+    await page.getByRole("button", { name: "Done", exact: true }).click();
+    await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("button", { name: "Create routine", exact: true }).click();
     await expect(page.getByRole("heading", { name: /After School Routine/i })).toBeVisible({
       timeout: 15_000,
     });
-    if (testInfo.project.name === "chromium") {
+    if (CAPTURE_LEGACY_R3_SCREENSHOTS && testInfo.project.name === "chromium") {
       await durableScreenshot(page, path.join(R3_SCREENSHOT_DIR, "02-routine-detail.png"));
     }
     await page.getByRole("button", { name: /Back to Routines/i }).click();
 
     // Create Bedtime
     await page.getByRole("button", { name: /Create routine/i }).click();
-    await page.getByLabel("Name").fill("Bedtime");
+    await openRoutineSection(page, "Name");
+    await page.getByRole("textbox", { name: "Name" }).fill("Bedtime");
+    await page.getByRole("button", { name: "Done", exact: true }).click();
+    await openRoutineSection(page, "When");
     await page.getByLabel("Daypart").selectOption("bedtime");
+    await page.getByRole("button", { name: "Done", exact: true }).click();
     await pickAudience(page);
-    await page.locator(".step-editor input").first().fill("Brush teeth");
+    await openRoutineSection(page, "Steps");
+    await page.locator("[data-ordered-row]").first().locator(".ordered-row-body button").click();
+    await page.getByRole("textbox", { name: "Step text" }).fill("Brush teeth");
+    await page.getByRole("button", { name: "Done", exact: true }).click();
+    await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("button", { name: "Create routine", exact: true }).click();
     await expect(page.getByRole("heading", { name: /^Bedtime$/i })).toBeVisible({
       timeout: 15_000,
@@ -209,15 +228,16 @@ test.describe("P0-005 multiple household routines", () => {
     // Today may list child occurrences for the manager (shared.manage). Reload to pick up sync.
     await page.getByRole("button", { name: "Today", exact: true }).click();
     await page.reload();
-    await expect(page.locator(".topbar")).toContainText("Morgan Reed", { timeout: 20_000 });
+    await expectSignedInAs(page, "Morgan Reed");
     await expect(
       page
         .getByText(/After School|Bedtime|Morning/i)
-        .or(page.getByText(/No routines for you/i)),
+        .or(page.getByText(/No routines for you/i))
+        .first(),
     ).toBeVisible({ timeout: 15_000 });
 
     // End Bedtime via More (native confirm)
-    await page.getByRole("button", { name: "Routines", exact: true }).click();
+    await page.getByRole("button", { name: "Plan", exact: true }).click();
     await page.getByRole("button", { name: /^Bedtime/ }).first().click();
     await page.getByRole("button", { name: "More", exact: true }).click();
     page.once("dialog", (dialog) => void dialog.accept());
@@ -228,7 +248,7 @@ test.describe("P0-005 multiple household routines", () => {
     await page.getByRole("button", { name: /Back to Ended routines/i }).click();
     await expect(page.getByRole("heading", { name: "Ended routines" })).toBeVisible();
     await expect(page.getByRole("button", { name: /^Bedtime/ })).toBeVisible();
-    if (testInfo.project.name === "chromium") {
+    if (CAPTURE_LEGACY_R3_SCREENSHOTS && testInfo.project.name === "chromium") {
       await durableScreenshot(page, path.join(R3_SCREENSHOT_DIR, "04-ended-routines.png"));
     }
   });
@@ -239,34 +259,47 @@ test.describe("P0-005 multiple household routines", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openAsManager(page);
 
-    await page.getByRole("button", { name: "Routines", exact: true }).click();
+    await page.getByRole("button", { name: "Plan", exact: true }).click();
     await page.getByRole("button", { name: /Morning Routine|Morning Checklist/ }).first().click();
     await expect(page.getByRole("heading", { name: /Morning/i })).toBeVisible();
-    await page.getByRole("button", { name: "Edit routine", exact: true }).click();
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Edit routine" })).toBeVisible();
 
     const renamed = `Morning Checklist ${Date.now().toString(36)}`;
-    await page.getByLabel("Name").fill(renamed);
-    const firstStep = page.locator(".step-editor").first();
-    await firstStep.locator("input").fill("Stretch quietly");
-    // Keep at least one required step (validation rule); change a later step's obligation.
-    const secondStep = page.locator(".step-editor").nth(1);
-    await secondStep.locator("input").fill("Pack soft lunch");
-    await secondStep.locator("select").selectOption("optional");
+    await openRoutineSection(page, "Name");
+    await page.getByRole("textbox", { name: "Name" }).fill(renamed);
+    await page.getByRole("button", { name: "Done", exact: true }).click();
+    await openRoutineSection(page, "Steps");
+    await page
+      .locator("[data-ordered-row]")
+      .first()
+      .locator(".ordered-row-body button")
+      .click();
+    await page.getByRole("textbox", { name: "Step text" }).fill("Stretch quietly");
+    await page.getByRole("button", { name: "Done", exact: true }).click();
+    await page
+      .locator("[data-ordered-row]")
+      .nth(1)
+      .locator(".ordered-row-body button")
+      .click();
+    await page.getByRole("textbox", { name: "Step text" }).fill("Pack soft lunch");
+    await page.getByLabel("Obligation").selectOption("optional");
+    await page.getByRole("button", { name: "Done", exact: true }).click();
+    await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("button", { name: "Save changes" }).click();
 
     await expect(page.getByRole("status").filter({ hasText: /^Saved/i })).toBeVisible({
       timeout: 15_000,
     });
     await expect(page.getByRole("heading", { name: renamed })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Steps" })).toBeVisible();
-    await expect(page.locator(".preview-list").first()).toContainText("Stretch quietly");
-    await expect(page.locator(".preview-list").first()).toContainText("Pack soft lunch");
-    await expect(page.locator(".preview-list").first()).toContainText("Optional");
+    await expect(page.getByRole("heading", { name: /Steps/ })).toBeVisible();
+    await expect(page.locator(".compact-step-list").first()).toContainText("Stretch quietly");
+    await expect(page.locator(".compact-step-list").first()).toContainText("Pack soft lunch");
+    await expect(page.locator(".compact-step-list").first()).toContainText("Optional");
 
     await page.getByRole("button", { name: "Back to Routines" }).click();
     await expect(page.getByRole("button", { name: new RegExp(renamed) })).toBeVisible();
-    if (testInfo.project.name === "chromium") {
+    if (CAPTURE_LEGACY_R3_SCREENSHOTS && testInfo.project.name === "chromium") {
       fs.mkdirSync(R3_SCREENSHOT_DIR, { recursive: true });
       await durableScreenshot(page, path.join(R3_SCREENSHOT_DIR, "05-same-day-edit-list.png"));
       await page.getByRole("button", { name: new RegExp(renamed) }).click();

@@ -2,9 +2,16 @@ import { test, expect, type Page, type APIRequestContext } from "@playwright/tes
 import path from "node:path";
 import fs from "node:fs";
 import { durableScreenshot } from "../helpers/durable-screenshot";
+import {
+  expectSignedInAs,
+  fillFocusedRoutineCreate,
+  openRoutineSection,
+} from "../helpers/e2e-shell";
 
 const PASSPHRASE = "unique-passphrase-ok!";
 const MANAGER_LOGIN = "e2e.manager";
+/** P0-006A: do not rewrite prior P0-005 screenshot evidence (AT12 zero-diff). */
+const CAPTURE_LEGACY_R3_SCREENSHOTS = false;
 const R3_SCREENSHOT_DIR = path.resolve("reports/p0-005-r3-screenshots");
 
 function requestOrigin(_request?: APIRequestContext): string {
@@ -56,31 +63,34 @@ async function householdToday(request: APIRequestContext): Promise<string> {
 async function openAsManager(page: Page) {
   await ensureManagerSession(page.request);
   await page.goto("/");
-  await expect(page.locator(".topbar")).toContainText("Morgan Reed", { timeout: 20_000 });
+  await expectSignedInAs(page, "Morgan Reed");
 }
 
 async function createNamedRoutine(page: Page, title: string, daypart = "evening") {
-  await page.getByRole("button", { name: "Routines", exact: true }).click();
-  await page.getByRole("button", { name: /Create routine/i }).click();
-  await page.getByLabel("Name").fill(title);
-  await page.getByLabel("Daypart").selectOption(daypart);
-  await page.getByRole("button", { name: /Add people or groups|Edit people or groups/ }).click();
-  await page
-    .locator("fieldset")
-    .filter({ hasText: "People" })
-    .getByRole("checkbox", { name: /Morgan Reed/ })
-    .check();
-  await page.getByRole("button", { name: /Save who does this|Apply who does this/i }).click();
-  await page.locator(".step-editor input").first().fill("Lifecycle step");
-  await page.getByRole("button", { name: "Create routine", exact: true }).click();
+  await page.getByRole("button", { name: "Plan", exact: true }).click();
+  await fillFocusedRoutineCreate(page, {
+    title,
+    daypart,
+    audienceName: "Morgan Reed",
+    stepText: "Lifecycle step",
+  });
   await expect(page.getByRole("heading", { name: title })).toBeVisible({ timeout: 15_000 });
 }
 
 async function scheduleUpcoming(page: Page, startDate: string, stepText: string) {
-  await page.getByRole("button", { name: "Schedule for later", exact: true }).click();
+  await page.getByRole("button", { name: "More", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Schedule for later" }).click();
   await expect(page.getByRole("heading", { name: "Schedule for later" })).toBeVisible();
   await page.getByLabel("Starting").fill(startDate);
-  await page.locator(".step-editor input").first().fill(stepText);
+  await openRoutineSection(page, "Steps");
+  await page
+    .locator("[data-ordered-row]")
+    .first()
+    .locator(".ordered-row-body button")
+    .click();
+  await page.getByRole("textbox", { name: "Step text" }).fill(stepText);
+  await page.getByRole("button", { name: "Done", exact: true }).click();
+  await page.getByRole("button", { name: "Done", exact: true }).click();
   await page.getByRole("button", { name: "Schedule change", exact: true }).click();
   await expect(
     page.getByRole("status").filter({ hasText: new RegExp(`Change scheduled for ${startDate}`) }),
@@ -130,25 +140,38 @@ test.describe("P0-005 r3 AT6 schedule move/collision/date boundary", () => {
     await expect(page.getByText(new RegExp(`Starting ${day3}`))).toBeVisible();
     await expect(page.getByText(new RegExp(`Starting ${day4}`))).toHaveCount(0);
 
-    if (testInfo.project.name === "chromium") {
+    if (CAPTURE_LEGACY_R3_SCREENSHOTS && testInfo.project.name === "chromium") {
       fs.mkdirSync(R3_SCREENSHOT_DIR, { recursive: true });
       await durableScreenshot(page, path.join(R3_SCREENSHOT_DIR, "07-upcoming-moved.png"));
     }
 
     // Occupied-date collision: schedule-new onto day2; draft preserved with alternatives.
-    await page.getByRole("button", { name: "Schedule for later", exact: true }).click();
-    await page.getByLabel("Name").fill(`${title} collision draft`);
+    await page.getByRole("button", { name: "More", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Schedule for later" }).click();
+    await openRoutineSection(page, "Name");
+    await page.getByRole("textbox", { name: "Name" }).fill(`${title} collision draft`);
+    await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByLabel("Starting").fill(day2);
-    await page.locator(".step-editor input").first().fill("Should not replace day2");
+    await openRoutineSection(page, "Steps");
+    await page
+      .locator("[data-ordered-row]")
+      .first()
+      .locator(".ordered-row-body button")
+      .click();
+    await page.getByRole("textbox", { name: "Step text" }).fill("Should not replace day2");
+    await page.getByRole("button", { name: "Done", exact: true }).click();
+    await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("button", { name: "Schedule change", exact: true }).click();
     await expect(page.getByRole("alert")).toContainText(/already starts on/i, {
       timeout: 15_000,
     });
     await expect(page.getByRole("button", { name: "Choose another date" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Edit existing change" })).toBeVisible();
-    await expect(page.getByLabel("Name")).toHaveValue(`${title} collision draft`);
+    await expect(page.getByRole("button", { name: /^Name/ })).toContainText(
+      `${title} collision draft`,
+    );
 
-    if (testInfo.project.name === "chromium") {
+    if (CAPTURE_LEGACY_R3_SCREENSHOTS && testInfo.project.name === "chromium") {
       await durableScreenshot(page, path.join(R3_SCREENSHOT_DIR, "08-schedule-collision.png"));
     }
 
@@ -163,17 +186,30 @@ test.describe("P0-005 r3 AT6 schedule move/collision/date boundary", () => {
     await expect(page.getByRole("heading", { name: title })).toBeVisible({ timeout: 10_000 });
 
     // Re-trigger collision to prove Choose another date keeps the editor and focuses Starting.
-    await page.getByRole("button", { name: "Schedule for later", exact: true }).click();
-    await page.getByLabel("Name").fill(`${title} collision draft 2`);
+    await page.getByRole("button", { name: "More", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Schedule for later" }).click();
+    await openRoutineSection(page, "Name");
+    await page.getByRole("textbox", { name: "Name" }).fill(`${title} collision draft 2`);
+    await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByLabel("Starting").fill(day2);
-    await page.locator(".step-editor input").first().fill("Still should not replace");
+    await openRoutineSection(page, "Steps");
+    await page
+      .locator("[data-ordered-row]")
+      .first()
+      .locator(".ordered-row-body button")
+      .click();
+    await page.getByRole("textbox", { name: "Step text" }).fill("Still should not replace");
+    await page.getByRole("button", { name: "Done", exact: true }).click();
+    await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("button", { name: "Schedule change", exact: true }).click();
     await expect(page.getByRole("alert")).toContainText(/already starts on/i, {
       timeout: 15_000,
     });
     await page.getByRole("button", { name: "Choose another date" }).click();
     await expect(page.locator("#routine-starting-date")).toBeFocused();
-    await expect(page.getByLabel("Name")).toHaveValue(`${title} collision draft 2`);
+    await expect(page.getByRole("button", { name: /^Name/ })).toContainText(
+      `${title} collision draft 2`,
+    );
     await backFromEditor(page, { expectDiscard: true });
     await expect(page.getByRole("heading", { name: title })).toBeVisible({ timeout: 10_000 });
 
@@ -184,7 +220,15 @@ test.describe("P0-005 r3 AT6 schedule move/collision/date boundary", () => {
       .getByRole("button", { name: "Edit upcoming", exact: true })
       .click();
     await page.getByLabel("Starting").fill(today);
-    await page.locator(".step-editor input").first().fill("Promoted today step");
+    await openRoutineSection(page, "Steps");
+    await page
+      .locator("[data-ordered-row]")
+      .first()
+      .locator(".ordered-row-body button")
+      .click();
+    await page.getByRole("textbox", { name: "Step text" }).fill("Promoted today step");
+    await page.getByRole("button", { name: "Done", exact: true }).click();
+    await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("button", { name: "Save changes", exact: true }).click();
     await expect(page.getByRole("status").filter({ hasText: /Moved to today/i })).toBeVisible({
       timeout: 15_000,
@@ -193,9 +237,11 @@ test.describe("P0-005 r3 AT6 schedule move/collision/date boundary", () => {
     await expect(page.getByText("Promoted today step")).toBeVisible();
 
     // Date-boundary: open editor, then session returns a rolled household date.
-    await page.getByRole("button", { name: "Edit routine", exact: true }).click();
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Edit routine" })).toBeVisible();
-    await page.getByLabel("Name").fill(`${title} rollover draft`);
+    await openRoutineSection(page, "Name");
+    await page.getByRole("textbox", { name: "Name" }).fill(`${title} rollover draft`);
+    await page.getByRole("button", { name: "Done", exact: true }).click();
     const rolled = addDays(today, 1);
     await page.route("**/api/v1/auth/session", async (route) => {
       if (route.request().method() !== "GET") {
@@ -214,10 +260,12 @@ test.describe("P0-005 r3 AT6 schedule move/collision/date boundary", () => {
     await expect(page.getByRole("alert")).toContainText(/household date changed/i, {
       timeout: 15_000,
     });
-    await expect(page.getByLabel("Name")).toHaveValue(`${title} rollover draft`);
+    await expect(page.getByRole("button", { name: /^Name/ })).toContainText(
+      `${title} rollover draft`,
+    );
     await page.unroute("**/api/v1/auth/session");
 
-    if (testInfo.project.name === "chromium") {
+    if (CAPTURE_LEGACY_R3_SCREENSHOTS && testInfo.project.name === "chromium") {
       await durableScreenshot(page, path.join(R3_SCREENSHOT_DIR, "09-date-boundary.png"));
     }
   });

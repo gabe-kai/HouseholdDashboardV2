@@ -19,6 +19,13 @@ import {
   type ScheduleEntry,
 } from "./api";
 import { newClientId } from "./id";
+import {
+  NameSectionEditor,
+  RoutineFocusedSummary,
+  StepRowEditor,
+  StepsSectionEditor,
+  WhenSectionEditor,
+} from "./RoutineFocusedEditor";
 
 /** Client copy of domain DAYPART_LABELS (avoid domain import in client bundle). */
 export const DAYPART_LABELS: Record<Daypart, string> = {
@@ -28,14 +35,6 @@ export const DAYPART_LABELS: Record<Daypart, string> = {
   bedtime: "Bedtime",
   anytime: "Anytime",
 };
-
-const DAYPART_OPTIONS: Daypart[] = [
-  "morning",
-  "after_school",
-  "evening",
-  "bedtime",
-  "anytime",
-];
 
 const WEEKDAYS: Array<{ value: number; label: string }> = [
   { value: 1, label: "Mon" },
@@ -335,6 +334,17 @@ function confirmDiscard(): boolean {
   );
 }
 
+type EditorFocus =
+  | null
+  | "name"
+  | "when"
+  | "steps"
+  | { kind: "step"; index: number; localId: string };
+
+type RoutinesRoute =
+  | { kind: "list" }
+  | { kind: "detail"; definitionId: string };
+
 export function RoutinesView(props: {
   memberships: MemberPublic[];
   onSaved: (routine: Routine) => void;
@@ -342,8 +352,17 @@ export function RoutinesView(props: {
   onDeleted?: (definitionId: string) => void;
   refreshToken?: number;
   today: string;
+  /** Addressable list/detail from App History API routes. */
+  route: RoutinesRoute;
+  onRouteChange: (route: RoutinesRoute) => void;
+  onDirtyChange?: (dirty: boolean) => void;
+  onSuccessToast?: (message: string) => void;
 }) {
-  const [view, setView] = useState<ViewState>({ kind: "list" });
+  const [view, setView] = useState<ViewState>(() =>
+    props.route.kind === "detail"
+      ? { kind: "detail", definitionId: props.route.definitionId }
+      : { kind: "list" },
+  );
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [endedRoutines, setEndedRoutines] = useState<Routine[]>([]);
   const [detailRoutine, setDetailRoutine] = useState<Routine | null>(null);
@@ -357,6 +376,11 @@ export function RoutinesView(props: {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [deleteOfferEnd, setDeleteOfferEnd] = useState(false);
+  const [stepsExpanded, setStepsExpanded] = useState(false);
+  const [editorFocus, setEditorFocus] = useState<EditorFocus>(null);
+  const [sectionDraft, setSectionDraft] = useState<Draft | null>(null);
+  const [stepLocalIds, setStepLocalIds] = useState<string[]>([]);
+  const [unavailableDetail, setUnavailableDetail] = useState(false);
   const [scheduleCollision, setScheduleCollision] = useState<{
     occupiedDate: string;
     conflictingScheduleEntryId: string;
@@ -367,7 +391,76 @@ export function RoutinesView(props: {
   const editorHouseholdDateRef = useRef(props.today);
   const moreMenuRef = useRef<HTMLDivElement>(null);
 
-  const dirty = baselineSnapshot !== "" && draftSnapshot(draft) !== baselineSnapshot;
+  const dirty =
+    (baselineSnapshot !== "" && draftSnapshot(draft) !== baselineSnapshot) ||
+    sectionDraft !== null;
+
+  useEffect(() => {
+    props.onDirtyChange?.(dirty);
+  }, [dirty, props.onDirtyChange]);
+
+  function ensureStepLocalIds(steps: DraftStep[]): string[] {
+    return steps.map((step, index) => step.logicalItemId ?? stepLocalIds[index] ?? newClientId());
+  }
+
+  function announceSuccess(message: string) {
+    props.onSuccessToast?.(message);
+    setStatusMessage(null);
+  }
+
+  /** Sync addressable list/detail from App; create/edit/picker/ended stay under parent URL. */
+  const routeKind = props.route.kind;
+  const routeDefinitionId =
+    props.route.kind === "detail" ? props.route.definitionId : null;
+  const routeKey = routeDefinitionId ? `detail:${routeDefinitionId}` : "list";
+  useEffect(() => {
+    if (routeKind === "list") {
+      setView((current) => {
+        if (current.kind === "detail" || current.kind === "edit") {
+          return { kind: "list" };
+        }
+        // Preserve create / picker / ended while the parent Plan list URL is showing.
+        return current;
+      });
+      setEditorFocus(null);
+      setSectionDraft(null);
+      setUnavailableDetail(false);
+      return;
+    }
+    if (!routeDefinitionId) return;
+    const definitionId = routeDefinitionId;
+    setUnavailableDetail(false);
+    setView((current) => {
+      // Ended (and create) are secondary surfaces that may sit under a detail URL
+      // until Back switches the parent route — never force them back to detail.
+      if (current.kind === "ended" || current.kind === "create") {
+        return current;
+      }
+      if (
+        (current.kind === "edit" || current.kind === "picker" || current.kind === "detail") &&
+        "definitionId" in current &&
+        current.definitionId === definitionId
+      ) {
+        return current;
+      }
+      return { kind: "detail", definitionId };
+    });
+  }, [routeKey, routeKind, routeDefinitionId]);
+
+  function goList() {
+    setEditorFocus(null);
+    setSectionDraft(null);
+    setView({ kind: "list" });
+    props.onRouteChange({ kind: "list" });
+  }
+
+  function goDetail(definitionId: string) {
+    setEditorFocus(null);
+    setSectionDraft(null);
+    setUnavailableDetail(false);
+    setView({ kind: "detail", definitionId });
+    props.onRouteChange({ kind: "detail", definitionId });
+  }
 
   function applyDetailRoutine(next: Routine) {
     setDetailRoutine((prev) => {
@@ -401,14 +494,25 @@ export function RoutinesView(props: {
   async function loadDetail(definitionId: string) {
     selectedDefinitionRef.current = definitionId;
     const generation = ++detailGenerationRef.current;
-    const [routineResult, groupsResult] = await Promise.all([
-      fetchRoutine(definitionId),
-      fetchGroups(),
-    ]);
-    if (generation !== detailGenerationRef.current) return;
-    if (selectedDefinitionRef.current !== definitionId) return;
-    setGroups(groupsResult.groups);
-    applyDetailRoutine(routineResult.routine);
+    try {
+      const [routineResult, groupsResult] = await Promise.all([
+        fetchRoutine(definitionId),
+        fetchGroups(),
+      ]);
+      if (generation !== detailGenerationRef.current) return;
+      if (selectedDefinitionRef.current !== definitionId) return;
+      setUnavailableDetail(false);
+      setError(null);
+      setGroups(groupsResult.groups);
+      applyDetailRoutine(routineResult.routine);
+    } catch (caught) {
+      if (generation !== detailGenerationRef.current) return;
+      if (selectedDefinitionRef.current !== definitionId) return;
+      setUnavailableDetail(true);
+      setDetailRoutine(null);
+      setError(null);
+      void caught;
+    }
   }
 
   useEffect(() => {
@@ -454,6 +558,11 @@ export function RoutinesView(props: {
   function beginDraft(next: Draft) {
     setDraft(next);
     setBaselineSnapshot(draftSnapshot(next));
+    setStepLocalIds(
+      next.steps.map((step) => step.logicalItemId ?? newClientId()),
+    );
+    setEditorFocus(null);
+    setSectionDraft(null);
     editorHouseholdDateRef.current = props.today;
     setScheduleCollision(null);
   }
@@ -464,6 +573,7 @@ export function RoutinesView(props: {
     setDeleteOfferEnd(false);
     beginDraft(emptyDraft(props.today));
     setView({ kind: "create" });
+    if (props.route.kind !== "list") props.onRouteChange({ kind: "list" });
   }
 
   function openEditCurrent(routine: Routine) {
@@ -483,6 +593,7 @@ export function RoutinesView(props: {
     setError(null);
     setStatusMessage(null);
     setDeleteOfferEnd(false);
+    setMoreOpen(false);
     beginDraft(draftFromRevision(current, addDays(props.today, 1)));
     applyDetailRoutine(routine);
     setView({ kind: "edit", definitionId: routine.id, mode: "schedule-new" });
@@ -506,6 +617,16 @@ export function RoutinesView(props: {
     if (dirty && !confirmDiscard()) return;
     setError(null);
     setDeleteOfferEnd(false);
+    setEditorFocus(null);
+    setSectionDraft(null);
+    if (destination.kind === "list") {
+      goList();
+      return;
+    }
+    if (destination.kind === "detail") {
+      goDetail(destination.definitionId);
+      return;
+    }
     setView(destination);
   }
 
@@ -627,14 +748,16 @@ export function RoutinesView(props: {
       applyDetailRoutine(result.routine);
       await loadList();
       const revision = currentRevision(result.routine, props.today);
-      setStatusMessage(
+      setBaselineSnapshot(draftSnapshot(draft));
+      props.onDirtyChange?.(false);
+      // Navigate before toast: App clears toasts on location change.
+      goDetail(result.routine.id);
+      props.onSaved(result.routine);
+      announceSuccess(
         revision
           ? `Created “${revision.title}”. Active from ${revision.effectiveDate}.`
           : "Created.",
       );
-      setBaselineSnapshot(draftSnapshot(draft));
-      setView({ kind: "detail", definitionId: result.routine.id });
-      props.onSaved(result.routine);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Routine couldn't be saved.");
     } finally {
@@ -666,6 +789,7 @@ export function RoutinesView(props: {
 
       let result: RoutineMutationResult;
       const payload = mutationPayload();
+      let successMessage = "Saved.";
 
       if (editMode === "current") {
         result = await createRevision(definitionId, {
@@ -674,8 +798,10 @@ export function RoutinesView(props: {
           effectiveDate: props.today,
           mode: "current",
         });
-        setStatusMessage(
-          formatRefineStatus("Saved", result.refineOutcome, props.memberships),
+        successMessage = formatRefineStatus(
+          "Saved",
+          result.refineOutcome,
+          props.memberships,
         );
       } else if (editMode === "schedule-new") {
         if (draft.startingDate <= props.today) {
@@ -689,7 +815,7 @@ export function RoutinesView(props: {
           effectiveDate: draft.startingDate,
           mode: "schedule",
         });
-        setStatusMessage(`Change scheduled for ${draft.startingDate}.`);
+        successMessage = `Change scheduled for ${draft.startingDate}.`;
       } else {
         if (!scheduleEntryId) throw new Error("Schedule entry not found");
         const originalEntry = current.scheduleEntries.find(
@@ -714,17 +840,16 @@ export function RoutinesView(props: {
             expectedVersion: result.routine.version,
             startDate: draft.startingDate,
           });
-          setStatusMessage(
+          successMessage =
             draft.startingDate === props.today
               ? formatRefineStatus(
                   `Moved to today`,
                   result.refineOutcome,
                   props.memberships,
                 )
-              : `Upcoming change moved to ${draft.startingDate}.`,
-          );
+              : `Upcoming change moved to ${draft.startingDate}.`;
         } else {
-          setStatusMessage(`Upcoming change for ${originalDate} saved.`);
+          successMessage = `Upcoming change for ${originalDate} saved.`;
         }
       }
 
@@ -737,9 +862,12 @@ export function RoutinesView(props: {
       applyDetailRoutine(result.routine);
       await loadList();
       setBaselineSnapshot(draftSnapshot(draft));
+      props.onDirtyChange?.(false);
       setScheduleCollision(null);
-      setView({ kind: "detail", definitionId: result.routine.id });
+      // Navigate before toast: App clears toasts on location change.
+      goDetail(result.routine.id);
       props.onSaved(result.routine);
+      announceSuccess(successMessage);
     } catch (caught) {
       const apiErr = caught as ApiError;
       if (
@@ -795,7 +923,7 @@ export function RoutinesView(props: {
       // Invalidate in-flight detail fetches so they cannot restore the entry.
       detailGenerationRef.current += 1;
       applyDetailRoutine(cleaned);
-      setStatusMessage(`Deleted upcoming change for ${entry.startDate}.`);
+      announceSuccess(`Deleted upcoming change for ${entry.startDate}.`);
       await loadList();
       props.onSaved(cleaned);
       // Re-read once after list refresh; version guard keeps our newer state.
@@ -830,11 +958,11 @@ export function RoutinesView(props: {
         mutationId: newClientId(),
         expectedVersion: routine.version,
       });
-      setStatusMessage(`Ended ${title}.`);
       await loadList();
       applyDetailRoutine(result.routine);
-      setView({ kind: "detail", definitionId: result.routine.id });
+      goDetail(result.routine.id);
       props.onEnded?.(result.routine);
+      announceSuccess(`Ended ${title}.`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Routine couldn't be ended.");
     } finally {
@@ -862,12 +990,13 @@ export function RoutinesView(props: {
         mutationId: newClientId(),
         expectedVersion: routine.version,
       });
-      setStatusMessage(`Deleted ${title}.`);
       setDeleteOfferEnd(false);
       await loadList();
       setDetailRoutine(null);
-      setView({ kind: "list" });
+      // Navigate before toast: App clears toasts on location change.
+      goList();
       props.onDeleted?.(routine.id);
+      announceSuccess(`Deleted ${title}.`);
     } catch (caught) {
       const message =
         caught instanceof Error ? caught.message : "Routine couldn't be deleted.";
@@ -886,35 +1015,12 @@ export function RoutinesView(props: {
     }
   }
 
-  function setWeekdayPreset(preset: "every" | "weekdays" | "weekends") {
-    setDraft((current) => ({
-      ...current,
-      weekdays:
-        preset === "every"
-          ? [...EVERY_DAY]
-          : preset === "weekdays"
-            ? [...WEEKDAY_SET]
-            : [...WEEKEND_SET],
-    }));
-  }
-
-  function moveStep(index: number, direction: -1 | 1) {
-    setDraft((current) => {
-      const target = index + direction;
-      if (target < 0 || target >= current.steps.length) return current;
-      const steps = [...current.steps];
-      const swap = steps[index]!;
-      steps[index] = steps[target]!;
-      steps[target] = swap;
-      return { ...current, steps };
-    });
-  }
-
   function renderRoutineRow(
     routine: Routine,
     options?: { showCutoff?: boolean },
   ) {
-    const revision = currentRevision(routine, props.today);
+    // Ended routines often have today's schedule entry canceled — still show via fallback.
+    const revision = currentRevision(routine, props.today) ?? fallbackRevision(routine);
     if (!revision) return null;
     return (
       <li key={routine.id}>
@@ -924,7 +1030,7 @@ export function RoutinesView(props: {
           onClick={() => {
             setStatusMessage(null);
             setDeleteOfferEnd(false);
-            setView({ kind: "detail", definitionId: routine.id });
+            goDetail(routine.id);
           }}
         >
           <span className="person-name">{revision.title}</span>
@@ -1085,6 +1191,195 @@ export function RoutinesView(props: {
           : view.mode === "schedule-edit"
             ? "Edit upcoming change"
             : "Edit routine";
+    const working = sectionDraft ?? draft;
+    const workingIds =
+      sectionDraft && editorFocus === "steps"
+        ? ensureStepLocalIds(sectionDraft.steps)
+        : stepLocalIds.length === draft.steps.length
+          ? stepLocalIds
+          : ensureStepLocalIds(draft.steps);
+
+    function openSection(focus: Exclude<EditorFocus, null>) {
+      setError(null);
+      if (focus === "name" || focus === "when" || focus === "steps") {
+        setSectionDraft({ ...draft, steps: draft.steps.map((step) => ({ ...step })) });
+        if (focus === "steps") {
+          setStepLocalIds(ensureStepLocalIds(draft.steps));
+        }
+        setEditorFocus(focus);
+        return;
+      }
+      setEditorFocus(focus);
+    }
+
+    function cancelSection() {
+      setSectionDraft(null);
+      setEditorFocus(null);
+      setError(null);
+    }
+
+    function doneName() {
+      if (!sectionDraft) return;
+      if (!sectionDraft.title.trim()) {
+        setError("Enter a routine name.");
+        return;
+      }
+      setDraft((current) => ({ ...current, title: sectionDraft.title }));
+      setSectionDraft(null);
+      setEditorFocus(null);
+      setError(null);
+    }
+
+    function doneWhen() {
+      if (!sectionDraft) return;
+      if (sectionDraft.weekdays.length === 0) {
+        setError("Choose at least one weekday.");
+        return;
+      }
+      setDraft((current) => ({
+        ...current,
+        daypart: sectionDraft.daypart,
+        weekdays: sectionDraft.weekdays,
+        startingDate: sectionDraft.startingDate,
+      }));
+      setSectionDraft(null);
+      setEditorFocus(null);
+      setError(null);
+    }
+
+    function doneSteps() {
+      if (!sectionDraft) return;
+      if (sectionDraft.steps.length === 0) {
+        setError("Add at least one step.");
+        return;
+      }
+      if (sectionDraft.steps.some((step) => !step.text.trim())) {
+        setError("Every step needs text.");
+        return;
+      }
+      const ids = ensureStepLocalIds(sectionDraft.steps);
+      setDraft((current) => ({ ...current, steps: sectionDraft.steps }));
+      setStepLocalIds(ids);
+      setSectionDraft(null);
+      setEditorFocus(null);
+      setError(null);
+    }
+
+    if (editorFocus === "name" && sectionDraft) {
+      return (
+        <section className="panel people-groups routines-view">
+          <div className="focused-state" aria-labelledby="routine-name-heading">
+            <BackButton label={`Back to ${heading}`} onClick={cancelSection} />
+            <FocusHeading id="routine-name-heading">Edit name</FocusHeading>
+            {error ? <p role="alert">{error}</p> : null}
+            <NameSectionEditor
+              value={sectionDraft.title}
+              onChange={(title) => setSectionDraft({ ...sectionDraft, title })}
+              onDone={doneName}
+              onCancel={cancelSection}
+            />
+          </div>
+        </section>
+      );
+    }
+
+    if (editorFocus === "when" && sectionDraft) {
+      return (
+        <section className="panel people-groups routines-view">
+          <div className="focused-state" aria-labelledby="routine-when-heading">
+            <BackButton label={`Back to ${heading}`} onClick={cancelSection} />
+            <FocusHeading id="routine-when-heading">Edit when</FocusHeading>
+            {error ? <p role="alert">{error}</p> : null}
+            <WhenSectionEditor
+              daypart={sectionDraft.daypart}
+              weekdays={sectionDraft.weekdays}
+              onChange={(next) => setSectionDraft({ ...sectionDraft, ...next })}
+              onDone={doneWhen}
+              onCancel={cancelSection}
+            />
+          </div>
+        </section>
+      );
+    }
+
+    if (
+      editorFocus !== null &&
+      typeof editorFocus === "object" &&
+      editorFocus.kind === "step" &&
+      sectionDraft
+    ) {
+      const index = sectionDraft.steps.findIndex(
+        (_, i) => (stepLocalIds[i] ?? ensureStepLocalIds(sectionDraft.steps)[i]) === editorFocus.localId,
+      );
+      const stepIndex = index >= 0 ? index : editorFocus.index;
+      const step = sectionDraft.steps[stepIndex];
+      if (!step) {
+        return (
+          <section className="panel people-groups routines-view">
+            <p className="meta">Step unavailable.</p>
+            <button type="button" onClick={() => setEditorFocus("steps")}>
+              Back to Steps
+            </button>
+          </section>
+        );
+      }
+      return (
+          <section className="panel people-groups routines-view">
+            <div className="focused-state" aria-labelledby="routine-step-heading">
+              <BackButton label="Back to Steps" onClick={() => setEditorFocus("steps")} />
+              <FocusHeading id="routine-step-heading">Edit step</FocusHeading>
+              {error ? <p role="alert">{error}</p> : null}
+              <StepRowEditor
+                step={step}
+                canRemove={sectionDraft.steps.length > 1}
+                onChange={(nextStep) =>
+                  setSectionDraft({
+                    ...sectionDraft,
+                    steps: sectionDraft.steps.map((item, i) =>
+                      i === stepIndex ? nextStep : item,
+                    ),
+                  })
+                }
+                onRemove={() => {
+                  const nextSteps = sectionDraft.steps.filter((_, i) => i !== stepIndex);
+                  const nextIds = workingIds.filter((_, i) => i !== stepIndex);
+                  setSectionDraft({ ...sectionDraft, steps: nextSteps });
+                  setStepLocalIds(nextIds);
+                  setEditorFocus("steps");
+                }}
+                onDone={() => setEditorFocus("steps")}
+                onCancel={() => setEditorFocus("steps")}
+              />
+            </div>
+          </section>
+        );
+    }
+
+    if (editorFocus === "steps" && sectionDraft) {
+      return (
+        <section className="panel people-groups routines-view">
+          <div className="focused-state" aria-labelledby="routine-steps-heading">
+            <BackButton label={`Back to ${heading}`} onClick={cancelSection} />
+            <FocusHeading id="routine-steps-heading">Edit steps</FocusHeading>
+            {error ? <p role="alert">{error}</p> : null}
+            <StepsSectionEditor
+              steps={sectionDraft.steps}
+              stepLocalIds={workingIds}
+              onChange={(steps, localIds) => {
+                setSectionDraft({ ...sectionDraft, steps });
+                setStepLocalIds(localIds);
+              }}
+              onEditStep={(index, localId) =>
+                setEditorFocus({ kind: "step", index, localId })
+              }
+              onDone={doneSteps}
+              onCancel={cancelSection}
+            />
+          </div>
+        </section>
+      );
+    }
+
     return (
       <section className="panel people-groups routines-view">
         <div className="focused-state" aria-labelledby="routine-form-heading">
@@ -1105,7 +1400,7 @@ export function RoutinesView(props: {
           <FocusHeading id="routine-form-heading">{heading}</FocusHeading>
           <p className="meta">
             {!editing
-              ? "New routines start today when they apply. Name, who, when, and steps stay in this draft until you save."
+              ? "New routines start today when they apply. Edit one section at a time, then save."
               : view.mode === "schedule-new"
                 ? "Scheduling copies this draft into a future change. Today's plan stays as it is."
                 : view.mode === "schedule-edit"
@@ -1151,267 +1446,81 @@ export function RoutinesView(props: {
               </div>
             </div>
           ) : null}
-          <div className="form-grid">
-            <label>
-              Name
-              <input
-                value={draft.title}
-                placeholder="Routine name"
-                onChange={(event) =>
-                  setDraft((current) => ({ ...current, title: event.target.value }))
-                }
-              />
-            </label>
-            {scheduleMode ? (
-              <label>
-                Starting
-                <input
-                  id="routine-starting-date"
-                  type="date"
-                  value={draft.startingDate}
-                  min={
-                    editing && view.kind === "edit" && view.mode === "schedule-edit"
-                      ? props.today
-                      : addDays(props.today, 1)
-                  }
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      startingDate: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-            ) : null}
-            <label>
-              Daypart
-              <select
-                value={draft.daypart}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    daypart: event.target.value as Daypart,
-                  }))
-                }
-              >
-                {DAYPART_OPTIONS.map((daypart) => (
-                  <option key={daypart} value={daypart}>
-                    {DAYPART_LABELS[daypart]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <fieldset>
-              <legend>When</legend>
-              <div className="button-row">
-                <button type="button" onClick={() => setWeekdayPreset("every")}>
-                  Every day
-                </button>
-                <button type="button" onClick={() => setWeekdayPreset("weekdays")}>
-                  Weekdays
-                </button>
-                <button type="button" onClick={() => setWeekdayPreset("weekends")}>
-                  Weekends
-                </button>
-              </div>
-              <div className="weekday-row">
-                {WEEKDAYS.map((day) => (
-                  <label key={day.value}>
-                    <input
-                      type="checkbox"
-                      checked={draft.weekdays.includes(day.value)}
-                      onChange={(event) =>
-                        setDraft((current) => ({
-                          ...current,
-                          weekdays: event.target.checked
-                            ? [...current.weekdays, day.value]
-                            : current.weekdays.filter((value) => value !== day.value),
-                        }))
-                      }
-                    />
-                    {day.label}
-                  </label>
-                ))}
-              </div>
-              <p className="meta">{weekdaysLabel(draft.weekdays)}</p>
-            </fieldset>
-
-            <div className="participation-summary" aria-labelledby="who-heading">
-              <h3 id="who-heading">Who does this routine?</h3>
-              {draft.assigneeGroupIds.length === 0 && draft.assigneeMemberIds.length === 0 ? (
-                <p className="meta">Nobody selected yet.</p>
-              ) : (
-                <ul className="simple-list">
-                  {draft.assigneeGroupIds.map((groupId) => {
-                    const group = groups.find((item) => item.id === groupId);
-                    const line = groupMemberLine(group, props.memberships);
-                    return (
-                      <li key={groupId}>
-                        <strong>{group?.name ?? "Group"}</strong>
-                        <div className="meta">{line.today}</div>
-                        {line.pending ? <div className="meta">{line.pending}</div> : null}
-                      </li>
-                    );
-                  })}
-                  {draft.assigneeMemberIds.map((membershipId) => {
-                    const person = props.memberships.find((item) => item.id === membershipId);
-                    return (
-                      <li key={membershipId}>
-                        <strong>{person?.displayName ?? "Person"}</strong>
-                        <div className="meta">Direct</div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-              <button type="button" onClick={openPicker}>
-                {draft.assigneeGroupIds.length || draft.assigneeMemberIds.length
-                  ? "Edit people or groups"
-                  : "Add people or groups"}
-              </button>
-            </div>
-
-            <fieldset>
-              <legend>Steps</legend>
-              {draft.steps.map((step, index) => (
-                <div key={step.logicalItemId ?? `new-${index}`} className="step-editor">
-                  <input
-                    value={step.text}
-                    aria-label={`Step ${index + 1} text`}
-                    onChange={(event) =>
-                      setDraft((current) => ({
-                        ...current,
-                        steps: current.steps.map((item, itemIndex) =>
-                          itemIndex === index ? { ...item, text: event.target.value } : item,
-                        ),
-                      }))
-                    }
-                  />
-                  <select
-                    value={step.obligation}
-                    aria-label={`Step ${index + 1} obligation`}
-                    onChange={(event) =>
-                      setDraft((current) => ({
-                        ...current,
-                        steps: current.steps.map((item, itemIndex) =>
-                          itemIndex === index
-                            ? {
-                                ...item,
-                                obligation: event.target.value as DraftStep["obligation"],
-                              }
-                            : item,
-                        ),
-                      }))
-                    }
-                  >
-                    <option value="required">Required</option>
-                    <option value="as_needed">As needed</option>
-                    <option value="optional">Optional</option>
-                  </select>
-                  <div className="row-actions">
-                    <button
-                      type="button"
-                      className="secondary"
-                      aria-label={`Move step ${index + 1} up`}
-                      disabled={index === 0}
-                      onClick={() => moveStep(index, -1)}
-                    >
-                      Move up
-                    </button>
-                    <button
-                      type="button"
-                      className="secondary"
-                      aria-label={`Move step ${index + 1} down`}
-                      disabled={index === draft.steps.length - 1}
-                      onClick={() => moveStep(index, 1)}
-                    >
-                      Move down
-                    </button>
-                    <button
-                      type="button"
-                      className="text-button"
-                      aria-label={`Remove step ${index + 1}`}
-                      disabled={draft.steps.length <= 1}
-                      onClick={() =>
-                        setDraft((current) => ({
-                          ...current,
-                          steps: current.steps.filter((_, itemIndex) => itemIndex !== index),
-                        }))
-                      }
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              ))}
-              <button
-                type="button"
-                onClick={() =>
-                  setDraft((current) => ({
-                    ...current,
-                    steps: [...current.steps, { text: "New step", obligation: "required" }],
-                  }))
-                }
-              >
-                Add step
-              </button>
-            </fieldset>
-            <div className="button-row">
-              <button
-                type="button"
-                className="primary"
-                disabled={busy}
-                onClick={() => void (editing ? saveEdit() : saveCreate())}
-              >
-                {busy
-                  ? "Saving…"
-                  : editing
-                    ? view.mode === "schedule-new"
-                      ? "Schedule change"
-                      : "Save changes"
-                    : "Create routine"}
-              </button>
-              {editing && view.mode === "current" ? (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => {
-                    setDraft((current) => ({
-                      ...current,
-                      startingDate:
-                        current.startingDate > props.today
-                          ? current.startingDate
-                          : addDays(props.today, 1),
-                    }));
-                    setView({
-                      kind: "edit",
-                      definitionId: view.definitionId,
-                      mode: "schedule-new",
-                    });
-                  }}
-                >
-                  Schedule for later
-                </button>
-              ) : null}
+          <RoutineFocusedSummary
+            draft={working}
+            scheduleMode={scheduleMode}
+            people={props.memberships}
+            groups={groups}
+            stepLocalIds={workingIds}
+            onOpenName={() => openSection("name")}
+            onOpenWhen={() => openSection("when")}
+            onOpenWho={openPicker}
+            onOpenSteps={() => openSection("steps")}
+            startingMin={
+              editing && view.kind === "edit" && view.mode === "schedule-edit"
+                ? props.today
+                : addDays(props.today, 1)
+            }
+            onStartingDateChange={(startingDate) =>
+              setDraft((current) => ({ ...current, startingDate }))
+            }
+          />
+          <div className="button-row">
+            <button
+              type="button"
+              className="primary"
+              disabled={busy}
+              onClick={() => void (editing ? saveEdit() : saveCreate())}
+            >
+              {busy
+                ? "Saving…"
+                : editing
+                  ? view.mode === "schedule-new"
+                    ? "Schedule change"
+                    : "Save changes"
+                  : "Create routine"}
+            </button>
+            {editing && view.mode === "current" ? (
               <button
                 type="button"
                 disabled={busy}
                 onClick={() => {
-                  if (editing) {
-                    tryLeaveEditor({ kind: "detail", definitionId: view.definitionId });
-                  } else {
-                    tryLeaveEditor({ kind: "list" });
-                  }
+                  setDraft((current) => ({
+                    ...current,
+                    startingDate:
+                      current.startingDate > props.today
+                        ? current.startingDate
+                        : addDays(props.today, 1),
+                  }));
+                  setView({
+                    kind: "edit",
+                    definitionId: view.definitionId,
+                    mode: "schedule-new",
+                  });
                 }}
               >
-                Cancel
+                Schedule for later
               </button>
-            </div>
+            ) : null}
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                if (editing) {
+                  tryLeaveEditor({ kind: "detail", definitionId: view.definitionId });
+                } else {
+                  tryLeaveEditor({ kind: "list" });
+                }
+              }}
+            >
+              Cancel
+            </button>
           </div>
         </div>
       </section>
     );
   }
+
 
   if (view.kind === "detail") {
     const routine = detailRoutine;
@@ -1422,19 +1531,36 @@ export function RoutinesView(props: {
       (routine ? fallbackRevision(routine)?.title : null) ??
       "Routine";
     const inactive = routine ? isInactiveRoutine(routine) : false;
+    const visibleSteps = todayRevision
+      ? stepsExpanded || todayRevision.steps.length <= 5
+        ? todayRevision.steps
+        : todayRevision.steps.slice(0, 5)
+      : [];
 
     return (
       <section className="panel people-groups routines-view">
         <div className="focused-state routine-detail" aria-labelledby="routine-detail-heading">
           <BackButton
             label={inactive ? "Back to Ended routines" : "Back to Routines"}
-            onClick={() => setView({ kind: inactive ? "ended" : "list" })}
+            onClick={() => {
+              if (inactive) {
+                setView({ kind: "ended" });
+                // Parent Plan list URL; route sync preserves ended secondary view.
+                props.onRouteChange({ kind: "list" });
+                void loadList();
+              } else {
+                goList();
+              }
+            }}
           />
           <FocusHeading id="routine-detail-heading">{title}</FocusHeading>
-          {statusMessage ? (
-            <p className="status-notice" role="status">
-              {statusMessage}
-            </p>
+          {unavailableDetail ? (
+            <div className="status-notice" role="status">
+              <p>This routine is unavailable.</p>
+              <button type="button" className="primary" onClick={goList}>
+                Back to Routines
+              </button>
+            </div>
           ) : null}
           {error ? <p role="alert">{error}</p> : null}
           {deleteOfferEnd && routine && !inactive ? (
@@ -1449,9 +1575,10 @@ export function RoutinesView(props: {
               </button>
             </p>
           ) : null}
-          {!routine || !todayRevision ? (
+          {!unavailableDetail && (!routine || !todayRevision) ? (
             <p className="meta">Loading routine…</p>
-          ) : (
+          ) : null}
+          {!unavailableDetail && routine && todayRevision ? (
             <>
               {inactive ? (
                 <p className="meta">
@@ -1479,15 +1606,29 @@ export function RoutinesView(props: {
                   {todayRevision.upcomingResolvedMemberIds.length === 1 ? "person" : "people"} unique
                 </p>
               ) : null}
-              <h3>Steps</h3>
-              <ol className="preview-list">
-                {todayRevision.steps.map((step) => (
-                  <li key={step.id ?? step.logicalItemId}>
+              <h3>
+                Steps · {todayRevision.steps.length}
+              </h3>
+              <ol className="compact-step-list">
+                {visibleSteps.map((step, index) => (
+                  <li key={step.id ?? step.logicalItemId} className="compact-step">
+                    <span className="meta">{index + 1}.</span>
                     <strong>{step.text}</strong>
-                    <div className="meta">{obligationLabel(step.obligation)}</div>
+                    <span className="meta">{obligationLabel(step.obligation)}</span>
                   </li>
                 ))}
               </ol>
+              {todayRevision.steps.length > 5 ? (
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => setStepsExpanded((open) => !open)}
+                >
+                  {stepsExpanded
+                    ? "Show fewer steps"
+                    : `Show all ${todayRevision.steps.length} steps`}
+                </button>
+              ) : null}
               {upcoming.length > 0 ? (
                 <section
                   className="upcoming-section"
@@ -1529,18 +1670,15 @@ export function RoutinesView(props: {
                 </section>
               ) : null}
               {!inactive ? (
-                <>
-                  <div className="button-row">
-                    <button
-                      type="button"
-                      className="primary"
-                      onClick={() => openEditCurrent(routine)}
-                    >
-                      Edit routine
-                    </button>
-                    <button type="button" onClick={() => openScheduleLater(routine)}>
-                      Schedule for later
-                    </button>
+                <div className="detail-actions">
+                  <button
+                    type="button"
+                    className="primary"
+                    onClick={() => openEditCurrent(routine)}
+                  >
+                    Edit
+                  </button>
+                  <div className="more-wrap" ref={moreMenuRef}>
                     <button
                       type="button"
                       aria-haspopup="menu"
@@ -1550,41 +1688,48 @@ export function RoutinesView(props: {
                     >
                       More
                     </button>
+                    {moreOpen ? (
+                      <div
+                        id="routine-more-menu"
+                        className="more-menu-panel"
+                        role="menu"
+                        aria-label="More routine actions"
+                      >
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => openScheduleLater(routine)}
+                        >
+                          Schedule for later
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          disabled={busy}
+                          onClick={() => void confirmEnd(routine)}
+                        >
+                          End routine
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          disabled={busy}
+                          onClick={() => void confirmDelete(routine)}
+                        >
+                          Delete routine
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
-                  {moreOpen ? (
-                    <div
-                      id="routine-more-menu"
-                      className="more-menu-panel"
-                      role="menu"
-                      aria-label="More routine actions"
-                      ref={moreMenuRef}
-                    >
-                      <button
-                        type="button"
-                        role="menuitem"
-                        disabled={busy}
-                        onClick={() => void confirmEnd(routine)}
-                      >
-                        End routine
-                      </button>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        disabled={busy}
-                        onClick={() => void confirmDelete(routine)}
-                      >
-                        Delete routine
-                      </button>
-                    </div>
-                  ) : null}
-                </>
+                </div>
               ) : null}
             </>
-          )}
+          ) : null}
         </div>
       </section>
     );
   }
+
 
   if (view.kind === "ended") {
     return (

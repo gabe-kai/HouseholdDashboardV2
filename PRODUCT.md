@@ -75,6 +75,16 @@ Recorded by Architecture from the supplied Planning & Design r3 proposal as a re
 
 The full deferred inventory below remains preserved and unscheduled. Its future domains inform the shared visual/navigation foundation without becoming r3 implementation work.
 
+### P0-006 - Household experience consolidation and contextual routines
+
+Recorded by Architecture from Planning & Design's post-P0-005 proposal. This is one Product outcome delivered through bounded technical slices so each layer can be evaluated before the next depends on it.
+
+- **P0-006A — Calm Household Experience Foundation:** Make the existing application compact, automatically responsive, visually consistent, and easier to navigate. Use Today / Plan / Household; quiet healthy chrome; integrated page-header Back; transient ordinary success feedback; compact read-first routine views; summary-first routine authoring; and touch-first ordering with an accessible alternative.
+- **P0-006B — Contextual Routine Applicability:** Let routine steps apply in household contexts without cloning routines. Keep routine recurrence distinct from step applicability. Begin with a household-owned school calendar and explicit exceptions; determine School Night from calendar evidence rather than weekday assumptions. Preserve P0-005 locks and reconcile only governed unstarted occurrences.
+- **P0-006C — Household Profiles and Useful History:** Use friendly household names while retaining full names, birthdays, optional email, token-based access, and capability-based authority. Support household display order. Present History as day -> person -> summarized work with drill-down evidence, and provide a manager-only evaluation-history clear operation that preserves household configuration.
+- **Whole-outcome guardrails:** Do not add new responsibility domains, assignment engines, external calendar sync, notifications, homework, meals, multi-household behavior, or a generic rules/design platform. All saved household configuration remains server-backed; unsaved editor drafts need not synchronize across devices. Existing P0-005 routine lifecycle and trustworthy history remain protected.
+- **Product evaluation:** Judge whether the application feels like one calm household product, whether phone and desktop layouts are intentional, whether common screens are understandable without initial scrolling, and whether later product domains can inherit the same interaction language without another navigation reset.
+
 ## Inputs, outputs, and interfaces
 
 This may include a UI, API, CLI, scheduled job, report, dataset, model interaction, integration, device, or game controls.
@@ -174,6 +184,7 @@ Recorded from Product's P0-005 handoff by Architecture as a writeback of supplie
 
 Record durable learning from users, operators, stakeholders, analytics, experiments, or other representative evidence. Technical acceptance does not imply product acceptance.
 
+- P0-006A r2: after Architecture technical acceptance, the Project Lead reviewed the screenshots, tested the application, and reported satisfaction with the experience. This supplies the evaluation needed to proceed to the contextual-routine slice of the same P0-006 proposal; profiles and useful History remain the third slice.
 - P0-001 technically proved append-only routine revisions, snapshotted dated occurrences, separate assignment/execution facts, optimistic IndexedDB-backed checklist intent, fast shared invalidation/reconciliation, and household-timezone authority in the merged application.
 - In Project Lead evaluation, a long real-world Morning Routine could be created and confirmed, but the save left the evaluator without a useful next destination. Because the applicable date was not discoverable or adjustable from that flow, child execution could not be exercised immediately. The routine editor also appeared intentionally narrow, with no obvious advanced options or path to other responsibility types. P0-002 should supply a clear prospective effective date and future preview while leaving generalized scheduling and responsibility types out of scope.
 - P0-001 is technically accepted. These observations are product evidence, not proof that the experience has received final Project Lead acceptance.

@@ -133,19 +133,75 @@ export function PeopleGroupsView(props: {
   canManageStructure: boolean;
   canEnroll: boolean;
   canViewActivity: boolean;
-  /** When nested under Household, start on overview or activity. */
-  entry?: "overview" | "activity";
+  /** When nested under Household, start on overview, activity, or a detail route. */
+  entry?: "overview" | "activity" | "person" | "group";
+  personId?: string;
+  groupId?: string;
+  /** Sync addressable overview/person/group destinations with App. */
+  onNavigate?: (
+    next:
+      | { kind: "overview" }
+      | { kind: "person"; personId: string }
+      | { kind: "group"; groupId: string },
+  ) => void;
   /** Return to Household hub when leaving the top of this view. */
   onExit?: () => void;
   onPeopleChanged: () => void;
 }) {
-  const [view, setView] = useState<ViewState>(() =>
-    props.entry === "activity" ? { kind: "household-activity" } : { kind: "overview" },
-  );
+  const [view, setView] = useState<ViewState>(() => {
+    if (props.entry === "activity") return { kind: "household-activity" };
+    if (props.entry === "person" && props.personId) {
+      return { kind: "person-detail", personId: props.personId };
+    }
+    if (props.entry === "group" && props.groupId) {
+      return { kind: "group-detail", groupId: props.groupId };
+    }
+    return { kind: "overview" };
+  });
   const [groups, setGroups] = useState<GroupPublic[] | null>(null);
   const [detail, setDetail] = useState<PersonDetail | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (props.entry === "activity") {
+      setView({ kind: "household-activity" });
+      return;
+    }
+    if (props.entry === "person" && props.personId) {
+      const personId = props.personId;
+      setView((current) =>
+        current.kind === "person-detail" && current.personId === personId
+          ? current
+          : current.kind === "edit-person" && current.personId === personId
+            ? current
+            : current.kind === "access" && current.personId === personId
+              ? current
+              : { kind: "person-detail", personId },
+      );
+      return;
+    }
+    if (props.entry === "group" && props.groupId) {
+      const groupId = props.groupId;
+      setView((current) =>
+        current.kind === "group-detail" && current.groupId === groupId
+          ? current
+          : current.kind === "edit-group" && current.groupId === groupId
+            ? current
+            : { kind: "group-detail", groupId },
+      );
+      return;
+    }
+    if (props.entry === "overview" || props.entry === undefined) {
+      setView((current) =>
+        current.kind === "overview" ||
+        current.kind === "add-person" ||
+        current.kind === "create-group"
+          ? current
+          : { kind: "overview" },
+      );
+    }
+  }, [props.entry, props.personId, props.groupId]);
 
   useEffect(() => {
     void fetchGroups()
@@ -159,7 +215,7 @@ export function PeopleGroupsView(props: {
     if (!groups.some((group) => group.id === view.groupId)) {
       setMessage("That group was removed.");
       setError(null);
-      setView({ kind: "overview" });
+      goOverview();
     }
   }, [groups, view]);
 
@@ -184,11 +240,24 @@ export function PeopleGroupsView(props: {
       return;
     }
     setView({ kind: "overview" });
+    props.onNavigate?.({ kind: "overview" });
   }
 
   function clearFeedback() {
     setError(null);
     setMessage(null);
+  }
+
+  function openPerson(personId: string) {
+    clearFeedback();
+    setView({ kind: "person-detail", personId });
+    props.onNavigate?.({ kind: "person", personId });
+  }
+
+  function openGroup(groupId: string) {
+    clearFeedback();
+    setView({ kind: "group-detail", groupId });
+    props.onNavigate?.({ kind: "group", groupId });
   }
 
   const loadedGroups = groups ?? [];
@@ -209,18 +278,12 @@ export function PeopleGroupsView(props: {
           canManageStructure={props.canManageStructure}
           canViewActivity={props.canViewActivity}
           onExit={props.onExit}
-          onOpenPerson={(personId) => {
-            clearFeedback();
-            setView({ kind: "person-detail", personId });
-          }}
+          onOpenPerson={openPerson}
           onAddPerson={() => {
             clearFeedback();
             setView({ kind: "add-person" });
           }}
-          onOpenGroup={(groupId) => {
-            clearFeedback();
-            setView({ kind: "group-detail", groupId });
-          }}
+          onOpenGroup={openGroup}
           onCreateGroup={() => {
             clearFeedback();
             setView({ kind: "create-group" });
@@ -256,6 +319,7 @@ export function PeopleGroupsView(props: {
             setMessage(`${name} added.`);
             setError(null);
             setView({ kind: "person-detail", personId });
+            props.onNavigate?.({ kind: "person", personId });
             props.onPeopleChanged();
           }}
           onError={setError}
@@ -314,6 +378,7 @@ export function PeopleGroupsView(props: {
             setMessage(`Saved group ${group.name}.`);
             setError(null);
             setView({ kind: "group-detail", groupId: group.id });
+            props.onNavigate?.({ kind: "group", groupId: group.id });
             props.onPeopleChanged();
           }}
           onError={setError}

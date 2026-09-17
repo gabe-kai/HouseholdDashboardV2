@@ -179,6 +179,9 @@ export function SchoolCalendarView(props: {
   }, [dirty, props.onDirtyChange]);
 
   useEffect(() => {
+    // Dirty drafts must survive sync invalidation; keep the draft and expectedVersion
+    // so Save surfaces a conflict instead of silently adopting the remote edition.
+    if (editing && dirty) return;
     const generation = ++loadGenerationRef.current;
     setLoading(true);
     setError(null);
@@ -194,7 +197,7 @@ export function SchoolCalendarView(props: {
       .finally(() => {
         if (generation === loadGenerationRef.current) setLoading(false);
       });
-  }, [loadCalendar, props.refreshToken]);
+  }, [loadCalendar, props.refreshToken, editing, dirty]);
 
   function beginEdit() {
     if (!calendar) return;

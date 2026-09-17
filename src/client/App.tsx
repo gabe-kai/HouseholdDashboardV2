@@ -9,6 +9,7 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
+import { isLockingStepStatus } from "../domain/occurrence-lock";
 import { reconcileOccurrence, retainPendingOmittedOccurrences } from "../domain/reconcile";
 import type {
   ApplicabilityRule,
@@ -53,6 +54,7 @@ import {
   clearMembershipOutbox,
   enqueueOutbox,
   patchOutboxItem,
+  previousOccurrencesFromOutbox,
   readOutbox,
   removeOutboxItem,
   type OutboxItem,
@@ -310,19 +312,23 @@ export function App() {
     const data = await fetchToday(date);
     if (identityRef.current !== membershipId) return;
     if (generation !== refreshGenerationRef.current) return;
-    const pendingCommands = outboxRef.current
-      .filter((item) => item.state !== "rejected")
-      .map((item) => ({
-        mutationId: item.mutationId,
-        occurrenceId: item.occurrenceId,
-        stepId: item.stepId,
-        status: item.status,
-      }));
-    const priorById = new Map(
-      occurrencesRef.current.map((occurrence) => [occurrence.id, occurrence]),
-    );
+    const pendingItems = outboxRef.current.filter((item) => item.state !== "rejected");
+    const pendingCommands = pendingItems.map((item) => ({
+      mutationId: item.mutationId,
+      occurrenceId: item.occurrenceId,
+      stepId: item.stepId,
+      status: item.status,
+    }));
+    const priorById = new Map<string, OccurrenceView>();
+    for (const occurrence of previousOccurrencesFromOutbox(pendingItems)) {
+      priorById.set(occurrence.id, occurrence);
+    }
+    for (const occurrence of occurrencesRef.current) {
+      priorById.set(occurrence.id, occurrence);
+    }
+    const previous = [...priorById.values()];
     const merged = retainPendingOmittedOccurrences(
-      occurrencesRef.current,
+      previous,
       data.occurrences,
       pendingCommands,
     );
@@ -375,13 +381,17 @@ export function App() {
     if (identityRef.current !== membershipId) return;
     let items = await readOutbox(membershipId);
     if (identityRef.current !== membershipId) return;
+    outboxRef.current = items;
     setOutbox(items);
     for (const item of items) {
       if (identityRef.current !== membershipId || item.state === "rejected") continue;
       items = await patchOutboxItem(membershipId, item.mutationId, {
         state: "retrying",
       });
-      if (identityRef.current === membershipId) setOutbox(items);
+      if (identityRef.current === membershipId) {
+        outboxRef.current = items;
+        setOutbox(items);
+      }
       try {
         await setStepStatus(
           item.occurrenceId,
@@ -395,6 +405,7 @@ export function App() {
         );
         if (identityRef.current !== membershipId) return;
         items = await removeOutboxItem(membershipId, item.mutationId);
+        outboxRef.current = items;
         setOutbox(items);
       } catch (caught) {
         if (identityRef.current !== membershipId) return;
@@ -404,15 +415,18 @@ export function App() {
             state: "pending",
             errorMessage: "Sign in again to sync this change.",
           });
+          outboxRef.current = items;
           setOutbox(items);
           expireSession();
           return;
         }
-        const rejected = code === "VALIDATION" || code === "FORBIDDEN";
+        const rejected =
+          code === "VALIDATION" || code === "FORBIDDEN" || code === "NOT_FOUND";
         items = await patchOutboxItem(membershipId, item.mutationId, {
           state: rejected ? "rejected" : "pending",
           errorMessage: errorMessage(caught),
         });
+        outboxRef.current = items;
         setOutbox(items);
         break;
       }
@@ -572,6 +586,7 @@ export function App() {
   ) {
     if (!session) return;
     const membershipId = session.member.id;
+    const base = occurrencesRef.current.find((occurrence) => occurrence.id === occurrenceId);
     const item: OutboxItem = {
       mutationId: newClientId(),
       occurrenceId,
@@ -579,6 +594,10 @@ export function App() {
       status,
       performedAt: new Date().toISOString(),
       state: "pending",
+      occurrenceSnapshot:
+        base && isLockingStepStatus(status)
+          ? (JSON.parse(JSON.stringify(base)) as OccurrenceView)
+          : undefined,
     };
     setOccurrences((current) => {
       const next = current.map((occurrence) =>
@@ -591,6 +610,7 @@ export function App() {
     });
     const next = await enqueueOutbox(membershipId, item);
     if (identityRef.current !== membershipId) return;
+    outboxRef.current = next;
     setOutbox(next);
     if (online) void flushOutbox(membershipId);
   }

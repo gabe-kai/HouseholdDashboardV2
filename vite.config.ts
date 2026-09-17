@@ -27,7 +27,7 @@ export default defineConfig({
       // Match only API routes. A bare "/api" prefix also captures Vite's
       // "/api.ts" module URL and returns a blank page.
       "/api/v1": {
-        target: "http://127.0.0.1:8787",
+        target: process.env.VITE_API_PROXY_TARGET ?? "http://127.0.0.1:8787",
         changeOrigin: true,
         ws: true,
       },

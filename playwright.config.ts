@@ -30,6 +30,8 @@ function serverEnv(port: number, dbPath: string, publicOrigin: string) {
 export default defineConfig({
   testDir: "tests/e2e",
   testMatch: "**/*.spec.ts",
+  // Vite-dev deep-link smoke uses playwright.vite.config.ts (npm run test:e2e:vite).
+  testIgnore: ["**/z-p0-006a-vite-deeplink.spec.ts"],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: 0,
@@ -65,6 +67,15 @@ export default defineConfig({
     {
       name: "chromium",
       use: { ...devices["Pixel 7"], baseURL: chromiumURL },
+    },
+    {
+      name: "chromium-desktop",
+      testMatch: ["**/z-p0-006a-calm-experience.spec.ts", "**/z-p0-006a-geometry.spec.ts"],
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1280, height: 800 },
+        baseURL: chromiumURL,
+      },
     },
     {
       name: "webkit",

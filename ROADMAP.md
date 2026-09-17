@@ -38,20 +38,29 @@ Goal: prove that a real recurring household routine can be used quickly by six d
   - **Brief:** `P0-004B r1 - Group-backed Morning Routine` (`briefs/p0-004b-group-backed-morning-routine.md`).
   - **Result:** Technically accepted through correction `ac41538`; merged to `main` at `93ef494` through PR #9. Product evaluation remains separate.
 
+- [x] **P0-005 — Cohesive Routine Management:** A parent can edit current unstarted work, manage intentional upcoming changes, remove mistakes, and end used routines while started work and history remain trustworthy.
+  - **Brief:** `P0-005 r3 - Cohesive Routine Management` (`briefs/p0-005-multiple-household-routines.md`).
+  - **Result:** Technically accepted and merged to `main` at `31aad37` through PR #11 after AT6 and long-lived-database upcoming-delete corrections. Product evaluation produced the P0-006 experience-consolidation direction.
+
+- [x] **P0-006A - Calm Household Experience Foundation:** Compact responsive shell, focused routine editing, quiet feedback, saved destinations, and accessible touch ordering.
+  - **Brief:** `P0-006A r2` (`briefs/p0-006a-calm-household-experience-foundation.md`).
+  - **Result:** Technically accepted; Project Lead reviewed screenshots, tested, and accepted the experience. Local accepted tip is `183bc41`; integration into `main` is not verified.
+
 ### CURRENT
 
-- [ ] **Outcome: Cohesive Routine Management.** A parent understands and edits current routines, manages intentional upcoming changes, removes mistakes, and ends used routines within one coherent phone experience; started work and history remain trustworthy.
-  - **Brief:** `P0-005 r3 - Cohesive Routine Management` (`briefs/p0-005-multiple-household-routines.md`).
-  - **Status:** TECHNICALLY ACCEPTED; r1/r2 are the implemented foundation (r2 committed at `297b2fd` and technically accepted), and r3 now has complete local AT6/delete evidence. Product evaluation remains.
-  - **Evidence target:** Local browser lifecycle proves current-plan reconciliation through the next scheduled boundary, upcoming create/edit/move/delete, safe Delete/End, locks/recovery/history, and consistent navigation/presentation across existing screens. Product then evaluates the connected experience. Keep P0-005 CURRENT until that evaluation.
+- [ ] **Outcome: Let one routine adapt to school days and breaks.** Steps use simple applicability choices and a household school calendar, including School nights. Parents change calendar exceptions without cloning routines or changing a person's work already begun.
+  - **Brief:** `P0-006B r1 - Contextual Routine Applicability` (`briefs/p0-006b-contextual-routine-applicability.md`).
+  - **Status:** IN REVIEW; Engineering readiness is next. Use the accepted A foundation; Project Lead integrates and prepares the brief branch.
+  - **Evidence target:** Local calendar/step/preview journey, current/future unstarted reconciliation across plan boundaries, preserved locks/history, personal/proposal composition, migration/replay, and live context changes. Product evaluates usefulness after technical acceptance.
 
 ### LIKELY NEXT
 
-- [ ] **Outcome: Multi-Responsibility Today.** After cohesive P0-005 evaluation, build on several routines to distinguish completed, next/current, later, and anytime work. Reuse the shared shell and visual vocabulary. Ordinary responsibilities such as Kitchen, Cats, and Bathroom may enter here; exact scope and assignment behavior follow concrete household evidence.
+- [ ] **P0-006C - Household Profiles and Useful History.** Deliver the third slice of the existing P0-006 proposal: friendly/full names, birthday, optional email with token access preserved, family display order, day/person history summaries with evidence drill-down, and manager-authorized evaluation-history clearing while preserving configuration. Architecture will define the clearing/reference contract from the then-current repository. No replacement Product proposal is needed unless new evidence changes the intended outcome.
 
 ### LATER
 
-- Richer scheduling, assignment, shared execution, and personal work, driven by household evidence and using the common application design; no additional feature destinations are prebuilt in r3.
+- **Multi-Responsibility Today:** completed/current/later/anytime hierarchy and ordinary household responsibilities such as Kitchen, Cats, and Bathroom after the P0-006 foundation is stable.
+- Richer scheduling, assignment, shared execution, and personal work, driven by household evidence and using the common application design; no empty future destinations are prebuilt in P0-006A.
 - Broader-release privacy, recovery, offline behavior, and operational confidence.
 - Detailed unscheduled product memory: [`PRODUCT.md` — Deferred / Preserved Product Directions](PRODUCT.md#deferred--preserved-product-directions). This inventory is not a sequence of implementation commitments.
 

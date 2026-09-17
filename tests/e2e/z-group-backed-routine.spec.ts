@@ -1,4 +1,5 @@
 import { test, expect, type Page, type APIRequestContext } from "@playwright/test";
+import { expectSignedInAs } from "../helpers/e2e-shell";
 
 const PASSPHRASE = "unique-passphrase-ok!";
 const MANAGER_LOGIN = "e2e.manager";
@@ -75,7 +76,7 @@ async function openAsManager(page: Page) {
   await ensureManagerSession(page.request);
   await ensureSharedRoutine(page.request);
   await page.goto("/");
-  await expect(page.locator(".topbar")).toContainText("Morgan Reed", { timeout: 20_000 });
+  await expectSignedInAs(page, "Morgan Reed");
 }
 
 async function openPeopleGroups(page: Page) {
@@ -145,7 +146,7 @@ test.describe("P0-004B group-backed Morning Routine", () => {
 
     await openPeopleGroups(pageA);
     await pageA.getByRole("button", { name: "Add person" }).click();
-    await pageA.getByLabel("Name").fill(childName);
+    await pageA.getByRole("textbox", { name: "Name" }).fill(childName);
     await pageA.getByRole("radio", { name: "Child" }).check();
     await pageA.getByRole("button", { name: "Add person" }).click();
     await expect(pageA.getByRole("heading", { name: childName })).toBeVisible();
@@ -153,12 +154,12 @@ test.describe("P0-004B group-backed Morning Routine", () => {
 
     await pageA.getByRole("button", { name: "Create group" }).click();
     await pageA.getByLabel("Group name").fill(groupName);
-    await pageA.getByRole("checkbox", { name: childName }).check();
+    await pageA.getByRole("checkbox", { name: childName }).first().check();
     await pageA.getByRole("button", { name: "Save group" }).click();
     await expect(pageA.getByRole("heading", { name: groupName })).toBeVisible();
     await expect(pageA.getByText("Used by Morning Routine")).toHaveCount(0);
 
-    await pageB.getByRole("button", { name: "Routines", exact: true }).click();
+    await pageB.getByRole("button", { name: "Plan", exact: true }).click();
     await expect(pageB.getByRole("heading", { name: "Routines" })).toBeVisible();
     await pageB.getByRole("button", { name: /Morning Routine/ }).first().click();
     await expect(pageB.getByRole("heading", { name: "Morning Routine" })).toBeVisible();
@@ -226,7 +227,7 @@ test.describe("P0-004B group-backed Morning Routine", () => {
 
     for (const name of ["Daniel Boyd", "Eli Boyd"]) {
       await page.getByRole("button", { name: "Add person" }).click();
-      await page.getByLabel("Name").fill(name);
+      await page.getByRole("textbox", { name: "Name" }).fill(name);
       await page.getByRole("radio", { name: "Child" }).check();
       await page.getByRole("button", { name: "Add person" }).click();
       await expect(page.getByRole("heading", { name })).toBeVisible();
@@ -235,25 +236,25 @@ test.describe("P0-004B group-backed Morning Routine", () => {
 
     await page.getByRole("button", { name: "Create group" }).click();
     await page.getByLabel("Group name").fill("The Boys");
-    await page.getByRole("checkbox", { name: "Daniel Boyd" }).check();
-    await page.getByRole("checkbox", { name: "Eli Boyd" }).check();
+    await page.getByRole("checkbox", { name: "Daniel Boyd" }).first().check();
+    await page.getByRole("checkbox", { name: "Eli Boyd" }).first().check();
     await page.getByRole("button", { name: "Save group" }).click();
     await expect(page.getByRole("heading", { name: "The Boys" })).toBeVisible();
     await page.getByRole("button", { name: "Back to People & Groups" }).click();
 
-    await page.getByRole("button", { name: "Routines" }).click();
+    await page.getByRole("button", { name: "Plan" }).click();
     await expect(page.getByRole("heading", { name: "Routines" })).toBeVisible();
     await page.getByRole("button", { name: /Morning Routine/ }).click();
     await expect(page.getByRole("heading", { name: "Morning Routine" })).toBeVisible();
-    await page.getByRole("button", { name: "Edit routine", exact: true }).click();
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Edit routine" })).toBeVisible();
 
-    await page.getByRole("button", { name: /Add people or groups|Edit people or groups/ }).click();
+    await page.getByRole("button", { name: /^Who/ }).click();
     await expect(page.getByRole("heading", { name: "Who does this routine?" })).toBeVisible();
 
     // Clear prior direct assignees from earlier e2e suites, then select only The Boys.
-    const peopleBox = page.locator("fieldset").filter({ hasText: "People" });
-    const groupsBox = page.locator("fieldset").filter({ hasText: "Groups" });
+    const peopleBox = page.getByRole("group", { name: "People" });
+    const groupsBox = page.getByRole("group", { name: "Groups" });
     for (const checkbox of await groupsBox.getByRole("checkbox").all()) {
       if (await checkbox.isChecked()) await checkbox.uncheck();
     }

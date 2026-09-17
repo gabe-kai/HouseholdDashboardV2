@@ -19,7 +19,7 @@
 
 ## Current focus
 
-**P0-006B r1 - Contextual Routine Applicability** is IN REVIEW for Engineering readiness. P0-006A r2 is technically accepted, committed locally through `183bc41`, and accepted by the Project Lead after screenshot review and testing. Inspected checkout remains the A branch; local `main` is `31aad37`. Integration is not yet verified. B and the later C continue the original approved P0-006 proposal.
+**P0-006B r1 - Contextual Routine Applicability** is READY; Architecture accepted Engineering readiness and authorized local implementation. P0-006A r2 and B planning are integrated at `main` @ `7cba3a6` via PR #12. The existing B branch contains readiness commit `25c3c48`; implementation has not started. B and the later C continue the original approved P0-006 proposal.
 
 ## Internal work status
 
@@ -31,8 +31,8 @@
 | P0-004A - People & Groups UX Completion | r3 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #8 | Product phone evaluation |
 | P0-004B - Group-backed Morning Routine | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #9 | Product evaluation |
 | P0-005 - Cohesive Routine Management | r3 | ACCEPTED | Completed | Merged to `main` via PR #11 | P0-006 follow-up carries Product evaluation findings |
-| P0-006A - Calm Household Experience Foundation | r2 | ACCEPTED | Project Lead integration | `brief/p0-006a-calm-household-experience-foundation` at `183bc41` | Integration into main; Product evaluation accepted |
-| P0-006B - Contextual Routine Applicability | r1 | IN REVIEW | Engineering readiness | Planned `brief/p0-006b-contextual-routine-applicability` | Consolidated readiness review; accepted A/planning baseline integrated before implementation |
+| P0-006A - Calm Household Experience Foundation | r2 | ACCEPTED | Completed | Merged to `main` at `7cba3a6` via PR #12 | None; Project Lead evaluation accepted |
+| P0-006B - Contextual Routine Applicability | r1 | READY | Engineering | `brief/p0-006b-contextual-routine-applicability` | Local implementation and r1 Build Report |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -48,7 +48,7 @@ This table is the short repository-side coordination index. An external project 
 - P0-004B r1 added dated group-backed Morning Routine participation and was technically accepted after correction `ac41538`, then merged through PR #9.
 - P0-005 r1/r2 established multiple routines and first-action locks; r2 implementation is `297b2fd`, merged to `main` at `5376b51`, and technically accepted. Product evaluation prompted r3's full routine lifecycle, current-plan ranges, and shared visual/navigation foundation.
 - P0-005 r3 completed the routine lifecycle and Calm Household shell, was technically accepted after AT6 and long-lived-database receipt corrections, and merged through PR #11 at `31aad37`.
-- P0-006A r2 completed the responsive Plan shell, focused editors, saved navigation, quiet feedback, and step ordering; required local evidence was closed and Architecture accepted it. The Project Lead then reviewed screenshots, tested, and reported satisfaction. Acceptance is committed at local `183bc41`.
+- P0-006A r2 completed the responsive Plan shell, focused editors, saved navigation, quiet feedback, and step ordering; required local evidence was closed and Architecture accepted it. The Project Lead then reviewed screenshots, tested, and reported satisfaction. A and B planning are integrated at `7cba3a6` via PR #12, including the A toast/CI correction.
 
 ## Known blockers
 
@@ -56,11 +56,11 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next Project Lead decision
 
-- Integrate accepted A and the B planning baseline under the normal Git workflow, then prepare `brief/p0-006b-contextual-routine-applicability`. Engineering can review the accepted A checkout now and records the actual integrated base before implementation. No new Product proposal or deployment is required.
+- Engineering may implement P0-006B r1 on the existing brief branch. The integration/readiness prerequisites are satisfied. Project Lead manages Git; no new Product proposal or deployment is required.
 
 ## Next likely handoff
 
-Engineering reviews `briefs/p0-006b-contextual-routine-applicability.md` **P0-006B revision 1**, returns `reports/P0-006B-r1-engineering-readiness.md`, and waits for Architecture's disposition before implementation. P0-006C remains LIKELY NEXT from the same Product proposal.
+Architecture ACCEPT / PROCEED for **P0-006B revision 1** after Engineering's READY review committed at `25c3c48`. Engineering implements locally and returns `reports/P0-006B-r1-build-report.md` with AT1-14 evidence for technical acceptance. P0-006C remains LIKELY NEXT from the same Product proposal.
 
 ## Notes for all teams
 

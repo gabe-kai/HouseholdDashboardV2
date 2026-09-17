@@ -19,7 +19,7 @@
 
 ## Current focus
 
-**P0-006B r1 - Contextual Routine Applicability** is READY; Architecture accepted Engineering readiness and authorized local implementation. P0-006A r2 and B planning are integrated at `main` @ `7cba3a6` via PR #12. The existing B branch contains readiness commit `25c3c48`; implementation has not started. B and the later C continue the original approved P0-006 proposal.
+**P0-006B r1 - Contextual Routine Applicability** is FIX REQUIRED. The main implementation is aligned, but Architecture requires AT9 injected rollback evidence and browser multi-context evidence for AT10/AT11. P0-006A r2 and B planning are integrated at `main` @ `7cba3a6` via PR #12. B implementation is on the existing branch; no deployment is required. B and the later C continue the original approved P0-006 proposal.
 
 ## Internal work status
 
@@ -32,7 +32,7 @@
 | P0-004B - Group-backed Morning Routine | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #9 | Product evaluation |
 | P0-005 - Cohesive Routine Management | r3 | ACCEPTED | Completed | Merged to `main` via PR #11 | P0-006 follow-up carries Product evaluation findings |
 | P0-006A - Calm Household Experience Foundation | r2 | ACCEPTED | Completed | Merged to `main` at `7cba3a6` via PR #12 | None; Project Lead evaluation accepted |
-| P0-006B - Contextual Routine Applicability | r1 | READY | Engineering | `brief/p0-006b-contextual-routine-applicability` | Local implementation and r1 Build Report |
+| P0-006B - Contextual Routine Applicability | r1 | FIX REQUIRED | Engineering | `brief/p0-006b-contextual-routine-applicability` | Close AT9 rollback and AT10/AT11 browser evidence gaps |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -60,7 +60,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Architecture ACCEPT / PROCEED for **P0-006B revision 1** after Engineering's READY review committed at `25c3c48`. Engineering implements locally and returns `reports/P0-006B-r1-build-report.md` with AT1-14 evidence for technical acceptance. P0-006C remains LIKELY NEXT from the same Product proposal.
+Architecture returned **FIX REQUIRED** for **P0-006B revision 1** after reviewing the Build Report. Engineering should close AT9's injected rollback evidence and AT10/AT11's browser multi-context evidence, then update the same report for reassessment. P0-006C remains LIKELY NEXT from the same Product proposal.
 
 ## Notes for all teams
 

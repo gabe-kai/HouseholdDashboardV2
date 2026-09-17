@@ -1,7 +1,7 @@
 # BRIEF P0-006B - Contextual Routine Applicability
 
 **Revision:** 1
-**Status:** READY
+**Status:** FIX REQUIRED
 
 One authoritative contract for this ID. Material changes increment the revision and require Engineering readiness for that revision. Architecture technical acceptance and Project Lead/Product acceptance remain separate.
 
@@ -185,9 +185,9 @@ Browser evidence supplements pure-domain and transactional tests; do not substit
 
 **Report:** `reports/P0-006B-r1-engineering-readiness.md` (committed in `25c3c48`).
 
-**Architecture disposition:** ACCEPT / PROCEED. Engineering's interpretation matches revision 1 and D-029-D-031; no contract change or additional readiness review is required. Implement r1 locally on the existing `brief/p0-006b-contextual-routine-applicability` branch from the integrated `7cba3a6` foundation. Storage, route, module, sync-resource, preview-presentation, and test-organization choices remain Engineering discretion within the brief. History/materialization isolation, filtered-empty behavior, cross-routine calendar reconciliation, replay, and pending-first-action recovery remain required acceptance evidence, not new pre-implementation gates. Return `reports/P0-006B-r1-build-report.md` covering AT1-14. Technical and Project Lead/Product acceptance remain pending; suggest commit messages but do not commit or deploy.
+**Architecture disposition:** FIX REQUIRED against revision 1. The implementation direction, main workflow, and automated gates are aligned, but two required evidence areas remain incomplete: AT9's injected mid-transaction rollback proof, and browser-level multi-context evidence for AT10 pending first-action retention plus AT11 live calendar invalidation/recovery. Unit and client wiring coverage is useful supporting evidence but does not replace the brief's required connected-browser evidence. Correct the same r1 on the existing branch; no contract change or new readiness review is required. Keep prior screenshot directories clean and update the Build Report. No deployment is required.
 
 ## Revision history
 
 - **r1:** Second slice of the approved P0-006 proposal: step applicability including School nights, household school calendar, dated previews, context reconciliation, protected execution/history, and local evidence. Includes personal/proposal rule propagation under existing authority; leaves profile/history redesign and clearing to C.
-- **r1 readiness:** READY against integrated `main` @ `7cba3a6`; Architecture ACCEPT / PROCEED after committed review `25c3c48`. Baseline/status writeback only; behavioral contract and acceptance tests unchanged.
+- **r1 readiness:** READY against integrated `main` @ `7cba3a6`; Architecture returned FIX REQUIRED after Build Report review. Contract and acceptance tests are unchanged; the same revision remains in the fix loop.

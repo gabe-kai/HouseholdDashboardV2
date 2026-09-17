@@ -50,7 +50,7 @@ Goal: prove that a real recurring household routine can be used quickly by six d
 
 - [ ] **Outcome: Let one routine adapt to school days and breaks.** Steps use simple applicability choices and a household school calendar, including School nights. Parents change calendar exceptions without cloning routines or changing a person's work already begun.
   - **Brief:** `P0-006B r1 - Contextual Routine Applicability` (`briefs/p0-006b-contextual-routine-applicability.md`).
-  - **Status:** READY; Architecture ACCEPT / PROCEED after Engineering's consolidated review against integrated `main` @ `7cba3a6`. Local implementation and r1 Build Report are next on the existing B branch. Move the card to In Progress when implementation starts.
+  - **Status:** FIX REQUIRED; implementation is broadly aligned, but AT9 rollback injection and AT10/AT11 browser multi-context evidence remain required on the existing branch.
   - **Evidence target:** Local calendar/step/preview journey, current/future unstarted reconciliation across plan boundaries, preserved locks/history, personal/proposal composition, migration/replay, and live context changes. Product evaluates usefulness after technical acceptance.
 
 ### LIKELY NEXT

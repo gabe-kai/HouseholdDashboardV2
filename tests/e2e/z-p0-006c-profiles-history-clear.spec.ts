@@ -2,6 +2,7 @@ import { test, expect, type Page, type APIRequestContext } from "@playwright/tes
 import path from "node:path";
 import { durableScreenshot } from "../helpers/durable-screenshot";
 import { expectSignedInAs } from "../helpers/e2e-shell";
+import { touchDragByCdp } from "../helpers/touch-drag";
 
 const PASSPHRASE = "unique-passphrase-ok!";
 const MANAGER_LOGIN = "e2e.manager";
@@ -177,6 +178,24 @@ async function peopleDirectoryNames(page: Page): Promise<string[]> {
   return rows.allTextContents();
 }
 
+async function centerOf(locator: ReturnType<Page["locator"]>) {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error("Missing bounding box for touch target");
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+}
+
+async function openReorder(page: Page) {
+  await page.getByRole("button", { name: "Reorder people" }).click();
+  await expect(page.getByRole("heading", { name: "Reorder people" })).toBeVisible();
+  await expect(page.locator("[data-ordered-row]").first()).toBeVisible();
+}
+
+async function expectDirectoryOrder(page: Page, expected: string[]) {
+  await expect
+    .poll(async () => peopleDirectoryNames(page), { timeout: 15_000 })
+    .toEqual(expected);
+}
+
 test.describe("P0-006C profiles, history, and clear", () => {
   test("phone journey: profiles, reorder, history, clear activity", async ({ page, browser }, testInfo) => {
     test.skip(
@@ -232,44 +251,75 @@ test.describe("P0-006C profiles, history, and clear", () => {
     await expectSignedInAs(page, "Morgan Reed");
     await openPeopleGroups(page);
 
-    const beforeOrder = await peopleDirectoryNames(page);
-    expect(beforeOrder.length).toBeGreaterThanOrEqual(2);
+    const baselineOrder = await peopleDirectoryNames(page);
+    expect(baselineOrder.length).toBeGreaterThanOrEqual(2);
+    const firstLabel = baselineOrder[0]!;
+    const secondLabel = baselineOrder[1]!;
 
-    await page.getByRole("button", { name: "Reorder people" }).click();
-    await expect(page.getByRole("heading", { name: "Reorder people" })).toBeVisible();
-    const firstLabel = beforeOrder[0]!;
+    // AT4 Cancel: Move-menu draft discarded; saved order unchanged through reload.
+    await openReorder(page);
     await page.getByRole("button", { name: `More actions for ${firstLabel}` }).click();
     await page.getByRole("menuitem", { name: "Move down" }).click();
+    await expect(page.locator("[data-ordered-row]").first()).toContainText(secondLabel);
     await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
-    page.once("dialog", (dialog) => dialog.accept());
+    page.once("dialog", (dialog) => {
+      expect(dialog.message()).toMatch(/unsaved changes/i);
+      void dialog.accept();
+    });
     await page.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect(page.getByRole("heading", { name: "People & Groups" })).toBeVisible({
       timeout: 15_000,
     });
-
-    const peoplePayload = (await (
-      await page.request.get("/api/v1/people")
-    ).json()) as {
-      people: Array<{ id: string; displayName: string }>;
-      familyOrderVersion: number;
-    };
-    const ids = peoplePayload.people.map((person) => person.id);
-    const swapped = [ids[1]!, ids[0]!, ...ids.slice(2)];
-    const orderSave = await page.request.put("/api/v1/people/order", {
-      headers: await mutatingHeaders(page.request),
-      data: {
-        mutationId: crypto.randomUUID(),
-        expectedVersion: peoplePayload.familyOrderVersion,
-        membershipIds: swapped,
-      },
-    });
-    expect(orderSave.ok(), await orderSave.text()).toBeTruthy();
+    await expectDirectoryOrder(page, baselineOrder);
     await page.reload();
     await expectSignedInAs(page, "Morgan Reed");
     await openPeopleGroups(page);
-    const afterReloadOrder = await peopleDirectoryNames(page);
-    expect(afterReloadOrder[0]).toBe(beforeOrder[1]);
-    expect(afterReloadOrder[1]).toBe(beforeOrder[0]);
+    await expectDirectoryOrder(page, baselineOrder);
+
+    // AT4 keyboard Move-menu → Save → reload persistence.
+    await openReorder(page);
+    await page.getByRole("button", { name: `More actions for ${firstLabel}` }).click();
+    await page.getByRole("menuitem", { name: "Move down" }).click();
+    await expect(page.locator("[data-ordered-row]").first()).toContainText(secondLabel);
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.getByRole("status").filter({ hasText: /People order saved/i })).toBeVisible({
+      timeout: 15_000,
+    });
+    const afterMoveSave = [secondLabel, firstLabel, ...baselineOrder.slice(2)];
+    await expectDirectoryOrder(page, afterMoveSave);
+    await page.reload();
+    await expectSignedInAs(page, "Morgan Reed");
+    await openPeopleGroups(page);
+    await expectDirectoryOrder(page, afterMoveSave);
+
+    // AT4 pointer/touch reorder → Save → reload (CDP touch, distinct from mouse).
+    expect(testInfo.project.use.hasTouch, "Requires touch-capable Chromium phone project").toBeTruthy();
+    const touchBaseline = await peopleDirectoryNames(page);
+    const touchFirst = touchBaseline[0]!;
+    const touchSecond = touchBaseline[1]!;
+    await openReorder(page);
+    const startHandle = page.locator("[data-ordered-row]").first().locator(".drag-handle");
+    const secondRow = page.locator("[data-ordered-row]").nth(1);
+    await touchDragByCdp(page, await centerOf(startHandle), await centerOf(secondRow), {
+      steps: 20,
+      pauseMs: 20,
+    });
+    await expect
+      .poll(async () => {
+        const text = await page.locator("[data-ordered-row]").first().innerText();
+        return text.includes(touchSecond);
+      })
+      .toBeTruthy();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.getByRole("status").filter({ hasText: /People order saved/i })).toBeVisible({
+      timeout: 15_000,
+    });
+    const afterTouchSave = [touchSecond, touchFirst, ...touchBaseline.slice(2)];
+    await expectDirectoryOrder(page, afterTouchSave);
+    await page.reload();
+    await expectSignedInAs(page, "Morgan Reed");
+    await openPeopleGroups(page);
+    await expectDirectoryOrder(page, afterTouchSave);
 
     const today = await householdToday(page.request);
     await setupSchoolOnlyRoutine(page.request, today, routineTitle);

@@ -107,9 +107,9 @@ Authoritative contract: `briefs/p0-006b-contextual-routine-applicability.md` **r
 - **History isolation:** Past `historyForDate` is snapshot-only; calendar edits do not rewrite prior-date rows. Unstarted Today/future reconcile on calendar save (including school-night predecessors).
 - **UI:** Household → School calendar (`/household/school-calendar`); focused step Applicability; Plan dated preview with reasons.
 
-### P0-006C profiles and useful History (planned; not implemented)
+### P0-006C profiles and useful History (ready; not implemented)
 
-Authoritative contract: `briefs/p0-006c-household-profiles-useful-history.md` **revision 1**, with D-032-D-034. Baseline is integrated `main` at `de552ab`. Engineering readiness is pending.
+Authoritative contract: `briefs/p0-006c-household-profiles-useful-history.md` **revision 1**, with D-032-D-034. Baseline is integrated `main` at `de552ab`. Engineering returned READY with no blockers or material questions; Architecture authorized implementation. No C production code is present yet.
 
 - **Profile boundary:** Extend household membership with optional full name, birthday, and contact email; retain `display_name` as friendly name. Unknown facts stay unset on migration. Existing structure/access capabilities remain separate; no email authentication or age-derived authority. Read full profile facts in focused detail, not bulk lists/events.
 - **Family order:** One versioned, server-backed order of all directory memberships. Preserve the prior alphabetical order initially, append new people, and do not reorder on rename/claim. Reuse focused draft drag/Move controls; save atomically with expected order version and replay receipt. Apply to peer person lists without replacing daypart/queue/checklist order.

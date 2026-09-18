@@ -19,7 +19,7 @@
 
 ## Current focus
 
-**P0-006C r1 - Household Profiles and Useful History** is IN REVIEW, ready for Engineering's consolidated readiness pass. It is the third slice of the original approved P0-006 proposal, based on technically accepted P0-006B merged to `main` at `de552ab` via PR #13. The Project Lead exercised B calendar setup and authorized continuation; exhaustive Product acceptance is not inferred. No C implementation or hosted deployment has begun.
+**P0-006C r1 - Household Profiles and Useful History** is READY for implementation after Engineering returned READY with no blockers or material questions. It is the third slice of the original approved P0-006 proposal, based on technically accepted P0-006B merged to `main` at `de552ab` via PR #13. The Project Lead exercised B calendar setup and authorized continuation; exhaustive Product acceptance is not inferred. No C implementation or hosted deployment has begun.
 
 ## Internal work status
 
@@ -33,7 +33,7 @@
 | P0-005 - Cohesive Routine Management | r3 | ACCEPTED | Completed | Merged to `main` via PR #11 | P0-006 follow-up carries Product evaluation findings |
 | P0-006A - Calm Household Experience Foundation | r2 | ACCEPTED | Completed | Merged to `main` at `7cba3a6` via PR #12 | None; Project Lead evaluation accepted |
 | P0-006B - Contextual Routine Applicability | r1 | ACCEPTED | Project Lead/Product | Merged to `main` at `de552ab` | Evaluate the contextual routine experience |
-| P0-006C - Household Profiles and Useful History | r1 | IN REVIEW | Engineering readiness | Planned `brief/p0-006c-household-profiles-useful-history` | Commit planning baseline, then consolidated r1 readiness; Architecture disposition before implementation |
+| P0-006C - Household Profiles and Useful History | r1 | READY | Engineering | Planned `brief/p0-006c-household-profiles-useful-history` | Implement r1; Build Report and Architecture technical acceptance follow |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -58,11 +58,11 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next Project Lead decision
 
-- Commit the P0-006C planning files and hand **P0-006C r1** to Engineering for readiness review. Project Lead manages branch/commit/integration; agents suggest commit messages but do not commit. No new Product proposal or deployment is needed.
+- Engineering may implement **P0-006C r1** on `brief/p0-006c-household-profiles-useful-history`. Project Lead manages branch/commit/integration; agents suggest commit messages but do not commit. No new Product proposal or deployment is needed.
 
 ## Next likely handoff
 
-Engineering reviews `briefs/p0-006c-household-profiles-useful-history.md` **revision 1** against the actual repository and returns `reports/P0-006C-r1-engineering-readiness.md`. Architecture responds before implementation. The planned project card is **Recognize the family and understand its day** -> Up Next; no external board is configured.
+Architecture accepted Engineering's **READY** review for `briefs/p0-006c-household-profiles-useful-history.md` **revision 1**. The project card **Recognize the family and understand its day** moves to **In Progress** when Engineering starts implementation; no external board is configured.
 
 ## Notes for all teams
 

@@ -48,6 +48,7 @@ export type SessionInfo = {
   csrfToken: string;
   householdTimezone: string;
   householdDate: string;
+  activityGeneration: number;
 };
 
 export type RoutineStep = {
@@ -328,9 +329,12 @@ function retainSessionToken(session: SessionInfo): SessionInfo {
 }
 
 export async function fetchMeta() {
-  return request<{ evaluationMode: boolean; banner: string; profile: string }>(
-    "/api/v1/meta",
-  );
+  return request<{
+    evaluationMode: boolean;
+    banner: string;
+    profile: string;
+    allowEvaluationHistoryClear: boolean;
+  }>("/api/v1/meta");
 }
 
 export async function login(loginName: string, passphrase: string) {
@@ -406,7 +410,9 @@ export async function fetchMemberships() {
 }
 
 export async function fetchPeople() {
-  return request<{ people: MemberPublic[] }>("/api/v1/people");
+  return request<{ people: MemberPublic[]; familyOrderVersion: number }>(
+    "/api/v1/people",
+  );
 }
 
 export async function createPerson(body: {
@@ -425,11 +431,28 @@ export async function updatePerson(
   body: {
     displayName: string;
     classification: "adult" | "child" | null;
+    fullName?: string | null;
+    birthday?: string | null;
+    email?: string | null;
     expectedVersion: number;
   },
 ) {
   return request<{ person: MemberPublic }>(`/api/v1/people/${membershipId}`, {
     method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function saveFamilyOrder(body: {
+  mutationId: string;
+  expectedVersion: number;
+  membershipIds: string[];
+}) {
+  return request<{
+    version: number;
+    people: MemberPublic[];
+  }>("/api/v1/people/order", {
+    method: "PUT",
     body: JSON.stringify(body),
   });
 }
@@ -571,20 +594,71 @@ export async function fetchToday(date?: string) {
   return request<{
     householdDate: string;
     householdTimezone: string;
+    activityGeneration: number;
     occurrences: OccurrenceView[];
   }>(`/api/v1/today${query}`);
 }
 
-export async function fetchHistory(date: string) {
-  return request<{ householdDate: string; occurrences: OccurrenceView[] }>(
-    `/api/v1/history?date=${encodeURIComponent(date)}`,
+export async function fetchHistory(
+  dateOrParams:
+    | string
+    | {
+        date?: string;
+        from?: string;
+        to?: string;
+        personId?: string;
+        routineId?: string;
+        status?: "complete" | "incomplete";
+      } = {},
+) {
+  const params =
+    typeof dateOrParams === "string" ? { date: dateOrParams } : dateOrParams;
+  const query = new URLSearchParams();
+  if (params.date) query.set("date", params.date);
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  if (params.personId) query.set("personId", params.personId);
+  if (params.routineId) query.set("routineId", params.routineId);
+  if (params.status) query.set("status", params.status);
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return request<{
+    householdDate?: string;
+    from?: string;
+    to?: string;
+    activityGeneration: number;
+    occurrences: import("../shared/schemas").HistoryOccurrenceSummary[];
+  }>(`/api/v1/history${suffix}`);
+}
+
+export async function fetchHistoryOccurrence(occurrenceId: string) {
+  return request<{
+    occurrence: import("../shared/schemas").HistoryOccurrenceDetail;
+    activityGeneration: number;
+  }>(`/api/v1/history/occurrences/${encodeURIComponent(occurrenceId)}`);
+}
+
+export async function clearRoutineActivity(body: {
+  mutationId: string;
+  expectedGeneration: number;
+}) {
+  return request<import("../shared/schemas").ActivityClearResult>(
+    "/api/v1/household/activity/clear",
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
   );
 }
 
 export async function setStepStatus(
   occurrenceId: string,
   stepId: string,
-  body: { mutationId: string; status: StepStatus; performedAt: string },
+  body: {
+    mutationId: string;
+    status: StepStatus;
+    performedAt: string;
+    activityGeneration?: number;
+  },
   options?: { delayMs?: number },
 ) {
   return request<{ occurrence: OccurrenceView; report: unknown }>(

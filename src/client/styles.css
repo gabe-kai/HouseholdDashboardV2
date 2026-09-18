@@ -861,6 +861,86 @@ textarea {
   margin-top: var(--space-4);
 }
 
+.history-date-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.history-date-field {
+  margin-bottom: 0;
+  flex: 1 1 10rem;
+}
+
+.history-summary-list {
+  list-style: none;
+  margin: 0 0 var(--space-4);
+  padding: 0;
+}
+
+.history-summary-row {
+  width: 100%;
+  display: grid;
+  gap: 0.2rem;
+  text-align: left;
+}
+
+.history-summary-title {
+  font-weight: 650;
+}
+
+.history-day-heading {
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: var(--font-size-lg);
+}
+
+.history-person-heading {
+  margin: var(--space-3) 0 var(--space-2);
+  font-size: 1rem;
+}
+
+.history-evidence-list {
+  list-style: none;
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.activity-reset-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-3);
+}
+
+.settings-action {
+  margin-top: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.danger {
+  min-height: var(--touch);
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--error);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--error) 12%, var(--surface));
+  color: var(--error);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.danger:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .static-header {
   cursor: default;
 }

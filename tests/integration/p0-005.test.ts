@@ -78,7 +78,7 @@ describe("P0-005 multiple household routines", () => {
     const migrations = (
       db.prepare("SELECT COUNT(*) AS c FROM schema_migrations").get() as { c: number }
     ).c;
-    expect(migrations).toBe(9);
+    expect(migrations).toBe(10);
   });
 
   it("retains P0-001 upgrade coverage through migration 005", () => {

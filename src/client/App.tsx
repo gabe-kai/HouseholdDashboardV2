@@ -25,8 +25,7 @@ import {
   createPersonalTask,
   createProposal,
   decideProposal,
-  fetchHistory,
-  fetchMemberships,
+  fetchPeople,
   fetchMeta,
   fetchPersonalTasks,
   fetchPreview,
@@ -47,6 +46,8 @@ import {
   type RoutinePreview,
   type SessionInfo,
 } from "./api";
+import { HistoryView } from "./History";
+import { HouseholdSettingsView } from "./HouseholdSettings";
 import { PeopleGroupsView } from "./PeopleGroups";
 import { DAYPART_LABELS, RoutinesView } from "./Routines";
 import { SchoolCalendarView } from "./SchoolCalendar";
@@ -57,13 +58,16 @@ import {
   previousOccurrencesFromOutbox,
   readOutbox,
   removeOutboxItem,
+  writeOutbox,
   type OutboxItem,
 } from "./outbox";
 import { newClientId } from "./id";
 import {
   type AppLocation,
+  type HistoryFilters,
   consumeIntendedPath,
   locationsEqual,
+  parseHref,
   parsePath,
   pathFor,
   pushHistory,
@@ -75,11 +79,13 @@ import { ToastHost, useToast } from "./Toast";
 
 type PrimaryTab = "today" | "plan" | "household";
 
-/** Local Household leaves that stay under /household (not URL-addressable in P0-006A). */
-type HouseholdLeaf = "approvals" | "history" | "activity" | null;
+/** Local Household leaves that stay under /household (not URL-addressable). */
+type HouseholdLeaf = "approvals" | "activity" | null;
 
 /** Secondary destinations reached from Today (not primary nav). */
 type TodaySecondary = "personalize" | "preview" | null;
+
+const ACTIVITY_CLEARED_HINT = /routine history was cleared/i;
 
 function primaryTabFor(location: AppLocation): PrimaryTab {
   if (location.name === "plan" || location.name === "plan-routine") return "plan";
@@ -88,7 +94,10 @@ function primaryTabFor(location: AppLocation): PrimaryTab {
     location.name === "household-people" ||
     location.name === "household-person" ||
     location.name === "household-group" ||
-    location.name === "household-school-calendar"
+    location.name === "household-school-calendar" ||
+    location.name === "household-history" ||
+    location.name === "household-history-occurrence" ||
+    location.name === "household-settings"
   ) {
     return "household";
   }
@@ -97,10 +106,21 @@ function primaryTabFor(location: AppLocation): PrimaryTab {
 
 function gateLocation(location: AppLocation, session: SessionInfo): AppLocation {
   const canManageShared = session.grants.includes("routine.shared.manage");
+  const canClearActivity = session.grants.includes("household.activity.clear");
   if (
     (location.name === "plan" || location.name === "plan-routine") &&
     !canManageShared
   ) {
+    return { name: "unavailable", attemptedPath: pathFor(location) };
+  }
+  if (
+    (location.name === "household-history" ||
+      location.name === "household-history-occurrence") &&
+    !canManageShared
+  ) {
+    return { name: "unavailable", attemptedPath: pathFor(location) };
+  }
+  if (location.name === "household-settings" && !canClearActivity) {
     return { name: "unavailable", attemptedPath: pathFor(location) };
   }
   return location;
@@ -113,13 +133,20 @@ function confirmDiscardDirty(): boolean {
 }
 
 const HOUSEHOLD_MENU_ITEMS: Array<{
-  id: "people-groups" | "school-calendar" | "approvals" | "history" | "activity";
+  id:
+    | "people-groups"
+    | "school-calendar"
+    | "approvals"
+    | "history"
+    | "activity"
+    | "settings";
   label: string;
   description: string;
   visible: (caps: {
     canDecide: boolean;
     canManageShared: boolean;
     canViewActivity: boolean;
+    canClearActivity: boolean;
   }) => boolean;
 }> = [
   {
@@ -143,7 +170,7 @@ const HOUSEHOLD_MENU_ITEMS: Array<{
   {
     id: "history",
     label: "History",
-    description: "Past occurrence checklists",
+    description: "Recorded routine work by day",
     visible: (caps) => caps.canManageShared,
   },
   {
@@ -151,6 +178,12 @@ const HOUSEHOLD_MENU_ITEMS: Array<{
     label: "Household activity",
     description: "Shared progress and visible tasks",
     visible: (caps) => caps.canViewActivity,
+  },
+  {
+    id: "settings",
+    label: "Settings",
+    description: "Data & testing",
+    visible: (caps) => caps.canClearActivity,
   },
 ];
 
@@ -184,11 +217,12 @@ export function App() {
   const [meta, setMeta] = useState<{
     evaluationMode: boolean;
     banner: string;
+    allowEvaluationHistoryClear: boolean;
   } | null>(null);
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [restoring, setRestoring] = useState(true);
   const [location, setLocation] = useState<AppLocation>(() =>
-    parsePath(window.location.pathname),
+    parsePath(window.location.pathname, window.location.search),
   );
   const [householdLeaf, setHouseholdLeaf] = useState<HouseholdLeaf>(null);
   const [todaySecondary, setTodaySecondary] = useState<TodaySecondary>(null);
@@ -196,11 +230,15 @@ export function App() {
   const [editorDirty, setEditorDirty] = useState(false);
   const [occurrences, setOccurrences] = useState<OccurrenceView[]>([]);
   const [memberships, setMemberships] = useState<MemberPublic[]>([]);
+  const [familyOrderVersion, setFamilyOrderVersion] = useState(0);
   const [tasks, setTasks] = useState<PersonalTask[]>([]);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [outbox, setOutbox] = useState<OutboxItem[]>([]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [householdDate, setHouseholdDate] = useState("");
+  const [knownActivityGeneration, setKnownActivityGeneration] = useState(0);
+  const [activityResetBanner, setActivityResetBanner] = useState(false);
+  const [historyRefreshToken, setHistoryRefreshToken] = useState(0);
   const [online, setOnline] = useState(navigator.onLine);
   const [connection, setConnection] = useState<"connected" | "reconnecting" | "offline">(
     navigator.onLine ? "connected" : "offline",
@@ -214,6 +252,7 @@ export function App() {
   const identityRef = useRef<string | null>(null);
   const occurrencesRef = useRef<OccurrenceView[]>([]);
   const outboxRef = useRef<OutboxItem[]>([]);
+  const activityGenerationRef = useRef(0);
   const refreshGenerationRef = useRef(0);
   const supportingGenerationRef = useRef(0);
   const locationRef = useRef(location);
@@ -224,6 +263,10 @@ export function App() {
   useEffect(() => {
     outboxRef.current = outbox;
   }, [outbox]);
+
+  useEffect(() => {
+    activityGenerationRef.current = knownActivityGeneration;
+  }, [knownActivityGeneration]);
 
   useEffect(() => {
     locationRef.current = location;
@@ -237,12 +280,16 @@ export function App() {
     setOccurrences([]);
     occurrencesRef.current = [];
     setMemberships([]);
+    setFamilyOrderVersion(0);
     setTasks([]);
     setProposals([]);
     setOutbox([]);
     outboxRef.current = [];
     setExpanded({});
     setHouseholdDate("");
+    setKnownActivityGeneration(0);
+    activityGenerationRef.current = 0;
+    setActivityResetBanner(false);
     setPreview(null);
     setPreviewReturn(null);
     setError(null);
@@ -288,13 +335,15 @@ export function App() {
     rememberCsrfToken(next.csrfToken);
     setSession(next);
     setHouseholdDate(next.householdDate);
+    activityGenerationRef.current = next.activityGeneration;
+    setKnownActivityGeneration(next.activityGeneration);
     resetLocalOverlays();
     clearToast();
 
     const intended = consumeIntendedPath();
     const raw = intended
-      ? parsePath(intended)
-      : parsePath(window.location.pathname);
+      ? parseHref(intended)
+      : parsePath(window.location.pathname, window.location.search);
     const gated = gateLocation(raw, next);
     applyLocation(gated, "replace");
   }
@@ -304,14 +353,59 @@ export function App() {
     setSession(null);
     clearUiCaches();
     resetLocalOverlays();
-    rememberIntendedPath(window.location.pathname);
+    rememberIntendedPath(window.location.pathname, window.location.search);
   }
+
+  const retireStaleOutboxForGeneration = useEffectEvent(
+    async (membershipId: string, serverGeneration: number): Promise<boolean> => {
+      if (identityRef.current !== membershipId) return false;
+      const known = activityGenerationRef.current;
+      if (serverGeneration <= known) return false;
+      const items = await readOutbox(membershipId);
+      if (identityRef.current !== membershipId) return false;
+      const kept = items.filter(
+        (item) => (item.activityGeneration ?? 0) >= serverGeneration,
+      );
+      await writeOutbox(membershipId, kept);
+      if (identityRef.current !== membershipId) return false;
+      outboxRef.current = kept;
+      setOutbox(kept);
+      activityGenerationRef.current = serverGeneration;
+      setKnownActivityGeneration(serverGeneration);
+      setActivityResetBanner(true);
+      setHistoryRefreshToken((n) => n + 1);
+      return true;
+    },
+  );
+
+  const noteActivityGeneration = useEffectEvent(
+    async (membershipId: string, serverGeneration: number) => {
+      if (identityRef.current !== membershipId) return;
+      const retired = await retireStaleOutboxForGeneration(membershipId, serverGeneration);
+      if (retired) {
+        await refreshToday(membershipId).catch(() => undefined);
+        return;
+      }
+      if (serverGeneration > activityGenerationRef.current) {
+        activityGenerationRef.current = serverGeneration;
+        setKnownActivityGeneration(serverGeneration);
+      }
+    },
+  );
 
   const refreshToday = useEffectEvent(async (membershipId: string, date?: string) => {
     const generation = ++refreshGenerationRef.current;
     const data = await fetchToday(date);
     if (identityRef.current !== membershipId) return;
     if (generation !== refreshGenerationRef.current) return;
+
+    const retired = await retireStaleOutboxForGeneration(
+      membershipId,
+      data.activityGeneration,
+    );
+    if (identityRef.current !== membershipId) return;
+    if (generation !== refreshGenerationRef.current) return;
+
     const pendingItems = outboxRef.current.filter((item) => item.state !== "rejected");
     const pendingCommands = pendingItems.map((item) => ({
       mutationId: item.mutationId,
@@ -327,14 +421,17 @@ export function App() {
       priorById.set(occurrence.id, occurrence);
     }
     const previous = [...priorById.values()];
-    const merged = retainPendingOmittedOccurrences(
-      previous,
-      data.occurrences,
-      pendingCommands,
-    );
+    // After a generation bump, do not retain omitted cards from retired intent.
+    const merged = retired
+      ? data.occurrences
+      : retainPendingOmittedOccurrences(previous, data.occurrences, pendingCommands);
     occurrencesRef.current = merged;
     setHouseholdDate(data.householdDate);
     setOccurrences(merged);
+    if (!retired && data.activityGeneration > activityGenerationRef.current) {
+      activityGenerationRef.current = data.activityGeneration;
+      setKnownActivityGeneration(data.activityGeneration);
+    }
     setExpanded((current) => {
       const next = { ...current };
       for (const occurrence of merged) {
@@ -363,7 +460,7 @@ export function App() {
         hasGrant(activeSession, "routine.personalize.propose") ||
         hasGrant(activeSession, "routine.proposal.decide");
       const [memberResult, taskResult, proposalResult] = await Promise.allSettled([
-        fetchMemberships(),
+        fetchPeople(),
         fetchPersonalTasks(),
         shouldLoadProposals
           ? fetchProposals()
@@ -371,7 +468,21 @@ export function App() {
       ]);
       if (identityRef.current !== membershipId) return;
       if (generation !== supportingGenerationRef.current) return;
-      if (memberResult.status === "fulfilled") setMemberships(memberResult.value.memberships);
+      if (memberResult.status === "fulfilled") {
+        setMemberships(memberResult.value.people);
+        setFamilyOrderVersion(memberResult.value.familyOrderVersion);
+        const self = memberResult.value.people.find((person) => person.id === membershipId);
+        if (self) {
+          setSession((current) =>
+            current && current.member.displayName !== self.displayName
+              ? {
+                  ...current,
+                  member: { ...current.member, displayName: self.displayName },
+                }
+              : current,
+          );
+        }
+      }
       if (taskResult.status === "fulfilled") setTasks(taskResult.value.tasks);
       if (proposalResult.status === "fulfilled") setProposals(proposalResult.value.proposals);
     },
@@ -400,6 +511,7 @@ export function App() {
             mutationId: item.mutationId,
             status: item.status,
             performedAt: item.performedAt,
+            activityGeneration: item.activityGeneration ?? activityGenerationRef.current,
           },
           mutationDelayMs ? { delayMs: mutationDelayMs } : undefined,
         );
@@ -410,6 +522,7 @@ export function App() {
       } catch (caught) {
         if (identityRef.current !== membershipId) return;
         const code = (caught as { code?: string }).code;
+        const message = errorMessage(caught);
         if (code === "UNAUTHORIZED") {
           items = await patchOutboxItem(membershipId, item.mutationId, {
             state: "pending",
@@ -420,11 +533,35 @@ export function App() {
           expireSession();
           return;
         }
+        if (
+          (code === "CONFLICT" || code === "FORBIDDEN") &&
+          ACTIVITY_CLEARED_HINT.test(message)
+        ) {
+          try {
+            const latest = await fetchSession();
+            if (latest && identityRef.current === membershipId) {
+              await noteActivityGeneration(membershipId, latest.activityGeneration);
+            } else {
+              await retireStaleOutboxForGeneration(
+                membershipId,
+                (item.activityGeneration ?? 0) + 1,
+              );
+              await refreshToday(membershipId).catch(() => undefined);
+            }
+          } catch {
+            await retireStaleOutboxForGeneration(
+              membershipId,
+              activityGenerationRef.current + 1,
+            );
+            await refreshToday(membershipId).catch(() => undefined);
+          }
+          return;
+        }
         const rejected =
           code === "VALIDATION" || code === "FORBIDDEN" || code === "NOT_FOUND";
         items = await patchOutboxItem(membershipId, item.mutationId, {
           state: rejected ? "rejected" : "pending",
-          errorMessage: errorMessage(caught),
+          errorMessage: message,
         });
         outboxRef.current = items;
         setOutbox(items);
@@ -514,12 +651,32 @@ export function App() {
         if (notification.resource === "school_calendar") {
           setSchoolCalendarRefreshToken((n) => n + 1);
         }
+        if (
+          notification.resource === "family_order" ||
+          notification.resource === "membership"
+        ) {
+          void refreshSupportingData(session);
+        }
+        if (notification.resource === "activity_reset") {
+          const version = notification.version;
+          if (typeof version === "number") {
+            void noteActivityGeneration(membershipId, version);
+          } else {
+            void refreshToday(membershipId).catch((caught) => setError(errorMessage(caught)));
+          }
+          setHistoryRefreshToken((n) => n + 1);
+        }
+        if (notification.resource === "occurrence") {
+          setHistoryRefreshToken((n) => n + 1);
+        }
         const urgent =
           notification.resource === "proposal" ||
           notification.resource === "routine" ||
           notification.resource === "membership" ||
           notification.resource === "group" ||
-          notification.resource === "school_calendar";
+          notification.resource === "school_calendar" ||
+          notification.resource === "family_order" ||
+          notification.resource === "activity_reset";
         refreshAuthoritative({ urgentSupporting: urgent });
       },
       (status) => {
@@ -574,7 +731,7 @@ export function App() {
       setSession(null);
       clearUiCaches();
       resetLocalOverlays();
-      rememberIntendedPath(window.location.pathname);
+      rememberIntendedPath(window.location.pathname, window.location.search);
       applyLocation({ name: "today" }, "replace");
     }
   }
@@ -594,6 +751,7 @@ export function App() {
       status,
       performedAt: new Date().toISOString(),
       state: "pending",
+      activityGeneration: activityGenerationRef.current,
       occurrenceSnapshot:
         base && isLockingStepStatus(status)
           ? (JSON.parse(JSON.stringify(base)) as OccurrenceView)
@@ -637,7 +795,7 @@ export function App() {
 
   useEffect(() => {
     function onPopState() {
-      const next = parsePath(window.location.pathname);
+      const next = parsePath(window.location.pathname, window.location.search);
       if (editorDirtyRef.current) {
         if (!confirmDiscardDirty()) {
           // Keep editing: restore previous URL without discarding draft.
@@ -671,7 +829,7 @@ export function App() {
 
   useEffect(() => {
     if (restoring || session) return;
-    rememberIntendedPath(window.location.pathname);
+    rememberIntendedPath(window.location.pathname, window.location.search);
   }, [restoring, session]);
 
   if (restoring) {
@@ -697,6 +855,9 @@ export function App() {
   const canManageStructure = hasGrant(activeSession, "household.structure.manage");
   const canManageSchedule = hasGrant(activeSession, "household.schedule.manage");
   const canDecide = hasGrant(activeSession, "routine.proposal.decide");
+  const canClearActivity =
+    Boolean(meta?.allowEvaluationHistoryClear) &&
+    hasGrant(activeSession, "household.activity.clear");
   const manager = canManageShared || canEnroll || canDecide || canManageStructure;
   const canDirect = hasGrant(activeSession, "routine.personalize.direct");
   const canPropose = hasGrant(activeSession, "routine.personalize.propose");
@@ -748,6 +909,7 @@ export function App() {
     canDecide,
     canManageShared,
     canViewActivity: manager,
+    canClearActivity,
   };
   const visibleHouseholdItems = HOUSEHOLD_MENU_ITEMS.filter((item) =>
     item.visible(householdCaps),
@@ -774,12 +936,18 @@ export function App() {
   const showingApprovals =
     gatedLocation.name === "household" && householdLeaf === "approvals" && canDecide;
   const showingHistory =
-    gatedLocation.name === "household" &&
-    householdLeaf === "history" &&
+    (gatedLocation.name === "household-history" ||
+      gatedLocation.name === "household-history-occurrence") &&
     canManageShared;
+  const showingSettings =
+    gatedLocation.name === "household-settings" && canClearActivity;
   const showingUnavailable =
     gatedLocation.name === "unavailable" ||
-    ((location.name === "plan" || location.name === "plan-routine") && !canManageShared);
+    ((location.name === "plan" || location.name === "plan-routine") && !canManageShared) ||
+    (gatedLocation.name === "household-settings" && !canClearActivity) ||
+    ((gatedLocation.name === "household-history" ||
+      gatedLocation.name === "household-history-occurrence") &&
+      !canManageShared);
 
   const viewTitle = showingPersonalize
     ? "Personalize"
@@ -789,19 +957,21 @@ export function App() {
         ? "Approvals"
         : showingHistory
           ? "History"
-          : showingActivity
-            ? "Activity"
-            : showingPeople
-              ? "People & Groups"
-              : showingSchoolCalendar
-                ? "School calendar"
-                : showingUnavailable
-                ? "Unavailable"
-                : primaryTab === "plan"
-                  ? "Plan"
-                  : primaryTab === "household"
-                    ? "Household"
-                    : "Today";
+          : showingSettings
+            ? "Settings"
+            : showingActivity
+              ? "Activity"
+              : showingPeople
+                ? "People & Groups"
+                : showingSchoolCalendar
+                  ? "School calendar"
+                  : showingUnavailable
+                    ? "Unavailable"
+                    : primaryTab === "plan"
+                      ? "Plan"
+                      : primaryTab === "household"
+                        ? "Household"
+                        : "Today";
 
   const statusPills: ReactNode[] = [];
   if (connection === "offline") {
@@ -886,6 +1056,21 @@ export function App() {
           </div>
         </div>
       </header>
+
+      {activityResetBanner ? (
+        <div className="status-notice activity-reset-banner" role="status">
+          <p>
+            Routine history was cleared. Older unsynced checklist changes were not applied.
+          </p>
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => setActivityResetBanner(false)}
+          >
+            Dismiss
+          </button>
+        </div>
+      ) : null}
 
       {statusPills.length > 0 ? (
         <div className="status-line" aria-live="polite">
@@ -1013,7 +1198,22 @@ export function App() {
                     requestNavigate({ name: "household-school-calendar" });
                     return;
                   }
-                  openHouseholdLeaf(item.id);
+                  if (item.id === "history") {
+                    requestNavigate({
+                      name: "household-history",
+                      filters: {
+                        date: householdDate || activeSession.householdDate,
+                      },
+                    });
+                    return;
+                  }
+                  if (item.id === "settings") {
+                    requestNavigate({ name: "household-settings" });
+                    return;
+                  }
+                  if (item.id === "approvals" || item.id === "activity") {
+                    openHouseholdLeaf(item.id);
+                  }
                 }}
               >
                 <span>{item.label}</span>
@@ -1044,6 +1244,7 @@ export function App() {
           memberships={memberships}
           tasks={tasks.filter((task) => task.visibility === "household")}
           occurrences={projectedOccurrences}
+          familyOrderVersion={familyOrderVersion}
           canManageStructure={canManageStructure}
           canEnroll={canEnroll}
           canViewActivity={false}
@@ -1078,6 +1279,10 @@ export function App() {
           onPeopleChanged={() => {
             if (activeSession) void refreshSupportingData(activeSession);
           }}
+          onDirtyChange={(dirty) => {
+            editorDirtyRef.current = dirty;
+            setEditorDirty(dirty);
+          }}
         />
       ) : null}
       {!showingUnavailable && showingActivity ? (
@@ -1085,6 +1290,7 @@ export function App() {
           memberships={memberships}
           tasks={tasks.filter((task) => task.visibility === "household")}
           occurrences={projectedOccurrences}
+          familyOrderVersion={familyOrderVersion}
           canManageStructure={canManageStructure}
           canEnroll={canEnroll}
           canViewActivity={false}
@@ -1119,8 +1325,52 @@ export function App() {
       ) : null}
       {!showingUnavailable && showingHistory ? (
         <HistoryView
-          initialDate={householdDate}
-          onBack={() => setHouseholdLeaf(null)}
+          householdDate={householdDate || session.householdDate}
+          memberships={memberships}
+          filters={
+            gatedLocation.name === "household-history" ||
+            gatedLocation.name === "household-history-occurrence"
+              ? gatedLocation.filters
+              : undefined
+          }
+          occurrenceId={
+            gatedLocation.name === "household-history-occurrence"
+              ? gatedLocation.occurrenceId
+              : undefined
+          }
+          refreshToken={historyRefreshToken}
+          onFiltersChange={(filters: HistoryFilters) => {
+            requestNavigate({ name: "household-history", filters }, "replace");
+          }}
+          onOpenOccurrence={(occurrenceId, filters) => {
+            requestNavigate({
+              name: "household-history-occurrence",
+              occurrenceId,
+              filters,
+            });
+          }}
+          onBack={() => requestNavigate({ name: "household" })}
+          onBackToSummary={(filters) => {
+            requestNavigate({ name: "household-history", filters });
+          }}
+          onActivityGeneration={(generation) => {
+            void noteActivityGeneration(session.member.id, generation);
+          }}
+          onOpenPreview={() => {
+            requestNavigate({ name: "today" });
+          }}
+        />
+      ) : null}
+      {!showingUnavailable && showingSettings ? (
+        <HouseholdSettingsView
+          expectedGeneration={knownActivityGeneration}
+          canClearActivity={canClearActivity}
+          onBack={() => requestNavigate({ name: "household" })}
+          onCleared={(generation) => {
+            void noteActivityGeneration(session.member.id, generation);
+            setHistoryRefreshToken((n) => n + 1);
+          }}
+          onSuccessToast={(message) => showToast(message)}
         />
       ) : null}
       {!showingUnavailable && showingPersonalize && canDirect ? (
@@ -2153,72 +2403,6 @@ function PreviewView(props: { preview: RoutinePreview; onBack: () => void }) {
       <button type="button" className="secondary" onClick={props.onBack}>
         Close preview
       </button>
-    </section>
-  );
-}
-
-function HistoryView(props: { initialDate: string; onBack: () => void }) {
-  const [date, setDate] = useState(props.initialDate);
-  const [occurrences, setOccurrences] = useState<OccurrenceView[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (date) void load(date);
-  }, []);
-
-  async function load(nextDate: string) {
-    setError(null);
-    try {
-      const result = await fetchHistory(nextDate);
-      setOccurrences(result.occurrences);
-    } catch (caught) {
-      setError(errorMessage(caught));
-    }
-  }
-
-  return (
-    <section className="panel">
-      <button type="button" className="back-link" onClick={props.onBack}>
-        Back to Household
-      </button>
-      <h1 className="page-heading">Occurrence history</h1>
-      <label className="field-label">
-        Household date
-        <input
-          type="date"
-          value={date}
-          onChange={(event) => {
-            setDate(event.target.value);
-            void load(event.target.value);
-          }}
-        />
-      </label>
-      {occurrences.map((occurrence) => (
-        <article key={occurrence.id} className="occurrence history-occurrence">
-          <div className="occurrence-header static-header">
-            <div>
-              <h2>{occurrence.title}</h2>
-              <div className="meta">
-                {occurrence.accountableMemberName} ·{" "}
-                {DAYPART_LABELS[occurrence.daypart] ?? occurrence.daypart} ·{" "}
-                {occurrence.completed ? "Complete" : "Incomplete"}
-              </div>
-            </div>
-          </div>
-          <ul className="checklist">
-            {occurrence.steps.map((step) => (
-              <li key={step.id} className="step">
-                <div className="step-title">
-                  <strong>{step.text}</strong>
-                  <span className="obligation">{obligationLabel(step.obligation)}</span>
-                </div>
-                <div className="meta">{statusLabel(step.status)}</div>
-              </li>
-            ))}
-          </ul>
-        </article>
-      ))}
-      {error ? <p role="alert">{error}</p> : null}
     </section>
   );
 }

@@ -24,6 +24,8 @@ export type AppConfig = {
   sessionIdleDays: number;
   sessionAbsoluteDays: number;
   autoSeed: boolean;
+  /** Evaluation-only clear of routine activity history. Default on in development/test; off in hosted unless ALLOW_EVALUATION_HISTORY_CLEAR=1. */
+  allowEvaluationHistoryClear: boolean;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -53,6 +55,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const port = Number(env.PORT ?? 8787);
   const isProduction = env.NODE_ENV === "production" || profile === "hosted";
   const hosted = profile === "hosted";
+  const allowEvaluationHistoryClear = hosted
+    ? env.ALLOW_EVALUATION_HISTORY_CLEAR === "1" ||
+      env.ALLOW_EVALUATION_HISTORY_CLEAR === "true"
+    : env.ALLOW_EVALUATION_HISTORY_CLEAR !== "0" &&
+      env.ALLOW_EVALUATION_HISTORY_CLEAR !== "false";
 
   return {
     profile,
@@ -75,5 +82,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     sessionIdleDays: 7,
     sessionAbsoluteDays: 30,
     autoSeed: profile !== "hosted" && (env.AUTO_SEED === "1" || env.AUTO_SEED === "true"),
+    allowEvaluationHistoryClear,
   };
 }

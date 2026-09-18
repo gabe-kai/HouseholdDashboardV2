@@ -5,6 +5,7 @@ export const GRANT_PRESETS: Record<GrantPreset, Grant[]> = {
     "household.member.enroll",
     "household.structure.manage",
     "household.schedule.manage",
+    "household.activity.clear",
     "routine.shared.manage",
     "routine.proposal.decide",
     "routine.execute.own",

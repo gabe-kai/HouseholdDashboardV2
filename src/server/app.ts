@@ -13,6 +13,7 @@ import { nowUtcIso } from "../domain/time.js";
 import {
   ArchiveRoutineSchema,
   ClaimSchema,
+  ClearRoutineActivitySchema,
   CreateGroupSchema,
   CreatePersonSchema,
   CreatePersonalTaskSchema,
@@ -27,6 +28,7 @@ import {
   IssueEnrollmentSchema,
   LoginSchema,
   MoveScheduleEntrySchema,
+  SaveFamilyOrderSchema,
   SavePersonalLayerSchema,
   SaveSchoolCalendarSchema,
   SetPersonalTaskStatusSchema,
@@ -190,6 +192,7 @@ export async function buildApp(
       csrfToken,
       householdTimezone: session.timezone,
       householdDate: store.householdDateNow(session),
+      activityGeneration: store.getActivityGeneration(session.householdId),
     };
   }
 
@@ -202,7 +205,9 @@ export async function buildApp(
       | "personal_task"
       | "membership"
       | "group"
-      | "school_calendar",
+      | "school_calendar"
+      | "family_order"
+      | "activity_reset",
     resourceId: string,
     version?: number,
   ): void {
@@ -273,6 +278,7 @@ export async function buildApp(
         ? "Authentication is required. Use your household account to continue."
         : "LOCAL DEVELOPMENT — authentication is enabled; seeded accounts must still be claimed.",
     profile: config.profile,
+    allowEvaluationHistoryClear: config.allowEvaluationHistoryClear,
   }));
 
   const authRateLimit =
@@ -366,7 +372,10 @@ export async function buildApp(
   app.get("/api/v1/people", async (request, reply) => {
     const session = requireSession(request, reply);
     if (!session) return;
-    return { people: store.listMemberships(session.householdId) };
+    return {
+      people: store.listMemberships(session.householdId),
+      familyOrderVersion: store.getFamilyOrderVersion(session.householdId),
+    };
   });
 
   app.post("/api/v1/people", async (request, reply) => {
@@ -409,6 +418,20 @@ export async function buildApp(
     const person = store.updatePerson(session, membershipId, parsed.data);
     broadcast(session, "membership", person.id, person.version);
     return { person };
+  });
+
+  app.put("/api/v1/people/order", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const parsed = SaveFamilyOrderSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid family order", request.id));
+    }
+    const result = store.saveFamilyOrder(session, parsed.data);
+    broadcast(session, "family_order", session.householdId, result.version);
+    return result;
   });
 
   app.delete("/api/v1/people/:membershipId/setup", async (request, reply) => {
@@ -687,6 +710,7 @@ export async function buildApp(
     return {
       householdDate: date,
       householdTimezone: session.timezone,
+      activityGeneration: store.getActivityGeneration(session.householdId),
       occurrences: store.materializeForDate(session, date),
     };
   });
@@ -694,21 +718,86 @@ export async function buildApp(
   app.get("/api/v1/history", async (request, reply) => {
     const session = requireSession(request, reply);
     if (!session) return;
-    const query = request.query as { date?: string };
-    let date = store.householdDateNow(session);
-    if (query.date) {
-      const parsed = HouseholdDateSchema.safeParse(query.date);
-      if (!parsed.success) {
-        return reply
-          .code(400)
-          .send(errorBody("VALIDATION", "Invalid date", request.id));
-      }
-      date = parsed.data;
+    const query = request.query as {
+      date?: string;
+      from?: string;
+      to?: string;
+      personId?: string;
+      routineId?: string;
+      status?: string;
+    };
+    if (query.personId && !UuidSchema.safeParse(query.personId).success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid person filter", request.id));
+    }
+    if (query.routineId && !UuidSchema.safeParse(query.routineId).success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid routine filter", request.id));
+    }
+    if (
+      query.status !== undefined &&
+      query.status !== "complete" &&
+      query.status !== "incomplete"
+    ) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid status filter", request.id));
+    }
+    return store.historySummaries(session, {
+      date: query.date,
+      from: query.from,
+      to: query.to,
+      personId: query.personId,
+      routineId: query.routineId,
+      status: query.status as "complete" | "incomplete" | undefined,
+    });
+  });
+
+  app.get("/api/v1/history/occurrences/:occurrenceId", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const occurrenceId = (request.params as { occurrenceId: string }).occurrenceId;
+    if (!UuidSchema.safeParse(occurrenceId).success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid occurrence id", request.id));
     }
     return {
-      householdDate: date,
-      occurrences: store.historyForDate(session, date),
+      occurrence: store.getHistoryOccurrenceDetail(session, occurrenceId),
+      activityGeneration: store.getActivityGeneration(session.householdId),
     };
+  });
+
+  app.post("/api/v1/household/activity/clear", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    if (!config.allowEvaluationHistoryClear) {
+      return reply
+        .code(403)
+        .send(
+          errorBody(
+            "FORBIDDEN",
+            "Evaluation history clear is disabled",
+            request.id,
+          ),
+        );
+    }
+    const parsed = ClearRoutineActivitySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid activity clear request", request.id));
+    }
+    const result = store.clearRoutineActivity(session, parsed.data);
+    broadcast(
+      session,
+      "activity_reset",
+      session.householdId,
+      result.activityGeneration,
+    );
+    return result;
   });
 
   app.get("/api/v1/school-calendar", async (request, reply) => {

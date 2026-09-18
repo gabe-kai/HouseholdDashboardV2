@@ -3,6 +3,10 @@ import type Database from "better-sqlite3";
 import { isOccurrenceComplete, assertStatusAllowed } from "../domain/completion.js";
 import { composeMorningRoutine } from "../domain/compose.js";
 import {
+  normalizeOptionalText,
+  validateProfileFields,
+} from "../domain/profile.js";
+import {
   DEFAULT_APPLICABILITY,
   evaluateApplicability,
   isSchoolDayForDate,
@@ -48,10 +52,15 @@ import {
 import { GRANT_PRESETS } from "../shared/grants.js";
 import type {
   AccessState,
+  ActivityClearResult,
+  ClearRoutineActivityInput,
+  FamilyOrderSaveResult,
   Grant,
   GrantPreset,
   GroupPublic,
   GroupRoutineReference,
+  HistoryOccurrenceDetail,
+  HistoryOccurrenceSummary,
   MemberPublic,
   ObligationMeaning,
   OccurrenceView,
@@ -62,8 +71,10 @@ import type {
   RoutineMutationResult,
   RoutineRevisionPublic,
   ScheduleEntryPublic,
+  SaveFamilyOrderInput,
   SaveSchoolCalendarInput,
   SchoolCalendarPublic,
+  StepReportPublic,
   StepStatus,
 } from "../shared/schemas.js";
 import {
@@ -240,6 +251,30 @@ function calendarPayloadDigest(input: SaveSchoolCalendarInput): string {
     .digest("hex");
 }
 
+function familyOrderPayloadDigest(input: SaveFamilyOrderInput): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        expectedVersion: input.expectedVersion,
+        membershipIds: input.membershipIds,
+      }),
+      "utf8",
+    )
+    .digest("hex");
+}
+
+function activityClearPayloadDigest(input: ClearRoutineActivityInput): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({ expectedGeneration: input.expectedGeneration }),
+      "utf8",
+    )
+    .digest("hex");
+}
+
+const ACTIVITY_CLEARED_MESSAGE =
+  "Routine history was cleared; refresh and try again";
+
 const LOGIN_RE = /^[a-z0-9][a-z0-9._-]{2,63}$/;
 const IDLE_MS = 7 * 24 * 60 * 60 * 1_000;
 const ABSOLUTE_MS = 30 * 24 * 60 * 60 * 1_000;
@@ -284,9 +319,21 @@ export class AppStore {
    * before the mutation receipt. Throwing rolls back calendar + occurrence writes.
    */
   private calendarSaveFailureHook: (() => void) | null = null;
+  /** Test-only: after family-order writes, before receipt (AT5). */
+  private familyOrderFailureHook: (() => void) | null = null;
+  /** Test-only: after activity graph deletion, before reset receipt (AT11). */
+  private clearActivityFailureHook: (() => void) | null = null;
 
   setCalendarSaveFailureHook(hook: (() => void) | null): void {
     this.calendarSaveFailureHook = hook;
+  }
+
+  setFamilyOrderFailureHook(hook: (() => void) | null): void {
+    this.familyOrderFailureHook = hook;
+  }
+
+  setClearActivityFailureHook(hook: (() => void) | null): void {
+    this.clearActivityFailureHook = hook;
   }
 
   hasGrant(ctx: AuthContext, grant: Grant): boolean {
@@ -308,13 +355,13 @@ export class AppStore {
       );
       const insertMembership = this.db.prepare(
         `INSERT INTO household_memberships
-         (id, household_id, user_id, display_name, status, created_at)
-         VALUES (?, ?, NULL, ?, 'pending', ?)`,
+         (id, household_id, user_id, display_name, status, created_at, sort_order)
+         VALUES (?, ?, NULL, ?, 'pending', ?, ?)`,
       );
       const insertGrant = this.db.prepare(
         "INSERT INTO membership_grants (membership_id, grant_name) VALUES (?, ?)",
       );
-      for (const member of SEED.members) {
+      SEED.members.forEach((member, index) => {
         const grants = GRANT_PRESETS[member.preset];
         insertMember.run(
           member.id,
@@ -322,9 +369,15 @@ export class AppStore {
           member.displayName,
           legacyCapabilities(grants),
         );
-        insertMembership.run(member.id, SEED.household.id, member.displayName, createdAt);
+        insertMembership.run(
+          member.id,
+          SEED.household.id,
+          member.displayName,
+          createdAt,
+          index,
+        );
         for (const grant of grants) insertGrant.run(member.id, grant);
-      }
+      });
     });
     tx();
   }
@@ -640,7 +693,9 @@ export class AppStore {
         this.db
           .prepare(
             `UPDATE household_memberships
-             SET user_id = ?, display_name = ?, status = 'active' WHERE id = ?`,
+             SET user_id = ?, display_name = ?, status = 'active',
+                 version = version + 1
+             WHERE id = ?`,
           )
           .run(userId, displayName, membershipId);
         this.db
@@ -658,6 +713,13 @@ export class AppStore {
           createdAt,
           grants,
         );
+        this.db
+          .prepare(
+            `UPDATE households
+             SET family_order_version = family_order_version + 1
+             WHERE id = ?`,
+          )
+          .run(claim.household_id);
       }
 
       this.replaceGrants(membershipId, grants);
@@ -793,9 +855,10 @@ export class AppStore {
   listMemberships(householdId: string): MemberPublic[] {
     const rows = this.db
       .prepare(
-        `SELECT id, display_name, status, classification, version
+        `SELECT id, display_name, status, classification, version, sort_order
          FROM household_memberships
-         WHERE household_id = ? ORDER BY display_name`,
+         WHERE household_id = ?
+         ORDER BY sort_order, id`,
       )
       .all(householdId) as Array<{
       id: string;
@@ -803,6 +866,7 @@ export class AppStore {
       status: "active" | "pending";
       classification: PersonClassification | null;
       version: number;
+      sort_order: number;
     }>;
     return rows.map((row) => this.toMemberPublic(row));
   }
@@ -826,6 +890,13 @@ export class AppStore {
     const id = randomUUID();
     const createdAt = nowUtcIso();
     const tx = this.db.transaction(() => {
+      const maxOrder = this.db
+        .prepare(
+          `SELECT COALESCE(MAX(sort_order), -1) AS max_order
+           FROM household_memberships WHERE household_id = ?`,
+        )
+        .get(ctx.householdId) as { max_order: number };
+      const sortOrder = maxOrder.max_order + 1;
       this.insertCompatibleMembership(
         id,
         ctx.householdId,
@@ -834,6 +905,7 @@ export class AppStore {
         "pending",
         createdAt,
         [],
+        sortOrder,
       );
       this.db
         .prepare(
@@ -841,6 +913,13 @@ export class AppStore {
            SET classification = ?, version = 1 WHERE id = ?`,
         )
         .run(input.classification, id);
+      this.db
+        .prepare(
+          `UPDATE households
+           SET family_order_version = family_order_version + 1
+           WHERE id = ?`,
+        )
+        .run(ctx.householdId);
     });
     tx();
     const person = this.requireMemberPublic(id, ctx.householdId);
@@ -854,34 +933,69 @@ export class AppStore {
     input: {
       displayName: string;
       classification: PersonClassification | null;
+      fullName?: string | null;
+      birthday?: string | null;
+      email?: string | null;
       expectedVersion: number;
     },
   ): MemberPublic {
     this.requireGrant(ctx, "household.structure.manage");
-    const displayName = input.displayName.trim();
-    if (!displayName || displayName.length > 80) {
-      fail("VALIDATION", "Display name must be between 1 and 80 characters");
+    const today = this.householdDateNow(ctx);
+    const issues = validateProfileFields({
+      displayName: input.displayName,
+      fullName: input.fullName,
+      birthday: input.birthday,
+      email: input.email,
+      householdToday: today,
+    });
+    if (issues.length > 0) {
+      fail("VALIDATION", issues[0]!.message, { validationIssues: issues });
     }
+    const displayName = input.displayName.trim();
+    const fullName =
+      input.fullName === undefined ? undefined : normalizeOptionalText(input.fullName);
+    const birthday =
+      input.birthday === undefined ? undefined : normalizeOptionalText(input.birthday);
+    const email =
+      input.email === undefined ? undefined : normalizeOptionalText(input.email);
+
     const tx = this.db.transaction(() => {
       const current = this.db
         .prepare(
-          `SELECT id, version FROM household_memberships
+          `SELECT id, version, full_name, birthday, email FROM household_memberships
            WHERE id = ? AND household_id = ?`,
         )
         .get(membershipId, ctx.householdId) as
-        | { id: string; version: number }
+        | {
+            id: string;
+            version: number;
+            full_name: string | null;
+            birthday: string | null;
+            email: string | null;
+          }
         | undefined;
       if (!current) fail("NOT_FOUND", "Person not found");
       if (current.version !== input.expectedVersion) {
         fail("CONFLICT", "Person was updated elsewhere; re-read and try again");
       }
+      const nextFullName = fullName === undefined ? current.full_name : fullName;
+      const nextBirthday = birthday === undefined ? current.birthday : birthday;
+      const nextEmail = email === undefined ? current.email : email;
       this.db
         .prepare(
           `UPDATE household_memberships
-           SET display_name = ?, classification = ?, version = version + 1
+           SET display_name = ?, classification = ?, full_name = ?, birthday = ?,
+               email = ?, version = version + 1
            WHERE id = ?`,
         )
-        .run(displayName, input.classification, membershipId);
+        .run(
+          displayName,
+          input.classification,
+          nextFullName,
+          nextBirthday,
+          nextEmail,
+          membershipId,
+        );
       this.db
         .prepare("UPDATE members SET display_name = ? WHERE id = ?")
         .run(displayName, membershipId);
@@ -892,6 +1006,15 @@ export class AppStore {
 
   getPersonDetail(ctx: AuthContext, membershipId: string): PersonDetail {
     const person = this.requireMemberPublic(membershipId, ctx.householdId);
+    const profile = this.db
+      .prepare(
+        `SELECT full_name, birthday, email FROM household_memberships
+         WHERE id = ? AND household_id = ?`,
+      )
+      .get(membershipId, ctx.householdId) as
+      | { full_name: string | null; birthday: string | null; email: string | null }
+      | undefined;
+    if (!profile) fail("NOT_FOUND", "Person not found");
     const groups = this.db
       .prepare(
         `SELECT g.id, g.name
@@ -925,6 +1048,9 @@ export class AppStore {
     }
     return {
       ...person,
+      fullName: profile.full_name,
+      birthday: profile.birthday,
+      email: profile.email,
       groups,
       routines,
       morningRoutine,
@@ -2144,6 +2270,10 @@ export class AppStore {
 
   materializeForDate(ctx: AuthContext, householdDate: HouseholdDate): OccurrenceView[] {
     if (!isValidHouseholdDate(householdDate)) fail("VALIDATION", "Invalid household date");
+    const floor = this.getActivityResetFloor(ctx.householdId);
+    if (floor && compareHouseholdDates(householdDate, floor) < 0) {
+      return [];
+    }
     const definitions = this.listRoutines(ctx.householdId, { includeArchived: true });
     const results: OccurrenceView[] = [];
     const tx = this.db.transaction(() => {
@@ -2247,7 +2377,12 @@ export class AppStore {
     ctx: AuthContext,
     occurrenceId: string,
     stepId: string,
-    input: { mutationId: string; status: StepStatus; performedAt: string },
+    input: {
+      mutationId: string;
+      status: StepStatus;
+      performedAt: string;
+      activityGeneration?: number;
+    },
   ) {
     const occurrence = this.db
       .prepare(
@@ -2280,6 +2415,9 @@ export class AppStore {
     if (occurrence.accountable_member_id !== ctx.membershipId) {
       fail("FORBIDDEN", "Cannot modify another member's occurrence");
     }
+
+    this.assertActivityGeneration(ctx.householdId, input.activityGeneration);
+
     const today = this.householdDateNow(ctx);
     if (compareHouseholdDates(occurrence.household_date, today) > 0) {
       fail("VALIDATION", "This checklist isn't available yet");
@@ -2408,9 +2546,17 @@ export class AppStore {
       };
       this.db
         .prepare(
-          "INSERT INTO mutation_receipts (mutation_id, response_json, created_at) VALUES (?, ?, ?)",
+          `INSERT INTO mutation_receipts
+           (mutation_id, response_json, created_at, household_id, occurrence_id)
+           VALUES (?, ?, ?, ?, ?)`,
         )
-        .run(input.mutationId, JSON.stringify(payload), recordedAt);
+        .run(
+          input.mutationId,
+          JSON.stringify(payload),
+          recordedAt,
+          ctx.householdId,
+          occurrenceId,
+        );
       return payload;
     });
     return tx();
@@ -2418,35 +2564,391 @@ export class AppStore {
 
   historyForDate(ctx: AuthContext, householdDate: HouseholdDate): OccurrenceView[] {
     this.requireGrant(ctx, "routine.shared.manage");
+    if (!isValidHouseholdDate(householdDate)) fail("VALIDATION", "Invalid household date");
     const today = this.householdDateNow(ctx);
-    // Past dates: stored snapshots only — never rewrite unstarted historical rows.
-    if (compareHouseholdDates(householdDate, today) < 0) {
-      if (!isValidHouseholdDate(householdDate)) fail("VALIDATION", "Invalid household date");
-      const rows = this.db
-        .prepare(
-          `SELECT definition_id, accountable_member_id
-           FROM occurrences
-           WHERE household_id = ? AND household_date = ?
-             AND (canceled_at IS NULL OR started_at IS NOT NULL)
-           ORDER BY definition_id, accountable_member_id`,
-        )
-        .all(ctx.householdId, householdDate) as Array<{
-        definition_id: string;
-        accountable_member_id: string;
-      }>;
-      const results: OccurrenceView[] = [];
-      for (const row of rows) {
-        const view = this.getOccurrenceView(
-          row.definition_id,
-          householdDate,
-          row.accountable_member_id,
-        );
-        if (view) results.push(view);
-      }
-      results.sort(compareOccurrenceOrder);
-      return results;
+    if (compareHouseholdDates(householdDate, today) > 0) {
+      fail(
+        "VALIDATION",
+        "Future dates are outside History; use routine Preview for expectations",
+      );
     }
-    return this.materializeForDate(ctx, householdDate);
+    return this.loadStoredHistoryOccurrences(ctx.householdId, householdDate);
+  }
+
+  historySummaries(
+    ctx: AuthContext,
+    input: {
+      date?: string;
+      from?: string;
+      to?: string;
+      personId?: string;
+      routineId?: string;
+      status?: "complete" | "incomplete";
+    },
+  ): {
+    householdDate?: string;
+    from?: string;
+    to?: string;
+    activityGeneration: number;
+    occurrences: HistoryOccurrenceSummary[];
+  } {
+    this.requireGrant(ctx, "routine.shared.manage");
+    const today = this.householdDateNow(ctx);
+    const dates = this.resolveHistoryDates(today, input);
+    const results: HistoryOccurrenceSummary[] = [];
+    for (const householdDate of dates) {
+      for (const view of this.loadStoredHistoryOccurrences(ctx.householdId, householdDate)) {
+        if (input.personId && view.accountableMemberId !== input.personId) continue;
+        if (input.routineId && view.definitionId !== input.routineId) continue;
+        if (input.status === "complete" && !view.completed) continue;
+        if (input.status === "incomplete" && view.completed) continue;
+        results.push(this.toHistorySummary(view));
+      }
+    }
+    const activityGeneration = this.getActivityGeneration(ctx.householdId);
+    if (input.date || (!input.from && !input.to)) {
+      return {
+        householdDate: dates[0]!,
+        activityGeneration,
+        occurrences: results,
+      };
+    }
+    return {
+      from: dates[dates.length - 1]!,
+      to: dates[0]!,
+      activityGeneration,
+      occurrences: results,
+    };
+  }
+
+  getHistoryOccurrenceDetail(
+    ctx: AuthContext,
+    occurrenceId: string,
+  ): HistoryOccurrenceDetail {
+    this.requireGrant(ctx, "routine.shared.manage");
+    const row = this.db
+      .prepare(
+        `SELECT id, household_id, definition_id, household_date, accountable_member_id
+         FROM occurrences WHERE id = ?`,
+      )
+      .get(occurrenceId) as
+      | {
+          id: string;
+          household_id: string;
+          definition_id: string;
+          household_date: string;
+          accountable_member_id: string;
+        }
+      | undefined;
+    if (!row || row.household_id !== ctx.householdId) {
+      fail("NOT_FOUND", "Occurrence not found");
+    }
+    const view = this.getOccurrenceView(
+      row.definition_id,
+      row.household_date,
+      row.accountable_member_id,
+    );
+    if (!view) fail("NOT_FOUND", "Occurrence not found");
+    return {
+      ...view,
+      reports: this.listStepReports(occurrenceId),
+    };
+  }
+
+  listStepReports(occurrenceId: string): StepReportPublic[] {
+    const rows = this.db
+      .prepare(
+        `SELECT sr.id, sr.mutation_id, sr.occurrence_id, sr.occurrence_step_id,
+                sr.accountable_member_id, sr.acting_member_id, sr.performed_at,
+                sr.recorded_at, sr.resulting_state, hm.display_name AS acting_name
+         FROM step_reports sr
+         LEFT JOIN household_memberships hm ON hm.id = sr.acting_member_id
+         WHERE sr.occurrence_id = ?
+         ORDER BY sr.recorded_at, sr.id`,
+      )
+      .all(occurrenceId) as Array<{
+      id: string;
+      mutation_id: string;
+      occurrence_id: string;
+      occurrence_step_id: string;
+      accountable_member_id: string;
+      acting_member_id: string;
+      performed_at: string;
+      recorded_at: string;
+      resulting_state: StepStatus;
+      acting_name: string | null;
+    }>;
+    return rows.map((row) => ({
+      id: row.id,
+      mutationId: row.mutation_id,
+      occurrenceId: row.occurrence_id,
+      occurrenceStepId: row.occurrence_step_id,
+      accountableMemberId: row.accountable_member_id,
+      actingMemberId: row.acting_member_id,
+      actingMemberName: row.acting_name,
+      performedAt: row.performed_at,
+      recordedAt: row.recorded_at,
+      resultingState: row.resulting_state,
+    }));
+  }
+
+  getActivityGeneration(householdId: string): number {
+    const row = this.db
+      .prepare("SELECT activity_generation FROM households WHERE id = ?")
+      .get(householdId) as { activity_generation: number } | undefined;
+    return row?.activity_generation ?? 0;
+  }
+
+  getActivityResetFloor(householdId: string): string | null {
+    const row = this.db
+      .prepare("SELECT activity_reset_floor FROM households WHERE id = ?")
+      .get(householdId) as { activity_reset_floor: string | null } | undefined;
+    return row?.activity_reset_floor ?? null;
+  }
+
+  getFamilyOrderVersion(householdId: string): number {
+    const row = this.db
+      .prepare("SELECT family_order_version FROM households WHERE id = ?")
+      .get(householdId) as { family_order_version: number } | undefined;
+    return row?.family_order_version ?? 0;
+  }
+
+  saveFamilyOrder(
+    ctx: AuthContext,
+    input: SaveFamilyOrderInput,
+  ): FamilyOrderSaveResult {
+    this.requireGrant(ctx, "household.structure.manage");
+    const digest = familyOrderPayloadDigest(input);
+    const prior = this.db
+      .prepare(
+        `SELECT household_id, kind, payload_digest, response_json
+         FROM family_order_mutation_receipts WHERE mutation_id = ?`,
+      )
+      .get(input.mutationId) as
+      | {
+          household_id: string;
+          kind: string;
+          payload_digest: string;
+          response_json: string;
+        }
+      | undefined;
+    if (prior) {
+      if (
+        prior.household_id !== ctx.householdId ||
+        prior.kind !== "family_order_save" ||
+        prior.payload_digest !== digest
+      ) {
+        fail("CONFLICT", "Family order couldn't be updated");
+      }
+      return JSON.parse(prior.response_json) as FamilyOrderSaveResult;
+    }
+
+    const tx = this.db.transaction(() => {
+      const currentVersion = this.getFamilyOrderVersion(ctx.householdId);
+      if (input.expectedVersion !== currentVersion) {
+        fail("CONFLICT", "Family order was updated elsewhere; re-read and try again");
+      }
+      const existing = this.db
+        .prepare(
+          `SELECT id FROM household_memberships WHERE household_id = ? ORDER BY id`,
+        )
+        .all(ctx.householdId) as Array<{ id: string }>;
+      const existingIds = new Set(existing.map((row) => row.id));
+      if (input.membershipIds.length !== existingIds.size) {
+        fail("VALIDATION", "Family order must include every household person exactly once");
+      }
+      const seen = new Set<string>();
+      for (const membershipId of input.membershipIds) {
+        if (seen.has(membershipId)) {
+          fail("VALIDATION", "Family order contains duplicate people");
+        }
+        seen.add(membershipId);
+        if (!existingIds.has(membershipId)) {
+          fail("VALIDATION", "Family order includes an unknown person");
+        }
+      }
+      const update = this.db.prepare(
+        `UPDATE household_memberships SET sort_order = ? WHERE id = ? AND household_id = ?`,
+      );
+      input.membershipIds.forEach((membershipId, index) => {
+        update.run(index, membershipId, ctx.householdId);
+      });
+      const version = currentVersion + 1;
+      this.db
+        .prepare(
+          `UPDATE households SET family_order_version = ? WHERE id = ?`,
+        )
+        .run(version, ctx.householdId);
+
+      this.familyOrderFailureHook?.();
+
+      const result: FamilyOrderSaveResult = {
+        version,
+        people: this.listMemberships(ctx.householdId),
+      };
+      this.db
+        .prepare(
+          `INSERT INTO family_order_mutation_receipts
+           (mutation_id, household_id, kind, payload_digest, response_json, created_at)
+           VALUES (?, ?, 'family_order_save', ?, ?, ?)`,
+        )
+        .run(
+          input.mutationId,
+          ctx.householdId,
+          digest,
+          JSON.stringify(result),
+          nowUtcIso(),
+        );
+      return result;
+    });
+    return tx();
+  }
+
+  clearRoutineActivity(
+    ctx: AuthContext,
+    input: ClearRoutineActivityInput,
+  ): ActivityClearResult {
+    this.requireGrant(ctx, "household.activity.clear");
+    const digest = activityClearPayloadDigest(input);
+    const prior = this.db
+      .prepare(
+        `SELECT household_id, kind, payload_digest, actor_membership_id, response_json
+         FROM activity_reset_receipts WHERE mutation_id = ?`,
+      )
+      .get(input.mutationId) as
+      | {
+          household_id: string;
+          kind: string;
+          payload_digest: string;
+          actor_membership_id: string;
+          response_json: string;
+        }
+      | undefined;
+    if (prior) {
+      if (
+        prior.household_id !== ctx.householdId ||
+        prior.kind !== "activity_clear" ||
+        prior.payload_digest !== digest ||
+        prior.actor_membership_id !== ctx.membershipId
+      ) {
+        fail("CONFLICT", "Routine activity clear couldn't be completed");
+      }
+      return JSON.parse(prior.response_json) as ActivityClearResult;
+    }
+
+    const createdAt = nowUtcIso();
+    const tx = this.db.transaction(() => {
+      const currentGeneration = this.getActivityGeneration(ctx.householdId);
+      if (input.expectedGeneration !== currentGeneration) {
+        fail(
+          "CONFLICT",
+          "Routine activity was cleared elsewhere; refresh and try again",
+        );
+      }
+
+      const occurrences = (
+        this.db
+          .prepare(`SELECT COUNT(*) AS count FROM occurrences WHERE household_id = ?`)
+          .get(ctx.householdId) as { count: number }
+      ).count;
+      const occurrenceSteps = (
+        this.db
+          .prepare(
+            `SELECT COUNT(*) AS count FROM occurrence_steps
+             WHERE occurrence_id IN (SELECT id FROM occurrences WHERE household_id = ?)`,
+          )
+          .get(ctx.householdId) as { count: number }
+      ).count;
+      const stepReports = (
+        this.db
+          .prepare(
+            `SELECT COUNT(*) AS count FROM step_reports
+             WHERE occurrence_id IN (SELECT id FROM occurrences WHERE household_id = ?)`,
+          )
+          .get(ctx.householdId) as { count: number }
+      ).count;
+      const mutationReceipts = (
+        this.db
+          .prepare(
+            `SELECT COUNT(*) AS count FROM mutation_receipts
+             WHERE household_id = ?
+                OR occurrence_id IN (
+                     SELECT id FROM occurrences WHERE household_id = ?
+                   )`,
+          )
+          .get(ctx.householdId, ctx.householdId) as { count: number }
+      ).count;
+
+      this.db
+        .prepare(
+          `DELETE FROM step_reports
+           WHERE occurrence_id IN (SELECT id FROM occurrences WHERE household_id = ?)`,
+        )
+        .run(ctx.householdId);
+      this.db
+        .prepare(
+          `DELETE FROM occurrence_steps
+           WHERE occurrence_id IN (SELECT id FROM occurrences WHERE household_id = ?)`,
+        )
+        .run(ctx.householdId);
+      this.db
+        .prepare(
+          `DELETE FROM mutation_receipts
+           WHERE household_id = ?
+              OR occurrence_id IN (
+                   SELECT id FROM occurrences WHERE household_id = ?
+                 )`,
+        )
+        .run(ctx.householdId, ctx.householdId);
+      this.db
+        .prepare(`DELETE FROM occurrences WHERE household_id = ?`)
+        .run(ctx.householdId);
+
+      const resultGeneration = currentGeneration + 1;
+      const resetFloor = this.householdDateNow(ctx);
+      this.db
+        .prepare(
+          `UPDATE households
+           SET activity_generation = ?, activity_reset_floor = ?
+           WHERE id = ?`,
+        )
+        .run(resultGeneration, resetFloor, ctx.householdId);
+
+      this.clearActivityFailureHook?.();
+
+      const result: ActivityClearResult = {
+        activityGeneration: resultGeneration,
+        activityResetFloor: resetFloor,
+        counts: {
+          occurrences,
+          occurrenceSteps,
+          stepReports,
+          mutationReceipts,
+        },
+      };
+      this.db
+        .prepare(
+          `INSERT INTO activity_reset_receipts
+           (mutation_id, household_id, kind, payload_digest, actor_membership_id,
+            expected_generation, result_generation, reset_floor, counts_json,
+            response_json, created_at)
+           VALUES (?, ?, 'activity_clear', ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          input.mutationId,
+          ctx.householdId,
+          digest,
+          ctx.membershipId,
+          input.expectedGeneration,
+          resultGeneration,
+          resetFloor,
+          JSON.stringify(result.counts),
+          JSON.stringify(result),
+          createdAt,
+        );
+      return result;
+    });
+    return tx();
   }
 
   occurrenceSnapshotStructure(occurrenceId: string) {
@@ -2933,6 +3435,137 @@ export class AppStore {
     if (!this.hasGrant(ctx, grant)) fail("FORBIDDEN", "Required authority is missing");
   }
 
+  private assertActivityGeneration(
+    householdId: string,
+    activityGeneration: number | undefined,
+  ): void {
+    const current = this.getActivityGeneration(householdId);
+    if (activityGeneration === undefined) {
+      if (current !== 0) fail("CONFLICT", ACTIVITY_CLEARED_MESSAGE);
+      return;
+    }
+    if (activityGeneration !== current) {
+      fail("CONFLICT", ACTIVITY_CLEARED_MESSAGE);
+    }
+  }
+
+  private resolveHistoryDates(
+    today: HouseholdDate,
+    input: { date?: string; from?: string; to?: string },
+  ): HouseholdDate[] {
+    if (input.date && (input.from || input.to)) {
+      fail("VALIDATION", "Use either date or from/to, not both");
+    }
+    if (input.from || input.to) {
+      if (!input.from || !input.to) {
+        fail("VALIDATION", "Both from and to are required for a History range");
+      }
+      if (!isValidHouseholdDate(input.from) || !isValidHouseholdDate(input.to)) {
+        fail("VALIDATION", "Invalid History date range");
+      }
+      if (compareHouseholdDates(input.from, input.to) > 0) {
+        fail("VALIDATION", "History range from must be on or before to");
+      }
+      if (compareHouseholdDates(input.to, today) > 0) {
+        fail(
+          "VALIDATION",
+          "Future dates are outside History; use routine Preview for expectations",
+        );
+      }
+      const span =
+        Math.round(
+          (Date.parse(`${input.to}T00:00:00Z`) - Date.parse(`${input.from}T00:00:00Z`)) /
+            86_400_000,
+        ) + 1;
+      if (span > 31) {
+        fail("VALIDATION", "History range cannot exceed 31 days");
+      }
+      const dates: HouseholdDate[] = [];
+      let cursor = input.to;
+      while (compareHouseholdDates(cursor, input.from) >= 0) {
+        dates.push(cursor);
+        if (cursor === input.from) break;
+        cursor = addHouseholdDays(cursor, -1);
+      }
+      return dates;
+    }
+    const date = input.date ?? today;
+    if (!isValidHouseholdDate(date)) fail("VALIDATION", "Invalid date");
+    if (compareHouseholdDates(date, today) > 0) {
+      fail(
+        "VALIDATION",
+        "Future dates are outside History; use routine Preview for expectations",
+      );
+    }
+    return [date];
+  }
+
+  private loadStoredHistoryOccurrences(
+    householdId: string,
+    householdDate: HouseholdDate,
+  ): OccurrenceView[] {
+    const rows = this.db
+      .prepare(
+        `SELECT o.definition_id, o.accountable_member_id, hm.sort_order
+         FROM occurrences o
+         JOIN household_memberships hm ON hm.id = o.accountable_member_id
+         WHERE o.household_id = ? AND o.household_date = ?
+           AND (o.canceled_at IS NULL OR o.started_at IS NOT NULL)
+         ORDER BY hm.sort_order, hm.id, o.definition_id`,
+      )
+      .all(householdId, householdDate) as Array<{
+      definition_id: string;
+      accountable_member_id: string;
+      sort_order: number;
+    }>;
+    const results: OccurrenceView[] = [];
+    for (const row of rows) {
+      const view = this.getOccurrenceView(
+        row.definition_id,
+        householdDate,
+        row.accountable_member_id,
+      );
+      if (!view) continue;
+      // Same omit rule as Today: empty unstarted rows are not historically visible.
+      if (view.steps.length === 0 && !view.startedAt) continue;
+      results.push(view);
+    }
+    results.sort((a, b) => {
+      const orderA =
+        rows.find((row) => row.accountable_member_id === a.accountableMemberId)
+          ?.sort_order ?? 0;
+      const orderB =
+        rows.find((row) => row.accountable_member_id === b.accountableMemberId)
+          ?.sort_order ?? 0;
+      if (orderA !== orderB) return orderA - orderB;
+      return compareOccurrenceOrder(a, b);
+    });
+    return results;
+  }
+
+  private toHistorySummary(view: OccurrenceView): HistoryOccurrenceSummary {
+    let completed = 0;
+    let notNeeded = 0;
+    let open = 0;
+    for (const step of view.steps) {
+      if (step.status === "completed") completed += 1;
+      else if (step.status === "not_needed") notNeeded += 1;
+      else open += 1;
+    }
+    return {
+      id: view.id,
+      definitionId: view.definitionId,
+      title: view.title,
+      daypart: view.daypart,
+      accountableMemberId: view.accountableMemberId,
+      accountableMemberName: view.accountableMemberName,
+      householdDate: view.householdDate,
+      completed: view.completed,
+      startedAt: view.startedAt,
+      counts: { completed, notNeeded, open },
+    };
+  }
+
   private replaceGrants(membershipId: string, grants: readonly Grant[]): void {
     this.db
       .prepare("DELETE FROM membership_grants WHERE membership_id = ?")
@@ -2951,7 +3584,18 @@ export class AppStore {
     status: "active" | "pending",
     createdAt: string,
     grants: readonly Grant[],
+    sortOrder?: number,
   ): void {
+    const order =
+      sortOrder ??
+      (
+        this.db
+          .prepare(
+            `SELECT COALESCE(MAX(sort_order), -1) AS max_order
+             FROM household_memberships WHERE household_id = ?`,
+          )
+          .get(householdId) as { max_order: number }
+      ).max_order + 1;
     this.db
       .prepare(
         `INSERT INTO members (id, household_id, display_name, capabilities_json)
@@ -2961,10 +3605,10 @@ export class AppStore {
     this.db
       .prepare(
         `INSERT INTO household_memberships
-         (id, household_id, user_id, display_name, status, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+         (id, household_id, user_id, display_name, status, created_at, sort_order)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(id, householdId, userId, displayName, status, createdAt);
+      .run(id, householdId, userId, displayName, status, createdAt, order);
     this.replaceGrants(id, grants);
   }
 
@@ -3008,6 +3652,7 @@ export class AppStore {
     status: "active" | "pending";
     classification: PersonClassification | null;
     version: number;
+    sort_order: number;
   }): MemberPublic {
     return {
       id: row.id,
@@ -3015,6 +3660,7 @@ export class AppStore {
       status: row.status,
       classification: row.classification,
       version: row.version,
+      sortOrder: row.sort_order,
       grants: this.grantsForMembership(row.id),
       accessState: this.accessStateForMembership(row.id),
     };
@@ -3023,7 +3669,7 @@ export class AppStore {
   private requireMemberPublic(membershipId: string, householdId: string): MemberPublic {
     const row = this.db
       .prepare(
-        `SELECT id, display_name, status, classification, version
+        `SELECT id, display_name, status, classification, version, sort_order
          FROM household_memberships WHERE id = ? AND household_id = ?`,
       )
       .get(membershipId, householdId) as
@@ -3033,6 +3679,7 @@ export class AppStore {
           status: "active" | "pending";
           classification: PersonClassification | null;
           version: number;
+          sort_order: number;
         }
       | undefined;
     if (!row) fail("NOT_FOUND", "Person not found");
@@ -4561,6 +5208,10 @@ export class AppStore {
     householdDate: string,
     membershipId: string,
   ): OccurrenceView {
+    const floor = this.getActivityResetFloor(householdId);
+    if (floor && compareHouseholdDates(householdDate, floor) < 0) {
+      fail("FORBIDDEN", ACTIVITY_CLEARED_MESSAGE);
+    }
     let occurrence = this.db
       .prepare(
         `SELECT id, revision_id, started_at, canceled_at FROM occurrences

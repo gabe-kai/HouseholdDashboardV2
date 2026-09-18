@@ -71,6 +71,9 @@ invalidation/reconciliation semantics.
 | PB-34 | Closed step applicability + household school calendar editions; School nights via D+1 | unit `applicability.test.ts`; integration `p0-006b.test.ts` | PR / RC |
 | PB-35 | Calendar edits reconcile unstarted work; past/started snapshots frozen; filtered-empty omitted from Today | integration `p0-006b.test.ts` History + materialize cases | PR / RC |
 | PB-36 | `household.schedule.manage` write grant; readers without write; migration Every-time default + grant backfill | integration `p0-006b.test.ts` AT1/AT4 | PR / RC |
+| PB-37 | Membership profiles + saved family order; claim preserves profile/order; structure.manage writes | integration `p0-006c.test.ts`; e2e `z-p0-006c-profiles-history-clear.spec.ts` | PR / RC |
+| PB-38 | History reads are side-effect-free over stored evidence; summaries + step_reports detail | integration `p0-006c.test.ts` AT6/AT7; e2e History journey | PR / RC |
+| PB-39 | Evaluation clear deletes household checklist activity/receipts only; generation + floor fence outbox | integration `p0-006c.test.ts` AT9–12; e2e `z-p0-006c-reset-outbox.spec.ts` | PR / RC |
 
 ### Environment-specific (not counted as automated acceptance)
 
@@ -109,6 +112,11 @@ Duplicate, late, and missed events must be safe.
 | POST `/proposals/:id/decide` | proposal (+ optional layer for stored definition) | `proposal`; `routine` if approved | proposals, preview | — | same decision idempotent; opposite conflicts; archived target rejectable | fetch proposals + preview |
 | GET `/school-calendar` | calendar projection | *(none)* | — | — | read | n/a |
 | PUT `/school-calendar` | calendar edition + unstarted reconcile | `school_calendar` (householdId, version) | today, history previews, open calendar, dated routine previews | draft retained on conflict | same `mutationId` replay; expectedVersion conflict | fetch school-calendar + today |
+| PATCH `/people/:id` | membership profile (+ compatibility name) | `membership` | people, account label, audiences, History names | dirty profile draft retained | expectedVersion conflict | fetch people/session |
+| PUT `/people/order` | household family order + order version | `family_order` | people directory, group/audience peer lists, History person groups | dirty reorder draft retained | same `mutationId` replay; expectedVersion conflict | fetch people |
+| GET `/history` | stored occurrence summaries (read-only) | *(none)* | — | — | never materializes | n/a |
+| GET `/history/occurrences/:id` | stored detail + step_reports | *(none)* | — | — | foreign → NOT_FOUND | n/a |
+| POST `/household/activity/clear` | erase checklist graph + scoped receipts; bump generation/floor | `activity_reset` | today, History, settings | retire older outbox for this membership | same `mutationId` replay; expectedGeneration conflict; config∧grant gate | refresh today/history; clear old outbox |
 | POST `/personal-tasks` | task | `personal_task` | personal-tasks | — | new task | fetch personal-tasks |
 | POST `/personal-tasks/:id/status` | task status | `personal_task` | personal-tasks | — | same `mutationId` idempotent | fetch personal-tasks |
 | POST `/test/bootstrap-claim` | claim | *(none)* | — | — | test-only | n/a |
@@ -116,3 +124,4 @@ Duplicate, late, and missed events must be safe.
 WebSocket `GET /api/v1/sync` delivers invalidations only. Connect also sends a synthetic
 `routine`/`connected` notice. Recovery: reconnect, `visibilitychange`, and online handlers
 re-read `/today` and supporting data; pending outbox flushes under the active membership only.
+Activity generation must be established before replaying outbox after `activity_reset`.

@@ -11,6 +11,8 @@ export type OutboxItem = {
   errorMessage?: string;
   /** Structural snapshot so omitted Today cards can survive reload while pending. */
   occurrenceSnapshot?: OccurrenceView;
+  /** Household activity generation when the command was enqueued. */
+  activityGeneration?: number;
 };
 
 /** Prior local cards reconstructed from durable first-action outbox snapshots. */

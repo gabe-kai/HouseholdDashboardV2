@@ -19,7 +19,7 @@
 
 ## Current focus
 
-**P0-006C r1 - Household Profiles and Useful History** is technically accepted at implementation commit `e8a93d5`. It is the third slice of the original approved P0-006 proposal, based on technically accepted P0-006B merged to `main` at `de552ab` via PR #13. The Project Lead's connected-experience acceptance remains separate; no hosted deployment is required for this slice.
+**P0-007A r1 - Household Responsibility Foundation** is IN REVIEW on the integrated P0-006 baseline (`main` at `409d147`, PR #14). It is the first of three technical slices from the approved P0-007 proposal: fixed-owner Cats/Trash through Plan, Today, Household activity and History. B will address patterns/scheduled additional work; C will develop the fuller unified day. Only A is briefed. Engineering readiness is next; no P0-007 production implementation is asserted.
 
 ## Internal work status
 
@@ -33,7 +33,8 @@
 | P0-005 - Cohesive Routine Management | r3 | ACCEPTED | Completed | Merged to `main` via PR #11 | P0-006 follow-up carries Product evaluation findings |
 | P0-006A - Calm Household Experience Foundation | r2 | ACCEPTED | Completed | Merged to `main` at `7cba3a6` via PR #12 | None; Project Lead evaluation accepted |
 | P0-006B - Contextual Routine Applicability | r1 | ACCEPTED | Project Lead/Product | Merged to `main` at `de552ab` | Evaluate the contextual routine experience |
-| P0-006C - Household Profiles and Useful History | r1 | ACCEPTED | Project Lead evaluation | `e8a93d5` on `brief/p0-006c-household-profiles-useful-history` | Project Lead evaluates connected experience; next planning handoff follows |
+| P0-006C - Household Profiles and Useful History | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `409d147` via PR #14 | Product acceptance remains separate |
+| P0-007A - Household Responsibility Foundation | r1 | IN REVIEW | Engineering readiness | Planned `brief/p0-007a-household-responsibility-foundation` | Consolidated readiness review; Architecture response before implementation |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -52,17 +53,19 @@ This table is the short repository-side coordination index. An external project 
 - P0-006A r2 completed the responsive Plan shell, focused editors, saved navigation, quiet feedback, and step ordering; required local evidence was closed and Architecture accepted it. The Project Lead then reviewed screenshots, tested, and reported satisfaction. A and B planning are integrated at `7cba3a6` via PR #12, including the A toast/CI correction.
 - P0-006B r1 contextual applicability and school calendar were technically accepted after AT9 rollback and AT10/AT11 browser evidence closed at `8421b31`, then merged through PR #13 at `de552ab`. The Project Lead reported successful school-year/exception setup and chose to continue the approved proposal with C.
 
+- P0-006C r1 profiles, saved family order, read-only summarized History and generation-fenced activity reset were technically accepted after correction `e8a93d5`, then merged via PR #14 at `409d147`. The next approved Product proposal is P0-007; its first brief is ready for Engineering review.
+
 ## Known blockers
 
-- None. Required-check branch protection is an optional external Project Lead setting and is not yet asserted as configured.
+- None known for A. Required-check branch protection is an external Project Lead setting and is not asserted as configured. B's pattern/eligibility details remain future brief work, not A blockers.
 
 ## Next Project Lead decision
 
-- P0-006C r1 is technically accepted at `e8a93d5`. Project Lead manages branch/merge/integration; agents suggest commit messages but do not commit. No deployment is needed for this slice.
+- Record the P0-007A planning baseline and hand **P0-007A r1** to Engineering for readiness. Project Lead manages Git; agents suggest commit messages but do not commit. No deployment is required for this local development slice.
 
 ## Next likely handoff
 
-Architecture technically accepted `briefs/p0-006c-household-profiles-useful-history.md` **revision 1** after the AT4 evidence correction. The project card **Recognize the family and understand its day** moves to **evaluation**; no external board is configured.
+Engineering reviews `briefs/p0-007a-household-responsibility-foundation.md` **revision 1** and returns one consolidated readiness report before implementation. The card **Give Cats and Trash one owner and a place in Today** is **Up Next**; no external board is configured. Architecture then resolves material findings and issues ACCEPT/PROCEED or revises the brief.
 
 ## Notes for all teams
 

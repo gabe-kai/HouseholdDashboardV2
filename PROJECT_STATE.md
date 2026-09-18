@@ -19,7 +19,7 @@
 
 ## Current focus
 
-**P0-006C r1 - Household Profiles and Useful History** is READY for implementation after Engineering returned READY with no blockers or material questions. It is the third slice of the original approved P0-006 proposal, based on technically accepted P0-006B merged to `main` at `de552ab` via PR #13. The Project Lead exercised B calendar setup and authorized continuation; exhaustive Product acceptance is not inferred. No C implementation or hosted deployment has begun.
+**P0-006C r1 - Household Profiles and Useful History** is technically accepted at implementation commit `e8a93d5`. It is the third slice of the original approved P0-006 proposal, based on technically accepted P0-006B merged to `main` at `de552ab` via PR #13. The Project Lead's connected-experience acceptance remains separate; no hosted deployment is required for this slice.
 
 ## Internal work status
 
@@ -33,7 +33,7 @@
 | P0-005 - Cohesive Routine Management | r3 | ACCEPTED | Completed | Merged to `main` via PR #11 | P0-006 follow-up carries Product evaluation findings |
 | P0-006A - Calm Household Experience Foundation | r2 | ACCEPTED | Completed | Merged to `main` at `7cba3a6` via PR #12 | None; Project Lead evaluation accepted |
 | P0-006B - Contextual Routine Applicability | r1 | ACCEPTED | Project Lead/Product | Merged to `main` at `de552ab` | Evaluate the contextual routine experience |
-| P0-006C - Household Profiles and Useful History | r1 | READY | Engineering | Planned `brief/p0-006c-household-profiles-useful-history` | Implement r1; Build Report and Architecture technical acceptance follow |
+| P0-006C - Household Profiles and Useful History | r1 | ACCEPTED | Project Lead evaluation | `e8a93d5` on `brief/p0-006c-household-profiles-useful-history` | Project Lead evaluates connected experience; next planning handoff follows |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -58,11 +58,11 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next Project Lead decision
 
-- Engineering may implement **P0-006C r1** on `brief/p0-006c-household-profiles-useful-history`. Project Lead manages branch/commit/integration; agents suggest commit messages but do not commit. No new Product proposal or deployment is needed.
+- P0-006C r1 is technically accepted at `e8a93d5`. Project Lead manages branch/merge/integration; agents suggest commit messages but do not commit. No deployment is needed for this slice.
 
 ## Next likely handoff
 
-Architecture accepted Engineering's **READY** review for `briefs/p0-006c-household-profiles-useful-history.md` **revision 1**. The project card **Recognize the family and understand its day** moves to **In Progress** when Engineering starts implementation; no external board is configured.
+Architecture technically accepted `briefs/p0-006c-household-profiles-useful-history.md` **revision 1** after the AT4 evidence correction. The project card **Recognize the family and understand its day** moves to **evaluation**; no external board is configured.
 
 ## Notes for all teams
 

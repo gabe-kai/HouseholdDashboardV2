@@ -1,7 +1,7 @@
 # BRIEF P0-006C - Household Profiles and Useful History
 
 **Revision:** 1
-**Status:** READY
+**Status:** ACCEPTED
 
 Architecture technical acceptance and Project Lead acceptance of the experience are separate. This file is the one authoritative implementation contract for P0-006C; material contract changes increment its revision.
 
@@ -174,7 +174,7 @@ Automated evidence and screenshots support Architecture acceptance. The Project 
 
 **Readiness:** READY
 
-**Architecture disposition:** ACCEPT / PROCEED. Engineering reviewed r1 against branch tip `c2de2e9` (B merge parent `de552ab`) and returned READY with no blockers or material questions. The highest-attention implementation risks are History read isolation, verified checklist-receipt ownership during clear, and generation-fenced outbox recovery. Report: `reports/P0-006C-r1-engineering-readiness.md`. Project Lead manages Git; implementation may begin on the planned brief branch.
+**Architecture disposition:** ACCEPTED. Engineering implemented r1 and closed the AT4 evidence correction. History reads are side-effect-free; clear is household-scoped, generation-fenced, atomic, and replay-safe; family-order Cancel, Move-menu Save, and CDP touch Save all persist correctly through reload. Required local gates pass: `validate:pr` 34/34 Chromium plus Vite, and `validate:rc` 59 Chromium/WebKit plus Vite. Build Report: `reports/P0-006C-r1-build-report.md`. Implementation commit: `e8a93d5`. Hosted deployment is not required for this slice; Project Lead acceptance of the experience remains separate.
 
 ## Revision history
 

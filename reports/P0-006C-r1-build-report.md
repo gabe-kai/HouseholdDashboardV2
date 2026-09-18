@@ -1,16 +1,19 @@
 # Build Report - BRIEF P0-006C r1
 
 **Brief revision implemented:** 1  
-**Engineering status:** IMPLEMENTED (local; FIX REQUIRED AT4 evidence closed; pending technical / Project Lead acceptance)  
+**Engineering status:** IMPLEMENTED (FIX REQUIRED AT4 evidence closed; pending technical / Project Lead acceptance)  
 **Branch:** `brief/p0-006c-household-profiles-useful-history`  
 **Base:** planning tip `ccd1c60` (ACCEPT/PROCEED); B merge parent `de552ab`  
-**Implementation commits:** **uncommitted** (Project Lead manages Git; do not deploy)  
+**Implementation commits:**
+- `5605ab8` — P0-006C: implement profiles, read-only History, and activity clear (r1)
+- `e8a93d5` — P0-006C: close AT4 with stable family-order UI Save (r1)
 **Pull request:** N/A  
 **Architecture disposition addressed:** FIX REQUIRED — AT4 normal UI Save persistence  
+**Deployment:** not performed (not required)
 
 ## Readiness
 
-**READY** against r1; Architecture **ACCEPT / PROCEED**, then **FIX REQUIRED** for AT4 UI Save evidence. Contract unchanged. This report supersedes the prior r1 Build Report for AT4 only.
+**READY** against r1; Architecture **ACCEPT / PROCEED**, then **FIX REQUIRED** for AT4 UI Save evidence. Contract unchanged. This report supersedes the prior r1 Build Report for AT4 only. Commit SHAs above record the handoff tip after Project Lead commit.
 
 ## FIX REQUIRED — root cause and close
 
@@ -98,11 +101,6 @@ Family-order **UI Save** was not equivalent to the AT4 contract because the jour
 
 - Hosted / physical phone / full SR certification: out of scope.
 
-## Suggested commit messages (do not commit)
+## Handoff note
 
-```
-P0-006C: close AT4 with stable family-order UI Save (r1)
-
-Pin reorder expectedVersion, apply Save results immediately,
-prove Cancel / Move-menu / touch Save→reload, and re-gate.
-```
+Implementation tip is `e8a93d5`. This Build Report writeback records those commit SHAs for Architecture acceptance; no further Engineering code changes are pending for the AT4 FIX REQUIRED close.

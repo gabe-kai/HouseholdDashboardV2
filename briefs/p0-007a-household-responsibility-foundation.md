@@ -181,9 +181,9 @@ The Build Report maps each AT to named tests/artifacts, states actual base/commi
 
 ## Engineering readiness
 
-**Reviewed revision:** NOT REVIEWED
-**Readiness:** NOT REVIEWED
-**Architecture disposition:** Awaiting Engineering's consolidated r1 readiness review.
+**Reviewed revision:** 1
+**Readiness:** READY
+**Architecture disposition:** Awaiting Architecture ACCEPT/PROCEED (Engineering r1 readiness recorded in `reports/P0-007A-r1-engineering-readiness.md`). No implementation until that response.
 
 ## Revision history
 

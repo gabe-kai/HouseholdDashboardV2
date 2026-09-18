@@ -23,6 +23,7 @@ export const GrantSchema = z.enum([
   "household.member.enroll",
   "household.structure.manage",
   "household.schedule.manage",
+  "household.activity.clear",
   "routine.shared.manage",
   "routine.personalize.direct",
   "routine.personalize.propose",
@@ -153,6 +154,8 @@ export const SetStepStatusSchema = z.object({
   mutationId: UuidSchema,
   status: StepStatusSchema,
   performedAt: InstantSchema,
+  /** Household activity generation; omitted only valid when generation is still 0. */
+  activityGeneration: z.number().int().nonnegative().optional(),
 });
 
 export const LoginSchema = z.object({
@@ -182,8 +185,24 @@ export const CreatePersonSchema = z.object({
 export const UpdatePersonSchema = z.object({
   displayName: z.string().trim().min(1).max(80),
   classification: PersonClassificationSchema.nullable(),
+  fullName: z.string().max(120).nullable().optional(),
+  birthday: HouseholdDateSchema.nullable().optional(),
+  email: z.string().max(254).nullable().optional(),
   expectedVersion: z.number().int().positive(),
 });
+
+export const SaveFamilyOrderSchema = z.object({
+  mutationId: UuidSchema,
+  expectedVersion: z.number().int().nonnegative(),
+  membershipIds: z.array(UuidSchema).min(1),
+});
+export type SaveFamilyOrderInput = z.infer<typeof SaveFamilyOrderSchema>;
+
+export const ClearRoutineActivitySchema = z.object({
+  mutationId: UuidSchema,
+  expectedGeneration: z.number().int().nonnegative(),
+});
+export type ClearRoutineActivityInput = z.infer<typeof ClearRoutineActivitySchema>;
 
 export const CreateGroupSchema = z.object({
   mutationId: UuidSchema,
@@ -275,6 +294,41 @@ export type OccurrenceView = {
   calendarProvenance?: "legacy" | "unconfigured" | "edition";
 };
 
+/** Compact History list row (no steps/reports). */
+export type HistoryOccurrenceSummary = {
+  id: string;
+  definitionId: string;
+  title: string;
+  daypart: Daypart;
+  accountableMemberId: string;
+  accountableMemberName: string;
+  householdDate: string;
+  completed: boolean;
+  startedAt: string | null;
+  counts: {
+    completed: number;
+    notNeeded: number;
+    open: number;
+  };
+};
+
+export type StepReportPublic = {
+  id: string;
+  mutationId: string;
+  occurrenceId: string;
+  occurrenceStepId: string;
+  accountableMemberId: string;
+  actingMemberId: string;
+  actingMemberName: string | null;
+  performedAt: string;
+  recordedAt: string;
+  resultingState: StepStatus;
+};
+
+export type HistoryOccurrenceDetail = OccurrenceView & {
+  reports: StepReportPublic[];
+};
+
 export type SyncNotification = {
   type: "household_change";
   householdId: string;
@@ -285,7 +339,9 @@ export type SyncNotification = {
     | "personal_task"
     | "membership"
     | "group"
-    | "school_calendar";
+    | "school_calendar"
+    | "family_order"
+    | "activity_reset";
   resourceId: string;
   version?: number;
   at: string;
@@ -340,9 +396,30 @@ export type MemberPublic = {
   classification: PersonClassification | null;
   accessState: AccessState;
   version: number;
+  /** Household-wide peer order (0-based). */
+  sortOrder: number;
+};
+
+export type FamilyOrderSaveResult = {
+  version: number;
+  people: MemberPublic[];
+};
+
+export type ActivityClearResult = {
+  activityGeneration: number;
+  activityResetFloor: string;
+  counts: {
+    occurrences: number;
+    occurrenceSteps: number;
+    stepReports: number;
+    mutationReceipts: number;
+  };
 };
 
 export type PersonDetail = MemberPublic & {
+  fullName: string | null;
+  birthday: string | null;
+  email: string | null;
   groups: Array<{ id: string; name: string }>;
   routines: Array<{
     definitionId: string;

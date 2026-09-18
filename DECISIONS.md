@@ -49,7 +49,7 @@ For new decisions, copy `templates/DECISION_TEMPLATE.md` into this file and assi
 
 **Status:** Active
 
-**Scope refinement:** D-023 and D-024 replace materialization-time immutability with first-execution protection for current/future work. Historical versions and execution facts remain preserved; eligible unstarted occurrences may reconcile under those later decisions.
+**Scope refinement:** D-023 and D-024 replace materialization-time immutability with first-execution protection for current/future work. Historical versions and execution facts remain preserved; eligible unstarted occurrences may reconcile under those later decisions. D-034 defines the separately authorized evaluation reset as an explicit exception to activity retention; ordinary edits retain these protections.
 
 **Decision:** A recurring responsibility has a stable definition identity and append-only, household-local effective-dated revisions. Occurrences are materialized idempotently per applicable household date and accountable member, reference the selected revision, and snapshot the expected title, schedule context, assignment, checklist order, and obligation meanings. Definition edits never mutate existing occurrence snapshots. Assignment, acting member, claimed performance time, server record time, and resulting execution state remain distinct facts.
 
@@ -425,6 +425,8 @@ Checklist execution is rejected for a future household date and for a cached occ
 
 **Status:** Active
 
+**Scope refinement:** D-034 permits an explicit manager-authorized evaluation reset to erase routine activity and retire older pending commands. It does not weaken locks or pending-intent protection during ordinary operation.
+
 **Decision:** A routine occurrence remains structurally editable until the first committed execution action. Materialization, viewing, and arrival at the household date do not lock it. Completing a Required or Optional item, completing an As-needed item, or marking an As-needed item Not needed is a valid first action. The lock is monotonic: undo may change completion state but never reopens structure. Locking is per routine definition, accountable membership, and household date, so group-backed members can diverge on the same date. Structural edits to an unstarted occurrence reconcile the whole intended structure and preserve the intended date; edits never rewrite a started occurrence or history. The server orders an edit and first action atomically, and pending local first-execution intent protects the occurrence during outbox recovery.
 
 **Reason:** The r1 date-appending rule made routine authoring impractical: correcting a task today or iterating on a future list could move the final version farther away. First execution is the meaningful household boundary, while completion is not required before a list should become stable.
@@ -673,3 +675,78 @@ Calendar mutations use session-derived household/actor, Origin/CSRF, optimistic 
 **Related briefs:**
 
 - P0-006B r1
+
+---
+
+## D-032 - Profiles and display order belong to household memberships
+
+**Status:** Active
+
+**Decision:** P0-006C extends the existing household membership with optional full name, birthday, and contact email, while retaining `display_name` as the required friendly name used throughout the household. These fields never become login keys or authorization inputs. Preserve existing names on upgrade and leave unknown profile facts unset. Same-household profile reading and `household.structure.manage` editing retain the existing people boundary; enrollment remains a separate capability and preserves profile data.
+
+One saved order covers all household directory memberships, including unenrolled people. Start with existing alphabetical presentation and a stable ID tie-break; append new people. Renaming or setting up access does not reorder them. Use family order where people are peers while retaining stronger daypart, queue, and checklist ordering. A focused order draft reuses D-028's touch/accessible controls and saves with expected household-order version, mutation ID, and atomic order/receipt persistence. Directory additions participate in order concurrency.
+
+**Reason:** The family should recognize its own people without confusing everyday names and household information with credentials, age-derived authority, or assignment priority.
+
+**Implications:** Keep stable membership IDs, compatibility-name writes, token access without email, and current grants. Full profile facts belong in detail rather than bulk lists/events. Saved changes refresh related views and account labels across devices without replacing dirty drafts. D-028's earlier deferral of family ordering ends with this brief. No email delivery, self-service recovery, or general profile/privacy framework is introduced.
+
+**Alternatives considered:**
+
+- A separate person identity or email-based account model would duplicate the existing membership boundary and exclude email-free children.
+- Browser-local order would fail cross-device continuity; alphabetical re-sorting after edits would discard family intent.
+- Guessing full names or birthdays from existing labels would invent facts.
+
+**Related briefs:**
+
+- P0-006C r1
+
+---
+
+## D-033 - History summarizes recorded routine evidence without generating work
+
+**Status:** Active
+
+**Decision:** P0-006C presents History by household date, person in saved family order, and routine summary, with progressive filters and occurrence detail. All History reads, including today, are side-effect-free queries over stored evidence. They do not materialize/reconcile absent work or recompute past expectations from current plans/calendars. Future expectations remain Preview. Existing `routine.shared.manage` authority applies to summaries, counts, filter options, and detail.
+
+Summary completion follows existing obligation semantics; Not needed and open Optional steps remain distinguishable from completed steps. Drill-down exposes the snapshotted checklist plus stored action facts: accountable member, actor, resulting state, claimed performance time, and server record time. Missing evidence is not inferred. Current friendly names may label stable historical identities; names were not historically snapshotted and are not presented as such. Personal tasks remain outside routine History.
+
+**Reason:** A parent needs a readable household day, while trustworthy history must describe recorded evidence rather than manufacture activity merely because it was viewed.
+
+**Implications:** Refine the existing today/future `historyForDate` materialization path deliberately. Existing-date compatibility may remain, but all History paths must be read-only. Extend D-027 with saved History summary/detail URLs and return context. Preserve stored structures, started survivors, ended-routine evidence, privacy, and empty-state honesty. Do not build an analytics warehouse or a generalized event platform.
+
+**Alternatives considered:**
+
+- Rendering every step by default obscures the family day.
+- Materializing missing past/current work during History queries confuses expected work with recorded evidence and could recreate cleared history.
+- A universal completion percentage would misstate Required/As needed/Optional semantics.
+
+**Related briefs:**
+
+- P0-006C r1
+
+---
+
+## D-034 - Evaluation reset preserves configuration and fences erased execution
+
+**Status:** Active
+
+**Decision:** P0-006C permits one explicit household-wide **Clear routine activity history** operation in secondary Data & testing UI, with a strong single confirmation. It removes all routine occurrence/step/report rows and their checklist replay payloads for that household, including today/future and started work. It preserves identity/access, profile/order, groups/dated sets, all routine configuration/lifecycle versions, personal layers/proposal audit, calendar editions, personal tasks, and non-execution command receipts. Existing backups/logs are not purged. This is the authorized evaluation exception to D-003/D-023/D-030 retention, not ordinary edit behavior or a general retention policy.
+
+Add `household.activity.clear` to the manager preset and backfill only existing `routine.shared.manage` holders. Enforce this capability independently of `ALLOW_EVALUATION_HISTORY_CLEAR`: available by default in development/test, unavailable by default in hosted unless the operator explicitly opts in. All writes retain session household, Origin/CSRF, version/replay checks. Grant alone cannot bypass the environment setting.
+
+Activity deletion, a monotonically increasing household execution generation, the household-date reset floor, and a minimal reset receipt/audit commit together. Same-command replay never clears later activity. Current/future work regenerates with fresh IDs from preserved plans, while generation paths cannot recreate dates before the reset floor. History reads never generate work. Scope every SQL/JSON receipt deletion to verified target ownership; unrelated household/configuration receipts survive.
+
+**Reason:** Product explicitly needs to restart routine evaluation without rebuilding the household. Deleting database rows alone cannot satisfy that intent because durable offline snapshots and late replies could restore erased activity or apply old taps to new work.
+
+**Implications:** Commands, execution reads, and outbox snapshots carry activity generation. Legacy data begins at zero; omission cannot mean the latest generation after a reset. Old commands fail before receipt replay; refreshed clients retire old intent with a visible explanation and reject delayed old responses. Reconnect/reload/visibility recover without a guaranteed WebSocket event. Never infer reset from omitted cards: D-030's same-generation pending-intent protection remains. Reset must serialize with execution/materialization and retain no hidden copy of erased step content in its audit. Future selective retention, account erasure, personal-task reset, and unrestricted production erasure need separate Product intent.
+
+**Alternatives considered:**
+
+- A database-wide wipe would lose the household setup the user wants to retain.
+- Clearing only reports would leave frozen/checkmarked occurrences and stale replay payloads.
+- Client-local outbox clearing or row deletion without a durable reset boundary would miss disconnected devices and late responses.
+- Requiring every device online before clearing would prevent the practical evaluation workflow.
+
+**Related briefs:**
+
+- P0-006C r1

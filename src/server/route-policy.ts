@@ -44,7 +44,7 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     origin: "none",
     csrf: "n/a",
     grant: null,
-    notes: "Public profile/banner metadata",
+    notes: "Public profile/banner metadata including allowEvaluationHistoryClear",
   },
   {
     method: "POST",
@@ -107,7 +107,7 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     origin: "none",
     csrf: "n/a",
     grant: null,
-    notes: "People directory with access-state projection",
+    notes: "People directory with access-state projection and familyOrderVersion",
   },
   {
     method: "POST",
@@ -134,7 +134,18 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     origin: "mutation_when_configured",
     csrf: "required",
     grant: "household.structure.manage",
-    notes: "Edit display name/classification; version-guarded",
+    notes:
+      "Edit friendly name/classification/optional profile fields; version-guarded; does not change sort_order",
+  },
+  {
+    method: "PUT",
+    path: "/api/v1/people/order",
+    auth: "session",
+    origin: "mutation_when_configured",
+    csrf: "required",
+    grant: "household.structure.manage",
+    notes:
+      "Save household family order; expectedVersion + mutationId digest replay; broadcasts family_order",
   },
   {
     method: "DELETE",
@@ -304,7 +315,7 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     origin: "none",
     csrf: "n/a",
     grant: null,
-    notes: "Authoritative today occurrences for viewer",
+    notes: "Authoritative today occurrences for viewer; includes activityGeneration",
   },
   {
     method: "GET",
@@ -313,7 +324,27 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     origin: "none",
     csrf: "n/a",
     grant: "routine.shared.manage",
-    notes: "Household occurrence history",
+    notes:
+      "Read-only History summaries; date or from/to (≤31d), person/routine/status filters; never materializes",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/history/occurrences/:occurrenceId",
+    auth: "session",
+    origin: "none",
+    csrf: "n/a",
+    grant: "routine.shared.manage",
+    notes: "History occurrence detail with steps and step_reports evidence; foreign → NOT_FOUND",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/household/activity/clear",
+    auth: "session",
+    origin: "mutation_when_configured",
+    csrf: "required",
+    grant: "household.activity.clear",
+    notes:
+      "Evaluation clear of routine activity; requires allowEvaluationHistoryClear + grant; broadcasts activity_reset",
   },
   {
     method: "POST",
@@ -323,7 +354,7 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     csrf: "required",
     grant: "routine.execute.own",
     notes:
-      "Accountable member checklist mutation; idempotent mutationId; rejects future dates and non-participants",
+      "Accountable member checklist mutation; idempotent mutationId; activityGeneration fence; rejects future dates and non-participants",
   },
   {
     method: "PUT",

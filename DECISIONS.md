@@ -403,6 +403,8 @@ Checklist execution is rejected for a future household date and for a cached occ
 
 **Scope refinement:** D-023/D-024 supersede this decision's original future-only/date-appending edit rule. Routine, membership, command, and personal-layer identity/scoping remain unchanged.
 
+**P0-007 refinement:** D-035 retains this per-person occurrence key for routines; responsibilities require one occurrence per definition/date independent of owner. Personal layers/proposals remain routine-only.
+
 **Decision:** P0-005 generalizes the existing definition model to multiple routines per household. A stable definition ID, independent of title or daypart, scopes shared revisions, participant resolution, personal layers, proposals, previews, mutation targets, and history. Keep the existing occurrence uniqueness by definition/date/accountable membership; scope personal revision uniqueness and selection by membership/definition/date. Proposals acquire their definition identity when created, and approval uses that stored identity. Administrative replay binds the target definition as well as household, command kind, and payload; state and receipt commit atomically.
 
 **Reason:** The existing database already represents routine identity in revisions and occurrences, but singleton lookups, personal date uniqueness, implicit proposal association, and target-free receipt digests would make multiple routines interfere. Three special routine types or independent copies of the application would preserve the underlying problem.
@@ -706,6 +708,8 @@ One saved order covers all household directory memberships, including unenrolled
 
 **Status:** Active
 
+**P0-007 refinement:** D-037 extends the same stored-evidence History to responsibilities with per-kind authority. Routine-only saved filters and all read-isolation guarantees remain supported.
+
 **Decision:** P0-006C presents History by household date, person in saved family order, and routine summary, with progressive filters and occurrence detail. All History reads, including today, are side-effect-free queries over stored evidence. They do not materialize/reconcile absent work or recompute past expectations from current plans/calendars. Future expectations remain Preview. Existing `routine.shared.manage` authority applies to summaries, counts, filter options, and detail.
 
 Summary completion follows existing obligation semantics; Not needed and open Optional steps remain distinguishable from completed steps. Drill-down exposes the snapshotted checklist plus stored action facts: accountable member, actor, resulting state, claimed performance time, and server record time. Missing evidence is not inferred. Current friendly names may label stable historical identities; names were not historically snapshotted and are not presented as such. Personal tasks remain outside routine History.
@@ -730,6 +734,8 @@ Summary completion follows existing obligation semantics; Not needed and open Op
 
 **Status:** Active
 
+**P0-007 refinement:** D-037 explicitly expands the confirmation and acknowledged reset scope to routines plus responsibilities. A legacy routine-only request cannot newly erase responsibility data. The common generation/floor and configuration-retention guarantees remain.
+
 **Decision:** P0-006C permits one explicit household-wide **Clear routine activity history** operation in secondary Data & testing UI, with a strong single confirmation. It removes all routine occurrence/step/report rows and their checklist replay payloads for that household, including today/future and started work. It preserves identity/access, profile/order, groups/dated sets, all routine configuration/lifecycle versions, personal layers/proposal audit, calendar editions, personal tasks, and non-execution command receipts. Existing backups/logs are not purged. This is the authorized evaluation exception to D-003/D-023/D-030 retention, not ordinary edit behavior or a general retention policy.
 
 Add `household.activity.clear` to the manager preset and backfill only existing `routine.shared.manage` holders. Enforce this capability independently of `ALLOW_EVALUATION_HISTORY_CLEAR`: available by default in development/test, unavailable by default in hosted unless the operator explicitly opts in. All writes retain session household, Origin/CSRF, version/replay checks. Grant alone cannot bypass the environment setting.
@@ -750,3 +756,61 @@ Activity deletion, a monotonically increasing household execution generation, th
 **Related briefs:**
 
 - P0-006C r1
+
+---
+
+## D-035 - Responsibilities share recurring-work foundations with distinct occurrence cardinality
+
+**Status:** Active (planned in P0-007A; not yet implemented)
+
+**Decision:** Add an immutable routine/responsibility kind to the existing recurring-definition and occurrence foundations. A routine produces independent occurrences per applicable membership/date. A responsibility produces one household occurrence per definition/date with one accountable membership; that membership is not part of responsibility identity. Enforce responsibility uniqueness in SQLite, including retained canceled rows. Preserve all existing routine IDs and per-person uniqueness.
+
+Reuse existing immutable plan content, schedule-entry intervals, occurrence/step/report/receipt storage, date/completion helpers, outbox and synchronization. Existing internal `routine_*` table names may remain; kind-aware resolution and typed responsibility APIs provide the product boundary. Do not duplicate the entire routine stack or introduce a universal task schema. Routine lists, APIs, personal layers/proposals and group-audience projections remain routine-only; cross-kind resource targeting is rejected.
+
+**Reason:** Making Kitchen a single-person routine without a different uniqueness/resolution rule would create a second Kitchen when its owner changes, or fan it out to every eligible child. Copying the execution/history systems would lose the accepted regression foundation.
+
+**Implications:** Additive forward migrations after 010 preserve populated routine data and legacy serialized commands. Common client execution/History projections carry kind and retain stable occurrence identity. A supplies fixed-owner daily/weekday responsibility work; B will resolve patterns and scheduled work before feeding the same single-owner snapshot boundary. Pending access remains independent from assignment, and personal tasks retain their own existing model.
+
+**Alternatives considered:** Separate duplicated responsibility infrastructure; a routine with a one-person audience but unchanged identity; a new generic entity/task platform. Each increases either incorrect accountability or unnecessary scope.
+
+**Related briefs:** P0-007A r1; B/C remain roadmap horizons under the same approved Product proposal.
+
+---
+
+## D-036 - Responsibility accountability is explicit and locks with first execution
+
+**Status:** Active (planned in P0-007A; not yet implemented)
+
+**Decision:** P0-007A supports one fixed household membership per responsibility plan, independent of recurrence. Recurrence uses existing ISO weekdays and dayparts; base steps use existing obligation meanings and apply every occurrence. Selection uses family order and permits pending-access people. No groups, rotation, helper roles, or automatic fallback in A. A concrete read-only seven-day preview explains the current/future result.
+
+Ordinary current-plan changes reconcile unstarted today/later work through the next intentional schedule boundary. Owner edits update an unstarted occurrence in place. The first committed valid execution action locks expected work and accountable membership together; undo never unlocks. Started survivors remain with their original owner after plan changes/End. D-024 future-plan operations and Delete unused/End retained work apply with responsibility-specific reference checks. Prior-date stored history also prevents responsibility deletion.
+
+Add `responsibility.manage` and `responsibility.execute.own`, with one-time upgrade from the corresponding existing routine management/execution grants and explicit preset additions. Management does not authorize executing another person's work. Store authenticated actor, accountable membership and actual performer as separate facts; new responsibility self-execution records its performer explicitly, while legacy unknown performer remains unknown. Cover/Claim UI stays deferred.
+
+**Reason:** A child's pending work and household accountability cannot depend on which client last read the plan or when assignment changed. One fixed owner proves the complete responsibility loop before Product evaluates patterns.
+
+**Implications:** Checklist commands for responsibilities carry intended structural identity independently from status version; edit/owner/lifecycle changes serialize with first action, receipt, generation and authority validation. Pending first-action snapshots survive ordinary omission until acknowledged/rejected. Stale commands never silently act for the next owner. B must later preserve these boundaries while expressing Kitchen's unequal pattern and deep-clean owner precedence; A does not declare equal rotation sufficient.
+
+**Alternatives considered:** Lock at materialization, change accountable membership after start, infer grants from assignment/age, or let all managers complete others' work. Those would change the approved ownership/execution behavior.
+
+**Related briefs:** P0-007A r1.
+
+---
+
+## D-037 - Responsibilities join existing views and explicitly acknowledged activity reset
+
+**Status:** Active (planned in P0-007A; not yet implemented)
+
+**Decision:** A usable responsibility includes Plan authoring, the existing daypart-ordered Today checklist, compact Household activity rows/detail, and the same stored-evidence History. Preserve Today / Plan / Household and existing URLs; add responsibility Plan detail. History reads enforce management authority per kind, including filters/counts/detail. B supplies patterns/scheduled additional work; C supplies fuller Completed/Next/Later/Anytime presentation. No standalone Chores or Chore History destination.
+
+The evaluation reset becomes **Clear activity history**, with a confirmation explicitly naming routines and responsibilities and preserving setup. New commands acknowledge all-recurring-work scope and bind it into replay. Where responsibility configuration/activity exists, an unacknowledged legacy routine-only request is rejected before deletion; existing committed reset receipts remain replayable without further clearing. Keep the environment and `household.activity.clear` gates.
+
+Atomically clear both execution graphs and verified checklist receipt payloads, advance the one household generation/floor, and record minimal reset evidence. Keep both plan/configuration kinds and all other D-034 retained data. Both kinds' pending commands/late responses obey the same generation fence; same-generation omission remains distinct from reset. No hidden erased checklist content in audit, no automatic live-data clearing, and no personal-task reset.
+
+**Reason:** Deferring all execution/History integration to C would make A an unevaluable foundation. Silently adding responsibility rows to routine-labeled deletion would broaden consent; keeping a routine-only clear with a shared generation could discard unrelated responsibility intent. Explicit all-work confirmation makes the existing reset boundary coherent and visible.
+
+**Implications:** Extend existing invalidation/reconnect/visibility and outbox compatibility; add mixed-kind authority, reset rollback, offline recovery and retained-data evidence. This is the bounded evaluation operation already requested, not a production retention policy.
+
+**Alternatives considered:** Separate Today/History applications, a second outbox/generation subsystem, or silently widened legacy reset. None is required for this slice.
+
+**Related briefs:** P0-007A r1; refines D-027, D-033 and D-034.

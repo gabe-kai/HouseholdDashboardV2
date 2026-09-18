@@ -17,11 +17,13 @@ import {
   fetchGroups,
   fetchPerson,
   issueEnrollmentClaim,
+  saveFamilyOrder,
   updateGroup,
   updatePerson,
   type PersonalTask,
 } from "./api";
 import { newClientId } from "./id";
+import { OrderedList } from "./OrderedList";
 
 const DAYPART_LABELS: Record<Daypart, string> = {
   morning: "Morning",
@@ -36,11 +38,23 @@ type ViewState =
   | { kind: "person-detail"; personId: string }
   | { kind: "add-person" }
   | { kind: "edit-person"; personId: string }
+  | { kind: "reorder-people" }
   | { kind: "access"; personId: string }
   | { kind: "group-detail"; groupId: string }
   | { kind: "create-group" }
   | { kind: "edit-group"; groupId: string }
   | { kind: "household-activity" };
+
+function sortPeople(people: MemberPublic[]): MemberPublic[] {
+  return [...people].sort(
+    (a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id),
+  );
+}
+
+function displayOrNotSet(value: string | null | undefined): string {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : "Not set";
+}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong";
@@ -130,6 +144,7 @@ export function PeopleGroupsView(props: {
   memberships: MemberPublic[];
   tasks: PersonalTask[];
   occurrences: OccurrenceView[];
+  familyOrderVersion: number;
   canManageStructure: boolean;
   canEnroll: boolean;
   canViewActivity: boolean;
@@ -146,8 +161,13 @@ export function PeopleGroupsView(props: {
   ) => void;
   /** Return to Household hub when leaving the top of this view. */
   onExit?: () => void;
-  onPeopleChanged: () => void;
+  onPeopleChanged: (update?: {
+    people: MemberPublic[];
+    familyOrderVersion: number;
+  }) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
+  const sortedMemberships = sortPeople(props.memberships);
   const [view, setView] = useState<ViewState>(() => {
     if (props.entry === "activity") return { kind: "household-activity" };
     if (props.entry === "person" && props.personId) {
@@ -196,7 +216,8 @@ export function PeopleGroupsView(props: {
       setView((current) =>
         current.kind === "overview" ||
         current.kind === "add-person" ||
-        current.kind === "create-group"
+        current.kind === "create-group" ||
+        current.kind === "reorder-people"
           ? current
           : { kind: "overview" },
       );
@@ -273,7 +294,7 @@ export function PeopleGroupsView(props: {
 
       {view.kind === "overview" ? (
         <OverviewState
-          memberships={props.memberships}
+          memberships={sortedMemberships}
           groups={loadedGroups}
           canManageStructure={props.canManageStructure}
           canViewActivity={props.canViewActivity}
@@ -282,6 +303,10 @@ export function PeopleGroupsView(props: {
           onAddPerson={() => {
             clearFeedback();
             setView({ kind: "add-person" });
+          }}
+          onReorderPeople={() => {
+            clearFeedback();
+            setView({ kind: "reorder-people" });
           }}
           onOpenGroup={openGroup}
           onCreateGroup={() => {
@@ -292,6 +317,25 @@ export function PeopleGroupsView(props: {
             clearFeedback();
             setView({ kind: "household-activity" });
           }}
+        />
+      ) : null}
+
+      {view.kind === "reorder-people" ? (
+        <ReorderPeopleState
+          people={sortedMemberships}
+          familyOrderVersion={props.familyOrderVersion}
+          onBack={goOverview}
+          onSaved={(result) => {
+            setMessage("People order saved.");
+            setError(null);
+            setView({ kind: "overview" });
+            props.onPeopleChanged({
+              people: result.people,
+              familyOrderVersion: result.version,
+            });
+          }}
+          onError={setError}
+          onDirtyChange={props.onDirtyChange}
         />
       ) : null}
 
@@ -337,6 +381,7 @@ export function PeopleGroupsView(props: {
             props.onPeopleChanged();
           }}
           onError={setError}
+          onDirtyChange={props.onDirtyChange}
         />
       ) : null}
 
@@ -353,7 +398,7 @@ export function PeopleGroupsView(props: {
       {view.kind === "group-detail" ? (
         <GroupDetailState
           group={loadedGroups.find((group) => group.id === view.groupId) ?? null}
-          people={props.memberships}
+          people={sortedMemberships}
           canManageStructure={props.canManageStructure}
           onBack={goOverview}
           onEdit={() => {
@@ -366,7 +411,7 @@ export function PeopleGroupsView(props: {
       {view.kind === "create-group" ? (
         <GroupFormState
           mode="create"
-          people={props.memberships}
+          people={sortedMemberships}
           onBack={goOverview}
           onSaved={(group) => {
             setGroups((current) => {
@@ -389,7 +434,7 @@ export function PeopleGroupsView(props: {
         <GroupFormState
           mode="edit"
           initial={loadedGroups.find((group) => group.id === view.groupId) ?? null}
-          people={props.memberships}
+          people={sortedMemberships}
           onBack={() => setView({ kind: "group-detail", groupId: view.groupId })}
           onSaved={(group) => {
             const prior = loadedGroups.find((item) => item.id === group.id);
@@ -436,7 +481,7 @@ export function PeopleGroupsView(props: {
 
       {view.kind === "household-activity" ? (
         <HouseholdActivityState
-          memberships={props.memberships}
+          memberships={sortedMemberships}
           tasks={props.tasks}
           occurrences={props.occurrences}
           backLabel={
@@ -463,6 +508,7 @@ function OverviewState(props: {
   onExit?: () => void;
   onOpenPerson: (personId: string) => void;
   onAddPerson: () => void;
+  onReorderPeople: () => void;
   onOpenGroup: (groupId: string) => void;
   onCreateGroup: () => void;
   onViewActivity: () => void;
@@ -499,9 +545,14 @@ function OverviewState(props: {
         })}
       </ul>
       {props.canManageStructure ? (
-        <button type="button" className="primary" onClick={props.onAddPerson}>
-          Add person
-        </button>
+        <div className="button-row">
+          <button type="button" className="primary" onClick={props.onAddPerson}>
+            Add person
+          </button>
+          <button type="button" className="secondary" onClick={props.onReorderPeople}>
+            Reorder people
+          </button>
+        </div>
       ) : null}
 
       <h2>Groups</h2>
@@ -557,6 +608,18 @@ function PersonDetailState(props: {
     <div className="focused-state" aria-labelledby="person-detail-heading">
       <BackButton label="Back to People & Groups" onClick={props.onBack} />
       <FocusHeading id="person-detail-heading">{props.detail.displayName}</FocusHeading>
+      <p>
+        Friendly name: <strong>{props.detail.displayName}</strong>
+      </p>
+      <p>
+        Full name: <strong>{displayOrNotSet(props.detail.fullName)}</strong>
+      </p>
+      <p>
+        Birthday: <strong>{displayOrNotSet(props.detail.birthday)}</strong>
+      </p>
+      <p>
+        Email: <strong>{displayOrNotSet(props.detail.email)}</strong>
+      </p>
       <p>
         Role: <strong>{roleLabel(props.detail.classification)}</strong>
       </p>
@@ -642,7 +705,7 @@ function AddPersonState(props: {
       <FocusHeading id="add-person-heading">Add person</FocusHeading>
       <form className="form-grid" onSubmit={submit}>
         <label>
-          Name
+          Friendly name
           <input
             value={name}
             onChange={(event) => setName(event.target.value)}
@@ -685,8 +748,12 @@ function EditPersonState(props: {
   onBack: () => void;
   onSaved: () => void;
   onError: (value: string | null) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [name, setName] = useState(props.detail.displayName);
+  const [fullName, setFullName] = useState(props.detail.fullName ?? "");
+  const [birthday, setBirthday] = useState(props.detail.birthday ?? "");
+  const [email, setEmail] = useState(props.detail.email ?? "");
   const [role, setRole] = useState<"adult" | "child" | "unset">(
     props.detail.classification ?? "unset",
   );
@@ -694,8 +761,23 @@ function EditPersonState(props: {
 
   useEffect(() => {
     setName(props.detail.displayName);
+    setFullName(props.detail.fullName ?? "");
+    setBirthday(props.detail.birthday ?? "");
+    setEmail(props.detail.email ?? "");
     setRole(props.detail.classification ?? "unset");
-  }, [props.detail]);
+  }, [props.detail.id, props.detail.version]);
+
+  const dirty =
+    name.trim() !== props.detail.displayName ||
+    fullName.trim() !== (props.detail.fullName ?? "") ||
+    birthday !== (props.detail.birthday ?? "") ||
+    email.trim() !== (props.detail.email ?? "") ||
+    (role === "unset" ? null : role) !== props.detail.classification;
+
+  useEffect(() => {
+    props.onDirtyChange?.(dirty);
+    return () => props.onDirtyChange?.(false);
+  }, [dirty, props.onDirtyChange]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -706,8 +788,12 @@ function EditPersonState(props: {
       await updatePerson(props.detail.id, {
         displayName: name,
         classification: role === "unset" ? null : role,
+        fullName: fullName.trim() ? fullName.trim() : null,
+        birthday: birthday || null,
+        email: email.trim() ? email.trim() : null,
         expectedVersion: props.detail.version,
       });
+      props.onDirtyChange?.(false);
       props.onSaved();
     } catch (caught) {
       props.onError(errorMessage(caught));
@@ -715,13 +801,26 @@ function EditPersonState(props: {
     }
   }
 
+  function cancel() {
+    if (
+      dirty &&
+      !window.confirm(
+        "You have unsaved changes. Discard them?\n\nOK = Discard · Cancel = Keep editing",
+      )
+    ) {
+      return;
+    }
+    props.onDirtyChange?.(false);
+    props.onBack();
+  }
+
   return (
     <div className="focused-state" aria-labelledby="edit-person-heading">
-      <BackButton label={`Back to ${props.detail.displayName}`} onClick={props.onBack} />
+      <BackButton label={`Back to ${props.detail.displayName}`} onClick={cancel} />
       <FocusHeading id="edit-person-heading">Edit person</FocusHeading>
       <form className="form-grid" onSubmit={submit}>
         <label>
-          Name
+          Friendly name
           <input
             value={name}
             onChange={(event) => setName(event.target.value)}
@@ -729,6 +828,35 @@ function EditPersonState(props: {
             maxLength={80}
             disabled={busy}
             aria-required="true"
+          />
+        </label>
+        <label>
+          Full name
+          <input
+            value={fullName}
+            onChange={(event) => setFullName(event.target.value)}
+            maxLength={120}
+            disabled={busy}
+          />
+        </label>
+        <label>
+          Birthday
+          <input
+            type="date"
+            value={birthday}
+            onChange={(event) => setBirthday(event.target.value)}
+            disabled={busy}
+          />
+        </label>
+        <label>
+          Email
+          <input
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            maxLength={254}
+            disabled={busy}
+            autoComplete="off"
           />
         </label>
         <fieldset disabled={busy}>
@@ -763,10 +891,122 @@ function EditPersonState(props: {
             </label>
           ) : null}
         </fieldset>
-        <button type="submit" className="primary" disabled={busy}>
-          {busy ? "Saving…" : "Save person"}
-        </button>
+        <div className="button-row">
+          <button type="submit" className="primary" disabled={busy || !dirty}>
+            {busy ? "Saving…" : "Save"}
+          </button>
+          <button type="button" className="secondary" disabled={busy} onClick={cancel}>
+            Cancel
+          </button>
+        </div>
       </form>
+    </div>
+  );
+}
+
+function ReorderPeopleState(props: {
+  people: MemberPublic[];
+  familyOrderVersion: number;
+  onBack: () => void;
+  onSaved: (result: { version: number; people: MemberPublic[] }) => void;
+  onError: (value: string | null) => void;
+  onDirtyChange?: (dirty: boolean) => void;
+}) {
+  const [draft, setDraft] = useState(() => props.people.map((person) => person.id));
+  // Pin baseline + expectedVersion at open (and on remote version advances). Live
+  // membership refreshes must not retarget Save at a newer version while the draft
+  // still mirrors the older baseline — that CONFLICT flake under full-suite churn.
+  const [baselineIds, setBaselineIds] = useState(() =>
+    props.people.map((person) => person.id),
+  );
+  const [expectedVersion, setExpectedVersion] = useState(props.familyOrderVersion);
+  const [busy, setBusy] = useState(false);
+  const dirty = draft.join("\0") !== baselineIds.join("\0");
+
+  useEffect(() => {
+    if (props.familyOrderVersion === expectedVersion) return;
+    if (dirty) {
+      // Keep the pinned draft/version so Save surfaces a real conflict instead of
+      // silently retargeting expectedVersion under mid-edit supporting-data refresh.
+      return;
+    }
+    const ids = props.people.map((person) => person.id);
+    setDraft(ids);
+    setBaselineIds(ids);
+    setExpectedVersion(props.familyOrderVersion);
+  }, [props.familyOrderVersion, props.people, expectedVersion, dirty]);
+
+  useEffect(() => {
+    props.onDirtyChange?.(dirty);
+    return () => props.onDirtyChange?.(false);
+  }, [dirty, props.onDirtyChange]);
+
+  const items = draft
+    .map((id) => props.people.find((person) => person.id === id))
+    .filter((person): person is MemberPublic => Boolean(person))
+    .map((person) => ({
+      id: person.id,
+      label: person.displayName,
+      person,
+    }));
+
+  async function save() {
+    if (busy || !dirty) return;
+    props.onError(null);
+    setBusy(true);
+    try {
+      const result = await saveFamilyOrder({
+        mutationId: newClientId(),
+        expectedVersion,
+        membershipIds: draft,
+      });
+      props.onDirtyChange?.(false);
+      props.onSaved(result);
+    } catch (caught) {
+      props.onError(errorMessage(caught));
+      setBusy(false);
+    }
+  }
+
+  function cancel() {
+    if (
+      dirty &&
+      !window.confirm(
+        "You have unsaved changes. Discard them?\n\nOK = Discard · Cancel = Keep editing",
+      )
+    ) {
+      return;
+    }
+    props.onDirtyChange?.(false);
+    props.onBack();
+  }
+
+  return (
+    <div className="focused-state" aria-labelledby="reorder-people-heading">
+      <BackButton label="Back to People & Groups" onClick={cancel} />
+      <FocusHeading id="reorder-people-heading">Reorder people</FocusHeading>
+      <p className="meta">
+        This order is used wherever household people appear as peers, including History.
+      </p>
+      <OrderedList
+        listLabel="Family order"
+        items={items}
+        onReorder={(next) => setDraft(next.map((item) => item.id))}
+        renderRow={(item) => (
+          <div>
+            <strong>{item.person.displayName}</strong>
+            <div className="meta">{roleLabel(item.person.classification)}</div>
+          </div>
+        )}
+      />
+      <div className="button-row">
+        <button type="button" className="primary" disabled={busy || !dirty} onClick={() => void save()}>
+          {busy ? "Saving…" : "Save"}
+        </button>
+        <button type="button" className="secondary" disabled={busy} onClick={cancel}>
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }

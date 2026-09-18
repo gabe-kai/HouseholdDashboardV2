@@ -46,20 +46,24 @@ Goal: prove that a real recurring household routine can be used quickly by six d
   - **Brief:** `P0-006A r2` (`briefs/p0-006a-calm-household-experience-foundation.md`).
   - **Result:** Technically accepted and accepted by the Project Lead after screenshot review and testing. Integrated to `main` at `7cba3a6` via PR #12, including B planning and the A toast/CI correction.
 
+- [x] **P0-006B - Contextual Routine Applicability:** One routine adapts to school days, breaks, and School nights using step applicability and a household school calendar, while preserving work already begun.
+  - **Brief:** `P0-006B r1 - Contextual Routine Applicability` (`briefs/p0-006b-contextual-routine-applicability.md`).
+  - **Result:** Technically accepted and merged via PR #13 at `de552ab`, including AT9 rollback and AT10/AT11 browser multi-context evidence. The Project Lead exercised calendar setup and authorized continuing to C; this does not claim exhaustive Product evaluation.
+
 ### CURRENT
 
-- [ ] **Outcome: Let one routine adapt to school days and breaks.** Steps use simple applicability choices and a household school calendar, including School nights. Parents change calendar exceptions without cloning routines or changing a person's work already begun.
-  - **Brief:** `P0-006B r1 - Contextual Routine Applicability` (`briefs/p0-006b-contextual-routine-applicability.md`).
-  - **Status:** TECHNICALLY ACCEPTED; AT1–14 pass locally, including AT9 rollback and AT10/AT11 browser multi-context evidence. Project Lead/Product review and integration remain.
-  - **Evidence target:** Local calendar/step/preview journey, current/future unstarted reconciliation across plan boundaries, preserved locks/history, personal/proposal composition, migration/replay, and live context changes. Product evaluates usefulness after technical acceptance.
+- [x] **Outcome: Recognize the family and understand its day.** Friendly household profiles and saved family order, compact day/person routine History with action detail, and one deliberate evaluation reset that preserves household setup.
+  - **Brief:** `P0-006C r1 - Household Profiles and Useful History` (`briefs/p0-006c-household-profiles-useful-history.md`).
+  - **Status:** Technically accepted at r1 (`e8a93d5`); Project Lead evaluation remains separate. Third/final technical slice of the existing approved P0-006 proposal.
+  - **Evidence target:** Local profile/token/order and summarized History journeys; exact reset retention, atomicity/replay, and offline recovery; phone/desktop/touch/keyboard evidence with preserved regression coverage. Project Lead evaluates the connected experience after technical acceptance.
 
 ### LIKELY NEXT
 
-- [ ] **P0-006C - Household Profiles and Useful History.** Deliver the third slice of the existing P0-006 proposal: friendly/full names, birthday, optional email with token access preserved, family display order, day/person history summaries with evidence drill-down, and manager-authorized evaluation-history clearing while preserving configuration. Architecture will define the clearing/reference contract from the then-current repository. No replacement Product proposal is needed unless new evidence changes the intended outcome.
+- [ ] **Multi-Responsibility Today.** After the connected P0-006 experience is evaluated, use the preserved Product direction to choose the first ordinary household responsibility and completed/current/later/anytime presentation. Exact scope/brief waits for that evidence; no assignment engine or chore domain is pre-authorized by C.
 
 ### LATER
 
-- **Multi-Responsibility Today:** completed/current/later/anytime hierarchy and ordinary household responsibilities such as Kitchen, Cats, and Bathroom after the P0-006 foundation is stable.
+- Further ordinary household responsibilities such as Kitchen, Cats, and Bathroom, sequenced from the first Multi-Responsibility Today evidence.
 - Richer scheduling, assignment, shared execution, and personal work, driven by household evidence and using the common application design; no empty future destinations are prebuilt in P0-006A.
 - Broader-release privacy, recovery, offline behavior, and operational confidence.
 - Detailed unscheduled product memory: [`PRODUCT.md` — Deferred / Preserved Product Directions](PRODUCT.md#deferred--preserved-product-directions). This inventory is not a sequence of implementation commitments.

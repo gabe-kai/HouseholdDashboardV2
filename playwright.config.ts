@@ -70,7 +70,11 @@ export default defineConfig({
     },
     {
       name: "chromium-desktop",
-      testMatch: ["**/z-p0-006a-calm-experience.spec.ts", "**/z-p0-006a-geometry.spec.ts"],
+      testMatch: [
+        "**/z-p0-006a-calm-experience.spec.ts",
+        "**/z-p0-006a-geometry.spec.ts",
+        "**/z-p0-006c-geometry.spec.ts",
+      ],
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width: 1280, height: 800 },

@@ -19,7 +19,7 @@
 
 ## Current focus
 
-**P0-006B r1 - Contextual Routine Applicability** is technically accepted. AT9 rollback and AT10/AT11 browser multi-context evidence are complete; the implementation is committed on its branch through `8421b31` and has not been deployed. Project Lead/Product acceptance remains. P0-006A r2 and B planning are integrated at `main` @ `7cba3a6`. B and the later C continue the original approved P0-006 proposal.
+**P0-006C r1 - Household Profiles and Useful History** is technically accepted at implementation commit `e8a93d5`. It is the third slice of the original approved P0-006 proposal, based on technically accepted P0-006B merged to `main` at `de552ab` via PR #13. The Project Lead's connected-experience acceptance remains separate; no hosted deployment is required for this slice.
 
 ## Internal work status
 
@@ -32,7 +32,8 @@
 | P0-004B - Group-backed Morning Routine | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` via PR #9 | Product evaluation |
 | P0-005 - Cohesive Routine Management | r3 | ACCEPTED | Completed | Merged to `main` via PR #11 | P0-006 follow-up carries Product evaluation findings |
 | P0-006A - Calm Household Experience Foundation | r2 | ACCEPTED | Completed | Merged to `main` at `7cba3a6` via PR #12 | None; Project Lead evaluation accepted |
-| P0-006B - Contextual Routine Applicability | r1 | ACCEPTED | Project Lead/Product | `brief/p0-006b-contextual-routine-applicability` through `8421b31` | Review/merge and evaluate the contextual routine experience |
+| P0-006B - Contextual Routine Applicability | r1 | ACCEPTED | Project Lead/Product | Merged to `main` at `de552ab` | Evaluate the contextual routine experience |
+| P0-006C - Household Profiles and Useful History | r1 | ACCEPTED | Project Lead evaluation | `e8a93d5` on `brief/p0-006c-household-profiles-useful-history` | Project Lead evaluates connected experience; next planning handoff follows |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -49,6 +50,7 @@ This table is the short repository-side coordination index. An external project 
 - P0-005 r1/r2 established multiple routines and first-action locks; r2 implementation is `297b2fd`, merged to `main` at `5376b51`, and technically accepted. Product evaluation prompted r3's full routine lifecycle, current-plan ranges, and shared visual/navigation foundation.
 - P0-005 r3 completed the routine lifecycle and Calm Household shell, was technically accepted after AT6 and long-lived-database receipt corrections, and merged through PR #11 at `31aad37`.
 - P0-006A r2 completed the responsive Plan shell, focused editors, saved navigation, quiet feedback, and step ordering; required local evidence was closed and Architecture accepted it. The Project Lead then reviewed screenshots, tested, and reported satisfaction. A and B planning are integrated at `7cba3a6` via PR #12, including the A toast/CI correction.
+- P0-006B r1 contextual applicability and school calendar were technically accepted after AT9 rollback and AT10/AT11 browser evidence closed at `8421b31`, then merged through PR #13 at `de552ab`. The Project Lead reported successful school-year/exception setup and chose to continue the approved proposal with C.
 
 ## Known blockers
 
@@ -56,11 +58,11 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next Project Lead decision
 
-- Engineering may implement P0-006B r1 on the existing brief branch. The integration/readiness prerequisites are satisfied. Project Lead manages Git; no new Product proposal or deployment is required.
+- P0-006C r1 is technically accepted at `e8a93d5`. Project Lead manages branch/merge/integration; agents suggest commit messages but do not commit. No deployment is needed for this slice.
 
 ## Next likely handoff
 
-Architecture accepted **P0-006B revision 1** after Engineering closed AT9's injected rollback evidence and AT10/AT11's browser multi-context evidence. Project Lead/Product review and integration remain. P0-006C remains LIKELY NEXT from the same Product proposal.
+Architecture technically accepted `briefs/p0-006c-household-profiles-useful-history.md` **revision 1** after the AT4 evidence correction. The project card **Recognize the family and understand its day** moves to **evaluation**; no external board is configured.
 
 ## Notes for all teams
 

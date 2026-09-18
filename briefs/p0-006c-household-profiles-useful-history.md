@@ -170,11 +170,11 @@ Automated evidence and screenshots support Architecture acceptance. The Project 
 
 ## Engineering readiness
 
-**Reviewed revision:** NOT REVIEWED
+**Reviewed revision:** 1
 
-**Readiness:** NOT REVIEWED
+**Readiness:** READY
 
-**Architecture disposition:** Awaiting Engineering's consolidated r1 readiness review.
+**Architecture disposition:** Awaiting Architecture ACCEPT/PROCEED. Engineering reviewed r1 against branch tip `c2de2e9` (B merge parent `de552ab`). No blockers or material questions. Highest-attention gaps are intentional contract work: History read isolation (stop today/future `materializeForDate` on History paths), checklist `mutation_receipts` ownership for household-scoped clear, and activity-generation-fenced outbox recovery. Report: `reports/P0-006C-r1-engineering-readiness.md`. No implementation until Architecture responds.
 
 ## Revision history
 

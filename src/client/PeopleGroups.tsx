@@ -161,7 +161,10 @@ export function PeopleGroupsView(props: {
   ) => void;
   /** Return to Household hub when leaving the top of this view. */
   onExit?: () => void;
-  onPeopleChanged: () => void;
+  onPeopleChanged: (update?: {
+    people: MemberPublic[];
+    familyOrderVersion: number;
+  }) => void;
   onDirtyChange?: (dirty: boolean) => void;
 }) {
   const sortedMemberships = sortPeople(props.memberships);
@@ -322,11 +325,14 @@ export function PeopleGroupsView(props: {
           people={sortedMemberships}
           familyOrderVersion={props.familyOrderVersion}
           onBack={goOverview}
-          onSaved={() => {
+          onSaved={(result) => {
             setMessage("People order saved.");
             setError(null);
             setView({ kind: "overview" });
-            props.onPeopleChanged();
+            props.onPeopleChanged({
+              people: result.people,
+              familyOrderVersion: result.version,
+            });
           }}
           onError={setError}
           onDirtyChange={props.onDirtyChange}
@@ -902,21 +908,33 @@ function ReorderPeopleState(props: {
   people: MemberPublic[];
   familyOrderVersion: number;
   onBack: () => void;
-  onSaved: () => void;
+  onSaved: (result: { version: number; people: MemberPublic[] }) => void;
   onError: (value: string | null) => void;
   onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [draft, setDraft] = useState(() => props.people.map((person) => person.id));
+  // Pin baseline + expectedVersion at open (and on remote version advances). Live
+  // membership refreshes must not retarget Save at a newer version while the draft
+  // still mirrors the older baseline — that CONFLICT flake under full-suite churn.
+  const [baselineIds, setBaselineIds] = useState(() =>
+    props.people.map((person) => person.id),
+  );
+  const [expectedVersion, setExpectedVersion] = useState(props.familyOrderVersion);
   const [busy, setBusy] = useState(false);
-  const baseline = props.people.map((person) => person.id).join("\0");
+  const dirty = draft.join("\0") !== baselineIds.join("\0");
 
-  // Only re-seed from the server when the saved order version advances (after a
-  // successful save elsewhere). Do not reset on memberships referential churn.
   useEffect(() => {
-    setDraft(props.people.map((person) => person.id));
-  }, [props.familyOrderVersion]);
-
-  const dirty = draft.join("\0") !== baseline;
+    if (props.familyOrderVersion === expectedVersion) return;
+    if (dirty) {
+      // Keep the pinned draft/version so Save surfaces a real conflict instead of
+      // silently retargeting expectedVersion under mid-edit supporting-data refresh.
+      return;
+    }
+    const ids = props.people.map((person) => person.id);
+    setDraft(ids);
+    setBaselineIds(ids);
+    setExpectedVersion(props.familyOrderVersion);
+  }, [props.familyOrderVersion, props.people, expectedVersion, dirty]);
 
   useEffect(() => {
     props.onDirtyChange?.(dirty);
@@ -937,13 +955,13 @@ function ReorderPeopleState(props: {
     props.onError(null);
     setBusy(true);
     try {
-      await saveFamilyOrder({
+      const result = await saveFamilyOrder({
         mutationId: newClientId(),
-        expectedVersion: props.familyOrderVersion,
+        expectedVersion,
         membershipIds: draft,
       });
       props.onDirtyChange?.(false);
-      props.onSaved();
+      props.onSaved(result);
     } catch (caught) {
       props.onError(errorMessage(caught));
       setBusy(false);

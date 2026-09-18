@@ -389,6 +389,14 @@ export async function buildApp(
     }
     const person = store.createPerson(session, parsed.data);
     broadcast(session, "membership", person.id, person.version);
+    // createPerson appends sort_order and bumps family_order_version — keep order
+    // subscribers coherent with membership refreshes under shared e2e DBs.
+    broadcast(
+      session,
+      "family_order",
+      session.householdId,
+      store.getFamilyOrderVersion(session.householdId),
+    );
     return { person };
   });
 

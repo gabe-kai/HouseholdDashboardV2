@@ -1192,6 +1192,7 @@ export function App() {
                 onClick={() => {
                   if (item.id === "people-groups") {
                     requestNavigate({ name: "household-people" });
+                    void refreshSupportingData(activeSession);
                     return;
                   }
                   if (item.id === "school-calendar") {
@@ -1276,7 +1277,11 @@ export function App() {
             }
           }}
           onExit={() => requestNavigate({ name: "household" })}
-          onPeopleChanged={() => {
+          onPeopleChanged={(update) => {
+            if (update) {
+              setMemberships(update.people);
+              setFamilyOrderVersion(update.familyOrderVersion);
+            }
             if (activeSession) void refreshSupportingData(activeSession);
           }}
           onDirtyChange={(dirty) => {
@@ -1296,7 +1301,11 @@ export function App() {
           canViewActivity={false}
           entry="activity"
           onExit={() => setHouseholdLeaf(null)}
-          onPeopleChanged={() => {
+          onPeopleChanged={(update) => {
+            if (update) {
+              setMemberships(update.people);
+              setFamilyOrderVersion(update.familyOrderVersion);
+            }
             if (activeSession) void refreshSupportingData(activeSession);
           }}
         />

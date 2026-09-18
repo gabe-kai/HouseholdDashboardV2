@@ -52,9 +52,9 @@ Goal: prove that a real recurring household routine can be used quickly by six d
 
 ### CURRENT
 
-- [ ] **Outcome: Recognize the family and understand its day.** Friendly household profiles and saved family order, compact day/person routine History with action detail, and one deliberate evaluation reset that preserves household setup.
+- [x] **Outcome: Recognize the family and understand its day.** Friendly household profiles and saved family order, compact day/person routine History with action detail, and one deliberate evaluation reset that preserves household setup.
   - **Brief:** `P0-006C r1 - Household Profiles and Useful History` (`briefs/p0-006c-household-profiles-useful-history.md`).
-  - **Status:** READY; Engineering readiness returned READY with no blockers or material questions. Architecture has authorized implementation. Third/final technical slice of the existing approved P0-006 proposal.
+  - **Status:** Technically accepted at r1 (`e8a93d5`); Project Lead evaluation remains separate. Third/final technical slice of the existing approved P0-006 proposal.
   - **Evidence target:** Local profile/token/order and summarized History journeys; exact reset retention, atomicity/replay, and offline recovery; phone/desktop/touch/keyboard evidence with preserved regression coverage. Project Lead evaluates the connected experience after technical acceptance.
 
 ### LIKELY NEXT

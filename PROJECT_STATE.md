@@ -19,7 +19,7 @@
 
 ## Current focus
 
-**P0-007A r1 - Household Responsibility Foundation** is IN REVIEW on the integrated P0-006 baseline (`main` at `409d147`, PR #14). It is the first of three technical slices from the approved P0-007 proposal: fixed-owner Cats/Trash through Plan, Today, Household activity and History. B will address patterns/scheduled additional work; C will develop the fuller unified day. Only A is briefed. Engineering readiness is next; no P0-007 production implementation is asserted.
+**P0-007A r1 - Household Responsibility Foundation** is READY on the integrated P0-006 baseline (`main` at `409d147`, PR #14). Architecture accepted Engineering's readiness review committed at `7226987` and authorized r1 implementation. It is the first of three technical slices from the approved P0-007 proposal: fixed-owner Cats/Trash through Plan, Today, Household activity and History. B will address patterns/scheduled additional work; C will develop the fuller unified day. Only A is briefed; implementation has not yet been reported as started.
 
 ## Internal work status
 
@@ -34,7 +34,7 @@
 | P0-006A - Calm Household Experience Foundation | r2 | ACCEPTED | Completed | Merged to `main` at `7cba3a6` via PR #12 | None; Project Lead evaluation accepted |
 | P0-006B - Contextual Routine Applicability | r1 | ACCEPTED | Project Lead/Product | Merged to `main` at `de552ab` | Evaluate the contextual routine experience |
 | P0-006C - Household Profiles and Useful History | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `409d147` via PR #14 | Product acceptance remains separate |
-| P0-007A - Household Responsibility Foundation | r1 | IN REVIEW | Engineering readiness | Planned `brief/p0-007a-household-responsibility-foundation` | Consolidated readiness review; Architecture response before implementation |
+| P0-007A - Household Responsibility Foundation | r1 | READY | Engineering | `brief/p0-007a-household-responsibility-foundation` | Implement r1, then return Build Report for Architecture technical acceptance |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -61,11 +61,11 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next Project Lead decision
 
-- Record the P0-007A planning baseline and hand **P0-007A r1** to Engineering for readiness. Project Lead manages Git; agents suggest commit messages but do not commit. No deployment is required for this local development slice.
+- Planning and readiness are committed through `7226987`. Record Architecture's ACCEPT/PROCEED writeback and relay authorization to Engineering for **P0-007A r1**. Project Lead manages Git; agents suggest commit messages but do not commit. No deployment is required for this local development slice.
 
 ## Next likely handoff
 
-Engineering reviews `briefs/p0-007a-household-responsibility-foundation.md` **revision 1** and returns one consolidated readiness report before implementation. The card **Give Cats and Trash one owner and a place in Today** is **Up Next**; no external board is configured. Architecture then resolves material findings and issues ACCEPT/PROCEED or revises the brief.
+Engineering may implement `briefs/p0-007a-household-responsibility-foundation.md` **revision 1** under Architecture ACCEPT/PROCEED; no further readiness round is required. Return `reports/P0-007A-r1-build-report.md` with AT1–16 evidence and local validation results. The card **Give Cats and Trash one owner and a place in Today** moves from **Up Next** to **In Progress** when implementation begins; no external board is configured. Architecture technical acceptance and Project Lead evaluation follow separately.
 
 ## Notes for all teams
 

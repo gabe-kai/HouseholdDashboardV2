@@ -107,9 +107,9 @@ Authoritative contract: `briefs/p0-006b-contextual-routine-applicability.md` **r
 - **History isolation:** Past `historyForDate` is snapshot-only; calendar edits do not rewrite prior-date rows. Unstarted Today/future reconcile on calendar save (including school-night predecessors).
 - **UI:** Household → School calendar (`/household/school-calendar`); focused step Applicability; Plan dated preview with reasons.
 
-### P0-007A household responsibility foundation (planned; not implemented)
+### P0-007A household responsibility foundation (ready; not implemented)
 
-Authoritative contract: `briefs/p0-007a-household-responsibility-foundation.md` **r1**, D-035–D-037. Base: integrated `main` **409d147**. Readiness is not yet reviewed. First of three technical slices from the approved P0-007 proposal; B/C stay lighter roadmap horizons.
+Authoritative contract: `briefs/p0-007a-household-responsibility-foundation.md` **r1**, D-035–D-037. Base: integrated `main` **409d147**. Engineering's READY review is committed at `7226987`; Architecture accepts the findings and authorizes r1 implementation without a contract change. First of three technical slices from the approved P0-007 proposal; B/C stay lighter roadmap horizons. No P0-007 implementation is asserted yet.
 
 - **Vertical outcome:** Fixed-owner daily Cats and weekly Trash through Plan, mixed Today execution, compact Household activity and existing History. Pattern assignment and Kitchen/Bathroom scheduled additions follow in B; fuller daily prioritization follows in C. Minimum execution/History integration belongs to A so it can be evaluated independently.
 - **Shared foundations, different cardinality:** Extend existing definition/revision/schedule and occurrence/step/report/receipt storage with immutable routine/responsibility kind. Legacy SQL names may remain. Routine uniqueness stays per definition/date/member; responsibility uniqueness is per definition/date independent of owner, enforced in SQLite. Reuse date/plan/lock/completion, outbox and WS machinery; keep kind-aware resolution and routine-only personal/group-audience paths explicit.

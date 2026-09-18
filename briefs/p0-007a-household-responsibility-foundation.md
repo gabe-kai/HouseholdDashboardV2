@@ -1,7 +1,7 @@
 # BRIEF P0-007A - Household Responsibility Foundation
 
 **Revision:** 1
-**Status:** IN REVIEW
+**Status:** READY
 
 One authoritative contract for P0-007A. Material changes increment the revision and invalidate prior readiness. Architecture technical acceptance and Project Lead acceptance of the experience are separate.
 
@@ -183,7 +183,7 @@ The Build Report maps each AT to named tests/artifacts, states actual base/commi
 
 **Reviewed revision:** 1
 **Readiness:** READY
-**Architecture disposition:** Awaiting Architecture ACCEPT/PROCEED (Engineering r1 readiness recorded in `reports/P0-007A-r1-engineering-readiness.md`). No implementation until that response.
+**Architecture disposition:** ACCEPT / PROCEED for **P0-007A revision 1**. Architecture reviewed `reports/P0-007A-r1-engineering-readiness.md`, committed at `7226987`, against the unchanged implementation baseline `409d147`. Engineering's notes identify intentional deltas already covered by D-035–D-037 and this contract; no contract revision or further readiness round is required. Engineering may implement r1 on `brief/p0-007a-household-responsibility-foundation`, then return its Build Report with AT1–16 evidence and exact local PR/RC/Vite gate results. B/C remain outside A. Project Lead manages Git; suggest commit messages but do not commit or deploy. The project card moves from Up Next to In Progress when implementation starts; technical acceptance remains pending.
 
 ## Revision history
 

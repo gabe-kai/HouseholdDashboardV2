@@ -8,7 +8,7 @@ const PASSPHRASE = "unique-passphrase-ok!";
 const MANAGER_LOGIN = "e2e.manager";
 const AVERY_LOGIN = "e2e.avery";
 const AVERY_ID = "22222222-2222-4222-8222-222222222202";
-const SCREENSHOT_DIR = path.resolve("reports/p0-006c-r1-screenshots");
+const SCREENSHOT_DIR = path.resolve("test-results/runtime-screenshots/p0-006c-r1");
 
 function requestOrigin(_request?: APIRequestContext): string {
   const base = test.info().project.use.baseURL;

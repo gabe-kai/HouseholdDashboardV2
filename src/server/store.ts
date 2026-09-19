@@ -306,6 +306,35 @@ function activityClearPayloadDigest(input: ClearRoutineActivityInput): string {
     .digest("hex");
 }
 
+function checklistMutationPayloadDigest(input: {
+  occurrenceId: string;
+  stepId: string;
+  status: StepStatus;
+  kind: WorkKind;
+  intendedStructure?: IntendedStructure;
+}): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        occurrenceId: input.occurrenceId,
+        stepId: input.stepId,
+        status: input.status,
+        kind: input.kind,
+        ...(input.intendedStructure
+          ? {
+              intendedStructure: {
+                revisionId: input.intendedStructure.revisionId,
+                accountableMemberId: input.intendedStructure.accountableMemberId,
+                stepLogicalIds: [...input.intendedStructure.stepLogicalIds],
+              },
+            }
+          : {}),
+      }),
+      "utf8",
+    )
+    .digest("hex");
+}
+
 function responsibilityToRoutineInput(input: ResponsibilityInput): RoutineInput {
   return {
     mutationId: input.mutationId,
@@ -381,6 +410,8 @@ export class AppStore {
   private familyOrderFailureHook: (() => void) | null = null;
   /** Test-only: after activity graph deletion, before reset receipt (AT11). */
   private clearActivityFailureHook: (() => void) | null = null;
+  /** Test-only: after checklist writes, before mutation receipt (AT6). */
+  private stepStatusFailureHook: (() => void) | null = null;
 
   setCalendarSaveFailureHook(hook: (() => void) | null): void {
     this.calendarSaveFailureHook = hook;
@@ -392,6 +423,10 @@ export class AppStore {
 
   setClearActivityFailureHook(hook: (() => void) | null): void {
     this.clearActivityFailureHook = hook;
+  }
+
+  setStepStatusFailureHook(hook: (() => void) | null): void {
+    this.stepStatusFailureHook = hook;
   }
 
   hasGrant(ctx: AuthContext, grant: Grant): boolean {
@@ -3432,177 +3467,210 @@ export class AppStore {
       intendedStructure?: IntendedStructure;
     },
   ) {
-    const occurrence = this.db
-      .prepare(
-        `SELECT o.id, o.household_id, o.accountable_member_id, o.household_date,
-                o.revision_id, o.definition_id, o.started_at, o.canceled_at,
-                o.kind AS occurrence_kind, d.kind AS definition_kind,
-                d.archive_cutoff_date, d.end_mode, d.ended_at
-         FROM occurrences o
-         JOIN routine_definitions d ON d.id = o.definition_id
-         WHERE o.id = ?`,
-      )
-      .get(occurrenceId) as
-      | {
-          id: string;
-          household_id: string;
-          accountable_member_id: string;
-          household_date: string;
-          revision_id: string;
-          definition_id: string;
-          started_at: string | null;
-          canceled_at: string | null;
-          occurrence_kind: string | null;
-          definition_kind: string | null;
-          archive_cutoff_date: string | null;
-          end_mode: string | null;
-          ended_at: string | null;
-        }
-      | undefined;
-    if (!occurrence || occurrence.household_id !== ctx.householdId) {
-      fail("NOT_FOUND", "Occurrence not found");
-    }
-    const occurrenceKind: WorkKind =
-      occurrence.occurrence_kind === "responsibility" ||
-      occurrence.definition_kind === "responsibility"
-        ? "responsibility"
-        : "routine";
-    if (input.kind && input.kind !== occurrenceKind) {
-      fail("CONFLICT", "Checklist kind does not match this occurrence");
-    }
-    if (occurrenceKind === "responsibility") {
-      this.requireGrant(ctx, "responsibility.execute.own");
-    } else {
-      this.requireGrant(ctx, "routine.execute.own");
-    }
-    if (occurrence.accountable_member_id !== ctx.membershipId) {
-      fail("FORBIDDEN", "Cannot modify another member's occurrence");
-    }
-
-    this.assertActivityGeneration(ctx.householdId, input.activityGeneration);
-
-    const today = this.householdDateNow(ctx);
-    if (compareHouseholdDates(occurrence.household_date, today) > 0) {
-      fail("VALIDATION", "This checklist isn't available yet");
-    }
-    if (
-      occurrence.canceled_at &&
-      !isOccurrenceStarted(occurrence.started_at)
-    ) {
-      fail("FORBIDDEN", "This checklist was canceled");
-    }
-    if (
-      occurrence.end_mode === "immediate" &&
-      occurrence.ended_at &&
-      !isOccurrenceStarted(occurrence.started_at) &&
-      !isBeforeArchiveCutoff(
-        occurrence.household_date,
-        occurrence.archive_cutoff_date,
-      )
-    ) {
-      fail("FORBIDDEN", "This checklist is no longer available for that day");
-    }
-    if (
-      occurrence.end_mode !== "immediate" &&
-      !isBeforeArchiveCutoff(
-        occurrence.household_date,
-        occurrence.archive_cutoff_date,
-      )
-    ) {
-      fail("FORBIDDEN", "This checklist is no longer available for that day");
-    }
-    const started = isOccurrenceStarted(occurrence.started_at);
-    if (!started) {
-      if (occurrenceKind === "responsibility") {
-        const owners = resolveAccountableMembers("responsibility", {
-          directMemberIds: this.revisionAssignees(occurrence.revision_id),
-          groupMemberIdSets: [],
-        });
-        if (!owners.includes(occurrence.accountable_member_id)) {
-          fail(
-            "FORBIDDEN",
-            "This person is no longer accountable for that day",
-          );
-        }
-      } else {
-        const participants = this.resolveParticipantsForRevision(
-          occurrence.revision_id,
-          occurrence.household_date,
-        );
-        if (!participants.includes(occurrence.accountable_member_id)) {
-          fail(
-            "FORBIDDEN",
-            "This person is no longer on this routine for that day",
-          );
-        }
-      }
-    }
-
-    if (occurrenceKind === "responsibility") {
-      if (!input.intendedStructure) {
-        fail("VALIDATION", "Intended structure is required for responsibilities");
-      }
-      const stepLogicalIds = (
-        this.db
-          .prepare(
-            `SELECT logical_item_id FROM occurrence_steps
-             WHERE occurrence_id = ? AND source = 'shared'
-             ORDER BY position`,
-          )
-          .all(occurrenceId) as Array<{ logical_item_id: string | null }>
-      ).map((row) => row.logical_item_id);
-      if (
-        !intendedStructureMatches(input.intendedStructure, {
-          revisionId: occurrence.revision_id,
-          accountableMemberId: occurrence.accountable_member_id,
-          stepLogicalIds,
-        })
-      ) {
-        fail("CONFLICT", "This checklist changed; refresh and try again");
-      }
-    }
-
-    const receipt = this.db
-      .prepare("SELECT response_json FROM mutation_receipts WHERE mutation_id = ?")
-      .get(input.mutationId) as { response_json: string } | undefined;
-    if (receipt) {
-      const payload = JSON.parse(receipt.response_json) as {
-        occurrence: OccurrenceView;
-        report: Record<string, unknown>;
-      };
-      const receiptKind = payload.occurrence?.kind ?? "routine";
-      if (receiptKind !== occurrenceKind) {
-        fail("CONFLICT", "Checklist kind does not match this occurrence");
-      }
-      return payload;
-    }
-    const step = this.db
-      .prepare(
-        "SELECT id, obligation FROM occurrence_steps WHERE id = ? AND occurrence_id = ?",
-      )
-      .get(stepId, occurrenceId) as
-      | { id: string; obligation: ObligationMeaning }
-      | undefined;
-    if (!step) fail("NOT_FOUND", "Step not found");
-    try {
-      assertStatusAllowed(step.obligation, input.status);
-    } catch {
-      fail("VALIDATION", "Status not allowed for this obligation");
-    }
     if (Number.isNaN(new Date(input.performedAt).getTime()) || !input.performedAt.endsWith("Z")) {
       fail("VALIDATION", "Invalid performed instant");
     }
 
     const recordedAt = nowUtcIso();
     const reportId = randomUUID();
-    const performerMemberId =
-      occurrenceKind === "responsibility" ? ctx.membershipId : null;
+
     const tx = this.db.transaction(() => {
-      // Race safety: re-read started_at inside the writer transaction (D-023 lock).
-      const lockRow = this.db
-        .prepare("SELECT started_at FROM occurrences WHERE id = ?")
-        .get(occurrenceId) as { started_at: string | null } | undefined;
-      if (!lockRow) fail("NOT_FOUND", "Occurrence not found");
+      const occurrence = this.db
+        .prepare(
+          `SELECT o.id, o.household_id, o.accountable_member_id, o.household_date,
+                  o.revision_id, o.definition_id, o.started_at, o.canceled_at,
+                  o.kind AS occurrence_kind, d.kind AS definition_kind,
+                  d.archive_cutoff_date, d.end_mode, d.ended_at
+           FROM occurrences o
+           JOIN routine_definitions d ON d.id = o.definition_id
+           WHERE o.id = ?`,
+        )
+        .get(occurrenceId) as
+        | {
+            id: string;
+            household_id: string;
+            accountable_member_id: string;
+            household_date: string;
+            revision_id: string;
+            definition_id: string;
+            started_at: string | null;
+            canceled_at: string | null;
+            occurrence_kind: string | null;
+            definition_kind: string | null;
+            archive_cutoff_date: string | null;
+            end_mode: string | null;
+            ended_at: string | null;
+          }
+        | undefined;
+      if (!occurrence || occurrence.household_id !== ctx.householdId) {
+        fail("NOT_FOUND", "Occurrence not found");
+      }
+      const occurrenceKind: WorkKind =
+        occurrence.occurrence_kind === "responsibility" ||
+        occurrence.definition_kind === "responsibility"
+          ? "responsibility"
+          : "routine";
+      if (input.kind && input.kind !== occurrenceKind) {
+        fail("CONFLICT", "Checklist kind does not match this occurrence");
+      }
+      if (occurrenceKind === "responsibility") {
+        this.requireGrant(ctx, "responsibility.execute.own");
+      } else {
+        this.requireGrant(ctx, "routine.execute.own");
+      }
+      if (occurrence.accountable_member_id !== ctx.membershipId) {
+        fail("FORBIDDEN", "Cannot modify another member's occurrence");
+      }
+
+      this.assertActivityGeneration(ctx.householdId, input.activityGeneration);
+      const activityGeneration = this.getActivityGeneration(ctx.householdId);
+
+      const today = this.householdDateNow(ctx);
+      if (compareHouseholdDates(occurrence.household_date, today) > 0) {
+        fail("VALIDATION", "This checklist isn't available yet");
+      }
+      if (
+        occurrence.canceled_at &&
+        !isOccurrenceStarted(occurrence.started_at)
+      ) {
+        fail("FORBIDDEN", "This checklist was canceled");
+      }
+      if (
+        occurrence.end_mode === "immediate" &&
+        occurrence.ended_at &&
+        !isOccurrenceStarted(occurrence.started_at) &&
+        !isBeforeArchiveCutoff(
+          occurrence.household_date,
+          occurrence.archive_cutoff_date,
+        )
+      ) {
+        fail("FORBIDDEN", "This checklist is no longer available for that day");
+      }
+      if (
+        occurrence.end_mode !== "immediate" &&
+        !isBeforeArchiveCutoff(
+          occurrence.household_date,
+          occurrence.archive_cutoff_date,
+        )
+      ) {
+        fail("FORBIDDEN", "This checklist is no longer available for that day");
+      }
+      const started = isOccurrenceStarted(occurrence.started_at);
+      if (!started) {
+        if (occurrenceKind === "responsibility") {
+          const owners = resolveAccountableMembers("responsibility", {
+            directMemberIds: this.revisionAssignees(occurrence.revision_id),
+            groupMemberIdSets: [],
+          });
+          if (!owners.includes(occurrence.accountable_member_id)) {
+            fail(
+              "FORBIDDEN",
+              "This person is no longer accountable for that day",
+            );
+          }
+        } else {
+          const participants = this.resolveParticipantsForRevision(
+            occurrence.revision_id,
+            occurrence.household_date,
+          );
+          if (!participants.includes(occurrence.accountable_member_id)) {
+            fail(
+              "FORBIDDEN",
+              "This person is no longer on this routine for that day",
+            );
+          }
+        }
+      }
+
+      if (occurrenceKind === "responsibility") {
+        if (!input.intendedStructure) {
+          fail("VALIDATION", "Intended structure is required for responsibilities");
+        }
+        const stepLogicalIds = (
+          this.db
+            .prepare(
+              `SELECT logical_item_id FROM occurrence_steps
+               WHERE occurrence_id = ? AND source = 'shared'
+               ORDER BY position`,
+            )
+            .all(occurrenceId) as Array<{ logical_item_id: string | null }>
+        ).map((row) => row.logical_item_id);
+        if (
+          !intendedStructureMatches(input.intendedStructure, {
+            revisionId: occurrence.revision_id,
+            accountableMemberId: occurrence.accountable_member_id,
+            stepLogicalIds,
+          })
+        ) {
+          fail("CONFLICT", "This checklist changed; refresh and try again");
+        }
+      }
+
+      const digest = checklistMutationPayloadDigest({
+        occurrenceId,
+        stepId,
+        status: input.status,
+        kind: occurrenceKind,
+        ...(input.intendedStructure
+          ? { intendedStructure: input.intendedStructure }
+          : {}),
+      });
+
+      const receipt = this.db
+        .prepare(
+          `SELECT household_id, occurrence_id, occurrence_step_id, actor_membership_id,
+                  kind, resulting_state, activity_generation, payload_digest, response_json
+           FROM mutation_receipts WHERE mutation_id = ?`,
+        )
+        .get(input.mutationId) as
+        | {
+            household_id: string | null;
+            occurrence_id: string | null;
+            occurrence_step_id: string | null;
+            actor_membership_id: string | null;
+            kind: string | null;
+            resulting_state: string | null;
+            activity_generation: number | null;
+            payload_digest: string | null;
+            response_json: string;
+          }
+        | undefined;
+      if (receipt) {
+        const bound =
+          receipt.household_id === ctx.householdId &&
+          receipt.occurrence_id === occurrenceId &&
+          receipt.occurrence_step_id === stepId &&
+          receipt.actor_membership_id === ctx.membershipId &&
+          receipt.kind === occurrenceKind &&
+          receipt.resulting_state === input.status &&
+          receipt.payload_digest === digest &&
+          (receipt.activity_generation === null ||
+            receipt.activity_generation === activityGeneration);
+        if (!bound) {
+          fail("CONFLICT", "Mutation id already used for a different checklist command");
+        }
+        return JSON.parse(receipt.response_json) as {
+          occurrence: OccurrenceView;
+          report: Record<string, unknown>;
+        };
+      }
+
+      const step = this.db
+        .prepare(
+          "SELECT id, obligation FROM occurrence_steps WHERE id = ? AND occurrence_id = ?",
+        )
+        .get(stepId, occurrenceId) as
+        | { id: string; obligation: ObligationMeaning }
+        | undefined;
+      if (!step) fail("NOT_FOUND", "Step not found");
+      try {
+        assertStatusAllowed(step.obligation, input.status);
+      } catch {
+        fail("VALIDATION", "Status not allowed for this obligation");
+      }
+
+      const performerMemberId =
+        occurrenceKind === "responsibility" ? ctx.membershipId : null;
 
       this.db
         .prepare("UPDATE occurrence_steps SET status = ? WHERE id = ?")
@@ -3654,11 +3722,14 @@ export class AppStore {
           resultingState: input.status,
         },
       };
+      this.stepStatusFailureHook?.();
       this.db
         .prepare(
           `INSERT INTO mutation_receipts
-           (mutation_id, response_json, created_at, household_id, occurrence_id)
-           VALUES (?, ?, ?, ?, ?)`,
+           (mutation_id, response_json, created_at, household_id, occurrence_id,
+            occurrence_step_id, actor_membership_id, kind, resulting_state,
+            activity_generation, payload_digest)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           input.mutationId,
@@ -3666,6 +3737,12 @@ export class AppStore {
           recordedAt,
           ctx.householdId,
           occurrenceId,
+          stepId,
+          ctx.membershipId,
+          occurrenceKind,
+          input.status,
+          activityGeneration,
+          digest,
         );
       return payload;
     });

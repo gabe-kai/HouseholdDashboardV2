@@ -212,6 +212,7 @@ export function ResponsibilitiesView(props: {
   const [detail, setDetail] = useState<Responsibility | null>(null);
   const [draft, setDraft] = useState<Draft>(() => emptyDraft(props.today));
   const [baselineSnapshot, setBaselineSnapshot] = useState(() => draftSnapshot(emptyDraft(props.today)));
+  const [draftBaselineVersion, setDraftBaselineVersion] = useState<number | null>(null);
   const [stepLocalIds, setStepLocalIds] = useState<string[]>([]);
   const [editorFocus, setEditorFocus] = useState<EditorFocus>(null);
   const [sectionDraft, setSectionDraft] = useState<Draft | null>(null);
@@ -231,9 +232,11 @@ export function ResponsibilitiesView(props: {
   const selectedDefinitionRef = useRef<string | null>(null);
   const listGenerationRef = useRef(0);
   const detailGenerationRef = useRef(0);
+  const previewGenerationRef = useRef(0);
   const editorHouseholdDateRef = useRef(props.today);
 
   const dirty = draftSnapshot(draft) !== baselineSnapshot;
+  const editing = view.kind === "edit";
   useEffect(() => {
     props.onDirtyChange?.(dirty && (view.kind === "create" || view.kind === "edit"));
   }, [dirty, view.kind]);
@@ -259,14 +262,29 @@ export function ResponsibilitiesView(props: {
     props.onSuccessToast?.(message);
   }
 
-  function beginDraft(next: Draft) {
+  function beginDraft(next: Draft, baselineVersion?: number | null) {
     setDraft(next);
     setBaselineSnapshot(draftSnapshot(next));
+    setDraftBaselineVersion(baselineVersion ?? null);
     setStepLocalIds(ensureStepLocalIds(next.steps));
     setEditorFocus(null);
     setSectionDraft(null);
     editorHouseholdDateRef.current = props.today;
     setScheduleCollision(null);
+  }
+
+  function applyDetail(next: Responsibility) {
+    setDetail((prev) => {
+      if (prev && prev.id === next.id && prev.version > next.version) {
+        return prev;
+      }
+      if (prev && prev.id === next.id && prev.version === next.version) {
+        const prevUpcoming = prev.scheduleEntries.filter((e) => e.canceledAt == null).length;
+        const nextUpcoming = next.scheduleEntries.filter((e) => e.canceledAt == null).length;
+        if (prevUpcoming < nextUpcoming) return prev;
+      }
+      return next;
+    });
   }
 
   async function loadList() {
@@ -283,20 +301,24 @@ export function ResponsibilitiesView(props: {
   async function loadDetail(definitionId: string) {
     selectedDefinitionRef.current = definitionId;
     const generation = ++detailGenerationRef.current;
+    const preserveDraft = editing || dirty;
     try {
       const result = await fetchResponsibility(definitionId);
       if (generation !== detailGenerationRef.current) return;
       if (selectedDefinitionRef.current !== definitionId) return;
       setUnavailableDetail(false);
       setError(null);
-      setDetail(result.responsibility);
-      setPreviewDays(null);
-      setPreviewError(null);
+      if (preserveDraft) {
+        // Keep draft + pinned baselineVersion; only raise remote detail for conflict messaging.
+        applyDetail(result.responsibility);
+      } else {
+        applyDetail(result.responsibility);
+      }
     } catch {
       if (generation !== detailGenerationRef.current) return;
       if (selectedDefinitionRef.current !== definitionId) return;
       setUnavailableDetail(true);
-      setDetail(null);
+      if (!preserveDraft) setDetail(null);
     }
   }
 
@@ -324,19 +346,19 @@ export function ResponsibilitiesView(props: {
   useEffect(() => {
     if (view.kind !== "detail") return;
     const definitionId = view.definitionId;
-    let cancelled = false;
+    const generation = ++previewGenerationRef.current;
     void fetchResponsibilityPreview(definitionId)
       .then((result) => {
-        if (!cancelled) setPreviewDays(result.preview);
+        if (generation !== previewGenerationRef.current) return;
+        if (selectedDefinitionRef.current !== definitionId) return;
+        setPreviewDays(result.preview);
+        setPreviewError(null);
       })
       .catch((caught) => {
-        if (!cancelled) {
-          setPreviewError(caught instanceof Error ? caught.message : String(caught));
-        }
+        if (generation !== previewGenerationRef.current) return;
+        if (selectedDefinitionRef.current !== definitionId) return;
+        setPreviewError(caught instanceof Error ? caught.message : String(caught));
       });
-    return () => {
-      cancelled = true;
-    };
   }, [view, props.refreshToken]);
 
   useEffect(() => {
@@ -395,55 +417,64 @@ export function ResponsibilitiesView(props: {
   function openEditCurrent(definition: Responsibility) {
     const revision = currentRevision(definition, props.today) ?? fallbackRevision(definition);
     if (!revision) return;
-    beginDraft({
-      title: revision.title,
-      daypart: revision.daypart,
-      weekdays: [...revision.weekdays],
-      accountableMemberId: ownerIdFromRevision(revision),
-      steps: revision.steps.map((step) => ({
-        text: step.text,
-        obligation: step.obligation,
-        logicalItemId: step.logicalItemId,
-        applicability: DEFAULT_APPLICABILITY,
-      })),
-      startingDate: props.today,
-    });
+    beginDraft(
+      {
+        title: revision.title,
+        daypart: revision.daypart,
+        weekdays: [...revision.weekdays],
+        accountableMemberId: ownerIdFromRevision(revision),
+        steps: revision.steps.map((step) => ({
+          text: step.text,
+          obligation: step.obligation,
+          logicalItemId: step.logicalItemId,
+          applicability: DEFAULT_APPLICABILITY,
+        })),
+        startingDate: props.today,
+      },
+      definition.version,
+    );
     setView({ kind: "edit", definitionId: definition.id, mode: "current" });
   }
 
   function openScheduleNew(definition: Responsibility) {
     const revision = currentRevision(definition, props.today) ?? fallbackRevision(definition);
     if (!revision) return;
-    beginDraft({
-      title: revision.title,
-      daypart: revision.daypart,
-      weekdays: [...revision.weekdays],
-      accountableMemberId: ownerIdFromRevision(revision),
-      steps: revision.steps.map((step) => ({
-        text: step.text,
-        obligation: step.obligation,
-        logicalItemId: step.logicalItemId,
-        applicability: DEFAULT_APPLICABILITY,
-      })),
-      startingDate: props.today,
-    });
+    beginDraft(
+      {
+        title: revision.title,
+        daypart: revision.daypart,
+        weekdays: [...revision.weekdays],
+        accountableMemberId: ownerIdFromRevision(revision),
+        steps: revision.steps.map((step) => ({
+          text: step.text,
+          obligation: step.obligation,
+          logicalItemId: step.logicalItemId,
+          applicability: DEFAULT_APPLICABILITY,
+        })),
+        startingDate: props.today,
+      },
+      definition.version,
+    );
     setView({ kind: "edit", definitionId: definition.id, mode: "schedule-new" });
   }
 
   function openEditUpcoming(definition: Responsibility, entry: ScheduleEntry) {
-    beginDraft({
-      title: entry.revision.title,
-      daypart: entry.revision.daypart,
-      weekdays: [...entry.revision.weekdays],
-      accountableMemberId: ownerIdFromRevision(entry.revision),
-      steps: entry.revision.steps.map((step) => ({
-        text: step.text,
-        obligation: step.obligation,
-        logicalItemId: step.logicalItemId,
-        applicability: DEFAULT_APPLICABILITY,
-      })),
-      startingDate: entry.startDate,
-    });
+    beginDraft(
+      {
+        title: entry.revision.title,
+        daypart: entry.revision.daypart,
+        weekdays: [...entry.revision.weekdays],
+        accountableMemberId: ownerIdFromRevision(entry.revision),
+        steps: entry.revision.steps.map((step) => ({
+          text: step.text,
+          obligation: step.obligation,
+          logicalItemId: step.logicalItemId,
+          applicability: DEFAULT_APPLICABILITY,
+        })),
+        startingDate: entry.startDate,
+      },
+      definition.version,
+    );
     setView({
       kind: "edit",
       definitionId: definition.id,
@@ -506,9 +537,12 @@ export function ResponsibilitiesView(props: {
         return;
       }
       const result = await createResponsibility(mutationPayload());
-      setDetail(result.responsibility);
+      detailGenerationRef.current += 1;
+      previewGenerationRef.current += 1;
+      applyDetail(result.responsibility);
       await loadList();
       setBaselineSnapshot(draftSnapshot(draft));
+      setDraftBaselineVersion(result.responsibility.version);
       props.onDirtyChange?.(false);
       goDetail(result.responsibility.id);
       props.onSaved?.();
@@ -542,7 +576,7 @@ export function ResponsibilitiesView(props: {
         setBusy(false);
         return;
       }
-      const expectedVersion = detail?.version;
+      const expectedVersion = draftBaselineVersion;
       if (!expectedVersion) {
         setError("Reload this responsibility before saving.");
         setBusy(false);
@@ -571,9 +605,12 @@ export function ResponsibilitiesView(props: {
           mode: "current",
         });
       }
-      setDetail(result.responsibility);
+      detailGenerationRef.current += 1;
+      previewGenerationRef.current += 1;
+      applyDetail(result.responsibility);
       await loadList();
       setBaselineSnapshot(draftSnapshot(draft));
+      setDraftBaselineVersion(result.responsibility.version);
       props.onDirtyChange?.(false);
       goDetail(definitionId);
       props.onSaved?.();
@@ -608,7 +645,9 @@ export function ResponsibilitiesView(props: {
         mutationId: newClientId(),
         expectedVersion: definition.version,
       });
-      setDetail(result.responsibility);
+      detailGenerationRef.current += 1;
+      previewGenerationRef.current += 1;
+      applyDetail(result.responsibility);
       await loadList();
       props.onEnded?.();
       announceSuccess("Responsibility ended.");
@@ -636,6 +675,8 @@ export function ResponsibilitiesView(props: {
         mutationId: newClientId(),
         expectedVersion: definition.version,
       });
+      detailGenerationRef.current += 1;
+      previewGenerationRef.current += 1;
       await loadList();
       props.onDeleted?.();
       announceSuccess("Responsibility deleted.");
@@ -661,10 +702,19 @@ export function ResponsibilitiesView(props: {
         mutationId: newClientId(),
         expectedVersion: definition.version,
       });
-      setDetail(result.responsibility);
+      const cleaned: Responsibility = {
+        ...result.responsibility,
+        scheduleEntries: result.responsibility.scheduleEntries.filter(
+          (item) => item.id !== entry.id && item.canceledAt == null,
+        ),
+      };
+      detailGenerationRef.current += 1;
+      previewGenerationRef.current += 1;
+      applyDetail(cleaned);
       await loadList();
       props.onSaved?.();
       announceSuccess("Upcoming change deleted.");
+      void loadDetail(definition.id).catch(() => undefined);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not delete upcoming change.");
     } finally {

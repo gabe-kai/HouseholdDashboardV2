@@ -187,7 +187,7 @@ The Build Report maps each AT to named tests/artifacts, states actual base/commi
 
 ## Architecture technical acceptance
 
-**Disposition:** FIX REQUIRED against **r1**, reviewed at Project Lead commit **9827d28**. Detailed findings and independent checks: `reports/P0-007A-r1-architecture-review.md`. Required corrections cover checklist replay/transaction safety, storage and unsupported-input boundaries, dirty-draft version binding, live/late-response recovery, and missing or overstated AT1-16 evidence. The behavioral contract is unchanged; return directly to Engineering on the existing branch without a new readiness review. Card **Give Cats and Trash one owner and a place in Today** remains **In Progress**. Suggest commit messages but do not commit or deploy.
+**Disposition:** FIX REQUIRED against **r1**, re-reviewed at Project Lead commit **fd91c8a**. Prior findings were substantially corrected; remaining required edges are recorded in `reports/P0-007A-r1-architecture-reacceptance.md`: close declared PARTIAL AT4/7/12/15 evidence, protect immutable definition kind at storage, and enforce same-household responsibility ownership at the storage/write boundary. The behavioral contract is unchanged; return directly to Engineering on the existing branch without a new readiness review. Card **Give Cats and Trash one owner and a place in Today** remains **In Progress**. Suggest commit messages but do not commit or deploy.
 
 ## Revision history
 

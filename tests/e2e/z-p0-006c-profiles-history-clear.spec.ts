@@ -372,11 +372,11 @@ test.describe("P0-006C profiles, history, and clear", () => {
     await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Data & testing" })).toBeVisible();
 
-    await page.getByRole("button", { name: /Clear routine activity history/i }).click();
-    await expect(page.getByRole("heading", { name: /Clear routine activity history\?/i })).toBeVisible();
+    await page.getByRole("button", { name: /Clear activity history/i }).click();
+    await expect(page.getByRole("heading", { name: /Clear activity history\?/i })).toBeVisible();
     await durableScreenshot(page, path.join(SCREENSHOT_DIR, "clear-confirm.png"));
     await page.getByRole("button", { name: "Cancel", exact: true }).click();
-    await expect(page.getByRole("heading", { name: /Clear routine activity history\?/i })).toHaveCount(
+    await expect(page.getByRole("heading", { name: /Clear activity history\?/i })).toHaveCount(
       0,
     );
 
@@ -400,9 +400,11 @@ test.describe("P0-006C profiles, history, and clear", () => {
       .getByRole("navigation", { name: "Household" })
       .getByRole("button", { name: /^Settings\b/ })
       .click();
-    await page.getByRole("button", { name: /Clear routine activity history/i }).click();
+    await page.getByRole("button", { name: /Clear activity history/i }).click();
     await page.getByRole("button", { name: "Clear history", exact: true }).click();
-    await expect(page.getByText(/Routine activity history was cleared/i)).toBeVisible({
+    await expect(
+      page.getByRole("status").filter({ hasText: /Activity history was cleared/i }).first(),
+    ).toBeVisible({
       timeout: 15_000,
     });
 

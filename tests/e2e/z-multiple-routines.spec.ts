@@ -168,7 +168,7 @@ test.describe("P0-005 multiple household routines", () => {
     }
 
     await page.getByRole("button", { name: "Plan", exact: true }).click();
-    await expect(page.getByRole("heading", { name: /Routines/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Plan", exact: true })).toBeVisible();
     await expect(page.getByText(/Morning Routine/i).first()).toBeVisible();
     if (CAPTURE_LEGACY_R3_SCREENSHOTS && testInfo.project.name === "chromium") {
       fs.mkdirSync(R3_SCREENSHOT_DIR, { recursive: true });
@@ -176,7 +176,7 @@ test.describe("P0-005 multiple household routines", () => {
     }
 
     // Create After School
-    await page.getByRole("button", { name: /Create routine/i }).click();
+    await page.getByRole("button", { name: /Create routine|Add routine/i }).click();
     await openRoutineSection(page, "Name");
     await page.getByRole("textbox", { name: "Name" }).fill("After School Routine");
     await page.getByRole("button", { name: "Done", exact: true }).click();
@@ -203,7 +203,7 @@ test.describe("P0-005 multiple household routines", () => {
     await page.getByRole("button", { name: /Back to Routines/i }).click();
 
     // Create Bedtime
-    await page.getByRole("button", { name: /Create routine/i }).click();
+    await page.getByRole("button", { name: /Create routine|Add routine/i }).click();
     await openRoutineSection(page, "Name");
     await page.getByRole("textbox", { name: "Name" }).fill("Bedtime");
     await page.getByRole("button", { name: "Done", exact: true }).click();
@@ -232,7 +232,7 @@ test.describe("P0-005 multiple household routines", () => {
     await expect(
       page
         .getByText(/After School|Bedtime|Morning/i)
-        .or(page.getByText(/No routines for you/i))
+        .or(page.getByText(/No routines for you|Nothing assigned to you/i))
         .first(),
     ).toBeVisible({ timeout: 15_000 });
 

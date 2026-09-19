@@ -3,11 +3,14 @@ import type {
   Daypart,
   Grant,
   GrantPreset,
+  IntendedStructure,
   MemberPublic,
   OccurrenceView,
   ObligationMeaning,
+  ResponsibilityPreviewDay,
   StepStatus,
   SyncNotification,
+  WorkKind,
 } from "../shared/schemas";
 import { newClientId } from "./id";
 
@@ -120,6 +123,7 @@ export type RoutineRevision = {
 export type Routine = {
   id: string;
   version: number;
+  kind?: WorkKind;
   archived: boolean;
   archiveCutoffDate: string | null;
   archivedAt: string | null;
@@ -129,6 +133,32 @@ export type Routine = {
   deletedAt?: string | null;
   scheduleEntries: ScheduleEntry[];
   revisions: RoutineRevision[];
+};
+
+/** Responsibility definitions share the public schedule/revision shape. */
+export type Responsibility = Routine;
+
+export type ResponsibilityMutationResult = {
+  responsibility: Responsibility;
+  refineOutcome?: PlanRefineOutcome;
+};
+
+type ResponsibilityMutationBody = {
+  mutationId: string;
+  title: string;
+  daypart: Daypart;
+  accountableMemberId: string;
+  weekdays: number[];
+  steps: Array<{
+    text: string;
+    obligation: ObligationMeaning;
+    logicalItemId?: string;
+    applicability?: ApplicabilityRule;
+  }>;
+  expectedVersion?: number;
+  effectiveDate?: string;
+  mode?: "current" | "schedule";
+  scheduleEntryId?: string;
 };
 
 export type ScheduleEntry = {
@@ -609,6 +639,7 @@ export async function fetchHistory(
         personId?: string;
         routineId?: string;
         status?: "complete" | "incomplete";
+        kind?: WorkKind;
       } = {},
 ) {
   const params =
@@ -620,6 +651,7 @@ export async function fetchHistory(
   if (params.personId) query.set("personId", params.personId);
   if (params.routineId) query.set("routineId", params.routineId);
   if (params.status) query.set("status", params.status);
+  if (params.kind) query.set("kind", params.kind);
   const suffix = query.toString() ? `?${query.toString()}` : "";
   return request<{
     householdDate?: string;
@@ -640,6 +672,8 @@ export async function fetchHistoryOccurrence(occurrenceId: string) {
 export async function clearRoutineActivity(body: {
   mutationId: string;
   expectedGeneration: number;
+  /** Required when responsibility activity exists; acknowledges mixed-work scope. */
+  acknowledgedScope?: "routines_and_responsibilities";
 }) {
   return request<import("../shared/schemas").ActivityClearResult>(
     "/api/v1/household/activity/clear",
@@ -658,6 +692,8 @@ export async function setStepStatus(
     status: StepStatus;
     performedAt: string;
     activityGeneration?: number;
+    kind?: WorkKind;
+    intendedStructure?: IntendedStructure;
   },
   options?: { delayMs?: number },
 ) {
@@ -665,6 +701,84 @@ export async function setStepStatus(
     `/api/v1/occurrences/${encodeURIComponent(occurrenceId)}/steps/${encodeURIComponent(stepId)}/status`,
     { method: "POST", body: JSON.stringify(body) },
     options?.delayMs,
+  );
+}
+
+export async function fetchResponsibilities(includeArchived = false) {
+  const query = includeArchived ? "?includeArchived=1" : "";
+  return request<{ responsibilities: Responsibility[] }>(
+    `/api/v1/responsibilities${query}`,
+  );
+}
+
+export async function fetchResponsibility(definitionId: string) {
+  return request<{ responsibility: Responsibility }>(
+    `/api/v1/responsibilities/${encodeURIComponent(definitionId)}`,
+  );
+}
+
+export async function createResponsibility(body: ResponsibilityMutationBody) {
+  return request<{ responsibility: Responsibility }>("/api/v1/responsibilities", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function createResponsibilityRevision(
+  definitionId: string,
+  body: ResponsibilityMutationBody,
+) {
+  return request<ResponsibilityMutationResult>(
+    `/api/v1/responsibilities/${encodeURIComponent(definitionId)}/revisions`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+export async function endResponsibility(
+  definitionId: string,
+  body: { mutationId: string; expectedVersion: number },
+) {
+  return request<ResponsibilityMutationResult>(
+    `/api/v1/responsibilities/${encodeURIComponent(definitionId)}/end`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+export async function deleteResponsibility(
+  definitionId: string,
+  body: { mutationId: string; expectedVersion: number },
+) {
+  return request<{ deleted: true; definitionId: string }>(
+    `/api/v1/responsibilities/${encodeURIComponent(definitionId)}/delete`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+export async function moveResponsibilityScheduleEntry(
+  definitionId: string,
+  scheduleEntryId: string,
+  body: { mutationId: string; expectedVersion: number; startDate: string },
+) {
+  return request<ResponsibilityMutationResult>(
+    `/api/v1/responsibilities/${encodeURIComponent(definitionId)}/schedule-entries/${encodeURIComponent(scheduleEntryId)}/move`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+export async function deleteResponsibilityScheduleEntry(
+  definitionId: string,
+  scheduleEntryId: string,
+  body: { mutationId: string; expectedVersion: number },
+) {
+  return request<ResponsibilityMutationResult>(
+    `/api/v1/responsibilities/${encodeURIComponent(definitionId)}/schedule-entries/${encodeURIComponent(scheduleEntryId)}/delete`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+export async function fetchResponsibilityPreview(definitionId: string) {
+  return request<{ preview: ResponsibilityPreviewDay[] }>(
+    `/api/v1/responsibilities/${encodeURIComponent(definitionId)}/preview`,
   );
 }
 

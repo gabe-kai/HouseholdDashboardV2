@@ -74,6 +74,9 @@ invalidation/reconciliation semantics.
 | PB-37 | Membership profiles + saved family order; claim preserves profile/order; structure.manage writes | integration `p0-006c.test.ts`; e2e `z-p0-006c-profiles-history-clear.spec.ts` | PR / RC |
 | PB-38 | History reads are side-effect-free over stored evidence; summaries + step_reports detail | integration `p0-006c.test.ts` AT6/AT7; e2e History journey | PR / RC |
 | PB-39 | Evaluation clear deletes household checklist activity/receipts only; generation + floor fence outbox | integration `p0-006c.test.ts` AT9–12; e2e `z-p0-006c-reset-outbox.spec.ts` | PR / RC |
+| PB-40 | Responsibility kind + one occurrence per definition/date; fixed owner; routine APIs reject responsibility IDs | integration `p0-007a.test.ts` AT1/AT2/AT9; route-policy | Developer |
+| PB-41 | Responsibility first-action locks structure and accountable membership; intendedStructure on checklist commands | integration `p0-007a.test.ts` AT5/AT6; outbox unit | Developer + PR |
+| PB-42 | Mixed Plan/Today/Household/History with per-kind grants; Clear activity acknowledges routines and responsibilities | e2e `z-p0-007a-cats-trash.spec.ts`; `z-p0-007a-reset-outbox.spec.ts`; integration clear AT11 | PR / RC |
 
 ### Environment-specific (not counted as automated acceptance)
 
@@ -106,7 +109,13 @@ Duplicate, late, and missed events must be safe.
 | POST `/routines/:id/delete` | hard-delete unused graph; retain deletion receipt | `routine` (definitionId) | routines list | — | same `mutationId` replay; CONFLICT if started/reports/personal/proposals | fetch routines |
 | POST `/routines/:id/schedule-entries/:entryId/move` | move upcoming start_date; re-reconcile ranges | `routine` (definitionId) | routines, today | — | same `mutationId` replay; CONFLICT on occupied date | fetch routines/today |
 | POST `/routines/:id/schedule-entries/:entryId/delete` | cancel upcoming entry; recompose vacated interval | `routine` (definitionId) | routines, today | — | same `mutationId` replay | fetch routines/today |
-| POST `/occurrences/.../status` | occurrence step + report; locking statuses set `started_at` once | `occurrence` (+version) | today, history | membership outbox overlay; pending locking action protects structure | same `mutationId` idempotent; started survivors allowed after audience/end; canceled unstarted rejected; undo never clears `started_at` | refresh today; flush outbox; merge keeps local structure while locking action pending |
+| POST `/responsibilities` | responsibility definition+revision (single assignee) | `responsibility` (definitionId) | Plan responsibilities, today, activity, History | — | same `mutationId` replay | fetch responsibilities/today |
+| POST `/responsibilities/:id/revisions` | current/schedule revise; unstarted owner update in place | `responsibility` (definitionId) | Plan detail, today (former/new owner), activity | dirty draft retained | same `mutationId` replay; expectedVersion | fetch responsibilities/today |
+| POST `/responsibilities/:id/end` | End; cancel unstarted; keep started/history | `responsibility` (definitionId) | Plan ended, today, History | — | same `mutationId` replay | fetch responsibilities/today |
+| POST `/responsibilities/:id/delete` | hard-delete unused; block started/reports/prior-date history | `responsibility` (definitionId) | Plan list | — | same `mutationId` replay; CONFLICT if retained | fetch responsibilities |
+| POST `/responsibilities/:id/schedule-entries/:entryId/move` | move upcoming | `responsibility` (definitionId) | Plan, today | — | same `mutationId` replay; CONFLICT occupied date | fetch responsibilities/today |
+| POST `/responsibilities/:id/schedule-entries/:entryId/delete` | cancel upcoming | `responsibility` (definitionId) | Plan, today | — | same `mutationId` replay | fetch responsibilities/today |
+| POST `/occurrences/.../status` | occurrence step + report; locking statuses set `started_at` once; responsibility sets performer; intendedStructure bind | `occurrence` (+version) | today, history, activity | membership outbox overlay; pending locking action protects structure | same `mutationId` idempotent; started survivors allowed after audience/end; canceled unstarted rejected; undo never clears `started_at`; cross-kind receipt conflict | refresh today; flush outbox; merge keeps local structure while locking action pending |
 | PUT `/personal-layer` | personal layer revision (definition-scoped) | `routine` (definitionId) | preview, future today, Personalize | — | new layer revision for that definition | preview/today for definition |
 | POST `/proposals` | proposal pending (definition-scoped) | `proposal` | proposals | — | new proposal bound to definitionId | fetch proposals |
 | POST `/proposals/:id/decide` | proposal (+ optional layer for stored definition) | `proposal`; `routine` if approved | proposals, preview | — | same decision idempotent; opposite conflicts; archived target rejectable | fetch proposals + preview |
@@ -116,7 +125,7 @@ Duplicate, late, and missed events must be safe.
 | PUT `/people/order` | household family order + order version | `family_order` | people directory, group/audience peer lists, History person groups | dirty reorder draft retained | same `mutationId` replay; expectedVersion conflict | fetch people |
 | GET `/history` | stored occurrence summaries (read-only) | *(none)* | — | — | never materializes | n/a |
 | GET `/history/occurrences/:id` | stored detail + step_reports | *(none)* | — | — | foreign → NOT_FOUND | n/a |
-| POST `/household/activity/clear` | erase checklist graph + scoped receipts; bump generation/floor | `activity_reset` | today, History, settings | retire older outbox for this membership | same `mutationId` replay; expectedGeneration conflict; config∧grant gate | refresh today/history; clear old outbox |
+| POST `/household/activity/clear` | erase checklist graph + scoped receipts; bump generation/floor; acknowledged `routines_and_responsibilities` (legacy rejected when responsibility data exists) | `activity_reset` | today, History, settings | retire older outbox for this membership | same `mutationId` replay; expectedGeneration conflict; config∧grant gate | refresh today/history; clear old outbox |
 | POST `/personal-tasks` | task | `personal_task` | personal-tasks | — | new task | fetch personal-tasks |
 | POST `/personal-tasks/:id/status` | task status | `personal_task` | personal-tasks | — | same `mutationId` idempotent | fetch personal-tasks |
 | POST `/test/bootstrap-claim` | claim | *(none)* | — | — | test-only | n/a |

@@ -227,7 +227,7 @@ test.describe("P0-002 authenticated household", () => {
     await child.goto("/");
     await expectSignedInAs(child, "Avery Reed");
     await expect(
-      child.getByText("No routines for you on this household date."),
+      child.getByText(/No routines for you on this household date\.|Nothing assigned to you on this household date\./),
     ).toBeVisible();
     await expect(child.getByRole("button", { name: "Account" })).toBeVisible();
 

@@ -373,6 +373,10 @@ export function RoutinesView(props: {
   onRouteChange: (route: RoutinesRoute) => void;
   onDirtyChange?: (dirty: boolean) => void;
   onSuccessToast?: (message: string) => void;
+  /** When true on list route, render Plan shell with Add choice + slot. */
+  planHome?: boolean;
+  responsibilitiesSlot?: ReactNode;
+  onCreateResponsibility?: () => void;
 }) {
   const [view, setView] = useState<ViewState>(() =>
     props.route.kind === "detail"
@@ -1899,39 +1903,70 @@ export function RoutinesView(props: {
 
   return (
     <section className="panel people-groups routines-view">
-      <div className="focused-state" aria-labelledby="routines-heading">
-        <h1 id="routines-heading">Routines</h1>
-        <p className="meta">
-          {routines.length} active {routines.length === 1 ? "routine" : "routines"}
-        </p>
+      <div className="focused-state" aria-labelledby={props.planHome ? "plan-heading" : "routines-heading"}>
+        {props.planHome ? (
+          <>
+            <h1 id="plan-heading">Plan</h1>
+            <p className="page-subcopy">Household routines and responsibilities.</p>
+          </>
+        ) : (
+          <>
+            <h1 id="routines-heading">Routines</h1>
+            <p className="meta">
+              {routines.length} active {routines.length === 1 ? "routine" : "routines"}
+            </p>
+          </>
+        )}
         {statusMessage ? (
           <p className="status-notice" role="status">
             {statusMessage}
           </p>
         ) : null}
         {error ? <p role="alert">{error}</p> : null}
-        <div className="button-row">
-          <button type="button" className="primary" onClick={openCreate}>
-            Create routine
+        <div className="button-row plan-add-row">
+          {props.planHome ? (
+            <>
+              <button type="button" className="primary" onClick={openCreate}>
+                Add routine
+              </button>
+              {props.onCreateResponsibility ? (
+                <button type="button" className="secondary" onClick={props.onCreateResponsibility}>
+                  Add responsibility
+                </button>
+              ) : null}
+            </>
+          ) : (
+            <button type="button" className="primary" onClick={openCreate}>
+              Create routine
+            </button>
+          )}
+        </div>
+        <div className="plan-section">
+          {props.planHome ? <h2>Routines</h2> : null}
+          {props.planHome ? (
+            <p className="meta">
+              {routines.length} active {routines.length === 1 ? "routine" : "routines"}
+            </p>
+          ) : null}
+          {routines.length === 0 ? (
+            <p className="meta">No active routines yet. Create one to get started.</p>
+          ) : (
+            <ul className="routine-list routine-card-list">
+              {routines.map((routine) => renderRoutineRow(routine))}
+            </ul>
+          )}
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => {
+              setStatusMessage(null);
+              setView({ kind: "ended" });
+            }}
+          >
+            Ended routines
           </button>
         </div>
-        {routines.length === 0 ? (
-          <p className="meta">No active routines yet. Create one to get started.</p>
-        ) : (
-          <ul className="routine-list routine-card-list">
-            {routines.map((routine) => renderRoutineRow(routine))}
-          </ul>
-        )}
-        <button
-          type="button"
-          className="text-button"
-          onClick={() => {
-            setStatusMessage(null);
-            setView({ kind: "ended" });
-          }}
-        >
-          Ended routines
-        </button>
+        {props.planHome ? props.responsibilitiesSlot : null}
       </div>
     </section>
   );

@@ -18,11 +18,15 @@ import {
   CreatePersonSchema,
   CreatePersonalTaskSchema,
   CreateProposalSchema,
+  CreateResponsibilityRevisionSchema,
+  CreateResponsibilitySchema,
   CreateRevisionSchema,
   CreateRoutineSchema,
+  DeleteResponsibilitySchema,
   DeleteRoutineSchema,
   DeleteScheduleEntrySchema,
   DecideProposalSchema,
+  EndResponsibilitySchema,
   EndRoutineSchema,
   HouseholdDateSchema,
   IssueEnrollmentSchema,
@@ -36,6 +40,7 @@ import {
   UpdateGroupSchema,
   UpdatePersonSchema,
   UuidSchema,
+  WorkKindSchema,
 } from "../shared/schemas.js";
 import type { AppConfig } from "./config.js";
 import { digestEquals, sha256Hex } from "./crypto.js";
@@ -201,6 +206,7 @@ export async function buildApp(
     resource:
       | "occurrence"
       | "routine"
+      | "responsibility"
       | "proposal"
       | "personal_task"
       | "membership"
@@ -701,6 +707,202 @@ export async function buildApp(
     },
   );
 
+  app.get("/api/v1/responsibilities", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const query = request.query as { includeArchived?: string };
+    const includeArchived =
+      query.includeArchived === "1" || query.includeArchived === "true";
+    return {
+      responsibilities: store.listResponsibilities(session.householdId, {
+        includeArchived,
+      }),
+    };
+  });
+
+  app.get("/api/v1/responsibilities/:definitionId", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const { definitionId } = request.params as { definitionId: string };
+    if (!UuidSchema.safeParse(definitionId).success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid responsibility id", request.id));
+    }
+    return {
+      responsibility: store.getResponsibilityById(session.householdId, definitionId),
+    };
+  });
+
+  app.post("/api/v1/responsibilities", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const parsed = CreateResponsibilitySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid responsibility", request.id));
+    }
+    const responsibility = store.createResponsibility(session, parsed.data);
+    broadcast(session, "responsibility", responsibility.id);
+    return { responsibility };
+  });
+
+  app.post(
+    "/api/v1/responsibilities/:definitionId/revisions",
+    async (request, reply) => {
+      const session = requireSession(request, reply);
+      if (!session) return;
+      const { definitionId } = request.params as { definitionId: string };
+      if (!UuidSchema.safeParse(definitionId).success) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid responsibility id", request.id));
+      }
+      const parsed = CreateResponsibilityRevisionSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid revision", request.id));
+      }
+      const result = store.createResponsibilityRevision(
+        session,
+        definitionId,
+        parsed.data,
+      );
+      broadcast(session, "responsibility", definitionId);
+      return result;
+    },
+  );
+
+  app.post("/api/v1/responsibilities/:definitionId/end", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const { definitionId } = request.params as { definitionId: string };
+    if (!UuidSchema.safeParse(definitionId).success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid responsibility id", request.id));
+    }
+    const parsed = EndResponsibilitySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid end request", request.id));
+    }
+    const result = store.endResponsibility(session, definitionId, parsed.data);
+    broadcast(session, "responsibility", definitionId);
+    return result;
+  });
+
+  app.post(
+    "/api/v1/responsibilities/:definitionId/delete",
+    async (request, reply) => {
+      const session = requireSession(request, reply);
+      if (!session) return;
+      const { definitionId } = request.params as { definitionId: string };
+      if (!UuidSchema.safeParse(definitionId).success) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid responsibility id", request.id));
+      }
+      const parsed = DeleteResponsibilitySchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid delete request", request.id));
+      }
+      const result = store.deleteResponsibility(session, definitionId, parsed.data);
+      broadcast(session, "responsibility", definitionId);
+      return result;
+    },
+  );
+
+  app.post(
+    "/api/v1/responsibilities/:definitionId/schedule-entries/:scheduleEntryId/move",
+    async (request, reply) => {
+      const session = requireSession(request, reply);
+      if (!session) return;
+      const { definitionId, scheduleEntryId } = request.params as {
+        definitionId: string;
+        scheduleEntryId: string;
+      };
+      if (
+        !UuidSchema.safeParse(definitionId).success ||
+        !UuidSchema.safeParse(scheduleEntryId).success
+      ) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid id", request.id));
+      }
+      const parsed = MoveScheduleEntrySchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid move request", request.id));
+      }
+      const result = store.moveResponsibilityScheduleEntry(
+        session,
+        definitionId,
+        scheduleEntryId,
+        parsed.data,
+      );
+      broadcast(session, "responsibility", definitionId);
+      return result;
+    },
+  );
+
+  app.post(
+    "/api/v1/responsibilities/:definitionId/schedule-entries/:scheduleEntryId/delete",
+    async (request, reply) => {
+      const session = requireSession(request, reply);
+      if (!session) return;
+      const { definitionId, scheduleEntryId } = request.params as {
+        definitionId: string;
+        scheduleEntryId: string;
+      };
+      if (
+        !UuidSchema.safeParse(definitionId).success ||
+        !UuidSchema.safeParse(scheduleEntryId).success
+      ) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid id", request.id));
+      }
+      const parsed = DeleteScheduleEntrySchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid delete request", request.id));
+      }
+      const result = store.deleteResponsibilityScheduleEntry(
+        session,
+        definitionId,
+        scheduleEntryId,
+        parsed.data,
+      );
+      broadcast(session, "responsibility", definitionId);
+      return result;
+    },
+  );
+
+  app.get(
+    "/api/v1/responsibilities/:definitionId/preview",
+    async (request, reply) => {
+      const session = requireSession(request, reply);
+      if (!session) return;
+      const { definitionId } = request.params as { definitionId: string };
+      if (!UuidSchema.safeParse(definitionId).success) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid responsibility id", request.id));
+      }
+      return {
+        preview: store.previewResponsibilityNextDays(session, definitionId, 7),
+      };
+    },
+  );
+
   app.get("/api/v1/today", async (request, reply) => {
     const session = requireSession(request, reply);
     if (!session) return;
@@ -733,6 +935,8 @@ export async function buildApp(
       personId?: string;
       routineId?: string;
       status?: string;
+      kind?: string;
+      workKind?: string;
     };
     if (query.personId && !UuidSchema.safeParse(query.personId).success) {
       return reply
@@ -753,6 +957,17 @@ export async function buildApp(
         .code(400)
         .send(errorBody("VALIDATION", "Invalid status filter", request.id));
     }
+    const kindRaw = query.kind ?? query.workKind;
+    let kind: "routine" | "responsibility" | undefined;
+    if (kindRaw !== undefined) {
+      const parsedKind = WorkKindSchema.safeParse(kindRaw);
+      if (!parsedKind.success) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid work kind filter", request.id));
+      }
+      kind = parsedKind.data;
+    }
     return store.historySummaries(session, {
       date: query.date,
       from: query.from,
@@ -760,6 +975,7 @@ export async function buildApp(
       personId: query.personId,
       routineId: query.routineId,
       status: query.status as "complete" | "incomplete" | undefined,
+      kind,
     });
   });
 

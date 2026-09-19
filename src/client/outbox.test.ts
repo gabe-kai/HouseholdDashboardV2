@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { outboxStorageKey, previousOccurrencesFromOutbox, type OutboxItem } from "./outbox.js";
+import {
+  intendedStructureFromOccurrence,
+  normalizeOccurrenceKind,
+  outboxStorageKey,
+  previousOccurrencesFromOutbox,
+  type OutboxItem,
+} from "./outbox.js";
 import type { OccurrenceView } from "../shared/schemas.js";
 
 describe("outbox identity keys", () => {
@@ -25,6 +31,7 @@ describe("previousOccurrencesFromOutbox", () => {
     version: 1,
     startedAt: null,
     completed: false,
+    kind: "routine",
     steps: [],
   } as OccurrenceView;
 
@@ -41,6 +48,25 @@ describe("previousOccurrencesFromOutbox", () => {
       },
     ];
     expect(previousOccurrencesFromOutbox(items)).toEqual([snapshot]);
+  });
+
+  it("normalizes legacy snapshots missing kind to routine", () => {
+    const legacy = {
+      ...snapshot,
+      kind: undefined,
+    } as unknown as OccurrenceView;
+    const items: OutboxItem[] = [
+      {
+        mutationId: "mut-1",
+        occurrenceId: "occ-1",
+        stepId: "step-1",
+        status: "completed",
+        performedAt: "2026-09-17T12:00:00.000Z",
+        state: "pending",
+        occurrenceSnapshot: legacy,
+      },
+    ];
+    expect(previousOccurrencesFromOutbox(items)[0]?.kind).toBe("routine");
   });
 
   it("ignores rejected items and mismatched snapshot ids", () => {
@@ -65,5 +91,40 @@ describe("previousOccurrencesFromOutbox", () => {
       },
     ];
     expect(previousOccurrencesFromOutbox(items)).toEqual([]);
+  });
+});
+
+describe("responsibility intended structure", () => {
+  it("builds structure from responsibility occurrence steps", () => {
+    const occurrence = normalizeOccurrenceKind({
+      id: "occ-1",
+      definitionId: "def-1",
+      revisionId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      householdDate: "2026-09-18",
+      title: "Cats",
+      daypart: "anytime",
+      accountableMemberId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      accountableMemberName: "Avery",
+      version: 1,
+      startedAt: null,
+      completed: false,
+      kind: "responsibility",
+      steps: [
+        {
+          id: "s1",
+          position: 0,
+          text: "Feed",
+          obligation: "required",
+          status: "open",
+          source: "shared",
+          logicalItemId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        },
+      ],
+    } as OccurrenceView);
+    expect(intendedStructureFromOccurrence(occurrence)).toEqual({
+      revisionId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      accountableMemberId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      stepLogicalIds: ["cccccccc-cccc-4ccc-8ccc-cccccccccccc"],
+    });
   });
 });

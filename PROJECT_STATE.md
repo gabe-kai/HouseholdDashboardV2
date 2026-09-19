@@ -19,7 +19,7 @@
 
 ## Current focus
 
-**P0-007A r1 - Household Responsibility Foundation** is **IMPLEMENTED** locally on `brief/p0-007a-household-responsibility-foundation` (uncommitted). Build Report: `reports/P0-007A-r1-build-report.md`. Card **Give Cats and Trash one owner and a place in Today** remains **In Progress** pending Architecture technical acceptance.
+**P0-007A r1 - Household Responsibility Foundation** is **FIX REQUIRED** after Architecture review of Project Lead commit **9827d28** on `brief/p0-007a-household-responsibility-foundation`. Findings: `reports/P0-007A-r1-architecture-review.md`; Engineering Build Report: `reports/P0-007A-r1-build-report.md`. Card **Give Cats and Trash one owner and a place in Today** remains **In Progress**. Return directly to Engineering against unchanged r1.
 
 ## Internal work status
 
@@ -34,7 +34,7 @@
 | P0-006A - Calm Household Experience Foundation | r2 | ACCEPTED | Completed | Merged to `main` at `7cba3a6` via PR #12 | None; Project Lead evaluation accepted |
 | P0-006B - Contextual Routine Applicability | r1 | ACCEPTED | Project Lead/Product | Merged to `main` at `de552ab` | Evaluate the contextual routine experience |
 | P0-006C - Household Profiles and Useful History | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `409d147` via PR #14 | Product acceptance remains separate |
-| P0-007A - Household Responsibility Foundation | r1 | IMPLEMENTED | Engineering → Architecture | `brief/p0-007a-household-responsibility-foundation` | Architecture technical acceptance of Build Report |
+| P0-007A - Household Responsibility Foundation | r1 | FIX REQUIRED | Engineering | `brief/p0-007a-household-responsibility-foundation` at `9827d28` | R1-R5 corrections and contract-matching AT evidence |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -53,19 +53,19 @@ This table is the short repository-side coordination index. An external project 
 - P0-006A r2 completed the responsive Plan shell, focused editors, saved navigation, quiet feedback, and step ordering; required local evidence was closed and Architecture accepted it. The Project Lead then reviewed screenshots, tested, and reported satisfaction. A and B planning are integrated at `7cba3a6` via PR #12, including the A toast/CI correction.
 - P0-006B r1 contextual applicability and school calendar were technically accepted after AT9 rollback and AT10/AT11 browser evidence closed at `8421b31`, then merged through PR #13 at `de552ab`. The Project Lead reported successful school-year/exception setup and chose to continue the approved proposal with C.
 
-- P0-006C r1 profiles, saved family order, read-only summarized History and generation-fenced activity reset were technically accepted after correction `e8a93d5`, then merged via PR #14 at `409d147`. The next approved Product proposal is P0-007; its first brief is ready for Engineering review.
+- P0-006C r1 profiles, saved family order, read-only summarized History and generation-fenced activity reset were technically accepted after correction `e8a93d5`, then merged via PR #14 at `409d147`. P0-007A implementation is committed at `9827d28`; Architecture returned FIX REQUIRED, not technical acceptance.
 
 ## Known blockers
 
-- None known for A. Required-check branch protection is an external Project Lead setting and is not asserted as configured. B's pattern/eligibility details remain future brief work, not A blockers.
+- A technical acceptance is withheld for reproduced checklist replay, storage-consistency and dirty-draft failures, source-traced recovery/transaction gaps, and missing acceptance evidence; see the Architecture review R1-R5. No new Product decision or readiness round is required. Required-check branch protection remains an external Project Lead setting; B's pattern details remain later brief work.
 
 ## Next Project Lead decision
 
-- After Engineering Build Report: Architecture technical acceptance for **P0-007A r1**. Project Lead manages Git. No deployment is required for this local development slice.
+- Return the Architecture review to Engineering for **P0-007A r1** corrections before ordinary merge/acceptance. Project Lead manages Git; suggest commit messages but do not commit. No deployment is required.
 
 ## Next likely handoff
 
-Architecture reviews `reports/P0-007A-r1-build-report.md` (AT1–16 + validate:pr/rc). Card **Give Cats and Trash one owner and a place in Today** stays **In Progress** until technical acceptance.
+Engineering resolves `reports/P0-007A-r1-architecture-review.md` R1-R5 on the existing branch, then returns an updated Build Report with AT1–16 and exact local PR/RC/Vite evidence. Card **Give Cats and Trash one owner and a place in Today** stays **In Progress**; B/C sequencing is unchanged.
 
 ## Notes for all teams
 

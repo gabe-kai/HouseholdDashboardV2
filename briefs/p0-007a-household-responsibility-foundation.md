@@ -1,7 +1,7 @@
 # BRIEF P0-007A - Household Responsibility Foundation
 
 **Revision:** 1
-**Status:** READY
+**Status:** FIX REQUIRED
 
 One authoritative contract for P0-007A. Material changes increment the revision and invalidate prior readiness. Architecture technical acceptance and Project Lead acceptance of the experience are separate.
 
@@ -33,7 +33,7 @@ Fixing an unstarted checklist or its owner today takes effect today. Once anyone
 
 **Card title:** Give Cats and Trash one owner and a place in Today
 
-**Suggested column:** Up Next
+**Suggested column:** In Progress
 
 **Player-facing goal:** Create shared household work once and make each person's daily responsibility clear.
 
@@ -184,6 +184,10 @@ The Build Report maps each AT to named tests/artifacts, states actual base/commi
 **Reviewed revision:** 1
 **Readiness:** READY
 **Architecture disposition:** ACCEPT / PROCEED for **P0-007A revision 1**. Architecture reviewed `reports/P0-007A-r1-engineering-readiness.md`, committed at `7226987`, against the unchanged implementation baseline `409d147`. Engineering's notes identify intentional deltas already covered by D-035–D-037 and this contract; no contract revision or further readiness round is required. Engineering may implement r1 on `brief/p0-007a-household-responsibility-foundation`, then return its Build Report with AT1–16 evidence and exact local PR/RC/Vite gate results. B/C remain outside A. Project Lead manages Git; suggest commit messages but do not commit or deploy. The project card moves from Up Next to In Progress when implementation starts; technical acceptance remains pending.
+
+## Architecture technical acceptance
+
+**Disposition:** FIX REQUIRED against **r1**, reviewed at Project Lead commit **9827d28**. Detailed findings and independent checks: `reports/P0-007A-r1-architecture-review.md`. Required corrections cover checklist replay/transaction safety, storage and unsupported-input boundaries, dirty-draft version binding, live/late-response recovery, and missing or overstated AT1-16 evidence. The behavioral contract is unchanged; return directly to Engineering on the existing branch without a new readiness review. Card **Give Cats and Trash one owner and a place in Today** remains **In Progress**. Suggest commit messages but do not commit or deploy.
 
 ## Revision history
 

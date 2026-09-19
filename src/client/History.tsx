@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import type {
   HistoryOccurrenceDetail,
   HistoryOccurrenceSummary,
@@ -16,6 +16,19 @@ import type { HistoryFilters } from "./nav";
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function filtersIdentity(filters: HistoryFilters | undefined, householdDate: string): string {
+  return JSON.stringify({
+    householdDate,
+    date: filters?.date ?? null,
+    from: filters?.from ?? null,
+    to: filters?.to ?? null,
+    personId: filters?.personId ?? null,
+    routineId: filters?.routineId ?? null,
+    status: filters?.status ?? null,
+    kind: filters?.kind ?? null,
+  });
 }
 
 function addDays(date: string, days: number): string {
@@ -108,6 +121,7 @@ export function HistoryView(props: {
   filters?: HistoryFilters;
   occurrenceId?: string;
   refreshToken?: number;
+  knownActivityGeneration?: number;
   onFiltersChange: (filters: HistoryFilters) => void;
   onOpenOccurrence: (occurrenceId: string, filters: HistoryFilters) => void;
   onBack: () => void;
@@ -121,6 +135,7 @@ export function HistoryView(props: {
         occurrenceId={props.occurrenceId}
         filters={props.filters}
         refreshToken={props.refreshToken}
+        knownActivityGeneration={props.knownActivityGeneration}
         onBack={() => props.onBackToSummary(props.filters ?? {})}
         onActivityGeneration={props.onActivityGeneration}
       />
@@ -132,6 +147,7 @@ export function HistoryView(props: {
       memberships={props.memberships}
       filters={props.filters}
       refreshToken={props.refreshToken}
+      knownActivityGeneration={props.knownActivityGeneration}
       onFiltersChange={props.onFiltersChange}
       onOpenOccurrence={props.onOpenOccurrence}
       onBack={props.onBack}
@@ -146,6 +162,7 @@ function HistorySummaryView(props: {
   memberships: MemberPublic[];
   filters?: HistoryFilters;
   refreshToken?: number;
+  knownActivityGeneration?: number;
   onFiltersChange: (filters: HistoryFilters) => void;
   onOpenOccurrence: (occurrenceId: string, filters: HistoryFilters) => void;
   onBack: () => void;
@@ -168,6 +185,17 @@ function HistorySummaryView(props: {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [futureMessage, setFutureMessage] = useState<string | null>(null);
+  const loadGenerationRef = useRef(0);
+  const knownActivityGenerationRef = useRef(props.knownActivityGeneration ?? 0);
+
+  useEffect(() => {
+    if (
+      props.knownActivityGeneration !== undefined &&
+      props.knownActivityGeneration > knownActivityGenerationRef.current
+    ) {
+      knownActivityGenerationRef.current = props.knownActivityGeneration;
+    }
+  }, [props.knownActivityGeneration]);
 
   const peopleOrder = new Map(
     [...props.memberships]
@@ -186,10 +214,13 @@ function HistorySummaryView(props: {
   }, [props.filters, props.householdDate, props.refreshToken]);
 
   async function load() {
+    const generation = ++loadGenerationRef.current;
     const filters = props.filters ?? {};
+    const requestIdentity = filtersIdentity(filters, props.householdDate);
     const requestDate = filters.date || (!filters.from && !filters.to ? activeDate : undefined);
     const householdToday = props.householdDate;
     if (requestDate && requestDate > householdToday) {
+      if (generation !== loadGenerationRef.current) return;
       setOccurrences([]);
       setFutureMessage(
         "Future dates are outside History. Use routine Preview to see upcoming expectations.",
@@ -198,6 +229,7 @@ function HistorySummaryView(props: {
       return;
     }
     if (filters.to && filters.to > householdToday) {
+      if (generation !== loadGenerationRef.current) return;
       setOccurrences([]);
       setFutureMessage(
         "Future dates are outside History. Use routine Preview to see upcoming expectations.",
@@ -218,13 +250,21 @@ function HistorySummaryView(props: {
         status: filters.status,
         kind: filters.kind,
       });
-      setOccurrences(result.occurrences);
+      if (generation !== loadGenerationRef.current) return;
+      if (filtersIdentity(props.filters, props.householdDate) !== requestIdentity) return;
+      if (result.activityGeneration < knownActivityGenerationRef.current) return;
+      if (result.activityGeneration > knownActivityGenerationRef.current) {
+        knownActivityGenerationRef.current = result.activityGeneration;
+      }
       props.onActivityGeneration?.(result.activityGeneration);
+      setOccurrences(result.occurrences);
     } catch (caught) {
+      if (generation !== loadGenerationRef.current) return;
+      if (filtersIdentity(props.filters, props.householdDate) !== requestIdentity) return;
       setError(errorMessage(caught));
       setOccurrences([]);
     } finally {
-      setLoading(false);
+      if (generation === loadGenerationRef.current) setLoading(false);
     }
   }
 
@@ -506,6 +546,7 @@ function HistoryDetailView(props: {
   occurrenceId: string;
   filters?: HistoryFilters;
   refreshToken?: number;
+  knownActivityGeneration?: number;
   onBack: () => void;
   onActivityGeneration?: (generation: number) => void;
 }) {
@@ -513,23 +554,46 @@ function HistoryDetailView(props: {
   const [error, setError] = useState<string | null>(null);
   const [showEvidence, setShowEvidence] = useState(false);
   const [loading, setLoading] = useState(true);
+  const loadGenerationRef = useRef(0);
+  const knownActivityGenerationRef = useRef(props.knownActivityGeneration ?? 0);
+  const selectedOccurrenceRef = useRef(props.occurrenceId);
 
   useEffect(() => {
+    if (
+      props.knownActivityGeneration !== undefined &&
+      props.knownActivityGeneration > knownActivityGenerationRef.current
+    ) {
+      knownActivityGenerationRef.current = props.knownActivityGeneration;
+    }
+  }, [props.knownActivityGeneration]);
+
+  useEffect(() => {
+    selectedOccurrenceRef.current = props.occurrenceId;
     void load();
   }, [props.occurrenceId, props.refreshToken]);
 
   async function load() {
+    const generation = ++loadGenerationRef.current;
+    const occurrenceId = props.occurrenceId;
     setLoading(true);
     setError(null);
     try {
-      const result = await fetchHistoryOccurrence(props.occurrenceId);
-      setDetail(result.occurrence);
+      const result = await fetchHistoryOccurrence(occurrenceId);
+      if (generation !== loadGenerationRef.current) return;
+      if (selectedOccurrenceRef.current !== occurrenceId) return;
+      if (result.activityGeneration < knownActivityGenerationRef.current) return;
+      if (result.activityGeneration > knownActivityGenerationRef.current) {
+        knownActivityGenerationRef.current = result.activityGeneration;
+      }
       props.onActivityGeneration?.(result.activityGeneration);
+      setDetail(result.occurrence);
     } catch (caught) {
+      if (generation !== loadGenerationRef.current) return;
+      if (selectedOccurrenceRef.current !== occurrenceId) return;
       setDetail(null);
       setError(errorMessage(caught));
     } finally {
-      setLoading(false);
+      if (generation === loadGenerationRef.current) setLoading(false);
     }
   }
 

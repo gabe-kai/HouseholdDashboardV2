@@ -160,15 +160,17 @@ const baseResponsibilityStepsOnly = (
   }
 };
 
-const CreateResponsibilityFieldsSchema = z.object({
-  mutationId: UuidSchema,
-  title: z.string().trim().min(1),
-  daypart: DaypartSchema.default("anytime"),
-  accountableMemberId: UuidSchema,
-  weekdays: z.array(IsoWeekdaySchema).min(1),
-  steps: z.array(ChecklistStepInputSchema).min(1),
-  expectedVersion: z.number().int().positive().optional(),
-});
+const CreateResponsibilityFieldsSchema = z
+  .object({
+    mutationId: UuidSchema,
+    title: z.string().trim().min(1),
+    daypart: DaypartSchema.default("anytime"),
+    accountableMemberId: UuidSchema,
+    weekdays: z.array(IsoWeekdaySchema).min(1),
+    steps: z.array(ChecklistStepInputSchema).min(1),
+    expectedVersion: z.number().int().positive().optional(),
+  })
+  .strict();
 
 export const CreateResponsibilitySchema = CreateResponsibilityFieldsSchema.superRefine(
   (data, ctx) => baseResponsibilityStepsOnly(data.steps, ctx),
@@ -178,7 +180,9 @@ export const CreateResponsibilityRevisionSchema = CreateResponsibilityFieldsSche
   effectiveDate: HouseholdDateSchema.optional(),
   mode: z.enum(["current", "schedule"]).optional(),
   scheduleEntryId: UuidSchema.optional(),
-}).superRefine((data, ctx) => baseResponsibilityStepsOnly(data.steps, ctx));
+})
+  .strict()
+  .superRefine((data, ctx) => baseResponsibilityStepsOnly(data.steps, ctx));
 
 export const ArchiveRoutineSchema = z.object({
   mutationId: UuidSchema,

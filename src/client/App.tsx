@@ -706,6 +706,9 @@ export function App() {
         }
         setConnection(status === "reconnecting" ? "reconnecting" : "connected");
         if (status === "connected") {
+          // Missed WS notifications: refresh Plan/History tokens with Today.
+          setRoutineRefreshToken((n) => n + 1);
+          setHistoryRefreshToken((n) => n + 1);
           refreshAuthoritative({ urgentSupporting: true });
         }
       },
@@ -716,6 +719,8 @@ export function App() {
       if (identityRef.current !== membershipId) return;
       // Visible-tab recovery must re-read Today immediately; do not defer it
       // behind startTransition (same class of bug as deferred proposal status).
+      setRoutineRefreshToken((n) => n + 1);
+      setHistoryRefreshToken((n) => n + 1);
       void refreshToday(membershipId).catch((caught) => setError(errorMessage(caught)));
       void refreshSupportingData(session);
       void flushOutbox(membershipId);
@@ -1465,6 +1470,7 @@ export function App() {
               : undefined
           }
           refreshToken={historyRefreshToken}
+          knownActivityGeneration={knownActivityGeneration}
           onFiltersChange={(filters: HistoryFilters) => {
             requestNavigate({ name: "household-history", filters }, "replace");
           }}

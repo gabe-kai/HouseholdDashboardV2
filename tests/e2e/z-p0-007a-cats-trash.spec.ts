@@ -148,6 +148,15 @@ test.describe("P0-007A Cats and Trash foundation", () => {
     await expect(previewRows.first()).toBeVisible();
     const previewText = await previewRows.allTextContents();
     expect(previewText.some((line) => /No work/i.test(line))).toBeTruthy();
+    // AT4: Next 7 days preview includes Trash on a Tuesday with Avery as owner.
+    // Preview rows use ISO dates (not weekday abbreviations).
+    const trashPreview = previewText.find((line) => /Trash & Recycling/i.test(line));
+    expect(trashPreview, `expected Trash preview among: ${previewText.join(" | ")}`).toBeTruthy();
+    expect(trashPreview!).toMatch(/Avery/i);
+    const trashDate = trashPreview!.match(/(\d{4}-\d{2}-\d{2})/)?.[1];
+    expect(trashDate).toBeTruthy();
+    const trashDow = new Date(`${trashDate}T12:00:00Z`).getUTCDay();
+    expect(trashDow).toBe(2); // Tuesday
 
     const childContext = await browser.newContext();
     const child = await childContext.newPage();
@@ -165,10 +174,7 @@ test.describe("P0-007A Cats and Trash foundation", () => {
       await durableScreenshot(child, path.join(SCREENSHOT_DIR, "03-today-mixed.png"));
     }
 
-    await catsCard.getByRole("button", { name: /Mark Feed cats completed/i }).click();
-    await catsCard.getByRole("button", { name: /Mark Refresh water completed/i }).click();
-    await expect(catsCard).toHaveAttribute("data-completed", "true", { timeout: 20_000 });
-
+    // AT3: manager already on Household activity BEFORE child completes.
     await page.getByRole("button", { name: "Household", exact: true }).click();
     await page
       .getByRole("navigation", { name: "Household" })
@@ -176,7 +182,15 @@ test.describe("P0-007A Cats and Trash foundation", () => {
       .click();
     await expect(page.getByRole("heading", { name: "Household activity" })).toBeVisible();
     const catsRow = page.locator(".compact-activity-row").filter({ hasText: "Cats" });
-    await expect(catsRow).toContainText(/Complete|In progress/i, { timeout: 20_000 });
+    await expect(catsRow).toBeVisible({ timeout: 20_000 });
+    await expect(catsRow).not.toContainText(/^Complete$/i);
+
+    await catsCard.getByRole("button", { name: /Mark Feed cats completed/i }).click();
+    await catsCard.getByRole("button", { name: /Mark Refresh water completed/i }).click();
+    await expect(catsCard).toHaveAttribute("data-completed", "true", { timeout: 20_000 });
+
+    // Live update without manager navigation/reload.
+    await expect(catsRow).toContainText(/Complete/i, { timeout: 20_000 });
     if (capture) {
       await durableScreenshot(page, path.join(SCREENSHOT_DIR, "04-household-activity.png"));
     }

@@ -104,7 +104,7 @@ describe("P0-006C profiles, history, and activity clear", () => {
     migrate(db);
     expect(
       (db.prepare("SELECT COUNT(*) AS c FROM schema_migrations").get() as { c: number }).c,
-    ).toBe(11);
+    ).toBe(12);
   });
 
   it("AT2/AT3: profile update validation and structure grant", async () => {

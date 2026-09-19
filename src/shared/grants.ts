@@ -9,16 +9,20 @@ export const GRANT_PRESETS: Record<GrantPreset, Grant[]> = {
     "routine.shared.manage",
     "routine.proposal.decide",
     "routine.execute.own",
+    "responsibility.manage",
+    "responsibility.execute.own",
     "personal_task.create",
   ],
   direct_personalizer: [
     "routine.personalize.direct",
     "routine.execute.own",
+    "responsibility.execute.own",
     "personal_task.create",
   ],
   proposal_personalizer: [
     "routine.personalize.propose",
     "routine.execute.own",
+    "responsibility.execute.own",
     "personal_task.create",
   ],
 };

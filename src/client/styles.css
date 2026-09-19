@@ -1123,6 +1123,42 @@ textarea {
   margin: var(--space-4) 0;
 }
 
+.plan-section {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.plan-section:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.plan-add-row {
+  margin-bottom: var(--space-3);
+}
+
+.responsibility-activity-list {
+  list-style: none;
+  margin: 0 0 var(--space-4);
+  padding: 0;
+}
+
+.compact-activity-row {
+  display: grid;
+  gap: var(--space-1);
+  width: 100%;
+  text-align: left;
+}
+
+.compact-activity-title {
+  font-weight: 600;
+}
+
+.responsibility-preview-list li {
+  padding: var(--space-2) 0;
+}
+
 .routine-detail .preview-list li {
   border-bottom: 1px solid var(--border);
 }

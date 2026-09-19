@@ -150,9 +150,10 @@ export function evaluateMembership(
     db
       .prepare(
         `SELECT 1 FROM step_reports
-         WHERE accountable_member_id = ? OR acting_member_id = ? LIMIT 1`,
+         WHERE accountable_member_id = ? OR acting_member_id = ?
+            OR performer_member_id = ? LIMIT 1`,
       )
-      .get(membershipId, membershipId)
+      .get(membershipId, membershipId, membershipId)
   ) {
     blockers.push("has_step_report");
   }

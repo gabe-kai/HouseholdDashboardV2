@@ -1,4 +1,5 @@
 import { compareHouseholdDates, type HouseholdDate } from "./time.js";
+import type { IntendedStructure, WorkKind } from "../shared/schemas.js";
 
 /** Deterministic unique union of membership IDs (sorted). */
 export function unionMembershipIds(...sets: string[][]): string[] {
@@ -43,6 +44,40 @@ export function resolveParticipants(input: {
   groupMemberIdSets: string[][];
 }): string[] {
   return unionMembershipIds(input.directMemberIds, ...input.groupMemberIdSets);
+}
+
+/**
+ * Resolve accountable membership(s) for a dated plan.
+ * Routines: multi-participant union of directs + dated groups.
+ * Responsibilities: exactly one fixed owner; groups are never expanded.
+ */
+export function resolveAccountableMembers(
+  kind: WorkKind,
+  input: { directMemberIds: string[]; groupMemberIdSets: string[][] },
+): string[] {
+  if (kind === "responsibility") {
+    const owner = input.directMemberIds[0];
+    return owner ? [owner] : [];
+  }
+  return resolveParticipants(input);
+}
+
+/** Whether intended responsibility structure matches the current occurrence snapshot. */
+export function intendedStructureMatches(
+  intended: IntendedStructure,
+  current: {
+    revisionId: string;
+    accountableMemberId: string;
+    stepLogicalIds: Array<string | null>;
+  },
+): boolean {
+  if (intended.revisionId !== current.revisionId) return false;
+  if (intended.accountableMemberId !== current.accountableMemberId) return false;
+  const currentIds = current.stepLogicalIds.filter(
+    (id): id is string => typeof id === "string" && id.length > 0,
+  );
+  if (intended.stepLogicalIds.length !== currentIds.length) return false;
+  return intended.stepLogicalIds.every((id, index) => id === currentIds[index]);
 }
 
 /** Whether a revision interval [effectiveDate, nextEffectiveDate) intersects [today, +∞). */

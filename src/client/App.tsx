@@ -49,11 +49,14 @@ import {
 import { HistoryView } from "./History";
 import { HouseholdSettingsView } from "./HouseholdSettings";
 import { PeopleGroupsView } from "./PeopleGroups";
+import { ResponsibilitiesView } from "./Responsibilities";
 import { DAYPART_LABELS, RoutinesView } from "./Routines";
 import { SchoolCalendarView } from "./SchoolCalendar";
 import {
   clearMembershipOutbox,
   enqueueOutbox,
+  intendedStructureFromOccurrence,
+  normalizeOccurrenceKind,
   patchOutboxItem,
   previousOccurrencesFromOutbox,
   readOutbox,
@@ -88,7 +91,13 @@ type TodaySecondary = "personalize" | "preview" | null;
 const ACTIVITY_CLEARED_HINT = /routine history was cleared/i;
 
 function primaryTabFor(location: AppLocation): PrimaryTab {
-  if (location.name === "plan" || location.name === "plan-routine") return "plan";
+  if (
+    location.name === "plan" ||
+    location.name === "plan-routine" ||
+    location.name === "plan-responsibility"
+  ) {
+    return "plan";
+  }
   if (
     location.name === "household" ||
     location.name === "household-people" ||
@@ -105,10 +114,14 @@ function primaryTabFor(location: AppLocation): PrimaryTab {
 }
 
 function gateLocation(location: AppLocation, session: SessionInfo): AppLocation {
-  const canManageShared = session.grants.includes("routine.shared.manage");
+  const canManageShared =
+    session.grants.includes("routine.shared.manage") ||
+    session.grants.includes("responsibility.manage");
   const canClearActivity = session.grants.includes("household.activity.clear");
   if (
-    (location.name === "plan" || location.name === "plan-routine") &&
+    (location.name === "plan" ||
+      location.name === "plan-routine" ||
+      location.name === "plan-responsibility") &&
     !canManageShared
   ) {
     return { name: "unavailable", attemptedPath: pathFor(location) };
@@ -512,6 +525,10 @@ export function App() {
             status: item.status,
             performedAt: item.performedAt,
             activityGeneration: item.activityGeneration ?? activityGenerationRef.current,
+            ...(item.kind ? { kind: item.kind } : {}),
+            ...(item.intendedStructure
+              ? { intendedStructure: item.intendedStructure }
+              : {}),
           },
           mutationDelayMs ? { delayMs: mutationDelayMs } : undefined,
         );
@@ -644,6 +661,7 @@ export function App() {
         if (
           notification.resource === "group" ||
           notification.resource === "routine" ||
+          notification.resource === "responsibility" ||
           notification.resource === "school_calendar"
         ) {
           setRoutineRefreshToken((n) => n + 1);
@@ -672,6 +690,7 @@ export function App() {
         const urgent =
           notification.resource === "proposal" ||
           notification.resource === "routine" ||
+          notification.resource === "responsibility" ||
           notification.resource === "membership" ||
           notification.resource === "group" ||
           notification.resource === "school_calendar" ||
@@ -744,6 +763,7 @@ export function App() {
     if (!session) return;
     const membershipId = session.member.id;
     const base = occurrencesRef.current.find((occurrence) => occurrence.id === occurrenceId);
+    const normalized = base ? normalizeOccurrenceKind(base) : undefined;
     const item: OutboxItem = {
       mutationId: newClientId(),
       occurrenceId,
@@ -753,9 +773,17 @@ export function App() {
       state: "pending",
       activityGeneration: activityGenerationRef.current,
       occurrenceSnapshot:
-        base && isLockingStepStatus(status)
-          ? (JSON.parse(JSON.stringify(base)) as OccurrenceView)
+        normalized && isLockingStepStatus(status)
+          ? (JSON.parse(JSON.stringify(normalized)) as OccurrenceView)
           : undefined,
+      ...(normalized
+        ? {
+            kind: normalized.kind,
+            ...(normalized.kind === "responsibility"
+              ? { intendedStructure: intendedStructureFromOccurrence(normalized) }
+              : {}),
+          }
+        : {}),
     };
     setOccurrences((current) => {
       const next = current.map((occurrence) =>
@@ -850,7 +878,9 @@ export function App() {
   }
 
   const activeSession = session;
-  const canManageShared = hasGrant(activeSession, "routine.shared.manage");
+  const canManageShared =
+    hasGrant(activeSession, "routine.shared.manage") ||
+    hasGrant(activeSession, "responsibility.manage");
   const canEnroll = hasGrant(activeSession, "household.member.enroll");
   const canManageStructure = hasGrant(activeSession, "household.structure.manage");
   const canManageSchedule = hasGrant(activeSession, "household.schedule.manage");
@@ -923,7 +953,11 @@ export function App() {
     gatedLocation.name === "today" && todaySecondary === "preview";
   const showingPlan =
     showPlanTab &&
-    (gatedLocation.name === "plan" || gatedLocation.name === "plan-routine");
+    (gatedLocation.name === "plan" ||
+      gatedLocation.name === "plan-routine" ||
+      gatedLocation.name === "plan-responsibility");
+  const showingPlanRoutines =
+    showingPlan && gatedLocation.name !== "plan-responsibility";
   const showingHouseholdMenu =
     gatedLocation.name === "household" && householdLeaf === null;
   const showingPeople =
@@ -943,7 +977,10 @@ export function App() {
     gatedLocation.name === "household-settings" && canClearActivity;
   const showingUnavailable =
     gatedLocation.name === "unavailable" ||
-    ((location.name === "plan" || location.name === "plan-routine") && !canManageShared) ||
+    ((location.name === "plan" ||
+      location.name === "plan-routine" ||
+      location.name === "plan-responsibility") &&
+      !canManageShared) ||
     (gatedLocation.name === "household-settings" && !canClearActivity) ||
     ((gatedLocation.name === "household-history" ||
       gatedLocation.name === "household-history-occurrence") &&
@@ -1060,7 +1097,7 @@ export function App() {
       {activityResetBanner ? (
         <div className="status-notice activity-reset-banner" role="status">
           <p>
-            Routine history was cleared. Older unsynced checklist changes were not applied.
+            Activity history was cleared. Older unsynced checklist changes were not applied.
           </p>
           <button
             type="button"
@@ -1126,7 +1163,8 @@ export function App() {
           tasks={tasks.filter((task) => task.ownerMembershipId === session.member.id)}
           expanded={expanded}
           setExpanded={setExpanded}
-          canExecute={hasGrant(session, "routine.execute.own")}
+          canExecuteRoutine={hasGrant(session, "routine.execute.own")}
+          canExecuteResponsibility={hasGrant(session, "responsibility.execute.own")}
           canPersonalize={canPersonalize}
           onOpenPersonalize={openPersonalize}
           onStepChange={queueStepChange}
@@ -1138,11 +1176,47 @@ export function App() {
           }
         />
       ) : null}
-      {!showingUnavailable && showingPlan ? (
+      {!showingUnavailable && showingPlanRoutines ? (
         <RoutinesView
           memberships={memberships}
           today={householdDate || session.householdDate}
           refreshToken={routineRefreshToken}
+          planHome={gatedLocation.name === "plan"}
+          onCreateResponsibility={() =>
+            requestNavigate({ name: "plan-responsibility", definitionId: "new" })
+          }
+          responsibilitiesSlot={
+            gatedLocation.name === "plan" ? (
+              <ResponsibilitiesView
+                memberships={memberships}
+                today={householdDate || session.householdDate}
+                refreshToken={routineRefreshToken}
+                listOnly
+                route={{ kind: "list" }}
+                onRouteChange={(next) => {
+                  if (next.kind === "list") {
+                    requestNavigate({ name: "plan" });
+                  } else if (next.kind === "create") {
+                    requestNavigate({ name: "plan-responsibility", definitionId: "new" });
+                  } else {
+                    requestNavigate({
+                      name: "plan-responsibility",
+                      definitionId: next.definitionId,
+                    });
+                  }
+                }}
+                onDirtyChange={(dirty) => {
+                  editorDirtyRef.current = dirty;
+                  setEditorDirty(dirty);
+                }}
+                onSuccessToast={(message) => showToast(message)}
+                onSaved={() => {
+                  setRoutineRefreshToken((n) => n + 1);
+                  void refreshToday(session.member.id);
+                }}
+              />
+            ) : null
+          }
           route={
             gatedLocation.name === "plan-routine"
               ? { kind: "detail", definitionId: gatedLocation.definitionId }
@@ -1154,6 +1228,49 @@ export function App() {
             } else {
               requestNavigate({
                 name: "plan-routine",
+                definitionId: next.definitionId,
+              });
+            }
+          }}
+          onDirtyChange={(dirty) => {
+            editorDirtyRef.current = dirty;
+            setEditorDirty(dirty);
+          }}
+          onSuccessToast={(message) => showToast(message)}
+          onSaved={() => {
+            setRoutineRefreshToken((n) => n + 1);
+            void refreshToday(session.member.id);
+          }}
+          onEnded={() => {
+            setRoutineRefreshToken((n) => n + 1);
+            void refreshToday(session.member.id);
+          }}
+          onDeleted={() => {
+            setRoutineRefreshToken((n) => n + 1);
+            void refreshToday(session.member.id);
+          }}
+        />
+      ) : null}
+      {!showingUnavailable &&
+      showingPlan &&
+      gatedLocation.name === "plan-responsibility" ? (
+        <ResponsibilitiesView
+          memberships={memberships}
+          today={householdDate || session.householdDate}
+          refreshToken={routineRefreshToken}
+          route={
+            gatedLocation.definitionId === "new"
+              ? { kind: "create" }
+              : { kind: "detail", definitionId: gatedLocation.definitionId }
+          }
+          onRouteChange={(next) => {
+            if (next.kind === "list") {
+              requestNavigate({ name: "plan" });
+            } else if (next.kind === "create") {
+              requestNavigate({ name: "plan-responsibility", definitionId: "new" });
+            } else {
+              requestNavigate({
+                name: "plan-responsibility",
                 definitionId: next.definitionId,
               });
             }
@@ -1594,7 +1711,8 @@ function TodayView(props: {
   tasks: PersonalTask[];
   expanded: Record<string, boolean>;
   setExpanded: Dispatch<SetStateAction<Record<string, boolean>>>;
-  canExecute: boolean;
+  canExecuteRoutine: boolean;
+  canExecuteResponsibility: boolean;
   canPersonalize: boolean;
   onOpenPersonalize: () => void;
   onStepChange: (occurrenceId: string, stepId: string, status: StepStatus) => void;
@@ -1617,14 +1735,15 @@ function TodayView(props: {
         ) : null}
         {props.occurrences.length === 0 ? (
           <div className="empty-state">
-            <p>No routines for you on this household date.</p>
+            <p>Nothing assigned to you on this household date.</p>
           </div>
         ) : (
           <OccurrenceList
             occurrences={props.occurrences}
             expanded={props.expanded}
             setExpanded={props.setExpanded}
-            canExecute={props.canExecute}
+            canExecuteRoutine={props.canExecuteRoutine}
+            canExecuteResponsibility={props.canExecuteResponsibility}
             onStepChange={props.onStepChange}
           />
         )}
@@ -1638,16 +1757,23 @@ function OccurrenceList(props: {
   occurrences: OccurrenceView[];
   expanded: Record<string, boolean>;
   setExpanded: Dispatch<SetStateAction<Record<string, boolean>>>;
-  canExecute: boolean;
+  canExecuteRoutine: boolean;
+  canExecuteResponsibility: boolean;
   onStepChange?: (occurrenceId: string, stepId: string, status: StepStatus) => void;
 }) {
   return props.occurrences.map((occurrence) => {
+    const kind = occurrence.kind === "responsibility" ? "responsibility" : "routine";
+    const canExecute =
+      kind === "responsibility"
+        ? props.canExecuteResponsibility
+        : props.canExecuteRoutine;
     const open = props.expanded[occurrence.id] ?? !occurrence.completed;
     return (
       <article
         key={occurrence.id}
         className={`occurrence ${occurrence.completed ? "completed" : ""}`}
         data-testid={`occurrence-${occurrence.id}`}
+        data-kind={kind}
         data-completed={occurrence.completed ? "true" : "false"}
       >
         <button
@@ -1682,7 +1808,7 @@ function OccurrenceList(props: {
                 <div className="meta" data-testid={`step-status-${step.id}`}>
                   Status: {statusLabel(step.status)}
                 </div>
-                {props.canExecute && props.onStepChange ? (
+                {canExecute && props.onStepChange ? (
                   <div className="step-actions">
                     <button
                       type="button"

@@ -7,6 +7,14 @@
 **Next owner:** Engineering, same revision and branch; no new readiness round  
 **Card:** **Give Cats and Trash one owner and a place in Today** remains **In Progress**.
 
+The new migration 013 and the reported AT4/AT7/AT12/AT15 evidence address the previously identified Architecture gaps. However, the repository gate is not currently green in this environment: an independent `npm test` run on 2026-09-20 produced **167 passed / 1 failed**. The failure is `tests/integration/p0-006b.test.ts` AT9, where the test assumes the real current date is a school day and therefore cannot find its `Pack Lunchbox` step on Sunday. This appears date-sensitive and not caused by migration 013, but P0-003's regression gate still requires a deterministic green suite before technical acceptance.
+
+## Remaining required correction
+
+Stabilize or explicitly control the P0-006B AT9 date seam so the normal repository test suite passes on the supported calendar, then rerun the exact local PR/RC/Vite gates. Do not make the test depend on whether the host happens to be a weekday. The fix may be a test-only controlled household date or an equivalent existing seam; preserve the behavior being tested.
+
+Architecture is not reopening the closed R1–R5/AT4/AT7/AT12/AT15 findings unless the rerun exposes a new failure. The migration 013 integrity tests are accepted as evidence for those two storage corrections.
+
 R1–R5 are substantially addressed. The reported gates now pass at 165 unit/integration tests, 42 Chromium + 2 Vite PR checks, and 68 Chromium/WebKit + 2 Vite RC checks. The new receipt, migration, draft, recovery, and evidence work is materially better and the previously reproduced replay, kind-integrity and draft-version failures are addressed in the named tests.
 
 Technical acceptance remains withheld for the following required contract edges.

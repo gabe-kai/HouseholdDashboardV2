@@ -19,7 +19,7 @@
 
 ## Current focus
 
-**P0-007A r1 - Household Responsibility Foundation** remains **FIX REQUIRED** after re-review of Project Lead commit **fd91c8a** on `brief/p0-007a-household-responsibility-foundation`. Prior findings were substantially corrected; remaining findings: `reports/P0-007A-r1-architecture-reacceptance.md`. Engineering Build Report: `reports/P0-007A-r1-build-report.md`. Card **Give Cats and Trash one owner and a place in Today** remains **In Progress**. Return directly to Engineering against unchanged r1.
+**P0-007A r1 - Household Responsibility Foundation** remains **FIX REQUIRED** after re-review of Project Lead commit **10a412d** on `brief/p0-007a-household-responsibility-foundation`. Prior findings were corrected, but the independent suite is currently red: a date-sensitive P0-006B AT9 test fails on Sunday, 2026-09-20. Details: `reports/P0-007A-r1-architecture-reacceptance.md`. Card **Give Cats and Trash one owner and a place in Today** remains **In Progress**. Return directly to Engineering against unchanged r1.
 
 ## Internal work status
 
@@ -34,7 +34,7 @@
 | P0-006A - Calm Household Experience Foundation | r2 | ACCEPTED | Completed | Merged to `main` at `7cba3a6` via PR #12 | None; Project Lead evaluation accepted |
 | P0-006B - Contextual Routine Applicability | r1 | ACCEPTED | Project Lead/Product | Merged to `main` at `de552ab` | Evaluate the contextual routine experience |
 | P0-006C - Household Profiles and Useful History | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `409d147` via PR #14 | Product acceptance remains separate |
-| P0-007A - Household Responsibility Foundation | r1 | FIX REQUIRED | Engineering | `brief/p0-007a-household-responsibility-foundation` at `fd91c8a` | Close AT4/7/12/15; enforce immutable kind and same-household ownership |
+| P0-007A - Household Responsibility Foundation | r1 | FIX REQUIRED | Engineering | `brief/p0-007a-household-responsibility-foundation` at `10a412d` | Stabilize date-sensitive P0-006B AT9; rerun green PR/RC/Vite gates |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -53,15 +53,15 @@ This table is the short repository-side coordination index. An external project 
 - P0-006A r2 completed the responsive Plan shell, focused editors, saved navigation, quiet feedback, and step ordering; required local evidence was closed and Architecture accepted it. The Project Lead then reviewed screenshots, tested, and reported satisfaction. A and B planning are integrated at `7cba3a6` via PR #12, including the A toast/CI correction.
 - P0-006B r1 contextual applicability and school calendar were technically accepted after AT9 rollback and AT10/AT11 browser evidence closed at `8421b31`, then merged through PR #13 at `de552ab`. The Project Lead reported successful school-year/exception setup and chose to continue the approved proposal with C.
 
-- P0-006C r1 profiles, saved family order, read-only summarized History and generation-fenced activity reset were technically accepted after correction `e8a93d5`, then merged via PR #14 at `409d147`. P0-007A implementation and R1–R5 corrections are committed at `fd91c8a`; Architecture returned FIX REQUIRED, not technical acceptance.
+- P0-006C r1 profiles, saved family order, read-only summarized History and generation-fenced activity reset were technically accepted after correction `e8a93d5`, then merged via PR #14 at `409d147`. P0-007A implementation and corrections are committed at `10a412d`; Architecture returned FIX REQUIRED pending a deterministic green regression suite.
 
 ## Known blockers
 
-- A technical acceptance remains withheld for four declared partial acceptance edges and two remaining storage-boundary invariants; see `reports/P0-007A-r1-architecture-reacceptance.md`. No new Product decision or readiness round is required. Required-check branch protection remains an external Project Lead setting; B's pattern details remain later brief work.
+- A technical acceptance remains withheld because the independent repository suite is red on a date-sensitive P0-006B AT9 regression test; see `reports/P0-007A-r1-architecture-reacceptance.md`. No new Product decision or readiness round is required. Required-check branch protection remains an external Project Lead setting; B's pattern details remain later brief work.
 
 ## Next Project Lead decision
 
-- Return the Architecture re-acceptance review to Engineering for **P0-007A r1** corrections before ordinary merge/acceptance. Project Lead manages Git; suggest commit messages but do not commit. No deployment is required.
+- Return the Architecture re-acceptance review to Engineering for the deterministic test correction and green-gate rerun before ordinary merge/acceptance. Project Lead manages Git; suggest commit messages but do not commit. No deployment is required.
 
 ## Next likely handoff
 

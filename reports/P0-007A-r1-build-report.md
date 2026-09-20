@@ -1,46 +1,38 @@
 # Build Report - BRIEF P0-007A r1
 
 **Brief revision implemented:** 1  
-**Engineering status:** Re-acceptance FIX REQUIRED closed (local; pending Architecture re-acceptance)  
+**Engineering status:** Final gate FIX REQUIRED closed (local; pending Architecture technical acceptance)  
 **Branch:** `brief/p0-007a-household-responsibility-foundation`  
 **Base:** Architecture ACCEPT/PROCEED `a6890cc`; integrated main parent `409d147`  
-**Prior implementation (Project Lead):** `fd91c8a` (R1–R5 close)  
-**Re-acceptance review:** `reports/P0-007A-r1-architecture-reacceptance.md` @ `5bfbe56`  
-**Corrections (this pass):** uncommitted on the same branch after `5bfbe56`  
+**Prior implementation:** `10a412d` (AT4/7/12/15 + migration 013)  
+**Gate-correction review tip:** `27a3c26` (`reports/P0-007A-r1-architecture-reacceptance.md`)  
+**Corrections (this pass):** uncommitted on the same branch after `27a3c26`  
 **Pull request:** N/A  
 
 ## Readiness
 
-Contract unchanged; **no new readiness round**. Architecture re-acceptance disposition **FIX REQUIRED** for AT4/7/12/15 evidence plus immutable definition kind and same-household ownership storage. Card **Give Cats and Trash one owner and a place in Today** remains **In Progress**.
+Contract unchanged; **no new readiness round**. Architecture confirmed the responsibility corrections are addressed and withheld technical acceptance only for the independent red `npm test` suite (**167/168**) caused by P0-006B AT9’s real-date school-day assumption on Sunday. Card **Give Cats and Trash one owner and a place in Today** remains **In Progress**.
 
-## Architecture re-acceptance close
+## Final gate correction
 
 | Finding | Close |
 | --- | --- |
-| **AT4** Trash Tuesday execute + daypart + DST | Integration **AT4** backdates schedule/revision to a controlled Tuesday, executes Trash, asserts evening-before-anytime order and History. E2e `z-p0-007a-cats-trash.spec.ts` executes Trash (keeps Tuesday; widens weekdays only when today is not Tuesday), mixed Today order, History. Unit **AT4** DST/travel weekday seams in `src/domain/time.test.ts`. |
-| **AT7** rapid/delayed/out-of-order + pending vs reassign | `z-p0-007a-reacceptance.spec.ts` **AT7**: `mutationDelayMs` rapid taps; abort/reload pending; manager reassign while pending; held older status released after newer open. |
-| **AT12** hold/release stale History across clear | Same file **AT12**: capture pre-clear completed History body; clear; hold/release that body on post-clear reload; assert `· Complete ·` does not return (generation fence). |
-| **AT15** built shell / signed-out resume / denied | Same file **AT15** on production Playwright server: detail hard reload; signed-out resume via intended path; missing id + child `/new` unavailable. Vite deeplink remains in `test:e2e:vite`. |
-| **Immutable definition kind** | Forward migration `013_definition_kind_and_owner_integrity.sql` trigger rejects `UPDATE routine_definitions.kind`. Regression: routine↔responsibility flips abort; dependents unchanged. |
-| **Same-household accountable owner** | Migration 013 occurrence insert/update triggers require `accountable_member_id` in the occurrence household. Regression: foreign-household insert/update abort. |
+| **P0-006B AT9** date-sensitive school-day assumption | `tests/integration/p0-006b.test.ts` AT9 now uses the existing controlled school-day seam already used by AT7/AT8/injectable AT9: usual weekdays `[1–7]` so `Pack Lunchbox` (`school_days`) materializes on any household date. Exception-off + obsolete-step rejection behavior preserved. |
+
+Prior AT4/AT7/AT12/AT15 evidence and migration 013 kind/ownership integrity remain as closed at `10a412d`; Architecture did not reopen them.
 
 ## What changed (this correction pass)
 
-- `db/migrations/013_definition_kind_and_owner_integrity.sql`
-- Migration inventory expectations → **13**
-- `tests/integration/p0-007a.test.ts`: AT1 through 013; AT4 Tuesday execution; kind/owner storage regressions
-- `src/domain/time.test.ts`: AT4 DST/travel weekday
-- `tests/e2e/z-p0-007a-cats-trash.spec.ts`: Trash execute + daypart + History
-- `tests/e2e/z-p0-007a-reacceptance.spec.ts`: AT7/AT12/AT15 (session display-name aware after 006C renames)
+- `tests/integration/p0-006b.test.ts` — stabilize AT9 calendar/obsolete-step path so it does not depend on the host weekday
 
 ## Verification performed
 
 | Check | Result |
 | --- | --- |
-| Unit / integration | **PASS** — **168** tests / **27** files |
+| `npm test` | **PASS** — **168** tests / **27** files (`reports/p0-007a-r1-npm-test.log`) |
 | `npm run validate:pr` | **PASS** — Chromium e2e **45/45** + Vite **2/2** (`reports/p0-007a-r1-validate-pr.log`) |
 | `npm run validate:rc` | **PASS** — Chromium+WebKit **71/71** + Vite **2/2** (`reports/p0-007a-r1-validate-rc.log`) |
-| Prior `p0-005` / `p0-006a` / `p0-006b` / `p0-006c` screenshots | **PASS** — SHA-256 unchanged through gates |
+| Prior `p0-005` / `p0-006b` / `p0-006c` screenshots | **PASS** — SHA-256 unchanged through gates (`p0-006a` screenshot dir not present in tree) |
 | Current-brief screenshots | `reports/p0-007a-r1-screenshots/` refreshed by this gate run |
 | Deployment | **NOT RUN** |
 
@@ -68,9 +60,8 @@ Contract unchanged; **no new readiness round**. Architecture re-acceptance dispo
 ## Suggested commit message (do not commit)
 
 ```
-P0-007A: close r1 re-acceptance AT4/7/12/15 and storage integrity
+P0-007A: stabilize P0-006B AT9 school-day date seam
 
-Add migration 013 for immutable kind and same-household owners,
-and prove Trash Tuesday, checklist out-of-order, History hold/release,
-and built-shell destination edges.
+Use the existing all-weekday school calendar control so AT9 no longer
+depends on the host weekday, restoring a deterministic green npm test.
 ```

@@ -32,4 +32,22 @@ describe("household timezone boundaries", () => {
     expect(isDateApplicable("2026-09-06", [1, 2, 3, 4, 5])).toBe(false);
     expect(isDateApplicable("2026-09-07", [1, 2, 3, 4, 5])).toBe(true);
   });
+
+  it("AT4: Trash Tuesday weekday is household-date based across travel TZ and DST", () => {
+    // Tuesday 2026-03-10 in America/New_York (after spring-forward weekend).
+    const tuesday = "2026-03-10";
+    expect(isoWeekdayForHouseholdDate(tuesday)).toBe(2);
+    expect(isDateApplicable(tuesday, [2])).toBe(true);
+
+    // Traveling device in UTC near household midnight still resolves the same local Tuesday.
+    const lateUtc = householdDateFromInstant("2026-03-11T03:30:00.000Z", "America/New_York");
+    expect(lateUtc).toBe("2026-03-10");
+    expect(isoWeekdayForHouseholdDate(lateUtc)).toBe(2);
+
+    // Device in America/Los_Angeles does not move the household Tuesday string.
+    const westCoastRead = householdDateFromInstant("2026-03-10T16:00:00.000Z", "America/Los_Angeles");
+    expect(westCoastRead).toBe("2026-03-10");
+    expect(isoWeekdayForHouseholdDate(tuesday)).toBe(2);
+    expect(isDateApplicable(tuesday, [2])).toBe(true);
+  });
 });

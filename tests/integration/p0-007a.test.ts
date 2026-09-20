@@ -50,7 +50,7 @@ function requiredStep(text: string) {
 }
 
 describe("P0-007A household responsibility foundation (server)", () => {
-  it("AT1: populated 010 upgrades through 012 with grants, create, backup/restore", async () => {
+  it("AT1: populated 010 upgrades through 013 with grants, create, backup/restore", async () => {
     const dbPath = path.join(os.tmpdir(), `hd-007a-p010-${Date.now()}.sqlite`);
     temps.push(dbPath);
     const db = openPopulatedP010UpgradeDatabase(dbPath);
@@ -111,8 +111,15 @@ describe("P0-007A household responsibility foundation (server)", () => {
       ).c,
     ).toBe(1);
     expect(
+      (
+        db
+          .prepare("SELECT COUNT(*) AS c FROM schema_migrations WHERE id LIKE '013_%'")
+          .get() as { c: number }
+      ).c,
+    ).toBe(1);
+    expect(
       (db.prepare("SELECT COUNT(*) AS c FROM schema_migrations").get() as { c: number }).c,
-    ).toBe(12);
+    ).toBe(13);
 
     const kinds = db
       .prepare(`SELECT DISTINCT kind FROM routine_definitions`)
@@ -162,7 +169,7 @@ describe("P0-007A household responsibility foundation (server)", () => {
     migrate(db);
     expect(
       (db.prepare("SELECT COUNT(*) AS c FROM schema_migrations").get() as { c: number }).c,
-    ).toBe(12);
+    ).toBe(13);
     expect(
       (
         db
@@ -257,8 +264,113 @@ describe("P0-007A household responsibility foundation (server)", () => {
           .get() as { c: number }
       ).c,
     ).toBe(1);
+    expect(
+      (
+        restored
+          .prepare("SELECT COUNT(*) AS c FROM schema_migrations WHERE id LIKE '013_%'")
+          .get() as { c: number }
+      ).c,
+    ).toBe(1);
     expect((restored.prepare("PRAGMA foreign_key_check").all() as unknown[]).length).toBe(0);
     restored.close();
+  });
+
+  it("AT4: backdated Tuesday Trash execution, mixed daypart, History", async () => {
+    const { store, db } = freshStore();
+    const manager = await claimManager(store);
+    const avery = await enrollAndClaim(
+      store,
+      manager.context,
+      IDS.avery,
+      "direct_personalizer",
+      `avery.at4.${Date.now().toString(36)}`,
+      "Avery Reed",
+    );
+    const today = store.householdDateNow(manager.context);
+    function addDays(date: string, days: number): string {
+      const [y, m, d] = date.split("-").map(Number);
+      const utc = new Date(Date.UTC(y!, m! - 1, d! + days, 12, 0, 0));
+      const yy = utc.getUTCFullYear();
+      const mm = String(utc.getUTCMonth() + 1).padStart(2, "0");
+      const dd = String(utc.getUTCDate()).padStart(2, "0");
+      return `${yy}-${mm}-${dd}`;
+    }
+    function isoWeekday(date: string): number {
+      const [y, m, d] = date.split("-").map(Number);
+      const utc = new Date(Date.UTC(y!, m! - 1, d!, 12, 0, 0));
+      const day = utc.getUTCDay();
+      return day === 0 ? 7 : day;
+    }
+    function previousOrSameWeekday(from: string, weekday: number): string {
+      let candidate = from;
+      while (isoWeekday(candidate) !== weekday) {
+        candidate = addDays(candidate, -1);
+      }
+      return candidate;
+    }
+    const tuesday = previousOrSameWeekday(today, 2);
+
+    const cats = store.createResponsibility(manager.context, {
+      mutationId: randomUUID(),
+      title: "Cats",
+      daypart: "anytime",
+      accountableMemberId: IDS.avery,
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      steps: [requiredStep("Feed")],
+    });
+    const trash = store.createResponsibility(manager.context, {
+      mutationId: randomUUID(),
+      title: "Trash & Recycling",
+      daypart: "evening",
+      accountableMemberId: IDS.avery,
+      weekdays: [2],
+      steps: [requiredStep("Take out"), requiredStep("Recycling")],
+    });
+    // Backdate so the Tuesday before-or-on today is applicable (create stamps effective=today).
+    db.prepare(`UPDATE routine_revisions SET effective_date = ? WHERE definition_id = ?`).run(
+      tuesday,
+      trash.id,
+    );
+    db.prepare(`UPDATE routine_revisions SET effective_date = ? WHERE definition_id = ?`).run(
+      tuesday,
+      cats.id,
+    );
+    db.prepare(
+      `UPDATE routine_schedule_entries SET start_date = ? WHERE definition_id = ?`,
+    ).run(tuesday, trash.id);
+    db.prepare(
+      `UPDATE routine_schedule_entries SET start_date = ? WHERE definition_id = ?`,
+    ).run(tuesday, cats.id);
+
+    const mixed = store.materializeForDate(manager.context, tuesday);
+    const trashOcc = mixed.find((o) => o.definitionId === trash.id)!;
+    const catsOcc = mixed.find((o) => o.definitionId === cats.id)!;
+    expect(trashOcc.daypart).toBe("evening");
+    expect(catsOcc.daypart).toBe("anytime");
+    const trashIdx = mixed.findIndex((o) => o.id === trashOcc.id);
+    const catsIdx = mixed.findIndex((o) => o.id === catsOcc.id);
+    expect(trashIdx).toBeLessThan(catsIdx);
+
+    const intent = {
+      revisionId: trashOcc.revisionId,
+      accountableMemberId: IDS.avery,
+      stepLogicalIds: trashOcc.steps.map((s) => s.logicalItemId!),
+    };
+    for (const step of trashOcc.steps) {
+      store.setStepStatus(avery.context, trashOcc.id, step.id, {
+        mutationId: randomUUID(),
+        status: "completed",
+        performedAt: "2026-03-10T23:00:00.000Z",
+        activityGeneration: 0,
+        kind: "responsibility",
+        intendedStructure: intent,
+      });
+    }
+    const history = store.historySummaries(manager.context, {
+      date: tuesday,
+      kind: "responsibility",
+    });
+    expect(history.occurrences.some((o) => /Trash/i.test(o.title))).toBe(true);
   });
 
   it("AT1b: manager preset includes responsibility grants", () => {
@@ -973,6 +1085,13 @@ describe("P0-007A household responsibility foundation (server)", () => {
           .get() as { c: number }
       ).c,
     ).toBe(1);
+    expect(
+      (
+        db
+          .prepare("SELECT COUNT(*) AS c FROM schema_migrations WHERE id LIKE '013_%'")
+          .get() as { c: number }
+      ).c,
+    ).toBe(1);
 
     const manager = await claimManager(store);
     await enrollAndClaim(
@@ -1093,6 +1212,131 @@ describe("P0-007A household responsibility foundation (server)", () => {
         steps: [requiredStep("Nope")],
       }),
     ).toThrow(/not a household membership|Accountable/i);
+  });
+
+  it("re-acceptance: definition kind immutable; foreign accountable rejected at storage", async () => {
+    const { store, db } = freshStore();
+    const manager = await claimManager(store);
+    await enrollAndClaim(
+      store,
+      manager.context,
+      IDS.avery,
+      "direct_personalizer",
+      `avery.kind.${Date.now().toString(36)}`,
+      "Avery Reed",
+    );
+    const cats = store.createResponsibility(manager.context, {
+      mutationId: randomUUID(),
+      title: "Cats",
+      daypart: "anytime",
+      accountableMemberId: IDS.avery,
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      steps: [requiredStep("Feed")],
+    });
+    const routine = store.createRoutine(manager.context, {
+      mutationId: randomUUID(),
+      title: "Morning",
+      daypart: "morning",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      assigneeMemberIds: [IDS.avery],
+      assigneeGroupIds: [],
+      steps: [{ text: "Brush", obligation: "required" }],
+    });
+    const today = store.householdDateNow(manager.context);
+    const catsOcc = store
+      .materializeForDate(manager.context, today)
+      .find((o) => o.definitionId === cats.id)!;
+    const routineOcc = store
+      .materializeForDate(manager.context, today)
+      .find((o) => o.definitionId === routine.id)!;
+
+    const kindBeforeCats = (
+      db.prepare(`SELECT kind FROM routine_definitions WHERE id = ?`).get(cats.id) as {
+        kind: string;
+      }
+    ).kind;
+    const kindBeforeRoutine = (
+      db.prepare(`SELECT kind FROM routine_definitions WHERE id = ?`).get(routine.id) as {
+        kind: string;
+      }
+    ).kind;
+    expect(kindBeforeCats).toBe("responsibility");
+    expect(kindBeforeRoutine).toBe("routine");
+
+    expect(() =>
+      db.prepare(`UPDATE routine_definitions SET kind = 'routine' WHERE id = ?`).run(cats.id),
+    ).toThrow(/immutable|ABORT/i);
+    expect(() =>
+      db
+        .prepare(`UPDATE routine_definitions SET kind = 'responsibility' WHERE id = ?`)
+        .run(routine.id),
+    ).toThrow(/immutable|ABORT/i);
+
+    expect(
+      (db.prepare(`SELECT kind FROM routine_definitions WHERE id = ?`).get(cats.id) as { kind: string })
+        .kind,
+    ).toBe("responsibility");
+    expect(
+      (
+        db.prepare(`SELECT kind FROM routine_definitions WHERE id = ?`).get(routine.id) as {
+          kind: string;
+        }
+      ).kind,
+    ).toBe("routine");
+    expect(
+      (
+        db.prepare(`SELECT kind FROM occurrences WHERE id = ?`).get(catsOcc.id) as { kind: string }
+      ).kind,
+    ).toBe("responsibility");
+    expect(
+      (
+        db.prepare(`SELECT kind FROM occurrences WHERE id = ?`).get(routineOcc.id) as {
+          kind: string;
+        }
+      ).kind,
+    ).toBe("routine");
+
+    const foreignHousehold = randomUUID();
+    const foreignMembership = randomUUID();
+    db.prepare(
+      `INSERT INTO households (id, name, timezone) VALUES (?, 'Other', 'America/Chicago')`,
+    ).run(foreignHousehold);
+    db.prepare(
+      `INSERT INTO household_memberships (id, household_id, display_name, status, created_at, sort_order)
+       VALUES (?, ?, 'Foreign', 'active', ?, 0)`,
+    ).run(foreignMembership, foreignHousehold, new Date().toISOString());
+
+    expect(() =>
+      db
+        .prepare(
+          `INSERT INTO occurrences
+             (id, household_id, definition_id, revision_id, household_date,
+              accountable_member_id, title, daypart, version, kind)
+           VALUES (?, ?, ?, ?, ?, ?, 'Foreign owner', 'anytime', 1, 'responsibility')`,
+        )
+        .run(
+          randomUUID(),
+          manager.context.householdId,
+          cats.id,
+          catsOcc.revisionId,
+          "2099-06-01",
+          foreignMembership,
+        ),
+    ).toThrow(/accountable member must belong|ABORT/i);
+
+    expect(() =>
+      db
+        .prepare(`UPDATE occurrences SET accountable_member_id = ? WHERE id = ?`)
+        .run(foreignMembership, catsOcc.id),
+    ).toThrow(/accountable member must belong|ABORT/i);
+
+    expect(
+      (
+        db
+          .prepare(`SELECT accountable_member_id FROM occurrences WHERE id = ?`)
+          .get(catsOcc.id) as { accountable_member_id: string }
+      ).accountable_member_id,
+    ).toBe(IDS.avery);
   });
 
   it("AT2b: concurrent materialize, routine fan-out, pending assignee", async () => {

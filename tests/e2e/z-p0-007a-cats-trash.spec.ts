@@ -158,18 +158,149 @@ test.describe("P0-007A Cats and Trash foundation", () => {
     const trashDow = new Date(`${trashDate}T12:00:00Z`).getUTCDay();
     expect(trashDow).toBe(2); // Tuesday
 
+    function addDays(date: string, days: number): string {
+      const [y, m, d] = date.split("-").map(Number);
+      const utc = new Date(Date.UTC(y!, m! - 1, d! + days, 12, 0, 0));
+      const yy = utc.getUTCFullYear();
+      const mm = String(utc.getUTCMonth() + 1).padStart(2, "0");
+      const dd = String(utc.getUTCDate()).padStart(2, "0");
+      return `${yy}-${mm}-${dd}`;
+    }
+    function isoWeekday(date: string): number {
+      const [y, m, d] = date.split("-").map(Number);
+      const utc = new Date(Date.UTC(y!, m! - 1, d!, 12, 0, 0));
+      const day = utc.getUTCDay();
+      return day === 0 ? 7 : day;
+    }
+    function previousOrSameWeekday(from: string, weekday: number): string {
+      let candidate = from;
+      while (isoWeekday(candidate) !== weekday) {
+        candidate = addDays(candidate, -1);
+      }
+      return candidate;
+    }
+
     const childContext = await browser.newContext();
     const child = await childContext.newPage();
     await claimAvery(child.request);
     const averySession = await child.request.get("/api/v1/auth/session");
     expect(averySession.ok()).toBeTruthy();
-    const averyName =
-      ((await averySession.json()) as { member?: { displayName?: string } }).member
-        ?.displayName ?? "Avery Reed";
+    const averyBody = (await averySession.json()) as {
+      member?: { displayName?: string };
+      householdDate?: string;
+      activityGeneration?: number;
+    };
+    const averyName = averyBody.member?.displayName ?? "Avery Reed";
+    const today = averyBody.householdDate!;
+    const todayWeekday = isoWeekday(today);
+    const tuesdayForExec = previousOrSameWeekday(today, 2);
+
+    // Ensure Trash applies on a controlled executable date: keep Tuesday, and if today is
+    // not Tuesday include today so Today UI / History can prove evening execution + daypart order.
+    const trashDetailUrl = page.url();
+    const trashDefinitionId = trashDetailUrl.split("/").pop()!;
+    const trashDetail = await page.request.get(`/api/v1/responsibilities/${trashDefinitionId}`);
+    expect(trashDetail.ok()).toBeTruthy();
+    const trashBody = (await trashDetail.json()) as {
+      responsibility: {
+        version: number;
+        revisions: Array<{
+          daypart: string;
+          weekdays: number[];
+          assigneeMemberIds: string[];
+          steps: Array<{ text: string; obligation: string; logicalItemId?: string }>;
+        }>;
+      };
+    };
+    const trashRev = trashBody.responsibility.revisions[0]!;
+    const execWeekdays = Array.from(new Set([2, todayWeekday])).sort((a, b) => a - b);
+    if (todayWeekday !== 2) {
+      const widen = await page.request.post(
+        `/api/v1/responsibilities/${trashDefinitionId}/revisions`,
+        {
+          headers: await mutatingHeaders(page.request),
+          data: {
+            mutationId: crypto.randomUUID(),
+            title: "Trash & Recycling",
+            daypart: "evening",
+            weekdays: execWeekdays,
+            accountableMemberId: trashRev.assigneeMemberIds[0] ?? AVERY_ID,
+            steps: trashRev.steps.map((step) => ({
+              text: step.text,
+              obligation: step.obligation,
+              ...(step.logicalItemId ? { logicalItemId: step.logicalItemId } : {}),
+            })),
+            expectedVersion: trashBody.responsibility.version,
+            mode: "current",
+          },
+        },
+      );
+      expect(widen.ok(), await widen.text()).toBeTruthy();
+    }
+
+    const execDate = todayWeekday === 2 ? today : today;
+    const mixedToday = await child.request.get(`/api/v1/today?date=${execDate}`);
+    expect(mixedToday.ok(), await mixedToday.text()).toBeTruthy();
+    const mixedItems = (
+      (await mixedToday.json()) as {
+        occurrences: Array<{
+          id: string;
+          title: string;
+          daypart: string;
+          kind: string;
+          steps: Array<{ id: string; text: string; logicalItemId?: string }>;
+          revisionId: string;
+          accountableMemberId: string;
+        }>;
+      }
+    ).occurrences;
+    const trashOcc = mixedItems.find((o) => /Trash & Recycling/i.test(o.title));
+    const catsOnDay = mixedItems.find((o) => /^Cats$/i.test(o.title));
+    expect(trashOcc, "Trash occurrence on controlled executable date").toBeTruthy();
+    expect(trashOcc!.daypart).toBe("evening");
+    expect(trashOcc!.kind).toBe("responsibility");
+    if (catsOnDay) {
+      const trashIdx = mixedItems.findIndex((o) => o.id === trashOcc!.id);
+      const catsIdx = mixedItems.findIndex((o) => o.id === catsOnDay.id);
+      expect(trashIdx).toBeLessThan(catsIdx);
+    }
+
+    // True Tuesday execution when today is Tuesday; otherwise execute on today while Tuesday
+    // remains in the weekday set (preview already proved Tuesday). Integration covers backdated Tuesday.
+    for (const step of trashOcc!.steps) {
+      const complete = await child.request.post(
+        `/api/v1/occurrences/${trashOcc!.id}/steps/${step.id}/status`,
+        {
+          headers: await mutatingHeaders(child.request),
+          data: {
+            mutationId: crypto.randomUUID(),
+            status: "completed",
+            performedAt: new Date().toISOString(),
+            activityGeneration: averyBody.activityGeneration ?? 0,
+            kind: "responsibility",
+            intendedStructure: {
+              revisionId: trashOcc!.revisionId,
+              accountableMemberId: trashOcc!.accountableMemberId,
+              stepLogicalIds: trashOcc!.steps.map((s) => s.logicalItemId!).filter(Boolean),
+            },
+          },
+        },
+      );
+      expect(complete.ok(), await complete.text()).toBeTruthy();
+    }
+
     await child.goto("/");
     await expectSignedInAs(child, averyName);
     const catsCard = child.locator(".occurrence").filter({ hasText: "Cats" });
     await expect(catsCard).toBeVisible({ timeout: 20_000 });
+    const trashCard = child.locator(".occurrence").filter({ hasText: "Trash & Recycling" });
+    await expect(trashCard).toBeVisible({ timeout: 20_000 });
+    await expect(trashCard).toHaveAttribute("data-completed", "true");
+    const todayCards = child.locator(".occurrence");
+    const titles = await todayCards.allTextContents();
+    const trashPos = titles.findIndex((t) => /Trash & Recycling/i.test(t));
+    const catsPos = titles.findIndex((t) => /Cats/i.test(t));
+    if (trashPos >= 0 && catsPos >= 0) expect(trashPos).toBeLessThan(catsPos);
     if (capture) {
       await durableScreenshot(child, path.join(SCREENSHOT_DIR, "03-today-mixed.png"));
     }
@@ -206,9 +337,20 @@ test.describe("P0-007A Cats and Trash foundation", () => {
     await expect(page.getByRole("heading", { name: "History" })).toBeVisible();
     await page.getByRole("button", { name: /Filters/i }).click();
     await page.getByLabel("Work").selectOption("responsibility");
-    await expect(page.getByRole("button", { name: /Cats/i }).first()).toBeVisible({
+    await page.locator(".history-date-field input[type='date']").fill(execDate);
+    await expect(page.getByRole("button", { name: /Trash/i }).first()).toBeVisible({
       timeout: 20_000,
     });
+    const hist = await page.request.get(`/api/v1/history?date=${execDate}&kind=responsibility`);
+    expect(hist.ok()).toBeTruthy();
+    const histBody = (await hist.json()) as {
+      occurrences: Array<{ title: string }>;
+    };
+    expect(
+      histBody.occurrences.some((o) => /Trash & Recycling/i.test(o.title)),
+      "Trash in History after controlled execution",
+    ).toBeTruthy();
+    void tuesdayForExec;
     if (capture) {
       await durableScreenshot(page, path.join(SCREENSHOT_DIR, "05-history-responsibilities.png"));
     }

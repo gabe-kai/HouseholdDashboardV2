@@ -102,6 +102,20 @@ Recorded by Architecture as a writeback of the supplied Planning & Design propos
 
 The deferred inventory below continues to preserve helpers, original accountability versus performance credit, Cover/Claim, swaps, optional debt, Skip Day/critical work, retrospective facts, richer patterns, multi-day pet care, and schedule previews. Promotion of the bounded A/B/C outcomes does not authorize those adjacent features.
 
+### P0-007B - Assignment Patterns & Scheduled Work
+
+Recorded by Architecture from the supplied Design Team proposal after P0-007A merged via PR #15 at `51322e0`. This records Product intent; D-038-D-040 and the B brief define the technical contract.
+
+- **Outcome:** A parent sets up Kitchen once, sees who owns each upcoming day, adds weekly deep-clean work, and trusts that changes do not rewrite started or historical work. Recurrence answers when work exists; assignment separately answers whose turn it is.
+- **Small set of controls:** Keep Fixed person, repeating turns (Cats), and an explicit weekly map (Kitchen). The Kitchen example is Monday Avery, Tuesday Casey, Wednesday Avery, Thursday Casey, Friday Jordan, Saturday Avery, Sunday Casey. Groups may provide linked eligibility with understandable exclusions; do not replace unequal weekly choices with opaque weighted/fairness algorithms.
+- **The preview explains the plan:** Show friendly names and dates, final accountable owner and scheduled-work indicators before saving a pattern. Normal detail is read-first Upcoming plus compact Work summaries, with focused Edit assignment and scheduled-work editors. Previewing cannot create work, lock a plan or consume a turn.
+- **One Kitchen on deep-clean days:** Daily base work and named scheduled additions compose into one checklist with source headings. Kitchen's alternating deep-clean owner owns the entire day's Kitchen. Bathroom proves the same model with Sunday additions; Cats proves repeating turns; fixed weekly Trash remains simple. Edit/remove future additions through ordinary UI while preserving historical expectations.
+- **Prospective trust:** Unstarted today and already-generated future work can reconcile. Started work locks expected checklist and accountable person; group/pattern changes cannot transfer it. Empty or invalid future eligibility is visibly Unassigned with a repair path, never an arbitrary person or hidden obligation. Preview, Today, Household and stored History must agree.
+- **Evaluation:** Require normal browser Kitchen, Bathroom, Cats and Trash journeys plus local regression evidence. Use stable readable fictional household names in an explicit opt-in fixture; normal bootstrap remains fixture-free. Keep live updates, durable checklist interaction and friendly dates/names. Configuration saves can remain authoritative confirmations.
+- **A disposition:** Design retains P0-007A as the technically and product-accepted foundation slice, conditional on the merge state now confirmed by the Project Lead and repository. This does not claim every future experience requirement is satisfied; the observations below are carried to C.
+- **C pressure retained:** Completed work should be collapsed/quiet; one next actionable item dominant; later work compact; untimed work under Anytime Today; routines and responsibilities interleaved by actionability. Household should show compact responsibility and routine aggregates with drill-down rather than every person's expanded checklist. Address excessive vertical density and system-oriented copy in C, not as extra B acceptance requirements.
+- **Deferrals:** Helpers, Cover/Claim, swaps, reassign requests, debt, Skip Day, critical/non-skippable policy, retrospective completion, weighted/least-recent algorithms, expressions, pet dependencies, meals, homework, notifications and multi-household assignment remain outside B.
+
 ## Inputs, outputs, and interfaces
 
 This may include a UI, API, CLI, scheduled job, report, dataset, model interaction, integration, device, or game controls.
@@ -148,7 +162,7 @@ Examples include clarity, responsiveness, accuracy, reliability, explainability,
 
 These are deferrals, not rejected product ideas. The inventory below preserves their intended direction.
 
-For P0-007, CURRENT is the bounded A brief. Responsibility patterns and scheduled additional work have been promoted into the approved B horizon above; they are no longer merely unscheduled ideas, but A does not implement them. Generalized variants and adjacent mechanics remain deferred.
+For P0-007, A is merged and CURRENT is the bounded B brief for assignment patterns and scheduled additional work. C's unified-day/Household presentation is LIKELY NEXT. Generalized assignment variants and adjacent mechanics remain deferred.
 
 - Generalized chore rotation, eligibility, helper assignment, swaps, cover, claims, or chore debt.
 - Skip Days, retrospective completion, complete notifications, or calendar ingestion.

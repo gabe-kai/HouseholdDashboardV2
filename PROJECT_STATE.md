@@ -19,7 +19,7 @@
 
 ## Current focus
 
-**P0-007A r1 - Household Responsibility Foundation** is **ACCEPTED** at Project Lead commit **bb21d74** on `brief/p0-007a-household-responsibility-foundation`. The deterministic P0-006B AT9 seam is closed and the independent suite is green. Details: `reports/P0-007A-r1-architecture-reacceptance.md`. Card **Give Cats and Trash one owner and a place in Today** is **Ready to Evaluate**. Project Lead/Product acceptance and merge remain separate.
+**P0-007B r1 - Assignment Patterns & Scheduled Work** is **IN REVIEW**, based on integrated `main` **51322e0** (P0-007A merge PR #15). Authoritative brief: `briefs/p0-007b-assignment-patterns-scheduled-work.md`; D-038-D-040 define the planned contract. Card **Understand whose turn it is, including deep-clean days** is **Up Next**. Engineering returns readiness before implementation; C remains LIKELY NEXT under the supplied Design proposal.
 
 ## Internal work status
 
@@ -34,7 +34,8 @@
 | P0-006A - Calm Household Experience Foundation | r2 | ACCEPTED | Completed | Merged to `main` at `7cba3a6` via PR #12 | None; Project Lead evaluation accepted |
 | P0-006B - Contextual Routine Applicability | r1 | ACCEPTED | Project Lead/Product | Merged to `main` at `de552ab` | Evaluate the contextual routine experience |
 | P0-006C - Household Profiles and Useful History | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `409d147` via PR #14 | Product acceptance remains separate |
-| P0-007A - Household Responsibility Foundation | r1 | ACCEPTED | Project Lead / Product | `brief/p0-007a-household-responsibility-foundation` at `bb21d74` | Product evaluation and authorized merge |
+| P0-007A - Household Responsibility Foundation | r1 | ACCEPTED | Completed foundation | Merged to `main` at `51322e0` via PR #15 | None for A; Design carries presentation feedback to C |
+| P0-007B - Assignment Patterns & Scheduled Work | r1 | IN REVIEW | Engineering readiness | Planned `brief/p0-007b-assignment-patterns-scheduled-work` | Consolidated readiness, then Architecture ACCEPT / PROCEED |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -53,19 +54,20 @@ This table is the short repository-side coordination index. An external project 
 - P0-006A r2 completed the responsive Plan shell, focused editors, saved navigation, quiet feedback, and step ordering; required local evidence was closed and Architecture accepted it. The Project Lead then reviewed screenshots, tested, and reported satisfaction. A and B planning are integrated at `7cba3a6` via PR #12, including the A toast/CI correction.
 - P0-006B r1 contextual applicability and school calendar were technically accepted after AT9 rollback and AT10/AT11 browser evidence closed at `8421b31`, then merged through PR #13 at `de552ab`. The Project Lead reported successful school-year/exception setup and chose to continue the approved proposal with C.
 
-- P0-006C r1 profiles, saved family order, read-only summarized History and generation-fenced activity reset were technically accepted after correction `e8a93d5`, then merged via PR #14 at `409d147`. P0-007A implementation and corrections are committed at `bb21d74`; Architecture accepted r1 after the deterministic regression suite returned green.
+- P0-006C r1 profiles, saved family order, read-only summarized History and generation-fenced activity reset were technically accepted after correction `e8a93d5`, then merged via PR #14 at `409d147`.
+- P0-007A r1 was technically accepted at `bb21d74`, recorded in `7539fd0`, and merged via PR #15 at `51322e0`. The Project Lead confirmed merge/cleanup; the supplied Design proposal accepts A as the foundation and requests B next, preserving C's presentation feedback.
 
 ## Known blockers
 
-- No known technical blockers remain for P0-007A r1. No new Product decision or readiness round is required. Required-check branch protection remains an external Project Lead setting; B's pattern details remain later brief work.
+- No known blocker to B readiness. B implementation is not yet reviewed or authorized. Required-check branch protection remains an external Project Lead setting.
 
 ## Next Project Lead decision
 
-- Return the Architecture re-acceptance review to Engineering for the deterministic test correction and green-gate rerun before ordinary merge/acceptance. Project Lead manages Git; suggest commit messages but do not commit. No deployment is required.
+- Commit B planning on the suggested brief branch and give Engineering the exact r1 readiness handoff. Project Lead manages Git; suggest commit messages but do not commit. No deployment is required.
 
 ## Next likely handoff
 
-Project Lead evaluates the accepted local slice and applies the authorized merge/cleanup workflow. Card **Give Cats and Trash one owner and a place in Today** is **Ready to Evaluate**; B/C sequencing is unchanged.
+Engineering reviews **P0-007B revision 1** against merged A and returns one consolidated readiness report at `reports/P0-007B-r1-engineering-readiness.md`, then waits for Architecture ACCEPT / PROCEED. Card **Understand whose turn it is, including deep-clean days** stays **Up Next** until implementation starts. C remains LIKELY NEXT.
 
 ## Notes for all teams
 

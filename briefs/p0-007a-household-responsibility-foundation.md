@@ -1,7 +1,7 @@
 # BRIEF P0-007A - Household Responsibility Foundation
 
 **Revision:** 1
-**Status:** FIX REQUIRED
+**Status:** ACCEPTED
 
 One authoritative contract for P0-007A. Material changes increment the revision and invalidate prior readiness. Architecture technical acceptance and Project Lead acceptance of the experience are separate.
 
@@ -183,11 +183,11 @@ The Build Report maps each AT to named tests/artifacts, states actual base/commi
 
 **Reviewed revision:** 1
 **Readiness:** READY
-**Architecture disposition:** ACCEPT / PROCEED for **P0-007A revision 1**. Architecture reviewed `reports/P0-007A-r1-engineering-readiness.md`, committed at `7226987`, against the unchanged implementation baseline `409d147`. Engineering's notes identify intentional deltas already covered by D-035–D-037 and this contract; no contract revision or further readiness round is required. Engineering may implement r1 on `brief/p0-007a-household-responsibility-foundation`, then return its Build Report with AT1–16 evidence and exact local PR/RC/Vite gate results. B/C remain outside A. Project Lead manages Git; suggest commit messages but do not commit or deploy. The project card moves from Up Next to In Progress when implementation starts; technical acceptance remains pending.
+**Architecture disposition:** ACCEPT / PROCEED for **P0-007A revision 1**. Architecture reviewed `reports/P0-007A-r1-engineering-readiness.md`, committed at `7226987`, against the unchanged implementation baseline `409d147`. Engineering's notes identify intentional deltas already covered by D-035–D-037 and this contract; no contract revision or further readiness round was required. Engineering implemented r1 on `brief/p0-007a-household-responsibility-foundation`; final technical acceptance is recorded below. B/C remain outside A. Project Lead manages Git; suggest commit messages but do not commit or deploy. The project card moved from Up Next to In Progress when implementation started and is now Ready to Evaluate.
 
 ## Architecture technical acceptance
 
-**Disposition:** FIX REQUIRED against **r1**, re-reviewed at Project Lead commit **10a412d**. R1–R5, AT4/7/12/15, immutable definition kind, and same-household ownership corrections are present. The current independent repository test run is red because a pre-existing P0-006B AT9 test assumes the real date is a school day; stabilize that test seam and rerun the exact gates before acceptance. Findings: `reports/P0-007A-r1-architecture-reacceptance.md`. The behavioral contract is unchanged; return directly to Engineering on the existing branch without a new readiness review. Card **Give Cats and Trash one owner and a place in Today** remains **In Progress**. Suggest commit messages but do not commit or deploy.
+**Disposition:** ACCEPTED against **r1** at Project Lead commit **bb21d74**. R1–R5, AT4/7/12/15, immutable definition kind, same-household ownership, and the deterministic P0-006B AT9 seam are closed. Independent `npm test` passes 168/168; the Build Report records `validate:pr` 45/45 plus Vite 2/2 and `validate:rc` 71/71 plus Vite 2/2. Findings and final evidence: `reports/P0-007A-r1-architecture-reacceptance.md` and `reports/P0-007A-r1-build-report.md`. Architecture has no remaining r1 implementation requirement; Project Lead/Product acceptance remains separate. Card **Give Cats and Trash one owner and a place in Today** is **Ready to Evaluate**. B/C remain later roadmap work. Suggest commit messages but do not commit or deploy.
 
 ## Revision history
 

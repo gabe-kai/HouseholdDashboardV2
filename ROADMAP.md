@@ -58,8 +58,8 @@ Goal: prove that a real recurring household routine can be used quickly by six d
 
 - [ ] **P0-007A - Give Cats and Trash one owner and a place in Today.** Create fixed-owner daily/weekly household responsibilities and execute them alongside routines, with compact household oversight and retained History.
   - **Brief:** `P0-007A r1 - Household Responsibility Foundation` (`briefs/p0-007a-household-responsibility-foundation.md`).
-  - **Status:** FIX REQUIRED after re-review of committed implementation `10a412d`; R1–R5, AT4/7/12/15 and storage integrity corrections are present, but the independent suite has a date-sensitive P0-006B AT9 failure on 2026-09-20. Details: `reports/P0-007A-r1-architecture-reacceptance.md`.
-  - **Evidence target:** Stabilize the existing date seam and rerun green PR/RC/Vite gates, then complete technical acceptance. Card: **Give Cats and Trash one owner and a place in Today** remains **In Progress**.
+  - **Status:** ACCEPTED at committed implementation `bb21d74`; R1–R5, AT4/7/12/15, storage integrity, and deterministic P0-006B AT9 evidence are complete. Details: `reports/P0-007A-r1-architecture-reacceptance.md`.
+  - **Evidence target:** Complete Project Lead/Product evaluation and authorized merge. Card: **Give Cats and Trash one owner and a place in Today** is **Ready to Evaluate**.
 
 ### LIKELY NEXT
 

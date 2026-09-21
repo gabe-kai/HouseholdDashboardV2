@@ -145,7 +145,11 @@ export function RoutineFocusedSummary(props: {
   onOpenSteps: () => void;
   onStartingDateChange?: (value: string) => void;
   startingMin?: string;
+  /** Defaults to Steps; responsibilities use Work. */
+  workSectionLabel?: "Steps" | "Work";
+  whoSummary?: string;
 }) {
+  const workLabel = props.workSectionLabel ?? "Steps";
   return (
     <ul className="section-summary">
       <li>
@@ -179,14 +183,17 @@ export function RoutineFocusedSummary(props: {
       <li>
         <button type="button" className="section-summary-row" onClick={props.onOpenWho}>
           <strong>Who</strong>
-          <span>{whoLine(props.draft, props.people, props.groups)}</span>
+          <span>
+            {props.whoSummary ?? whoLine(props.draft, props.people, props.groups)}
+          </span>
         </button>
       </li>
       <li>
         <button type="button" className="section-summary-row" onClick={props.onOpenSteps}>
-          <strong>Steps</strong>
+          <strong>{workLabel}</strong>
           <span>
-            {props.draft.steps.length} {props.draft.steps.length === 1 ? "step" : "steps"}
+            {props.draft.steps.length}{" "}
+            {props.draft.steps.length === 1 ? "item" : workLabel === "Work" ? "items" : "steps"}
           </span>
         </button>
       </li>
@@ -314,6 +321,8 @@ export function StepsSectionEditor(props: {
   onEditStep: (index: number, localId: string) => void;
   onDone: () => void;
   onCancel: () => void;
+  listLabel?: string;
+  hideApplicability?: boolean;
 }) {
   const items = props.steps.map((step, index) => ({
     id: props.stepLocalIds[index] ?? `step-${index}`,
@@ -325,7 +334,7 @@ export function StepsSectionEditor(props: {
   return (
     <div className="form-grid">
       <OrderedList
-        listLabel="Routine steps"
+        listLabel={props.listLabel ?? "Routine steps"}
         items={items}
         onReorder={(next) => {
           props.onChange(
@@ -334,7 +343,9 @@ export function StepsSectionEditor(props: {
           );
         }}
         renderRow={(item) => {
-          const ruleLabel = applicabilityLabel(stepApplicability(item.step));
+          const ruleLabel = props.hideApplicability
+            ? null
+            : applicabilityLabel(stepApplicability(item.step));
           return (
             <button
               type="button"
@@ -382,6 +393,7 @@ export function StepRowEditor(props: {
   onRemove: () => void;
   onDone: () => void;
   onCancel: () => void;
+  hideApplicability?: boolean;
 }) {
   const rule = stepApplicability(props.step);
 
@@ -415,52 +427,56 @@ export function StepRowEditor(props: {
           <option value="optional">Optional</option>
         </select>
       </label>
-      <label>
-        Applicability
-        <select
-          value={rule.kind}
-          onChange={(event) =>
-            setApplicability(
-              applicabilityFromKind(
-                event.target.value as ApplicabilityRule["kind"],
-                rule,
-              ),
-            )
-          }
-        >
-          {APPLICABILITY_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      {rule.kind === "selected_days" ? (
-        <fieldset>
-          <legend>Selected days</legend>
-          <div className="weekday-row">
-            {WEEKDAYS.map((day) => (
-              <label key={day.value}>
-                <input
-                  type="checkbox"
-                  checked={rule.weekdays.includes(day.value)}
-                  onChange={(event) => {
-                    const weekdays = event.target.checked
-                      ? [...rule.weekdays, day.value]
-                      : rule.weekdays.filter((value) => value !== day.value);
-                    setApplicability({ kind: "selected_days", weekdays });
-                  }}
-                />
-                {day.label}
-              </label>
-            ))}
-          </div>
-          {rule.weekdays.length === 0 ? (
-            <p className="form-error" role="alert">
-              Choose at least one weekday.
-            </p>
+      {!props.hideApplicability ? (
+        <>
+          <label>
+            Applicability
+            <select
+              value={rule.kind}
+              onChange={(event) =>
+                setApplicability(
+                  applicabilityFromKind(
+                    event.target.value as ApplicabilityRule["kind"],
+                    rule,
+                  ),
+                )
+              }
+            >
+              {APPLICABILITY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {rule.kind === "selected_days" ? (
+            <fieldset>
+              <legend>Selected days</legend>
+              <div className="weekday-row">
+                {WEEKDAYS.map((day) => (
+                  <label key={day.value}>
+                    <input
+                      type="checkbox"
+                      checked={rule.weekdays.includes(day.value)}
+                      onChange={(event) => {
+                        const weekdays = event.target.checked
+                          ? [...rule.weekdays, day.value]
+                          : rule.weekdays.filter((value) => value !== day.value);
+                        setApplicability({ kind: "selected_days", weekdays });
+                      }}
+                    />
+                    {day.label}
+                  </label>
+                ))}
+              </div>
+              {rule.weekdays.length === 0 ? (
+                <p className="form-error" role="alert">
+                  Choose at least one weekday.
+                </p>
+              ) : null}
+            </fieldset>
           ) : null}
-        </fieldset>
+        </>
       ) : null}
       <div className="button-row">
         <button type="button" className="primary" onClick={props.onDone}>

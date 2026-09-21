@@ -1,5 +1,10 @@
 import { get, set, del, update } from "idb-keyval";
-import type { OccurrenceView, StepStatus } from "../shared/schemas";
+import type {
+  IntendedStructure,
+  OccurrenceView,
+  StepStatus,
+  WorkKind,
+} from "../shared/schemas";
 
 export type OutboxItem = {
   mutationId: string;
@@ -13,7 +18,33 @@ export type OutboxItem = {
   occurrenceSnapshot?: OccurrenceView;
   /** Household activity generation when the command was enqueued. */
   activityGeneration?: number;
+  /** Closed work kind; missing legacy entries normalize to routine. */
+  kind?: WorkKind;
+  /** Responsibility first-action structural intent (revision + owner + steps). */
+  intendedStructure?: IntendedStructure;
 };
+
+/** Normalize legacy snapshots that predate explicit work kind. */
+export function normalizeOccurrenceKind(occurrence: OccurrenceView): OccurrenceView {
+  if (occurrence.kind === "routine" || occurrence.kind === "responsibility") {
+    return occurrence;
+  }
+  return { ...occurrence, kind: "routine" };
+}
+
+export function intendedStructureFromOccurrence(
+  occurrence: OccurrenceView,
+): IntendedStructure | undefined {
+  if (normalizeOccurrenceKind(occurrence).kind !== "responsibility") return undefined;
+  const stepLogicalIds = occurrence.steps
+    .map((step) => step.logicalItemId)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+  return {
+    revisionId: occurrence.revisionId,
+    accountableMemberId: occurrence.accountableMemberId,
+    stepLogicalIds,
+  };
+}
 
 /** Prior local cards reconstructed from durable first-action outbox snapshots. */
 export function previousOccurrencesFromOutbox(items: OutboxItem[]): OccurrenceView[] {
@@ -22,7 +53,7 @@ export function previousOccurrencesFromOutbox(items: OutboxItem[]): OccurrenceVi
     if (item.state === "rejected") continue;
     if (!item.occurrenceSnapshot) continue;
     if (item.occurrenceSnapshot.id !== item.occurrenceId) continue;
-    byId.set(item.occurrenceId, item.occurrenceSnapshot);
+    byId.set(item.occurrenceId, normalizeOccurrenceKind(item.occurrenceSnapshot));
   }
   return [...byId.values()];
 }

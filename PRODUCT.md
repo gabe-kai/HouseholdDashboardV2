@@ -85,6 +85,23 @@ Recorded by Architecture from Planning & Design's post-P0-005 proposal. This is 
 - **Whole-outcome guardrails:** Do not add new responsibility domains, assignment engines, external calendar sync, notifications, homework, meals, multi-household behavior, or a generic rules/design platform. All saved household configuration remains server-backed; unsaved editor drafts need not synchronize across devices. Existing P0-005 routine lifecycle and trustworthy history remain protected.
 - **Product evaluation:** Judge whether the application feels like one calm household product, whether phone and desktop layouts are intentional, whether common screens are understandable without initial scrolling, and whether later product domains can inherit the same interaction language without another navigation reset.
 
+### P0-007 - Household Responsibilities & Multi-Responsibility Today
+
+Recorded by Architecture as a writeback of the supplied Planning & Design proposal, not new Product policy. The complete outcome spans three technical slices; only the current brief authorizes implementation scope.
+
+- **Product question:** Can ordinary shared household work join routines in one understandable day? Prove Kitchen, Cats, Bathroom, and Trash & Recycling with one configurable Household Responsibility concept. Avoid special-purpose chore types and a generic rule-builder UI.
+- **Foundational distinction:** A Routine happens independently for each applicable person. A Household Responsibility happens once on its applicable household date and has one accountable person. Accountability, authenticated actor and actual performer remain distinct; helpers and Cover/Claim remain future work.
+- **Creation and management:** Plan remains the home for routines and responsibilities, using focused summary-first Name/When/Assignment/Work editing, familiar names, accessible drag ordering, current edits and deliberate future changes. Recurrence and assignment are independent. A parent sees concrete upcoming names/dates rather than weights, predicates or rotation formulas.
+- **Kitchen and Bathroom:** One responsibility contains daily base work and scheduled additional work, such as a weekly deep clean. Kitchen's unequal weekly pattern may favor older children, give a lighter day to a younger child, exclude the youngest, and alternate deep-clean ownership. Product prefers the deep-clean owner to own the entire combined Kitchen occurrence that day. An explicit repeating household pattern may be preferable to equal round-robin. Bathroom must use the same configurable model. Moving a future deep-clean day preserves historical expected work.
+- **Cats and Trash:** Cats is daily pet care with one owner; rotation is wanted. Future Cats helpers may rotate independently. Trash is weekly-only work for a fixed person (for example, Tuesday Evening), with no artificial daily base occurrence. These examples must fit without domain special cases.
+- **Trustworthy work:** Unstarted today remains editable. First execution fixes expected work and accountability; future rotation/group changes do not transfer started work. Delete unused setup; End used work while preserving history. No automatic incomplete-work rollover. All responsibility dates/dayparts use the household timezone, including on traveling devices.
+- **Connected experience:** Keep Today / Plan / Household. Today combines applicable work by actionability/time, ultimately Completed / Next / Later / Anytime, with immediate durable checklist interaction. Household offers compact title/owner/progress rows and drill-down using neutral states. Responsibilities join existing date -> person -> summarized History with snapshotted work and execution facts; no separate Chore History.
+- **Technical sequence:** A proves fixed-owner daily Cats and weekly Trash end to end, including minimum Today/Household/History integration. B proves the minimal understandable assignment patterns plus Kitchen/Bathroom scheduled work and ownership previews. C develops fuller unified Today and oversight presentation. Later briefs refine from evidence within this existing proposal; the sequence does not require Product to resubmit the same intent.
+- **Boundaries:** Preserve Calm Household, phone/desktop behavior, profiles/order, contextual routine steps/school context, current/future edits, locks, durable outbox/realtime, authority/isolation, History, evaluation activity clearing, migrations and CI. Helpers, Cover/Claim, swaps/reassignment requests, chore debt (off by default), Skip Day, critical/non-skippable work, retrospective completion, advanced assignment, external calendars, notifications, inventories, meals/homework and multi-household behavior remain deferred.
+- **Evaluation:** Automate ordinary UI creation/execution for all four examples across the completed P0-007 sequence, mixed routine/responsibility Today, compact Household and retained History. The Project Lead judges whether people can answer what needs attention and whose turn it is without understanding the implementation. No post-P0-007 feature sequence is committed before that evaluation.
+
+The deferred inventory below continues to preserve helpers, original accountability versus performance credit, Cover/Claim, swaps, optional debt, Skip Day/critical work, retrospective facts, richer patterns, multi-day pet care, and schedule previews. Promotion of the bounded A/B/C outcomes does not authorize those adjacent features.
+
 ## Inputs, outputs, and interfaces
 
 This may include a UI, API, CLI, scheduled job, report, dataset, model interaction, integration, device, or game controls.
@@ -131,6 +148,8 @@ Examples include clarity, responsiveness, accuracy, reliability, explainability,
 
 These are deferrals, not rejected product ideas. The inventory below preserves their intended direction.
 
+For P0-007, CURRENT is the bounded A brief. Responsibility patterns and scheduled additional work have been promoted into the approved B horizon above; they are no longer merely unscheduled ideas, but A does not implement them. Generalized variants and adjacent mechanics remain deferred.
+
 - Generalized chore rotation, eligibility, helper assignment, swaps, cover, claims, or chore debt.
 - Skip Days, retrospective completion, complete notifications, or calendar ingestion.
 - Multiple-household switching, household splitting/departure workflows, or a universal permission editor.
@@ -148,6 +167,8 @@ These are deferrals, not rejected product ideas. The inventory below preserves t
 ## Deferred / Preserved Product Directions
 
 Recorded from Product's P0-005 handoff by Architecture as a writeback of supplied product intent. These directions are wanted or intentionally preserved for future consideration; they are unscheduled unless separately promoted. They are not implementation briefs, promised sequence, target dates, issues, or instructions to build speculative abstractions. CURRENT and LIKELY NEXT live in `ROADMAP.md`.
+
+P0-007 now promotes the ordinary-responsibility, bounded-pattern, scheduled-work and unified-day portions described above. The remaining details in this inventory retain their deferred status.
 
 - **Contextual scheduling:** School mornings/nights, weekend mornings/nights, no-school tomorrow, holidays, and school-calendar exceptions. Friday morning may be school context while Friday evening is weekend context; Sunday evening may be school context while its morning is weekend context. Do not model one global context per date. School/work calendars may eventually inform these distinctions.
 - **Exact times and timezones:** Responsibilities may have exact due times, dayparts, or no time. Household responsibilities stay anchored to the household timezone while devices travel; a future display may show both “6:00 PM home time” and “3:00 PM where you are.” Personal-task timezone policy remains separately resolvable.

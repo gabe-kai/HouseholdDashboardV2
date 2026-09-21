@@ -8,7 +8,7 @@ const PASSPHRASE = "unique-passphrase-ok!";
 const MANAGER_LOGIN = "e2e.manager";
 const AVERY_LOGIN = "e2e.avery";
 const AVERY_ID = "22222222-2222-4222-8222-222222222202";
-const SCREENSHOT_DIR = path.resolve("reports/p0-006c-r1-screenshots");
+const SCREENSHOT_DIR = path.resolve("test-results/runtime-screenshots/p0-006c-r1");
 
 function requestOrigin(_request?: APIRequestContext): string {
   const base = test.info().project.use.baseURL;
@@ -372,11 +372,11 @@ test.describe("P0-006C profiles, history, and clear", () => {
     await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Data & testing" })).toBeVisible();
 
-    await page.getByRole("button", { name: /Clear routine activity history/i }).click();
-    await expect(page.getByRole("heading", { name: /Clear routine activity history\?/i })).toBeVisible();
+    await page.getByRole("button", { name: /Clear activity history/i }).click();
+    await expect(page.getByRole("heading", { name: /Clear activity history\?/i })).toBeVisible();
     await durableScreenshot(page, path.join(SCREENSHOT_DIR, "clear-confirm.png"));
     await page.getByRole("button", { name: "Cancel", exact: true }).click();
-    await expect(page.getByRole("heading", { name: /Clear routine activity history\?/i })).toHaveCount(
+    await expect(page.getByRole("heading", { name: /Clear activity history\?/i })).toHaveCount(
       0,
     );
 
@@ -400,9 +400,11 @@ test.describe("P0-006C profiles, history, and clear", () => {
       .getByRole("navigation", { name: "Household" })
       .getByRole("button", { name: /^Settings\b/ })
       .click();
-    await page.getByRole("button", { name: /Clear routine activity history/i }).click();
+    await page.getByRole("button", { name: /Clear activity history/i }).click();
     await page.getByRole("button", { name: "Clear history", exact: true }).click();
-    await expect(page.getByText(/Routine activity history was cleared/i)).toBeVisible({
+    await expect(
+      page.getByRole("status").filter({ hasText: /Activity history was cleared/i }).first(),
+    ).toBeVisible({
       timeout: 15_000,
     });
 

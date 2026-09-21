@@ -1,16 +1,17 @@
 /**
- * Path-based History API destinations for P0-006A/C (D-027, D-033).
+ * Path-based History API destinations for P0-006A/C/007A (D-027, D-033, D-037).
  *
  * Required addressable views:
  *   / or /today                         → Today
- *   /plan                               → Routines list (nav label Plan)
+ *   /plan                               → Plan list (routines + responsibilities)
  *   /plan/routines/:definitionId        → routine detail (active or ended)
+ *   /plan/responsibilities/:definitionId → responsibility detail (active or ended)
  *   /household                          → Household menu
  *   /household/people                   → People & Groups overview
  *   /household/people/:membershipId     → person detail
  *   /household/groups/:groupId          → group detail
  *   /household/school-calendar          → school calendar
- *   /household/history                  → History summary (?date/from/to/person/routine/status)
+ *   /household/history                  → History summary (?date/from/to/person/routine/status/kind)
  *   /household/history/:occurrenceId    → History occurrence detail (filters preserved in search)
  *   /household/settings                 → Data & testing
  *
@@ -19,6 +20,8 @@
  * in-app Back follows logical parent.
  */
 
+import type { WorkKind } from "../shared/schemas";
+
 export type HistoryFilters = {
   date?: string;
   from?: string;
@@ -26,12 +29,15 @@ export type HistoryFilters = {
   personId?: string;
   routineId?: string;
   status?: "complete" | "incomplete";
+  /** Work kind filter; retains saved routine filters when set. */
+  kind?: WorkKind;
 };
 
 export type AppLocation =
   | { name: "today" }
   | { name: "plan" }
   | { name: "plan-routine"; definitionId: string }
+  | { name: "plan-responsibility"; definitionId: string }
   | { name: "household" }
   | { name: "household-people" }
   | { name: "household-person"; membershipId: string }
@@ -63,6 +69,7 @@ function historySearch(filters?: HistoryFilters): string {
   if (filters.personId) query.set("person", filters.personId);
   if (filters.routineId) query.set("routine", filters.routineId);
   if (filters.status) query.set("status", filters.status);
+  if (filters.kind) query.set("kind", filters.kind);
   const encoded = query.toString();
   return encoded ? `?${encoded}` : "";
 }
@@ -78,6 +85,7 @@ export function parseHistoryFilters(search: string): HistoryFilters | undefined 
   const personId = query.get("person") ?? query.get("personId") ?? undefined;
   const routineId = query.get("routine") ?? query.get("routineId") ?? undefined;
   const statusRaw = query.get("status");
+  const kindRaw = query.get("kind") ?? query.get("workKind");
   if (date) filters.date = date;
   if (from) filters.from = from;
   if (to) filters.to = to;
@@ -85,6 +93,9 @@ export function parseHistoryFilters(search: string): HistoryFilters | undefined 
   if (routineId) filters.routineId = routineId;
   if (statusRaw === "complete" || statusRaw === "incomplete") {
     filters.status = statusRaw;
+  }
+  if (kindRaw === "routine" || kindRaw === "responsibility") {
+    filters.kind = kindRaw;
   }
   return Object.keys(filters).length > 0 ? filters : undefined;
 }
@@ -97,6 +108,14 @@ export function parsePath(pathname: string, search = ""): AppLocation {
   const routineMatch = /^\/plan\/routines\/([^/]+)$/.exec(path);
   if (routineMatch?.[1]) {
     return { name: "plan-routine", definitionId: decodeURIComponent(routineMatch[1]) };
+  }
+
+  const responsibilityMatch = /^\/plan\/responsibilities\/([^/]+)$/.exec(path);
+  if (responsibilityMatch?.[1]) {
+    return {
+      name: "plan-responsibility",
+      definitionId: decodeURIComponent(responsibilityMatch[1]),
+    };
   }
 
   if (path === "/household") return { name: "household" };
@@ -151,6 +170,8 @@ export function pathFor(location: AppLocation): string {
       return "/plan";
     case "plan-routine":
       return `/plan/routines/${encodeURIComponent(location.definitionId)}`;
+    case "plan-responsibility":
+      return `/plan/responsibilities/${encodeURIComponent(location.definitionId)}`;
     case "household":
       return "/household";
     case "household-people":
@@ -180,6 +201,7 @@ export function parentLocation(location: AppLocation): AppLocation {
     case "household":
       return { name: "today" };
     case "plan-routine":
+    case "plan-responsibility":
       return { name: "plan" };
     case "household-people":
     case "household-school-calendar":

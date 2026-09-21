@@ -21,6 +21,7 @@ function baseOccurrence(overrides?: Partial<OccurrenceView>): OccurrenceView {
     version: 1,
     startedAt: null,
     completed: false,
+    kind: "routine",
     steps: [
       {
         id: "step-a",

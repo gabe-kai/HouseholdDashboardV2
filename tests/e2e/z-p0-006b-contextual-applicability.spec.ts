@@ -10,7 +10,7 @@ import {
 
 const PASSPHRASE = "unique-passphrase-ok!";
 const MANAGER_LOGIN = "e2e.manager";
-const SCREENSHOT_DIR = path.resolve("reports/p0-006b-r1-screenshots");
+const SCREENSHOT_DIR = path.resolve("test-results/runtime-screenshots/p0-006b-r1");
 
 function requestOrigin(_request?: APIRequestContext): string {
   const base = test.info().project.use.baseURL;

@@ -1350,12 +1350,24 @@ function HouseholdActivityState(props: {
   backLabel: string;
   onBack: () => void;
 }) {
+  const [selectedResponsibilityId, setSelectedResponsibilityId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  const routines = props.occurrences.filter(
+    (occurrence) => occurrence.kind !== "responsibility",
+  );
+  const responsibilities = props.occurrences.filter(
+    (occurrence) => occurrence.kind === "responsibility",
+  );
+  const selectedResponsibility = responsibilities.find(
+    (occurrence) => occurrence.id === selectedResponsibilityId,
+  );
 
   useEffect(() => {
     setExpanded((current) => {
       const next = { ...current };
       for (const occurrence of props.occurrences) {
+        if (occurrence.kind === "responsibility") continue;
         if (next[occurrence.id] === undefined) {
           next[occurrence.id] = !occurrence.completed;
         }
@@ -1364,16 +1376,79 @@ function HouseholdActivityState(props: {
     });
   }, [props.occurrences]);
 
+  function progressState(occurrence: OccurrenceView): "Not started" | "In progress" | "Complete" {
+    if (occurrence.completed) return "Complete";
+    if (occurrence.startedAt) return "In progress";
+    const touched = occurrence.steps.some((step) => step.status !== "open");
+    return touched ? "In progress" : "Not started";
+  }
+
+  function progressCounts(occurrence: OccurrenceView): string {
+    const completed = occurrence.steps.filter((step) => step.status === "completed").length;
+    return `${completed}/${occurrence.steps.length}`;
+  }
+
+  if (selectedResponsibility) {
+    return (
+      <div className="focused-state" aria-labelledby="responsibility-activity-heading">
+        <BackButton
+          label="Back to Household activity"
+          onClick={() => setSelectedResponsibilityId(null)}
+        />
+        <FocusHeading id="responsibility-activity-heading">
+          {selectedResponsibility.title}
+        </FocusHeading>
+        <p className="meta">
+          {selectedResponsibility.accountableMemberName} ·{" "}
+          {progressState(selectedResponsibility)} · {progressCounts(selectedResponsibility)}
+        </p>
+        <ul className="checklist">
+          {selectedResponsibility.steps.map((step) => (
+            <li key={step.id} className="step">
+              <div className="step-title">
+                <strong>{step.text}</strong>
+              </div>
+              <div className="meta">Status: {statusLabel(step.status)}</div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
   return (
     <div className="focused-state" aria-labelledby="household-activity-heading">
       <BackButton label={props.backLabel} onClick={props.onBack} />
       <FocusHeading id="household-activity-heading">Household activity</FocusHeading>
 
+      <h3>Responsibilities</h3>
+      {responsibilities.length === 0 ? (
+        <p className="meta">No responsibility progress to show right now.</p>
+      ) : (
+        <ul className="responsibility-activity-list">
+          {responsibilities.map((occurrence) => (
+            <li key={occurrence.id}>
+              <button
+                type="button"
+                className="list-row compact-activity-row"
+                onClick={() => setSelectedResponsibilityId(occurrence.id)}
+              >
+                <span className="compact-activity-title">{occurrence.title}</span>
+                <span className="meta">
+                  {occurrence.accountableMemberName} · {progressCounts(occurrence)} ·{" "}
+                  {progressState(occurrence)}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
       <h3>Routine progress</h3>
-      {props.occurrences.length === 0 ? (
+      {routines.length === 0 ? (
         <p className="meta">No routine progress to show right now.</p>
       ) : (
-        props.occurrences.map((occurrence) => {
+        routines.map((occurrence) => {
           const open = expanded[occurrence.id] ?? !occurrence.completed;
           return (
             <article

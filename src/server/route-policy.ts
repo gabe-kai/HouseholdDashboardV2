@@ -310,12 +310,100 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
   },
   {
     method: "GET",
+    path: "/api/v1/responsibilities",
+    auth: "session",
+    origin: "none",
+    csrf: "n/a",
+    grant: null,
+    notes:
+      "List household responsibility definitions (active by default; ?includeArchived=1 includes ended)",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/responsibilities/:definitionId",
+    auth: "session",
+    origin: "none",
+    csrf: "n/a",
+    grant: null,
+    notes: "Single responsibility definition detail by id; routine ids → NOT_FOUND",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/responsibilities",
+    auth: "session",
+    origin: "mutation_when_configured",
+    csrf: "required",
+    grant: "responsibility.manage",
+    notes:
+      "Create responsibility + first revision (single assignee, base steps); mutationId replay-safe",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/responsibilities/:definitionId/revisions",
+    auth: "session",
+    origin: "mutation_when_configured",
+    csrf: "required",
+    grant: "responsibility.manage",
+    notes:
+      "Current or schedule plan mutation; single owner; range reconcile; mutationId replay-safe",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/responsibilities/:definitionId/end",
+    auth: "session",
+    origin: "mutation_when_configured",
+    csrf: "required",
+    grant: "responsibility.manage",
+    notes:
+      "Immediate End: cancel today+ unstarted and upcoming schedule entries; keep started",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/responsibilities/:definitionId/delete",
+    auth: "session",
+    origin: "mutation_when_configured",
+    csrf: "required",
+    grant: "responsibility.manage",
+    notes:
+      "Hard-delete unused responsibility when no started/reports/prior-date history; keep deletion receipt",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/responsibilities/:definitionId/schedule-entries/:scheduleEntryId/move",
+    auth: "session",
+    origin: "mutation_when_configured",
+    csrf: "required",
+    grant: "responsibility.manage",
+    notes: "Move upcoming responsibility schedule entry start_date",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/responsibilities/:definitionId/schedule-entries/:scheduleEntryId/delete",
+    auth: "session",
+    origin: "mutation_when_configured",
+    csrf: "required",
+    grant: "responsibility.manage",
+    notes: "Cancel upcoming responsibility schedule entry",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/responsibilities/:definitionId/preview",
+    auth: "session",
+    origin: "none",
+    csrf: "n/a",
+    grant: null,
+    notes:
+      "Read-only next-7-days preview; never materializes; started days show protected owner/work",
+  },
+  {
+    method: "GET",
     path: "/api/v1/today",
     auth: "session",
     origin: "none",
     csrf: "n/a",
     grant: null,
-    notes: "Authoritative today occurrences for viewer; includes activityGeneration",
+    notes:
+      "Authoritative today occurrences (routines + responsibilities) for viewer; includes activityGeneration",
   },
   {
     method: "GET",
@@ -323,9 +411,9 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     auth: "session",
     origin: "none",
     csrf: "n/a",
-    grant: "routine.shared.manage",
+    grant: null,
     notes:
-      "Read-only History summaries; date or from/to (≤31d), person/routine/status filters; never materializes",
+      "Read-only History; store requires routine.shared.manage and/or responsibility.manage per kind; optional kind filter; never materializes",
   },
   {
     method: "GET",
@@ -333,8 +421,9 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     auth: "session",
     origin: "none",
     csrf: "n/a",
-    grant: "routine.shared.manage",
-    notes: "History occurrence detail with steps and step_reports evidence; foreign → NOT_FOUND",
+    grant: null,
+    notes:
+      "History occurrence detail; matching kind manage grant enforced in store; foreign → NOT_FOUND",
   },
   {
     method: "POST",
@@ -344,7 +433,7 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     csrf: "required",
     grant: "household.activity.clear",
     notes:
-      "Evaluation clear of routine activity; requires allowEvaluationHistoryClear + grant; broadcasts activity_reset",
+      "Clear activity history; new requests acknowledge routines_and_responsibilities; legacy rejected when responsibility data exists; broadcasts activity_reset",
   },
   {
     method: "POST",
@@ -352,9 +441,9 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     auth: "session",
     origin: "mutation_when_configured",
     csrf: "required",
-    grant: "routine.execute.own",
+    grant: null,
     notes:
-      "Accountable member checklist mutation; idempotent mutationId; activityGeneration fence; rejects future dates and non-participants",
+      "Accountable checklist mutation; grant/kind from stored occurrence (routine.execute.own or responsibility.execute.own); intendedStructure for responsibilities",
   },
   {
     method: "PUT",
@@ -363,7 +452,8 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     origin: "mutation_when_configured",
     csrf: "required",
     grant: "routine.personalize.direct",
-    notes: "Prospective personal layer for self; requires definitionId",
+    notes:
+      "Prospective personal layer for self; requires routine definitionId; responsibility ids rejected",
   },
   {
     method: "GET",

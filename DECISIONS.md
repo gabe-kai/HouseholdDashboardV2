@@ -773,7 +773,9 @@ Reuse existing immutable plan content, schedule-entry intervals, occurrence/step
 
 **Alternatives considered:** Separate duplicated responsibility infrastructure; a routine with a one-person audience but unchanged identity; a new generic entity/task platform. Each increases either incorrect accountability or unnecessary scope.
 
-**Related briefs:** P0-007A r1; B/C remain roadmap horizons under the same approved Product proposal.
+**B refinement:** D-038-D-040 add patterns, composed work and explicit Unassigned for unstarted responsibilities. A's assigned case and responsibility occurrence identity remain intact.
+
+**Related briefs:** P0-007A r1; P0-007B r1 is now planned under the same approved Product proposal; C remains a roadmap horizon.
 
 ---
 
@@ -814,3 +816,61 @@ Atomically clear both execution graphs and verified checklist receipt payloads, 
 **Alternatives considered:** Separate Today/History applications, a second outbox/generation subsystem, or silently widened legacy reset. None is required for this slice.
 
 **Related briefs:** P0-007A r1; refines D-027, D-033 and D-034.
+
+---
+
+## D-038 - Closed assignment forms resolve turns from dated facts
+
+**Status:** Active for P0-007B r1 planning; not yet implemented.
+
+**Decision:** Responsibilities support fixed membership, an ordered cyclic list of unique memberships, and an explicit seven-day weekly map. Recurrence remains independent. Eligibility is either explicit people or one linked group minus exclusions; pending access/age/grants do not determine eligibility. Preserve group/source identity and a saved order rather than flattening linked membership into copied assignments.
+
+A cycle selects the zero-based count of applicable dates since a durable household-date anchor modulo the effective eligible ring size. Base cycles count parent recurrence dates, including overridden or unassigned dates; addition cycles count the intersection of parent and addition weekdays. Reads, materialization, completion and activity reset never advance or reset a pointer. Explicit assignment/recurrence edits start the changed cycle at the intended boundary; work-only edits retain its anchor. Moving a boundary moves anchors introduced there, and deleting it restores the predecessor's sequence.
+
+Group changes retain the existing next-household-day boundary and saved anchor. Filter the saved ring by dated membership/exclusions, then append unranked entrants by first effective admission after that saved ordering and stable membership-ID tie-break; use winning dated versions rather than superseded same-date sets. Ranked returnees regain their place. Initial saved ordering may use family order; later profile/family-order edits cannot silently change assignments. A removed fixed/weekly choice is Unassigned with a repair warning; empty cycles are Unassigned, not a guessed substitute. The concrete preview explains these outcomes.
+
+**Reason:** The proposal asks Architecture to define phase and eligibility boundaries while preserving simple household controls. Calendar-derived turns are reproducible regardless of which device opens a page. Weekly maps directly represent Kitchen's unequal distribution without a weighted algorithm.
+
+**Implications:** Capture assignment content/anchors in immutable plan versions and use dated source facts. Same-date edits retain their intended boundary; later independent plans remain independent. Preview and status validation share the resolver. No generalized weights, fairness, helper roles, departure workflow or mixed-group expression system.
+
+**Alternatives considered:** Mutable next-person counters make reads/completion affect assignment; equal round-robin alone cannot express Kitchen; live family order would make a directory edit unexpectedly change turns.
+
+**Related briefs:** P0-007B r1; extends D-018/D-019/D-036 for responsibilities only.
+
+---
+
+## D-039 - Scheduled work composes into one versioned responsibility
+
+**Status:** Active for P0-007B r1 planning; not yet implemented.
+
+**Decision:** A responsibility has base steps plus named scheduled additions with stable identities, weekday subsets, ordered steps, and inherited or fixed/cyclic assignment. Additions belong to the parent's immutable plan content and use its current/future plan lifecycle. They do not create new definitions or independent occurrences. Compose base first, then applicable additions in saved order; snapshot source identity, headings, step identity/text/obligation/order and final accountability.
+
+One applicable addition with its own assignment owns the whole composed occurrence, including base work. Its Unassigned result does not fall back to the base owner. Reject overlapping owner-setting additions on any recurring weekday, naming the conflict; multiple inherited-owner additions may overlap. Reject an addition whose weekday set never intersects parent recurrence. Removing/editing/moving an addition affects the governed unstarted range, preserving old versions and stored history.
+
+**Reason:** Product prefers the deep-clean owner to own all Kitchen work that day. A single composed checklist avoids fragmented accountability. Explicit overlap rejection avoids an invisible priority system without requiring another Product assignment concept.
+
+**Implications:** Distinguish recurring Scheduled work from an Upcoming change to the entire plan. The existing first-action lock covers the whole composed work/owner. Parent Delete unused/End and stable snapshots remain authoritative. Addition editors preview their next three applicable dates; parent previews show final owner and addition indicators before Save. Kitchen/Bathroom are configurations, never special subtypes.
+
+**Alternatives considered:** Separate deep-clean responsibilities fragment Product's requested experience; last-save-wins overrides are opaque; a generic priority engine exceeds the proving examples.
+
+**Related briefs:** P0-007B r1; extends D-024/D-035/D-036.
+
+---
+
+## D-040 - Preview, assignment reconciliation and execution share one resolution boundary
+
+**Status:** Active for P0-007B r1 planning; not yet implemented.
+
+**Decision:** One dated resolution result combines governing plan, recurrence, eligibility, assignment, scheduled work and final owner. Saved and unsaved preview reads are side-effect-free; started stored snapshots take precedence. Definition and relevant source versions are pinned in drafts and checked at Save. Preview, actual materialization and reconciliation agree for unchanged inputs.
+
+Unassigned is an explicit responsibility state: nullable accountability is permitted only for an unstarted responsibility, never a routine. Non-null owners remain same-household. Preserve definition/date uniqueness and occurrence identity while unstarted assignment changes. Unassigned work is visible in Plan/Household and, if stored, an Unassigned History group, but no personal Today executor or manager completion bypass exists. No fabricated membership and no omitted obligation. No background past-history generator is introduced.
+
+Plan/addition changes and group changes reconcile affected existing unstarted rows atomically with their authoritative state/version/receipts. Respect household-date boundaries, later plans and monotonic first-action locks. Structural intent must detect effective owner/work/provenance changes even when the plan revision or logical step IDs survive; validate inside the first-action transaction. Old serialized commands may replay only when their captured structure can still be safely verified; legacy config payloads cannot erase richer B plans.
+
+**Reason:** Group-driven ownership can change independently from a plan revision, while preview-only generation must not lock work or consume turns. A's non-null ownership storage and person-keyed views require an explicit extension for the proposed empty-eligibility case.
+
+**Implications:** Forward migrations after 013 preserve populated A data and strengthen constraints for assigned/null cases. Update reference/deletion/fixture-cleanup inventories and mixed projections. Keep stored-only History, pending-first-action recovery, per-kind authority and shared reset generation/floor; clearing execution retains assignment anchors/configuration. Extend current invalidation/reconnect/visibility paths and stale-response arbitration, without a new synchronization service.
+
+**Alternatives considered:** Hiding unresolved work loses a household obligation; a sentinel person corrupts identity; revision-only validation misses group changes; preview materialization and History recomposition violate accepted read/lock boundaries.
+
+**Related briefs:** P0-007B r1; refines D-035's always-assigned A case while preserving D-023/D-024/D-033/D-034/D-037.

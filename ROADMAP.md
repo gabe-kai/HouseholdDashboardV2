@@ -54,22 +54,25 @@ Goal: prove that a real recurring household routine can be used quickly by six d
   - **Brief:** `P0-006C r1 - Household Profiles and Useful History` (`briefs/p0-006c-household-profiles-useful-history.md`).
   - **Result:** Technically accepted at `e8a93d5`, merged via PR #14 to `main` at `409d147`. Product acceptance remains separate. Completes the three technical slices of the P0-006 proposal.
 
+- [x] **P0-007A - Give Cats and Trash one owner and a place in Today.** Create fixed-owner daily/weekly household responsibilities and execute them alongside routines, with compact household oversight and retained History.
+  - **Brief:** `P0-007A r1 - Household Responsibility Foundation` (`briefs/p0-007a-household-responsibility-foundation.md`).
+  - **Result:** Technically accepted at `bb21d74`, acceptance writeback `7539fd0`, merged via PR #15 at `51322e0`. The supplied Design handoff accepts A as the foundation slice and carries presentation findings to C. Card: **Accepted** as that foundation.
+
 ### CURRENT
 
-- [ ] **P0-007A - Give Cats and Trash one owner and a place in Today.** Create fixed-owner daily/weekly household responsibilities and execute them alongside routines, with compact household oversight and retained History.
-  - **Brief:** `P0-007A r1 - Household Responsibility Foundation` (`briefs/p0-007a-household-responsibility-foundation.md`).
-  - **Status:** ACCEPTED at committed implementation `bb21d74`; R1–R5, AT4/7/12/15, storage integrity, and deterministic P0-006B AT9 evidence are complete. Details: `reports/P0-007A-r1-architecture-reacceptance.md`.
-  - **Evidence target:** Complete Project Lead/Product evaluation and authorized merge. Card: **Give Cats and Trash one owner and a place in Today** is **Ready to Evaluate**.
+- [ ] **P0-007B - Understand whose turn it is, including deep-clean days.** Kitchen weekly owners and alternating deep clean form one coherent responsibility; Cats rotates and Bathroom reuses the same base-plus-additions model while Trash remains fixed.
+  - **Brief:** `P0-007B r1 - Assignment Patterns & Scheduled Work` (`briefs/p0-007b-assignment-patterns-scheduled-work.md`).
+  - **Status:** IN REVIEW against integrated `main` at `51322e0`; Engineering readiness pending. Card: **Up Next**.
+  - **Evidence target:** Side-effect-free draft/saved previews match actual final owner/work; deterministic turns and dated eligibility; prospective edits preserve locks/history; Unassigned/overlap recovery; real Kitchen/Bathroom/Cats/Trash UI journeys, populated through-013 migration and local PR/RC/Vite gates. D-038-D-040 resolve the bounded technical shape. No final Today redesign or hosted iteration.
 
 ### LIKELY NEXT
 
-- [ ] **P0-007B - Understand whose turn it is, including deep-clean days.** Use a small understandable repeating assignment/pattern model and scheduled additional work to prove Kitchen/Bathroom and Cats rotation. Preserve one combined occurrence and Product's preferred deep-clean-owner precedence. Show actual upcoming names/dates; resolve group eligibility, empty sets and overlapping owner overrides before implementation. No generic rule language. Exact brief follows A evidence within the same approved proposal.
-- [ ] **P0-007C - See the household's work as one useful day.** Extend A/B's connected views into Completed / Next / Later / Anytime Today and compact household oversight, without domain-type silos or fake times. Exact presentation/evidence follows A/B use. This remains part of the same P0-007 proposal, not a request for Product to resubmit it.
+- [ ] **P0-007C - See the household's work as one useful day.** Use actual routines, responsibilities and personal tasks for quiet Completed, one dominant Next, compact Later and Anytime Today. Household shows compact responsibility/routine aggregates with drill-down instead of expanded checklists; improve density and friendly copy. Exact presentation/evidence follows B use within the existing proposal; no new Product resubmission or C implementation is requested by B.
 
 ### LATER
 
 - After evaluation of the completed P0-007 outcome, possible directions include helpers, Cover/Claim, household exceptions/Skip Day, or richer Today timing. None is pre-selected as the next implementation commitment.
-- Additional ordinary responsibilities (Cars, lawn care, medication, seasonal maintenance), richer personal work, and assignment refinement remain Product pressure tests; no domain-specific implementation is authorized in A.
+- Additional ordinary responsibilities (Cars, lawn care, medication, seasonal maintenance), richer personal work, and assignment refinement remain Product pressure tests; no domain-specific implementation is authorized in B.
 - Broader-release privacy, recovery, offline behavior, and operational confidence.
 - Detailed unscheduled product memory: [`PRODUCT.md` — Deferred / Preserved Product Directions](PRODUCT.md#deferred--preserved-product-directions). This inventory is not a sequence of implementation commitments.
 

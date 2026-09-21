@@ -1,25 +1,25 @@
 # Architecture re-acceptance review - P0-007A r1
 
-**Disposition:** FIX REQUIRED  
-**Reviewed implementation:** `fd91c8a`, Project Lead commit on `brief/p0-007a-household-responsibility-foundation`  
+**Disposition:** ACCEPTED
+**Reviewed implementation:** `bb21d74`, Project Lead commit on `brief/p0-007a-household-responsibility-foundation`
 **Prior review:** `reports/P0-007A-r1-architecture-review.md` / `b60f97b`  
 **Contract:** `briefs/p0-007a-household-responsibility-foundation.md`, revision **1**, unchanged  
-**Next owner:** Engineering, same revision and branch; no new readiness round  
-**Card:** **Give Cats and Trash one owner and a place in Today** remains **In Progress**.
+**Next owner:** Project Lead / Product evaluation
+**Card:** **Give Cats and Trash one owner and a place in Today** is **Ready to Evaluate**.
 
-The new migration 013 and the reported AT4/AT7/AT12/AT15 evidence address the previously identified Architecture gaps. However, the repository gate is not currently green in this environment: an independent `npm test` run on 2026-09-20 produced **167 passed / 1 failed**. The failure is `tests/integration/p0-006b.test.ts` AT9, where the test assumes the real current date is a school day and therefore cannot find its `Pack Lunchbox` step on Sunday. This appears date-sensitive and not caused by migration 013, but P0-003's regression gate still requires a deterministic green suite before technical acceptance.
+The new migration 013 and the reported AT4/AT7/AT12/AT15 evidence address the previously identified Architecture gaps. The former date-sensitive P0-006B AT9 failure was corrected in `bb21d74` by using the existing all-weekday school-calendar seam.
 
-## Remaining required correction
+## Prior remaining correction (closed in `bb21d74`)
 
-Stabilize or explicitly control the P0-006B AT9 date seam so the normal repository test suite passes on the supported calendar, then rerun the exact local PR/RC/Vite gates. Do not make the test depend on whether the host happens to be a weekday. The fix may be a test-only controlled household date or an equivalent existing seam; preserve the behavior being tested.
+The correction stabilized the P0-006B AT9 date seam without changing the behavior under test. The normal repository suite and the reported local PR/RC/Vite gates are now green.
 
 Architecture is not reopening the closed R1–R5/AT4/AT7/AT12/AT15 findings unless the rerun exposes a new failure. The migration 013 integrity tests are accepted as evidence for those two storage corrections.
 
 R1–R5 are substantially addressed. The reported gates now pass at 165 unit/integration tests, 42 Chromium + 2 Vite PR checks, and 68 Chromium/WebKit + 2 Vite RC checks. The new receipt, migration, draft, recovery, and evidence work is materially better and the previously reproduced replay, kind-integrity and draft-version failures are addressed in the named tests.
 
-Technical acceptance remains withheld for the following required contract edges.
+The following sections preserve the earlier review record; their listed gaps were closed before final acceptance.
 
-## Required remaining corrections
+## Historical required corrections (closed before final acceptance)
 
 ### 1. Close the four declared partial acceptance tests
 
@@ -44,8 +44,19 @@ The new occurrence triggers bind occurrence household to definition household an
 
 ## Evidence hygiene
 
-The prior screenshot directories are reported clean through the gates, and current-brief captures are now redirected appropriately. Keep that behavior. The Build Report’s current partial list is accurate and should remain so until the four edges above are closed.
+The prior screenshot directories are reported clean through the gates, and current-brief captures are now redirected appropriately. Keep that behavior. The four partial edges and both storage-integrity items listed above were subsequently closed and are reflected as PASS in the final Build Report.
 
 ## Return handoff
 
-Correct the remaining items against **P0-007A r1** on the existing branch. Add failing-before/fixed-after regressions, rerun `npm run validate:pr` and `npm run validate:rc` including Vite, and return an updated Build Report with the exact AT4/7/12/15 evidence. No Product decision, B/C work, deployment, or new readiness review is requested. Suggest a commit message but do not commit.
+The correction was committed as `bb21d74`; no Product decision, B/C work, deployment, or new readiness review was required.
+
+## Final Architecture disposition
+
+**ACCEPTED** against **P0-007A r1** at `bb21d74`.
+
+- Independent `npm test`: **PASS**, 168 tests in 27 files.
+- Engineering Build Report gates: `validate:pr` **45/45** Chromium plus Vite **2/2**; `validate:rc` **71/71** Chromium/WebKit plus Vite **2/2**.
+- AT1–16 are recorded PASS in `reports/P0-007A-r1-build-report.md`.
+- No hosted deployment is required for this local contract slice.
+
+Architecture has no remaining r1 implementation requirement. Project Lead/Product evaluation remains separate from technical acceptance. B and C remain later roadmap work.

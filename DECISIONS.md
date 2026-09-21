@@ -761,7 +761,7 @@ Activity deletion, a monotonically increasing household execution generation, th
 
 ## D-035 - Responsibilities share recurring-work foundations with distinct occurrence cardinality
 
-**Status:** Active (P0-007A implementation delivered at `10a412d`; technical acceptance FIX REQUIRED pending deterministic green regression gates per `reports/P0-007A-r1-architecture-reacceptance.md`)
+**Status:** Active (P0-007A r1 technically accepted at `bb21d74`; Product acceptance remains separate.)
 
 **Decision:** Add an immutable routine/responsibility kind to the existing recurring-definition and occurrence foundations. A routine produces independent occurrences per applicable membership/date. A responsibility produces one household occurrence per definition/date with one accountable membership; that membership is not part of responsibility identity. Enforce responsibility uniqueness in SQLite, including retained canceled rows. Preserve all existing routine IDs and per-person uniqueness.
 
@@ -779,7 +779,7 @@ Reuse existing immutable plan content, schedule-entry intervals, occurrence/step
 
 ## D-036 - Responsibility accountability is explicit and locks with first execution
 
-**Status:** Active (P0-007A implementation delivered at `10a412d`; technical acceptance FIX REQUIRED pending deterministic green regression gates per `reports/P0-007A-r1-architecture-reacceptance.md`)
+**Status:** Active (P0-007A r1 technically accepted at `bb21d74`; Product acceptance remains separate.)
 
 **Decision:** P0-007A supports one fixed household membership per responsibility plan, independent of recurrence. Recurrence uses existing ISO weekdays and dayparts; base steps use existing obligation meanings and apply every occurrence. Selection uses family order and permits pending-access people. No groups, rotation, helper roles, or automatic fallback in A. A concrete read-only seven-day preview explains the current/future result.
 
@@ -799,7 +799,7 @@ Add `responsibility.manage` and `responsibility.execute.own`, with one-time upgr
 
 ## D-037 - Responsibilities join existing views and explicitly acknowledged activity reset
 
-**Status:** Active (P0-007A implementation delivered at `10a412d`; technical acceptance FIX REQUIRED pending deterministic green regression gates per `reports/P0-007A-r1-architecture-reacceptance.md`)
+**Status:** Active (P0-007A r1 technically accepted at `bb21d74`; Product acceptance remains separate.)
 
 **Decision:** A usable responsibility includes Plan authoring, the existing daypart-ordered Today checklist, compact Household activity rows/detail, and the same stored-evidence History. Preserve Today / Plan / Household and existing URLs; add responsibility Plan detail. History reads enforce management authority per kind, including filters/counts/detail. B supplies patterns/scheduled additional work; C supplies fuller Completed/Next/Later/Anytime presentation. No standalone Chores or Chore History destination.
 

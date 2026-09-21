@@ -19,7 +19,7 @@
 
 ## Current focus
 
-**P0-007A r1 - Household Responsibility Foundation** remains **FIX REQUIRED** after re-review of Project Lead commit **10a412d** on `brief/p0-007a-household-responsibility-foundation`. Prior findings were corrected, but the independent suite is currently red: a date-sensitive P0-006B AT9 test fails on Sunday, 2026-09-20. Details: `reports/P0-007A-r1-architecture-reacceptance.md`. Card **Give Cats and Trash one owner and a place in Today** remains **In Progress**. Return directly to Engineering against unchanged r1.
+**P0-007A r1 - Household Responsibility Foundation** is **ACCEPTED** at Project Lead commit **bb21d74** on `brief/p0-007a-household-responsibility-foundation`. The deterministic P0-006B AT9 seam is closed and the independent suite is green. Details: `reports/P0-007A-r1-architecture-reacceptance.md`. Card **Give Cats and Trash one owner and a place in Today** is **Ready to Evaluate**. Project Lead/Product acceptance and merge remain separate.
 
 ## Internal work status
 
@@ -34,7 +34,7 @@
 | P0-006A - Calm Household Experience Foundation | r2 | ACCEPTED | Completed | Merged to `main` at `7cba3a6` via PR #12 | None; Project Lead evaluation accepted |
 | P0-006B - Contextual Routine Applicability | r1 | ACCEPTED | Project Lead/Product | Merged to `main` at `de552ab` | Evaluate the contextual routine experience |
 | P0-006C - Household Profiles and Useful History | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `409d147` via PR #14 | Product acceptance remains separate |
-| P0-007A - Household Responsibility Foundation | r1 | FIX REQUIRED | Engineering | `brief/p0-007a-household-responsibility-foundation` at `10a412d` | Stabilize date-sensitive P0-006B AT9; rerun green PR/RC/Vite gates |
+| P0-007A - Household Responsibility Foundation | r1 | ACCEPTED | Project Lead / Product | `brief/p0-007a-household-responsibility-foundation` at `bb21d74` | Product evaluation and authorized merge |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -53,11 +53,11 @@ This table is the short repository-side coordination index. An external project 
 - P0-006A r2 completed the responsive Plan shell, focused editors, saved navigation, quiet feedback, and step ordering; required local evidence was closed and Architecture accepted it. The Project Lead then reviewed screenshots, tested, and reported satisfaction. A and B planning are integrated at `7cba3a6` via PR #12, including the A toast/CI correction.
 - P0-006B r1 contextual applicability and school calendar were technically accepted after AT9 rollback and AT10/AT11 browser evidence closed at `8421b31`, then merged through PR #13 at `de552ab`. The Project Lead reported successful school-year/exception setup and chose to continue the approved proposal with C.
 
-- P0-006C r1 profiles, saved family order, read-only summarized History and generation-fenced activity reset were technically accepted after correction `e8a93d5`, then merged via PR #14 at `409d147`. P0-007A implementation and corrections are committed at `10a412d`; Architecture returned FIX REQUIRED pending a deterministic green regression suite.
+- P0-006C r1 profiles, saved family order, read-only summarized History and generation-fenced activity reset were technically accepted after correction `e8a93d5`, then merged via PR #14 at `409d147`. P0-007A implementation and corrections are committed at `bb21d74`; Architecture accepted r1 after the deterministic regression suite returned green.
 
 ## Known blockers
 
-- A technical acceptance remains withheld because the independent repository suite is red on a date-sensitive P0-006B AT9 regression test; see `reports/P0-007A-r1-architecture-reacceptance.md`. No new Product decision or readiness round is required. Required-check branch protection remains an external Project Lead setting; B's pattern details remain later brief work.
+- No known technical blockers remain for P0-007A r1. No new Product decision or readiness round is required. Required-check branch protection remains an external Project Lead setting; B's pattern details remain later brief work.
 
 ## Next Project Lead decision
 
@@ -65,7 +65,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Engineering resolves `reports/P0-007A-r1-architecture-reacceptance.md` on the existing branch, then returns an updated Build Report with AT1–16 and exact local PR/RC/Vite evidence. Card **Give Cats and Trash one owner and a place in Today** stays **In Progress**; B/C sequencing is unchanged.
+Project Lead evaluates the accepted local slice and applies the authorized merge/cleanup workflow. Card **Give Cats and Trash one owner and a place in Today** is **Ready to Evaluate**; B/C sequencing is unchanged.
 
 ## Notes for all teams
 

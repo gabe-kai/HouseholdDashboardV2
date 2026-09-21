@@ -164,6 +164,7 @@ async function clearActivityViaApi(request: APIRequestContext) {
     data: {
       mutationId: crypto.randomUUID(),
       expectedGeneration: activityGeneration,
+      acknowledgedScope: "routines_and_responsibilities",
     },
   });
   expect(cleared.ok(), await cleared.text()).toBeTruthy();

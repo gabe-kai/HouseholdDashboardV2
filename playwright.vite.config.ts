@@ -11,7 +11,7 @@ const apiURL = `http://127.0.0.1:${apiPort}`;
 
 export default defineConfig({
   testDir: "tests/e2e",
-  testMatch: "**/z-p0-006a-vite-deeplink.spec.ts",
+  testMatch: ["**/z-p0-006a-vite-deeplink.spec.ts", "**/z-p0-007a-vite-deeplink.spec.ts"],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: 0,

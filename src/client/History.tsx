@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import type {
   HistoryOccurrenceDetail,
   HistoryOccurrenceSummary,
@@ -16,6 +16,19 @@ import type { HistoryFilters } from "./nav";
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function filtersIdentity(filters: HistoryFilters | undefined, householdDate: string): string {
+  return JSON.stringify({
+    householdDate,
+    date: filters?.date ?? null,
+    from: filters?.from ?? null,
+    to: filters?.to ?? null,
+    personId: filters?.personId ?? null,
+    routineId: filters?.routineId ?? null,
+    status: filters?.status ?? null,
+    kind: filters?.kind ?? null,
+  });
 }
 
 function addDays(date: string, days: number): string {
@@ -97,7 +110,8 @@ function filtersEqual(a?: HistoryFilters, b?: HistoryFilters): boolean {
     (a?.to ?? "") === (b?.to ?? "") &&
     (a?.personId ?? "") === (b?.personId ?? "") &&
     (a?.routineId ?? "") === (b?.routineId ?? "") &&
-    (a?.status ?? "") === (b?.status ?? "")
+    (a?.status ?? "") === (b?.status ?? "") &&
+    (a?.kind ?? "") === (b?.kind ?? "")
   );
 }
 
@@ -107,6 +121,7 @@ export function HistoryView(props: {
   filters?: HistoryFilters;
   occurrenceId?: string;
   refreshToken?: number;
+  knownActivityGeneration?: number;
   onFiltersChange: (filters: HistoryFilters) => void;
   onOpenOccurrence: (occurrenceId: string, filters: HistoryFilters) => void;
   onBack: () => void;
@@ -120,6 +135,7 @@ export function HistoryView(props: {
         occurrenceId={props.occurrenceId}
         filters={props.filters}
         refreshToken={props.refreshToken}
+        knownActivityGeneration={props.knownActivityGeneration}
         onBack={() => props.onBackToSummary(props.filters ?? {})}
         onActivityGeneration={props.onActivityGeneration}
       />
@@ -131,6 +147,7 @@ export function HistoryView(props: {
       memberships={props.memberships}
       filters={props.filters}
       refreshToken={props.refreshToken}
+      knownActivityGeneration={props.knownActivityGeneration}
       onFiltersChange={props.onFiltersChange}
       onOpenOccurrence={props.onOpenOccurrence}
       onBack={props.onBack}
@@ -145,6 +162,7 @@ function HistorySummaryView(props: {
   memberships: MemberPublic[];
   filters?: HistoryFilters;
   refreshToken?: number;
+  knownActivityGeneration?: number;
   onFiltersChange: (filters: HistoryFilters) => void;
   onOpenOccurrence: (occurrenceId: string, filters: HistoryFilters) => void;
   onBack: () => void;
@@ -155,13 +173,29 @@ function HistorySummaryView(props: {
   const rangeMode = Boolean(props.filters?.from || props.filters?.to);
   const [showRange, setShowRange] = useState(rangeMode);
   const [showFilters, setShowFilters] = useState(
-    Boolean(props.filters?.personId || props.filters?.routineId || props.filters?.status),
+    Boolean(
+      props.filters?.personId ||
+        props.filters?.routineId ||
+        props.filters?.status ||
+        props.filters?.kind,
+    ),
   );
   const [occurrences, setOccurrences] = useState<HistoryOccurrenceSummary[]>([]);
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [futureMessage, setFutureMessage] = useState<string | null>(null);
+  const loadGenerationRef = useRef(0);
+  const knownActivityGenerationRef = useRef(props.knownActivityGeneration ?? 0);
+
+  useEffect(() => {
+    if (
+      props.knownActivityGeneration !== undefined &&
+      props.knownActivityGeneration > knownActivityGenerationRef.current
+    ) {
+      knownActivityGenerationRef.current = props.knownActivityGeneration;
+    }
+  }, [props.knownActivityGeneration]);
 
   const peopleOrder = new Map(
     [...props.memberships]
@@ -180,10 +214,13 @@ function HistorySummaryView(props: {
   }, [props.filters, props.householdDate, props.refreshToken]);
 
   async function load() {
+    const generation = ++loadGenerationRef.current;
     const filters = props.filters ?? {};
+    const requestIdentity = filtersIdentity(filters, props.householdDate);
     const requestDate = filters.date || (!filters.from && !filters.to ? activeDate : undefined);
     const householdToday = props.householdDate;
     if (requestDate && requestDate > householdToday) {
+      if (generation !== loadGenerationRef.current) return;
       setOccurrences([]);
       setFutureMessage(
         "Future dates are outside History. Use routine Preview to see upcoming expectations.",
@@ -192,6 +229,7 @@ function HistorySummaryView(props: {
       return;
     }
     if (filters.to && filters.to > householdToday) {
+      if (generation !== loadGenerationRef.current) return;
       setOccurrences([]);
       setFutureMessage(
         "Future dates are outside History. Use routine Preview to see upcoming expectations.",
@@ -210,14 +248,23 @@ function HistorySummaryView(props: {
         personId: filters.personId,
         routineId: filters.routineId,
         status: filters.status,
+        kind: filters.kind,
       });
-      setOccurrences(result.occurrences);
+      if (generation !== loadGenerationRef.current) return;
+      if (filtersIdentity(props.filters, props.householdDate) !== requestIdentity) return;
+      if (result.activityGeneration < knownActivityGenerationRef.current) return;
+      if (result.activityGeneration > knownActivityGenerationRef.current) {
+        knownActivityGenerationRef.current = result.activityGeneration;
+      }
       props.onActivityGeneration?.(result.activityGeneration);
+      setOccurrences(result.occurrences);
     } catch (caught) {
+      if (generation !== loadGenerationRef.current) return;
+      if (filtersIdentity(props.filters, props.householdDate) !== requestIdentity) return;
       setError(errorMessage(caught));
       setOccurrences([]);
     } finally {
-      setLoading(false);
+      if (generation === loadGenerationRef.current) setLoading(false);
     }
   }
 
@@ -229,6 +276,7 @@ function HistorySummaryView(props: {
     if (next.personId) cleaned.personId = next.personId;
     if (next.routineId) cleaned.routineId = next.routineId;
     if (next.status) cleaned.status = next.status;
+    if (next.kind) cleaned.kind = next.kind;
     if (!filtersEqual(cleaned, props.filters)) {
       props.onFiltersChange(cleaned);
     }
@@ -263,6 +311,7 @@ function HistorySummaryView(props: {
       personId: props.filters?.personId,
       routineId: props.filters?.routineId,
       status: props.filters?.status,
+      kind: props.filters?.kind,
       from: from || undefined,
       to: to || undefined,
       date: undefined,
@@ -280,7 +329,7 @@ function HistorySummaryView(props: {
         Back to Household
       </button>
       <h1 className="page-heading">History</h1>
-      <p className="page-subcopy">Recorded routine work for this household.</p>
+      <p className="page-subcopy">Recorded household work for this household.</p>
 
       <div className="history-date-nav" role="group" aria-label="Date">
         <button type="button" className="secondary" onClick={() => goDay(-1)}>
@@ -370,6 +419,25 @@ function HistorySummaryView(props: {
             </select>
           </label>
           <label>
+            Work
+            <select
+              value={props.filters?.kind ?? ""}
+              onChange={(event) => {
+                const value = event.target.value;
+                commitFilters({
+                  ...props.filters,
+                  date: props.filters?.from || props.filters?.to ? undefined : activeDate,
+                  kind:
+                    value === "routine" || value === "responsibility" ? value : undefined,
+                });
+              }}
+            >
+              <option value="">All work</option>
+              <option value="routine">Routines</option>
+              <option value="responsibility">Responsibilities</option>
+            </select>
+          </label>
+          <label>
             Routine
             <select
               value={props.filters?.routineId ?? ""}
@@ -427,7 +495,7 @@ function HistorySummaryView(props: {
       ) : null}
       {!loading && !futureMessage && occurrences.length === 0 ? (
         <p className="meta" role="status">
-          No recorded routine work for this selection.
+          No recorded household work for this selection.
         </p>
       ) : null}
 
@@ -455,6 +523,7 @@ function HistorySummaryView(props: {
                     >
                       <span className="history-summary-title">{occurrence.title}</span>
                       <span className="meta">
+                        {occurrence.kind === "responsibility" ? "Responsibility" : "Routine"} ·{" "}
                         {DAYPART_LABELS[occurrence.daypart] ?? occurrence.daypart} ·{" "}
                         {occurrence.completed ? "Complete" : "Incomplete"} ·{" "}
                         {progressLabel(occurrence.counts)}
@@ -477,6 +546,7 @@ function HistoryDetailView(props: {
   occurrenceId: string;
   filters?: HistoryFilters;
   refreshToken?: number;
+  knownActivityGeneration?: number;
   onBack: () => void;
   onActivityGeneration?: (generation: number) => void;
 }) {
@@ -484,23 +554,46 @@ function HistoryDetailView(props: {
   const [error, setError] = useState<string | null>(null);
   const [showEvidence, setShowEvidence] = useState(false);
   const [loading, setLoading] = useState(true);
+  const loadGenerationRef = useRef(0);
+  const knownActivityGenerationRef = useRef(props.knownActivityGeneration ?? 0);
+  const selectedOccurrenceRef = useRef(props.occurrenceId);
 
   useEffect(() => {
+    if (
+      props.knownActivityGeneration !== undefined &&
+      props.knownActivityGeneration > knownActivityGenerationRef.current
+    ) {
+      knownActivityGenerationRef.current = props.knownActivityGeneration;
+    }
+  }, [props.knownActivityGeneration]);
+
+  useEffect(() => {
+    selectedOccurrenceRef.current = props.occurrenceId;
     void load();
   }, [props.occurrenceId, props.refreshToken]);
 
   async function load() {
+    const generation = ++loadGenerationRef.current;
+    const occurrenceId = props.occurrenceId;
     setLoading(true);
     setError(null);
     try {
-      const result = await fetchHistoryOccurrence(props.occurrenceId);
-      setDetail(result.occurrence);
+      const result = await fetchHistoryOccurrence(occurrenceId);
+      if (generation !== loadGenerationRef.current) return;
+      if (selectedOccurrenceRef.current !== occurrenceId) return;
+      if (result.activityGeneration < knownActivityGenerationRef.current) return;
+      if (result.activityGeneration > knownActivityGenerationRef.current) {
+        knownActivityGenerationRef.current = result.activityGeneration;
+      }
       props.onActivityGeneration?.(result.activityGeneration);
+      setDetail(result.occurrence);
     } catch (caught) {
+      if (generation !== loadGenerationRef.current) return;
+      if (selectedOccurrenceRef.current !== occurrenceId) return;
       setDetail(null);
       setError(errorMessage(caught));
     } finally {
-      setLoading(false);
+      if (generation === loadGenerationRef.current) setLoading(false);
     }
   }
 
@@ -514,8 +607,8 @@ function HistoryDetailView(props: {
         <div className="status-notice" role="status">
           <h1 className="page-heading">Occurrence unavailable</h1>
           <p>
-            This routine record is no longer available. It may have been cleared or is not
-            visible for this account.
+            This routine or responsibility record is no longer available. It may have been cleared
+            or is not visible for this account.
           </p>
           <button type="button" className="primary" onClick={props.onBack}>
             Return to History
@@ -527,6 +620,7 @@ function HistoryDetailView(props: {
           <h1 className="page-heading">{detail.title}</h1>
           <p className="meta">
             {detail.householdDate} · {DAYPART_LABELS[detail.daypart] ?? detail.daypart} ·{" "}
+            {detail.kind === "responsibility" ? "Responsibility" : "Routine"} ·{" "}
             {detail.accountableMemberName} ·{" "}
             {detail.completed ? "Complete" : "Incomplete"}
           </p>
@@ -558,16 +652,28 @@ function HistoryDetailView(props: {
               <p className="meta">Action evidence unavailable for this occurrence.</p>
             ) : (
               <ul className="history-evidence-list">
-                {detail.reports.map((report) => (
+                {detail.reports.map((report) => {
+                  const performerName = report.performerMemberId
+                    ? report.performerMemberId === report.actingMemberId
+                      ? report.actingMemberName
+                      : report.performerMemberId
+                    : null;
+                  return (
                   <li key={report.id}>
                     <strong>{report.actingMemberName ?? "Unknown actor"}</strong>
                     <div className="meta">
                       {statusLabel(report.resultingState)} · performed{" "}
                       {formatInstant(report.performedAt)} · recorded{" "}
                       {formatInstant(report.recordedAt)}
+                      {performerName
+                        ? ` · performer ${performerName}`
+                        : report.performerMemberId === null
+                          ? " · performer unknown"
+                          : ""}
                     </div>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )
           ) : null}

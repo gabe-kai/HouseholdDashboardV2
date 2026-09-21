@@ -724,7 +724,9 @@ describe("P0-006B contextual applicability", () => {
       `avery.r.${Date.now().toString(36)}`,
       "Avery Reed",
     );
-    const years = [yearPayload("2026-01-01", "2027-12-31", [1, 2, 3, 4, 5])];
+    // Controlled school-day seam (same as AT7/AT8/injectable AT9): usual weekdays cover
+    // every ISO day so Pack Lunchbox materializes on whatever household date the host is.
+    const years = [yearPayload("2026-01-01", "2027-12-31", [1, 2, 3, 4, 5, 6, 7])];
     const mutationId = randomUUID();
     const first = store.saveSchoolCalendar(manager.context, {
       mutationId,
@@ -782,7 +784,7 @@ describe("P0-006B contextual applicability", () => {
       mutationId: randomUUID(),
       expectedVersion: 1,
       years: [
-        yearPayload("2026-01-01", "2027-12-31", [1, 2, 3, 4, 5], [
+        yearPayload("2026-01-01", "2027-12-31", [1, 2, 3, 4, 5, 6, 7], [
           { name: "Off", startDate: today, endDate: today },
         ]),
       ],
@@ -796,7 +798,6 @@ describe("P0-006B contextual applicability", () => {
       }),
     ).toThrow(/Step not found/i);
   });
-
   it("AT9: injectable reconcile failure rolls back calendar, occurrences, and receipt", async () => {
     const { store, db } = freshStore();
     const manager = await claimManager(store);

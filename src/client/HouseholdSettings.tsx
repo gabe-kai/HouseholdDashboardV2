@@ -37,10 +37,11 @@ export function HouseholdSettingsView(props: {
       const result = await clearRoutineActivity({
         mutationId: newClientId(),
         expectedGeneration: props.expectedGeneration,
+        acknowledgedScope: "routines_and_responsibilities",
       });
       closeConfirm();
       props.onCleared(result.activityGeneration);
-      props.onSuccessToast("Routine activity history was cleared.");
+      props.onSuccessToast("Activity history was cleared.");
     } catch (caught) {
       setError(errorMessage(caught));
       // Never toast success on failure.
@@ -62,18 +63,19 @@ export function HouseholdSettingsView(props: {
 
       {props.canClearActivity ? (
         <div className="settings-action">
-          <h3>Clear routine activity history</h3>
+          <h3>Clear activity history</h3>
           <p className="meta">
-            Removes recorded routine checklists and progress for this household so evaluation
-            can restart. People, access, groups, routines, calendars, and personal tasks remain.
+            Removes recorded routine and responsibility checklists and progress for this household
+            so evaluation can restart. People, access, groups, plans, calendars, and personal tasks
+            remain.
           </p>
           <button type="button" className="danger" onClick={openConfirm} disabled={busy}>
-            Clear routine activity history…
+            Clear activity history…
           </button>
         </div>
       ) : (
         <p className="meta" role="status">
-          Routine activity clear is not available for this session.
+          Activity clear is not available for this session.
         </p>
       )}
 
@@ -89,12 +91,12 @@ export function HouseholdSettingsView(props: {
           }}
           onClose={() => setConfirmOpen(false)}
         >
-          <h2>Clear routine activity history?</h2>
+          <h2>Clear activity history?</h2>
           <p>
-            This clears recorded routine activity for the whole household, including today&apos;s
-            progress and older unsynced checklist changes on other devices. People, access,
-            groups, routines, personalization, calendars, and personal tasks remain. The app has
-            no Undo.
+            This clears recorded routine and responsibility activity for the whole household,
+            including today&apos;s progress and older unsynced checklist changes on other devices.
+            People, access, groups, routines, responsibilities, personalization, calendars, and
+            personal tasks remain. The app has no Undo.
           </p>
           <div className="confirm-dialog-actions">
             <button type="button" className="secondary" disabled={busy} onClick={closeConfirm}>

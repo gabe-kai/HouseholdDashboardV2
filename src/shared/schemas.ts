@@ -29,9 +29,29 @@ export const GrantSchema = z.enum([
   "routine.personalize.propose",
   "routine.proposal.decide",
   "routine.execute.own",
+  "responsibility.manage",
+  "responsibility.execute.own",
   "personal_task.create",
 ]);
 export type Grant = z.infer<typeof GrantSchema>;
+
+export const WorkKindSchema = z.enum(["routine", "responsibility"]);
+export type WorkKind = z.infer<typeof WorkKindSchema>;
+
+/** Scope acknowledgment for Clear activity history (D-037). */
+export const ActivityClearScopeSchema = z.enum(["routines_and_responsibilities"]);
+export type ActivityClearScope = z.infer<typeof ActivityClearScopeSchema>;
+
+/**
+ * Structural identity the actor intended for a responsibility checklist command.
+ * Distinct from status version; rejects stale owner/work after plan races (D-036).
+ */
+export const IntendedStructureSchema = z.object({
+  revisionId: UuidSchema,
+  accountableMemberId: UuidSchema,
+  stepLogicalIds: z.array(UuidSchema),
+});
+export type IntendedStructure = z.infer<typeof IntendedStructureSchema>;
 
 export const PersonClassificationSchema = z.enum(["adult", "child"]);
 export type PersonClassification = z.infer<typeof PersonClassificationSchema>;
@@ -124,6 +144,46 @@ export const CreateRevisionSchema = CreateRoutineFieldsSchema.extend({
   scheduleEntryId: UuidSchema.optional(),
 }).superRefine(atLeastOneAudienceSource);
 
+const baseResponsibilityStepsOnly = (
+  steps: Array<{ applicability?: ApplicabilityRule }>,
+  ctx: z.RefinementCtx,
+) => {
+  for (let i = 0; i < steps.length; i += 1) {
+    const rule = steps[i]?.applicability;
+    if (rule && rule.kind !== "every_time") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Responsibility steps must use every-time applicability",
+        path: ["steps", i, "applicability"],
+      });
+    }
+  }
+};
+
+const CreateResponsibilityFieldsSchema = z
+  .object({
+    mutationId: UuidSchema,
+    title: z.string().trim().min(1),
+    daypart: DaypartSchema.default("anytime"),
+    accountableMemberId: UuidSchema,
+    weekdays: z.array(IsoWeekdaySchema).min(1),
+    steps: z.array(ChecklistStepInputSchema).min(1),
+    expectedVersion: z.number().int().positive().optional(),
+  })
+  .strict();
+
+export const CreateResponsibilitySchema = CreateResponsibilityFieldsSchema.superRefine(
+  (data, ctx) => baseResponsibilityStepsOnly(data.steps, ctx),
+);
+
+export const CreateResponsibilityRevisionSchema = CreateResponsibilityFieldsSchema.extend({
+  effectiveDate: HouseholdDateSchema.optional(),
+  mode: z.enum(["current", "schedule"]).optional(),
+  scheduleEntryId: UuidSchema.optional(),
+})
+  .strict()
+  .superRefine((data, ctx) => baseResponsibilityStepsOnly(data.steps, ctx));
+
 export const ArchiveRoutineSchema = z.object({
   mutationId: UuidSchema,
   expectedVersion: z.number().int().positive(),
@@ -138,6 +198,9 @@ export const DeleteRoutineSchema = z.object({
   mutationId: UuidSchema,
   expectedVersion: z.number().int().positive(),
 });
+
+export const EndResponsibilitySchema = EndRoutineSchema;
+export const DeleteResponsibilitySchema = DeleteRoutineSchema;
 
 export const DeleteScheduleEntrySchema = z.object({
   mutationId: UuidSchema,
@@ -156,6 +219,13 @@ export const SetStepStatusSchema = z.object({
   performedAt: InstantSchema,
   /** Household activity generation; omitted only valid when generation is still 0. */
   activityGeneration: z.number().int().nonnegative().optional(),
+  /** Optional work kind; when present must match stored occurrence kind. */
+  kind: WorkKindSchema.optional(),
+  /**
+   * Required for responsibility first-action safety: revision + owner + step logical IDs.
+   * Routines may omit; mismatched responsibility intent is rejected.
+   */
+  intendedStructure: IntendedStructureSchema.optional(),
 });
 
 export const LoginSchema = z.object({
@@ -201,6 +271,11 @@ export type SaveFamilyOrderInput = z.infer<typeof SaveFamilyOrderSchema>;
 export const ClearRoutineActivitySchema = z.object({
   mutationId: UuidSchema,
   expectedGeneration: z.number().int().nonnegative(),
+  /**
+   * New clears must acknowledge routines + responsibilities.
+   * Omitted = legacy routine-only request (rejected when responsibility data exists).
+   */
+  acknowledgedScope: ActivityClearScopeSchema.optional(),
 });
 export type ClearRoutineActivityInput = z.infer<typeof ClearRoutineActivitySchema>;
 
@@ -286,9 +361,11 @@ export type OccurrenceView = {
   accountableMemberId: string;
   accountableMemberName: string;
   version: number;
-  /** Set on first locking checklist action; never cleared (D-023). */
+  /** Set on first locking checklist action; never cleared (D-023 / D-036). */
   startedAt: string | null;
   completed: boolean;
+  /** Closed work kind; missing on legacy clients normalizes to routine. */
+  kind: WorkKind;
   steps: OccurrenceStepView[];
   calendarEditionId?: string | null;
   calendarProvenance?: "legacy" | "unconfigured" | "edition";
@@ -305,6 +382,7 @@ export type HistoryOccurrenceSummary = {
   householdDate: string;
   completed: boolean;
   startedAt: string | null;
+  kind: WorkKind;
   counts: {
     completed: number;
     notNeeded: number;
@@ -320,6 +398,8 @@ export type StepReportPublic = {
   accountableMemberId: string;
   actingMemberId: string;
   actingMemberName: string | null;
+  /** Actual performer when recorded; null for legacy unknown. */
+  performerMemberId: string | null;
   performedAt: string;
   recordedAt: string;
   resultingState: StepStatus;
@@ -335,6 +415,7 @@ export type SyncNotification = {
   resource:
     | "occurrence"
     | "routine"
+    | "responsibility"
     | "proposal"
     | "personal_task"
     | "membership"
@@ -500,6 +581,7 @@ export type ScheduleEntryPublic = {
 export type RoutineDefinitionPublic = {
   id: string;
   version: number;
+  kind: WorkKind;
   archived: boolean;
   archiveCutoffDate: string | null;
   archivedAt: string | null;
@@ -509,6 +591,28 @@ export type RoutineDefinitionPublic = {
   deletedAt?: string | null;
   scheduleEntries: ScheduleEntryPublic[];
   revisions: RoutineRevisionPublic[];
+};
+
+/** Alias for responsibility definitions (same public shape; kind=responsibility). */
+export type ResponsibilityDefinitionPublic = RoutineDefinitionPublic;
+
+export type ResponsibilityMutationResult = {
+  responsibility: ResponsibilityDefinitionPublic;
+  refineOutcome?: PlanRefineOutcome;
+};
+
+/** Read-only next-N-days preview row (does not materialize). */
+export type ResponsibilityPreviewDay = {
+  householdDate: string;
+  applicable: boolean;
+  accountableMemberId: string | null;
+  accountableMemberName: string | null;
+  title: string | null;
+  daypart: Daypart | null;
+  revisionId: string | null;
+  /** True when a started occurrence protects owner/work from the current plan. */
+  startedProtected: boolean;
+  occurrenceId: string | null;
 };
 
 /** Outcome of a plan reconcile for truthful save feedback. */

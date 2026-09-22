@@ -821,7 +821,7 @@ Atomically clear both execution graphs and verified checklist receipt payloads, 
 
 ## D-038 - Closed assignment forms resolve turns from dated facts
 
-**Status:** Active for P0-007B r1 planning; not yet implemented.
+**Status:** Active for P0-007B r1; implementation not yet started.
 
 **Decision:** Responsibilities support fixed membership, an ordered cyclic list of unique memberships, and an explicit seven-day weekly map. Recurrence remains independent. Eligibility is either explicit people or one linked group minus exclusions; pending access/age/grants do not determine eligibility. Preserve group/source identity and a saved order rather than flattening linked membership into copied assignments.
 
@@ -841,7 +841,7 @@ Group changes retain the existing next-household-day boundary and saved anchor. 
 
 ## D-039 - Scheduled work composes into one versioned responsibility
 
-**Status:** Active for P0-007B r1 planning; not yet implemented.
+**Status:** Active for P0-007B r1; implementation not yet started.
 
 **Decision:** A responsibility has base steps plus named scheduled additions with stable identities, weekday subsets, ordered steps, and inherited or fixed/cyclic assignment. Additions belong to the parent's immutable plan content and use its current/future plan lifecycle. They do not create new definitions or independent occurrences. Compose base first, then applicable additions in saved order; snapshot source identity, headings, step identity/text/obligation/order and final accountability.
 
@@ -859,7 +859,7 @@ One applicable addition with its own assignment owns the whole composed occurren
 
 ## D-040 - Preview, assignment reconciliation and execution share one resolution boundary
 
-**Status:** Active for P0-007B r1 planning; not yet implemented.
+**Status:** Active for P0-007B r1; implementation not yet started.
 
 **Decision:** One dated resolution result combines governing plan, recurrence, eligibility, assignment, scheduled work and final owner. Saved and unsaved preview reads are side-effect-free; started stored snapshots take precedence. Definition and relevant source versions are pinned in drafts and checked at Save. Preview, actual materialization and reconciliation agree for unchanged inputs.
 

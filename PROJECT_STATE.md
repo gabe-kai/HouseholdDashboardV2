@@ -19,7 +19,7 @@
 
 ## Current focus
 
-**P0-007B r1 - Assignment Patterns & Scheduled Work** is **IN REVIEW**, based on integrated `main` **51322e0** (P0-007A merge PR #15). Authoritative brief: `briefs/p0-007b-assignment-patterns-scheduled-work.md`; D-038-D-040 define the planned contract. Card **Understand whose turn it is, including deep-clean days** is **Up Next**. Engineering returns readiness before implementation; C remains LIKELY NEXT under the supplied Design proposal.
+**P0-007B r1 - Assignment Patterns & Scheduled Work** is **READY**, based on integrated `main` **51322e0** (P0-007A merge PR #15). Authoritative brief: `briefs/p0-007b-assignment-patterns-scheduled-work.md`; D-038-D-040 define the accepted contract. Engineering readiness is recorded in `reports/P0-007B-r1-engineering-readiness.md`. Card **Understand whose turn it is, including deep-clean days** is **Up Next** until implementation starts. C remains LIKELY NEXT under the supplied Design proposal.
 
 ## Internal work status
 
@@ -35,7 +35,7 @@
 | P0-006B - Contextual Routine Applicability | r1 | ACCEPTED | Project Lead/Product | Merged to `main` at `de552ab` | Evaluate the contextual routine experience |
 | P0-006C - Household Profiles and Useful History | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `409d147` via PR #14 | Product acceptance remains separate |
 | P0-007A - Household Responsibility Foundation | r1 | ACCEPTED | Completed foundation | Merged to `main` at `51322e0` via PR #15 | None for A; Design carries presentation feedback to C |
-| P0-007B - Assignment Patterns & Scheduled Work | r1 | IN REVIEW | Engineering readiness | Planned `brief/p0-007b-assignment-patterns-scheduled-work` | Consolidated readiness, then Architecture ACCEPT / PROCEED |
+| P0-007B - Assignment Patterns & Scheduled Work | r1 | READY | Engineering | Planned `brief/p0-007b-assignment-patterns-scheduled-work` | Implementation may begin after readiness acceptance |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -63,11 +63,11 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next Project Lead decision
 
-- Commit B planning on the suggested brief branch and give Engineering the exact r1 readiness handoff. Project Lead manages Git; suggest commit messages but do not commit. No deployment is required.
+- Send Engineering the exact P0-007B r1 ACCEPT / PROCEED handoff. Project Lead manages Git; suggest commit messages but do not commit. No deployment is required.
 
 ## Next likely handoff
 
-Engineering reviews **P0-007B revision 1** against merged A and returns one consolidated readiness report at `reports/P0-007B-r1-engineering-readiness.md`, then waits for Architecture ACCEPT / PROCEED. Card **Understand whose turn it is, including deep-clean days** stays **Up Next** until implementation starts. C remains LIKELY NEXT.
+Engineering may implement **P0-007B revision 1** on `brief/p0-007b-assignment-patterns-scheduled-work` and return the Build Report at `reports/P0-007B-r1-build-report.md`. Card **Understand whose turn it is, including deep-clean days** moves to **In Progress** when implementation starts. C remains LIKELY NEXT.
 
 ## Notes for all teams
 

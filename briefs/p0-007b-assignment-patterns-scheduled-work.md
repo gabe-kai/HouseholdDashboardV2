@@ -1,9 +1,9 @@
 # BRIEF P0-007B - Assignment Patterns & Scheduled Work
 
 **Revision:** 1
-**Status:** IN REVIEW
+**Status:** READY
 
-One authoritative contract for P0-007B. Material changes increment the revision and invalidate prior readiness. Architecture technical acceptance and Project Lead acceptance of the experience are separate. This brief authorizes Engineering readiness review; implementation awaits Architecture ACCEPT / PROCEED.
+One authoritative contract for P0-007B. Material changes increment the revision and invalidate prior readiness. Architecture technical acceptance and Project Lead acceptance of the experience are separate. Architecture has accepted Engineering's r1 readiness review; implementation may proceed on the planned branch.
 
 ## Why
 
@@ -150,7 +150,7 @@ Hosted/physical-device evidence is not required for this brief. Product evaluate
 
 - Integrated P0-007A r1 at `main` **51322e0**, the supplied P0-007B Design proposal recorded in `PRODUCT.md`, and existing Node 24/local tools. No new host/account/credential.
 - Intended branch: `brief/p0-007b-assignment-patterns-scheduled-work`, from merged main with this planning change. Project Lead manages Git; suggest commit messages but do not commit, publish, merge or deploy.
-- Engineering performs one consolidated readiness review of **P0-007B revision 1**, then waits for Architecture ACCEPT / PROCEED. B's proposed architecture below is not a claim of implementation readiness already established by Engineering.
+- Engineering completed one consolidated readiness review of **P0-007B revision 1**; Architecture accepted it. B's proposed architecture below is the implementation contract, while exact table/helper names remain Engineering discretion.
 
 ## Relevant decisions
 
@@ -173,7 +173,7 @@ Hosted/physical-device evidence is not required for this brief. Product evaluate
 
 **Reviewed revision:** 1
 **Readiness:** READY
-**Architecture disposition:** Awaiting Architecture ACCEPT / PROCEED on r1; no implementation authorization yet. See `reports/P0-007B-r1-engineering-readiness.md`.
+**Architecture disposition:** ACCEPT / PROCEED for P0-007B revision 1. Engineering's consolidated review is recorded in `reports/P0-007B-r1-engineering-readiness.md` against integrated `main` at `51322e0`; it found no blocker or question, and its notes align with D-038-D-040 and the intentional B delta from accepted A. Engineering may implement r1 on `brief/p0-007b-assignment-patterns-scheduled-work` and return the Build Report with AT1-16 evidence and exact local PR/RC/Vite results. Project Lead manages Git; suggest commit messages but do not commit, publish, merge or deploy. The card remains **Up Next** until implementation starts, then moves to **In Progress**.
 
 ## Revision history
 

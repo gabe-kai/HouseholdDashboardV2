@@ -119,9 +119,9 @@ Authoritative contract: `briefs/p0-007a-household-responsibility-foundation.md` 
 - **Reset compatibility:** Explicitly acknowledged **Clear activity history** covers routines and responsibilities under the shared generation/floor, retaining all setup. An old routine-only request cannot erase responsibility configuration/activity's execution evidence without updated confirmation. Keep existing grant/environment gates and replay compatibility; test reset on disposable data only.
 - **Engineering evidence:** Forward migrations after 010, populated 010 upgrade alongside older baselines, reference/receipt audit including fixture cleanup, kind/authority/cardinality/race tests and real UI Cats/Trash journeys. Use exact local PR/RC/Vite gates and new `reports/p0-007a-r1-screenshots/` only. No new service or hosting dependency.
 
-### P0-007B assignment patterns and scheduled work (planned; IN REVIEW)
+### P0-007B assignment patterns and scheduled work (planned; READY)
 
-Authoritative contract: `briefs/p0-007b-assignment-patterns-scheduled-work.md` **r1**, D-038-D-040. Baseline: merged A at **51322e0**. Engineering readiness is pending; the following is the intended change, not implemented repository truth.
+Authoritative contract: `briefs/p0-007b-assignment-patterns-scheduled-work.md` **r1**, D-038-D-040. Baseline: merged A at **51322e0**. Engineering readiness is **READY** in `reports/P0-007B-r1-engineering-readiness.md`; implementation is not yet repository truth. The following is the accepted intended change.
 
 - **Bounded outcome:** Kitchen weekly turns and Saturday extra work, Cats rotation, Bathroom composition, and unchanged fixed Trash. Reuse shared plan/execution foundations. One vertical brief with resolver/migration, Kitchen journey and generalized evidence checkpoints; C owns the full Today/Household hierarchy.
 - **Assignment:** Closed fixed/cyclic/seven-day-weekly forms, explicit people or one linked group minus exclusions. Cycles count applicable household dates from a saved anchor, never reads/completions. Unrelated edits retain phase; explicit assignment/recurrence edits restart the changed cycle at its intended boundary. Group changes remain next-day and use dated eligibility against the saved anchor/order. Friendly preview makes final outcomes visible before Save.

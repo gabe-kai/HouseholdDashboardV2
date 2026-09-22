@@ -171,9 +171,9 @@ Hosted/physical-device evidence is not required for this brief. Product evaluate
 
 ## Engineering readiness
 
-**Reviewed revision:** NOT REVIEWED
-**Readiness:** NOT REVIEWED
-**Architecture disposition:** Awaiting consolidated Engineering review of r1; no implementation authorization yet.
+**Reviewed revision:** 1
+**Readiness:** READY
+**Architecture disposition:** Awaiting Architecture ACCEPT / PROCEED on r1; no implementation authorization yet. See `reports/P0-007B-r1-engineering-readiness.md`.
 
 ## Revision history
 

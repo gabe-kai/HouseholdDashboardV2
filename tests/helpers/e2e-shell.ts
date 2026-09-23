@@ -67,9 +67,27 @@ export async function fillFocusedRoutineCreate(
     .click();
   await page.getByRole("textbox", { name: "Step text" }).fill(options.stepText);
   await page.getByRole("button", { name: "Done", exact: true }).click();
-  await page.getByRole("button", { name: "Done", exact: true }).click();
+  // Leave the Steps section if still open.
+  const stepsDone = page.getByRole("button", { name: "Done", exact: true });
+  if (await stepsDone.isVisible().catch(() => false)) {
+    await stepsDone.click();
+  }
 
-  await page.getByRole("button", { name: "Create routine", exact: true }).click();
+  const createButton = page.getByRole("button", { name: "Create routine", exact: true });
+  await expect(createButton).toBeEnabled({ timeout: 10_000 });
+  await Promise.all([
+    page.waitForResponse(
+      (response) =>
+        response.url().includes("/api/v1/routines") &&
+        response.request().method() === "POST" &&
+        response.ok(),
+      { timeout: 20_000 },
+    ),
+    createButton.click(),
+  ]);
+  await expect(page.getByRole("heading", { name: "New routine" })).toHaveCount(0, {
+    timeout: 15_000,
+  });
 }
 
 export async function fillFocusedResponsibilityCreate(

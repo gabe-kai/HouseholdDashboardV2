@@ -1,9 +1,9 @@
 # BRIEF P0-007B - Assignment Patterns & Scheduled Work
 
 **Revision:** 1
-**Status:** READY
+**Status:** FIX REQUIRED
 
-One authoritative contract for P0-007B. Material changes increment the revision and invalidate prior readiness. Architecture technical acceptance and Project Lead acceptance of the experience are separate. Architecture has accepted Engineering's r1 readiness review; implementation may proceed on the planned branch.
+One authoritative contract for P0-007B. Material changes increment the revision and invalidate prior readiness. Architecture technical acceptance and Project Lead acceptance of the experience are separate. Engineering implemented r1, but Architecture has returned FIX REQUIRED against this unchanged revision for missing B-specific evidence.
 
 ## Why
 
@@ -173,7 +173,7 @@ Hosted/physical-device evidence is not required for this brief. Product evaluate
 
 **Reviewed revision:** 1
 **Readiness:** READY
-**Architecture disposition:** ACCEPT / PROCEED for P0-007B revision 1. Engineering's consolidated review is recorded in `reports/P0-007B-r1-engineering-readiness.md` against integrated `main` at `51322e0`; it found no blocker or question, and its notes align with D-038-D-040 and the intentional B delta from accepted A. Engineering may implement r1 on `brief/p0-007b-assignment-patterns-scheduled-work` and return the Build Report with AT1-16 evidence and exact local PR/RC/Vite results. Project Lead manages Git; suggest commit messages but do not commit, publish, merge or deploy. The card remains **Up Next** until implementation starts, then moves to **In Progress**.
+**Architecture disposition:** FIX REQUIRED against P0-007B revision 1, re-reviewed at implementation `32eca70`. The central implementation and local gates are present, but the Build Report marks required B-specific evidence AT2, AT7, AT9–15 as partial or not run. Findings: `reports/P0-007B-r1-architecture-review.md`. Return directly to Engineering against unchanged r1; no new readiness review or product decision is required. Project Lead manages Git; suggest commit messages but do not commit, publish, merge or deploy. The card remains **In Progress**.
 
 ## Revision history
 

@@ -1,13 +1,25 @@
 import { expect, test, type Page } from "@playwright/test";
 
 /** Quiet chrome: identity lives in Account, not the topbar title. */
-export async function expectSignedInAs(page: Page, displayName: string) {
+export async function expectSignedInAs(page: Page, displayName: string | RegExp) {
   await expect(page.getByRole("button", { name: "Account" })).toBeVisible({
     timeout: 20_000,
   });
   await page.getByRole("button", { name: "Account" }).click();
   await expect(page.getByRole("menu")).toContainText(displayName);
   await page.getByRole("button", { name: "Account" }).click();
+}
+
+/** Resolve the durable display name for the current session (may differ after prior e2e renames). */
+export async function sessionDisplayName(page: Page): Promise<string> {
+  const session = await page.request.get("/api/v1/auth/session");
+  expect(session.ok()).toBeTruthy();
+  const body = (await session.json()) as {
+    displayName?: string;
+    member?: { displayName?: string };
+    membership?: { displayName?: string };
+  };
+  return body.displayName ?? body.member?.displayName ?? body.membership?.displayName ?? "";
 }
 
 /** Focused create/edit: open a summary section by its label. */

@@ -1,9 +1,9 @@
 # BRIEF P0-007B - Assignment Patterns & Scheduled Work
 
 **Revision:** 1
-**Status:** FIX REQUIRED
+**Status:** ACCEPTED
 
-One authoritative contract for P0-007B. Material changes increment the revision and invalidate prior readiness. Architecture technical acceptance and Project Lead acceptance of the experience are separate. Engineering implemented r1, but Architecture has returned FIX REQUIRED against this unchanged revision for missing B-specific evidence.
+One authoritative contract for P0-007B. Material changes increment the revision and invalidate prior readiness. Architecture technical acceptance and Project Lead acceptance of the experience are separate. Engineering implemented r1 and Architecture accepted it after the required B-specific evidence was closed.
 
 ## Why
 
@@ -173,8 +173,9 @@ Hosted/physical-device evidence is not required for this brief. Product evaluate
 
 **Reviewed revision:** 1
 **Readiness:** READY
-**Architecture disposition:** FIX REQUIRED against P0-007B revision 1, re-reviewed at implementation `32eca70`. The central implementation and local gates are present, but the Build Report marks required B-specific evidence AT2, AT7, AT9–15 as partial or not run. Findings: `reports/P0-007B-r1-architecture-review.md`. Return directly to Engineering against unchanged r1; no new readiness review or product decision is required. Project Lead manages Git; suggest commit messages but do not commit, publish, merge or deploy. The card remains **In Progress**.
+**Architecture disposition:** ACCEPTED for P0-007B revision 1 after the same-branch correction pass. AT2, AT7, and AT9–15 are now mapped to named B-specific evidence; independent `npm test` passed 189/189 and the Build Report records passing PR/RC gates. Re-acceptance: `reports/P0-007B-r1-architecture-reacceptance.md`. Project Lead acceptance of the experience remains separate. Project Lead manages Git; suggest commit messages but do not commit, publish, merge or deploy. The card is **Ready to Evaluate**.
 
 ## Revision history
 
 - **r1:** First contract against merged A: fixed/cyclic/weekly assignment, dated group eligibility, deterministic anchors, scheduled-work ownership/composition, explicit Unassigned and connected local evidence. C stays LIKELY NEXT.
+- **r1 acceptance:** Architecture re-accepted after B-specific AT2, AT7, and AT9–15 evidence closed; product evaluation remains separate.

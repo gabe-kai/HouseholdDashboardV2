@@ -21,6 +21,7 @@ export type BlockReason =
   | "has_enrollment_claim"
   | "has_enrollment_authorship"
   | "has_revision_assignment"
+  | "has_responsibility_plan_reference"
   | "has_occurrence"
   | "has_step_report"
   | "has_personal_layer"
@@ -138,6 +139,19 @@ export function evaluateMembership(
     db.prepare("SELECT 1 FROM revision_assignees WHERE member_id = ? LIMIT 1").get(membershipId)
   ) {
     blockers.push("has_revision_assignment");
+  }
+  // P0-007B: assignment JSON, exclusions, and scheduled-addition owners in plans.
+  if (
+    db
+      .prepare(
+        `SELECT 1 FROM revision_responsibility_plans
+         WHERE assignment_json LIKE ?
+            OR scheduled_additions_json LIKE ?
+         LIMIT 1`,
+      )
+      .get(`%${membershipId}%`, `%${membershipId}%`)
+  ) {
+    blockers.push("has_responsibility_plan_reference");
   }
   if (
     db

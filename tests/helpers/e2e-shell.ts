@@ -1,13 +1,25 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 /** Quiet chrome: identity lives in Account, not the topbar title. */
-export async function expectSignedInAs(page: Page, displayName: string) {
+export async function expectSignedInAs(page: Page, displayName: string | RegExp) {
   await expect(page.getByRole("button", { name: "Account" })).toBeVisible({
     timeout: 20_000,
   });
   await page.getByRole("button", { name: "Account" }).click();
   await expect(page.getByRole("menu")).toContainText(displayName);
   await page.getByRole("button", { name: "Account" }).click();
+}
+
+/** Resolve the durable display name for the current session (may differ after prior e2e renames). */
+export async function sessionDisplayName(page: Page): Promise<string> {
+  const session = await page.request.get("/api/v1/auth/session");
+  expect(session.ok()).toBeTruthy();
+  const body = (await session.json()) as {
+    displayName?: string;
+    member?: { displayName?: string };
+    membership?: { displayName?: string };
+  };
+  return body.displayName ?? body.member?.displayName ?? body.membership?.displayName ?? "";
 }
 
 /** Focused create/edit: open a summary section by its label. */
@@ -97,19 +109,146 @@ export async function fillFocusedResponsibilityCreate(
     await page.getByRole("button", { name: "Done", exact: true }).click();
   }
 
-  await page.getByRole("button", { name: /^Who/ }).click();
-  await page
-    .getByRole("radio", { name: new RegExp(options.ownerName) })
-    .first()
-    .check();
-  await page.getByRole("button", { name: /Apply who is accountable/i }).click();
+  await openResponsibilitySection(page, "Who");
+  await chooseAssignmentMode(page, "Fixed person");
+  const whoButton = page.getByRole("button", {
+    name: new RegExp(`Choose accountable person|${options.ownerName}`, "i"),
+  });
+  await whoButton.click();
+  await pickAccountablePerson(page, options.ownerName);
+  await page.getByRole("button", { name: "Done", exact: true }).click();
 
-  await openRoutineSection(page, "Work");
+  await fillResponsibilityBaseSteps(page, options.stepTexts);
+
+  await page.getByRole("button", { name: "Create responsibility", exact: true }).click();
+  await confirmResponsibilitySaveIfNeeded(page);
+}
+
+const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+
+export async function confirmResponsibilitySaveIfNeeded(page: Page) {
+  const confirm = page.getByRole("button", { name: "Confirm and save", exact: true });
+  try {
+    await confirm.waitFor({ state: "visible", timeout: 3_000 });
+  } catch {
+    return;
+  }
+  await expect(confirm).toBeEnabled({ timeout: 20_000 });
+  await confirm.click();
+}
+
+export async function openResponsibilitySection(
+  page: Page,
+  label: "Name" | "When" | "Who" | "Work",
+) {
+  await page.getByRole("button", { name: new RegExp(`^${label}`) }).click();
+}
+
+export async function chooseAssignmentMode(
+  page: Page,
+  mode: "Fixed person" | "Take turns" | "Weekly pattern",
+) {
+  await page.getByRole("button", { name: mode, exact: true }).click();
+}
+
+export async function pickAccountablePerson(page: Page, displayName: string) {
+  await page.getByRole("radio", { name: new RegExp(displayName) }).first().check();
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
+}
+
+export async function setWeeklyPattern(
+  page: Page,
+  ownersByIsoDay: Record<number, string>,
+) {
+  for (const [isoDay, ownerName] of Object.entries(ownersByIsoDay)) {
+    const label = WEEKDAY_LABELS[Number(isoDay) - 1]!;
+    await page
+      .getByRole("button", { name: new RegExp(`^${label}`) })
+      .click();
+    await pickAccountablePerson(page, ownerName);
+  }
+}
+
+export async function addTurnOrderPeople(page: Page, names: string[]) {
+  for (const name of names) {
+    await page.getByRole("button", { name: /Add person/i }).click();
+    await pickAccountablePerson(page, name);
+  }
+}
+
+export async function fillResponsibilityBaseSteps(page: Page, stepTexts: string[]) {
+  await openResponsibilitySection(page, "Work");
+  await page.getByRole("button", { name: /^Base/ }).click();
+  const stepList = page.getByRole("list", { name: "Base work" });
+  for (let index = 0; index < stepTexts.length; index += 1) {
+    if (index > 0) {
+      await page.getByRole("button", { name: /Add step/i }).click();
+    }
+    await stepList
+      .locator("[data-ordered-row]")
+      .nth(index)
+      .locator(".ordered-row-body button")
+      .click();
+    await page.getByRole("textbox", { name: "Step text" }).fill(stepTexts[index]!);
+    await page.getByRole("button", { name: "Done", exact: true }).click();
+  }
+  await page.getByRole("button", { name: "Done", exact: true }).click();
+  await page.getByRole("button", { name: "Done", exact: true }).click();
+}
+
+export async function addScheduledWorkAddition(
+  page: Page,
+  options: {
+    name: string;
+    weekdays: number[];
+    inheritAssignment?: boolean;
+    assignmentMode?: "Fixed person" | "Take turns" | "Weekly pattern";
+    turnOrder?: string[];
+    fixedOwner?: string;
+    stepTexts: string[];
+  },
+) {
+  await openResponsibilitySection(page, "Work");
+  await page.getByRole("button", { name: /Add scheduled work/i }).click();
+  await expect(page.getByRole("heading", { name: "Scheduled work" })).toBeVisible();
+  const nameInput = page.locator("label").filter({ hasText: /^Name$/ }).locator("input");
+  await nameInput.fill(options.name);
+
+  // Clear default weekday(s), then select the requested days.
+  for (const label of WEEKDAY_LABELS) {
+    const box = page.getByLabel(label, { exact: true });
+    if (await box.isEnabled()) {
+      if (await box.isChecked()) await box.uncheck();
+    }
+  }
+  for (const day of options.weekdays) {
+    const label = WEEKDAY_LABELS[day - 1]!;
+    const box = page.getByLabel(label, { exact: true });
+    if (!(await box.isChecked())) await box.check();
+  }
+  if (options.inheritAssignment === false) {
+    await page.getByRole("checkbox", { name: /Use this responsibility/i }).uncheck();
+    if (options.assignmentMode) {
+      await chooseAssignmentMode(page, options.assignmentMode);
+    }
+    if (options.assignmentMode === "Take turns" && options.turnOrder) {
+      for (const name of options.turnOrder) {
+        await page.getByRole("button", { name: /Add person/i }).click();
+        await pickAccountablePerson(page, name);
+      }
+    }
+    if (options.assignmentMode === "Fixed person" && options.fixedOwner) {
+      await page.getByRole("button", { name: /Choose person/i }).click();
+      await pickAccountablePerson(page, options.fixedOwner);
+    }
+  }
+  // Default draft already has one step; edit it then add more.
+  const stepList = page.getByRole("list", { name: "Scheduled work items" });
   for (let index = 0; index < options.stepTexts.length; index += 1) {
     if (index > 0) {
       await page.getByRole("button", { name: /Add step/i }).click();
     }
-    await page
+    await stepList
       .locator("[data-ordered-row]")
       .nth(index)
       .locator(".ordered-row-body button")
@@ -117,7 +256,41 @@ export async function fillFocusedResponsibilityCreate(
     await page.getByRole("textbox", { name: "Step text" }).fill(options.stepTexts[index]!);
     await page.getByRole("button", { name: "Done", exact: true }).click();
   }
+  // StepsSectionEditor Done -> Work section; Work Done leaves the section.
   await page.getByRole("button", { name: "Done", exact: true }).click();
+  await page.getByRole("button", { name: "Done", exact: true }).click();
+}
 
-  await page.getByRole("button", { name: "Create responsibility", exact: true }).click();
+export async function ensureManagerSession(
+  page: Page,
+  options: { loginName?: string; displayName?: string; passphrase?: string } = {},
+) {
+  const request = page.request;
+  const base = test.info().project.use.baseURL;
+  if (!base) throw new Error("Playwright project baseURL is required");
+  const origin = new URL(base).origin;
+  const loginName = options.loginName ?? "e2e.manager";
+  const passphrase = options.passphrase ?? "unique-passphrase-ok!";
+  const displayName = options.displayName ?? "Morgan Reed";
+
+  const boot = await request.post("/api/v1/test/bootstrap-claim");
+  if (boot.ok()) {
+    const { token } = (await boot.json()) as { token: string };
+    const claim = await request.post("/api/v1/auth/claim", {
+      headers: { Origin: origin },
+      data: {
+        claimToken: token,
+        loginName,
+        passphrase,
+        displayName,
+      },
+    });
+    if (!claim.ok()) throw new Error(await claim.text());
+    return;
+  }
+  const login = await request.post("/api/v1/auth/login", {
+    headers: { Origin: origin },
+    data: { loginName, passphrase },
+  });
+  if (!login.ok()) throw new Error(await login.text());
 }

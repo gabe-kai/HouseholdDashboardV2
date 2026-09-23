@@ -50,6 +50,8 @@ export const IntendedStructureSchema = z.object({
   revisionId: UuidSchema,
   accountableMemberId: UuidSchema,
   stepLogicalIds: z.array(UuidSchema),
+  /** Durable composed-work fingerprint when present on the occurrence snapshot. */
+  structureFingerprint: z.string().optional(),
 });
 export type IntendedStructure = z.infer<typeof IntendedStructureSchema>;
 
@@ -110,6 +112,32 @@ export const ChecklistStepInputSchema = z.object({
   applicability: ApplicabilityRuleSchema.optional(),
 });
 
+export const AssignmentModeSchema = z.enum(["fixed", "take_turns", "weekly"]);
+export type AssignmentMode = z.infer<typeof AssignmentModeSchema>;
+
+export const AssignmentSpecSchema = z.object({
+  mode: AssignmentModeSchema,
+  anchorDate: HouseholdDateSchema,
+  fixedMemberId: UuidSchema.nullish(),
+  cycleOrder: z.array(UuidSchema).optional(),
+  weeklyMap: z.record(z.string(), UuidSchema).optional(),
+  sourceGroupId: UuidSchema.nullish(),
+  excludedMemberIds: z.array(UuidSchema).optional(),
+  savedRingOrder: z.array(UuidSchema).optional(),
+});
+export type AssignmentSpec = z.infer<typeof AssignmentSpecSchema>;
+
+export const ScheduledAdditionSchema = z.object({
+  id: UuidSchema.optional(),
+  name: z.string().trim().min(1),
+  weekdays: z.array(IsoWeekdaySchema).min(1),
+  inheritAssignment: z.boolean(),
+  assignment: AssignmentSpecSchema.optional(),
+  steps: z.array(ChecklistStepInputSchema).min(1),
+  position: z.number().int().nonnegative().optional(),
+});
+export type ScheduledAdditionSpec = z.infer<typeof ScheduledAdditionSchema>;
+
 const CreateRoutineFieldsSchema = z.object({
   mutationId: UuidSchema,
   title: z.string().trim().min(1),
@@ -160,29 +188,50 @@ const baseResponsibilityStepsOnly = (
   }
 };
 
-const CreateResponsibilityFieldsSchema = z
+const responsibilityAssignmentRequired = (
+  data: { assignment?: unknown; accountableMemberId?: string },
+  ctx: z.RefinementCtx,
+) => {
+  if (!data.assignment && !data.accountableMemberId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Either assignment or accountableMemberId is required",
+      path: ["accountableMemberId"],
+    });
+  }
+};
+
+const CreateResponsibilityFieldsBaseSchema = z
   .object({
     mutationId: UuidSchema,
     title: z.string().trim().min(1),
     daypart: DaypartSchema.default("anytime"),
-    accountableMemberId: UuidSchema,
+    accountableMemberId: UuidSchema.optional(),
+    assignment: AssignmentSpecSchema.optional(),
+    scheduledAdditions: z.array(ScheduledAdditionSchema).optional(),
     weekdays: z.array(IsoWeekdaySchema).min(1),
     steps: z.array(ChecklistStepInputSchema).min(1),
     expectedVersion: z.number().int().positive().optional(),
   })
   .strict();
 
-export const CreateResponsibilitySchema = CreateResponsibilityFieldsSchema.superRefine(
-  (data, ctx) => baseResponsibilityStepsOnly(data.steps, ctx),
+export const CreateResponsibilitySchema = CreateResponsibilityFieldsBaseSchema.superRefine(
+  (data, ctx) => {
+    baseResponsibilityStepsOnly(data.steps, ctx);
+    responsibilityAssignmentRequired(data, ctx);
+  },
 );
 
-export const CreateResponsibilityRevisionSchema = CreateResponsibilityFieldsSchema.extend({
+export const CreateResponsibilityRevisionSchema = CreateResponsibilityFieldsBaseSchema.extend({
   effectiveDate: HouseholdDateSchema.optional(),
   mode: z.enum(["current", "schedule"]).optional(),
   scheduleEntryId: UuidSchema.optional(),
 })
   .strict()
-  .superRefine((data, ctx) => baseResponsibilityStepsOnly(data.steps, ctx));
+  .superRefine((data, ctx) => {
+    baseResponsibilityStepsOnly(data.steps, ctx);
+    responsibilityAssignmentRequired(data, ctx);
+  });
 
 export const ArchiveRoutineSchema = z.object({
   mutationId: UuidSchema,
@@ -358,7 +407,7 @@ export type OccurrenceView = {
   daypart: Daypart;
   /** @deprecated use daypart; retained for transitional clients */
   scheduleAnchor?: Daypart;
-  accountableMemberId: string;
+  accountableMemberId: string | null;
   accountableMemberName: string;
   version: number;
   /** Set on first locking checklist action; never cleared (D-023 / D-036). */
@@ -377,7 +426,7 @@ export type HistoryOccurrenceSummary = {
   definitionId: string;
   title: string;
   daypart: Daypart;
-  accountableMemberId: string;
+  accountableMemberId: string | null;
   accountableMemberName: string;
   householdDate: string;
   completed: boolean;
@@ -568,6 +617,9 @@ export type RoutineRevisionPublic = {
   resolvedMemberIds?: string[];
   upcomingResolvedMemberIds?: string[];
   upcomingParticipationFromDate?: string | null;
+  /** Present on responsibility revisions when a plan is stored. */
+  assignment?: AssignmentSpec;
+  scheduledAdditions?: ScheduledAdditionSpec[];
 };
 
 export type ScheduleEntryPublic = {
@@ -613,6 +665,8 @@ export type ResponsibilityPreviewDay = {
   /** True when a started occurrence protects owner/work from the current plan. */
   startedProtected: boolean;
   occurrenceId: string | null;
+  unassignedReason?: string | null;
+  stepCount?: number;
 };
 
 /** Outcome of a plan reconcile for truthful save feedback. */

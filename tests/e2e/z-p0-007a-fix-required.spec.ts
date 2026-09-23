@@ -11,6 +11,8 @@ import {
 const PASSPHRASE = "unique-passphrase-ok!";
 const MANAGER_LOGIN = "e2e.manager";
 const AVERY_ID = "22222222-2222-4222-8222-222222222202";
+/** P0-007B: do not rewrite prior P0-007A screenshot evidence (AT16 zero-diff). */
+const CAPTURE_LEGACY_007A_SCREENSHOTS = false;
 const SCREENSHOT_DIR = path.resolve("reports/p0-007a-r1-screenshots");
 
 function requestOrigin(_request?: APIRequestContext): string {
@@ -152,7 +154,7 @@ test.describe("P0-007A Architecture FIX REQUIRED regressions", () => {
       ((await after.json()) as { responsibility: { version: number } }).responsibility.version,
     ).toBe(2);
 
-    await durableScreenshot(page, path.join(SCREENSHOT_DIR, "06-draft-version-conflict.png"));
+    if (CAPTURE_LEGACY_007A_SCREENSHOTS) await durableScreenshot(page, path.join(SCREENSHOT_DIR, "06-draft-version-conflict.png"));
   });
 
   function addDays(date: string, days: number): string {
@@ -191,7 +193,7 @@ test.describe("P0-007A Architecture FIX REQUIRED regressions", () => {
       stepTexts: ["Feed", "Water"],
     });
     await expect(page.getByRole("heading", { name: title })).toBeVisible({ timeout: 20_000 });
-    await durableScreenshot(page, path.join(SCREENSHOT_DIR, "07-editor-detail.png"));
+    if (CAPTURE_LEGACY_007A_SCREENSHOTS) await durableScreenshot(page, path.join(SCREENSHOT_DIR, "07-editor-detail.png"));
 
     const today = await householdToday(page.request);
     const day2 = addDays(today, 2);
@@ -202,8 +204,15 @@ test.describe("P0-007A Architecture FIX REQUIRED regressions", () => {
     await expect(page.getByRole("heading", { name: "Schedule for later" })).toBeVisible();
     await page.getByLabel("Starting").fill(day2);
     await openRoutineSection(page, "Work");
-    await page.locator("[data-ordered-row]").first().locator(".ordered-row-body button").click();
+    await page.getByRole("button", { name: /^Base/ }).click();
+    await page
+      .getByRole("list", { name: "Base work" })
+      .locator("[data-ordered-row]")
+      .first()
+      .locator(".ordered-row-body button")
+      .click();
     await page.getByRole("textbox", { name: "Step text" }).fill("Feed day-two");
+    await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("button", { name: /^Save$/i }).click();
@@ -213,8 +222,15 @@ test.describe("P0-007A Architecture FIX REQUIRED regressions", () => {
     await page.getByRole("menuitem", { name: "Schedule for later" }).click();
     await page.getByLabel("Starting").fill(day4);
     await openRoutineSection(page, "Work");
-    await page.locator("[data-ordered-row]").first().locator(".ordered-row-body button").click();
+    await page.getByRole("button", { name: /^Base/ }).click();
+    await page
+      .getByRole("list", { name: "Base work" })
+      .locator("[data-ordered-row]")
+      .first()
+      .locator(".ordered-row-body button")
+      .click();
     await page.getByRole("textbox", { name: "Step text" }).fill("Feed day-four");
+    await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("button", { name: /^Save$/i }).click();
@@ -227,8 +243,15 @@ test.describe("P0-007A Architecture FIX REQUIRED regressions", () => {
       .click();
     await expect(page.getByRole("heading", { name: "Edit upcoming change" })).toBeVisible();
     await openRoutineSection(page, "Work");
-    await page.locator("[data-ordered-row]").first().locator(".ordered-row-body button").click();
+    await page.getByRole("button", { name: /^Base/ }).click();
+    await page
+      .getByRole("list", { name: "Base work" })
+      .locator("[data-ordered-row]")
+      .first()
+      .locator(".ordered-row-body button")
+      .click();
     await page.getByRole("textbox", { name: "Step text" }).fill("Feed day-four edited");
+    await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("button", { name: "Save", exact: true }).click();
@@ -435,7 +458,7 @@ test.describe("P0-007A Architecture FIX REQUIRED regressions", () => {
     await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
     await page.getByRole("button", { name: /Clear activity history/i }).click();
     await expect(page.getByRole("heading", { name: /Clear activity history\?/i })).toBeVisible();
-    await durableScreenshot(page, path.join(SCREENSHOT_DIR, "08-clear-confirm.png"));
+    if (CAPTURE_LEGACY_007A_SCREENSHOTS) await durableScreenshot(page, path.join(SCREENSHOT_DIR, "08-clear-confirm.png"));
     await page.getByRole("button", { name: "Clear history", exact: true }).click();
     await expect(
       page.getByRole("status").filter({ hasText: /Activity history was cleared/i }).first(),
@@ -477,29 +500,43 @@ test.describe("P0-007A Architecture FIX REQUIRED regressions", () => {
 
     await page.getByRole("button", { name: "Edit", exact: true }).click();
     await openRoutineSection(page, "Work");
-    await page
+    await page.getByRole("button", { name: /^Base/ }).click();
+    const baseList = page.getByRole("list", { name: "Base work" });
+    await baseList
       .locator("[data-ordered-row]")
       .first()
       .getByRole("button", { name: /More actions for/i })
       .click();
     await page.getByRole("menuitem", { name: "Move down" }).click();
-    await expect(page.locator("[data-ordered-row]").first()).toContainText(/Bravo work/i);
+    await expect(baseList.locator("[data-ordered-row]").first()).toContainText(/Bravo work/i);
+    await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByRole("heading", { name: title })).toBeVisible({ timeout: 15_000 });
     await page.reload();
     await expectSignedInAs(page, "Morgan Reed");
     await expect(page.getByRole("heading", { name: title })).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator(".compact-step-list li").first()).toContainText(/Bravo work/i);
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
+    await openRoutineSection(page, "Work");
+    await page.getByRole("button", { name: /^Base/ }).click();
+    await expect(
+      page.getByRole("list", { name: "Base work" }).locator("[data-ordered-row]").first(),
+    ).toContainText(/Bravo work/i);
+    await page.getByRole("button", { name: "Done", exact: true }).click();
+    await page.getByRole("button", { name: "Done", exact: true }).click();
+    page.once("dialog", (dialog) => {
+      void dialog.dismiss();
+    });
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
 
     await page.setViewportSize({ width: 360, height: 800 });
     await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "More", exact: true })).toBeVisible();
-    await durableScreenshot(page, path.join(SCREENSHOT_DIR, "09-geometry-360.png"));
+    if (CAPTURE_LEGACY_007A_SCREENSHOTS) await durableScreenshot(page, path.join(SCREENSHOT_DIR, "09-geometry-360.png"));
 
     await page.setViewportSize({ width: 1280, height: 800 });
     await expect(page.getByRole("button", { name: "Plan", exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: title })).toBeVisible();
-    await durableScreenshot(page, path.join(SCREENSHOT_DIR, "10-geometry-1280.png"));
+    if (CAPTURE_LEGACY_007A_SCREENSHOTS) await durableScreenshot(page, path.join(SCREENSHOT_DIR, "10-geometry-1280.png"));
   });
 });

@@ -886,6 +886,20 @@ export async function buildApp(
     },
   );
 
+  app.post("/api/v1/responsibilities/preview-draft", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const parsed = CreateResponsibilitySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid responsibility draft", request.id));
+    }
+    return {
+      preview: store.previewDraftResponsibility(session, parsed.data, 7),
+    };
+  });
+
   app.get(
     "/api/v1/responsibilities/:definitionId/preview",
     async (request, reply) => {

@@ -1,5 +1,6 @@
 import type {
   ApplicabilityRule,
+  AssignmentSpec,
   Daypart,
   Grant,
   GrantPreset,
@@ -8,6 +9,7 @@ import type {
   OccurrenceView,
   ObligationMeaning,
   ResponsibilityPreviewDay,
+  ScheduledAdditionSpec,
   StepStatus,
   SyncNotification,
   WorkKind,
@@ -117,6 +119,8 @@ export type RoutineRevision = {
   resolvedMemberIds?: string[];
   upcomingResolvedMemberIds?: string[];
   upcomingParticipationFromDate?: string | null;
+  assignment?: AssignmentSpec;
+  scheduledAdditions?: ScheduledAdditionSpec[];
 };
 
 /** Wire shape for a routine definition (RoutineDefinitionPublic). */
@@ -147,7 +151,9 @@ type ResponsibilityMutationBody = {
   mutationId: string;
   title: string;
   daypart: Daypart;
-  accountableMemberId: string;
+  accountableMemberId?: string;
+  assignment?: AssignmentSpec;
+  scheduledAdditions?: ScheduledAdditionSpec[];
   weekdays: number[];
   steps: Array<{
     text: string;
@@ -779,6 +785,16 @@ export async function deleteResponsibilityScheduleEntry(
 export async function fetchResponsibilityPreview(definitionId: string) {
   return request<{ preview: ResponsibilityPreviewDay[] }>(
     `/api/v1/responsibilities/${encodeURIComponent(definitionId)}/preview`,
+  );
+}
+
+export async function previewDraftResponsibility(body: ResponsibilityMutationBody) {
+  return request<{ preview: ResponsibilityPreviewDay[] }>(
+    "/api/v1/responsibilities/preview-draft",
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
   );
 }
 

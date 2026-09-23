@@ -67,12 +67,20 @@ export function intendedStructureMatches(
   intended: IntendedStructure,
   current: {
     revisionId: string;
-    accountableMemberId: string;
+    accountableMemberId: string | null;
     stepLogicalIds: Array<string | null>;
+    structureFingerprint?: string | null;
   },
 ): boolean {
   if (intended.revisionId !== current.revisionId) return false;
   if (intended.accountableMemberId !== current.accountableMemberId) return false;
+  if (
+    intended.structureFingerprint &&
+    current.structureFingerprint &&
+    intended.structureFingerprint !== current.structureFingerprint
+  ) {
+    return false;
+  }
   const currentIds = current.stepLogicalIds.filter(
     (id): id is string => typeof id === "string" && id.length > 0,
   );

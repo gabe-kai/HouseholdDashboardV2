@@ -39,6 +39,7 @@ export function intendedStructureFromOccurrence(
   const stepLogicalIds = occurrence.steps
     .map((step) => step.logicalItemId)
     .filter((id): id is string => typeof id === "string" && id.length > 0);
+  if (!occurrence.accountableMemberId) return undefined;
   return {
     revisionId: occurrence.revisionId,
     accountableMemberId: occurrence.accountableMemberId,

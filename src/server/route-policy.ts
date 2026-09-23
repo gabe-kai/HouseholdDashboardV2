@@ -396,6 +396,16 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
       "Read-only next-7-days preview; never materializes; started days show protected owner/work",
   },
   {
+    method: "POST",
+    path: "/api/v1/responsibilities/preview-draft",
+    auth: "session",
+    origin: "mutation_when_configured",
+    csrf: "required",
+    grant: "responsibility.manage",
+    notes:
+      "Read-only draft preview for unsaved assignment/addition plans; never materializes or locks",
+  },
+  {
     method: "GET",
     path: "/api/v1/today",
     auth: "session",

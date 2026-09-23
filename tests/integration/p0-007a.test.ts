@@ -19,6 +19,7 @@ import {
   openPopulatedP010UpgradeDatabase,
   P010_FIXTURE_IDS,
 } from "../helpers/p010-fixture.js";
+import { applyMigrations011Through013 } from "../helpers/p013-fixture.js";
 
 const temps: string[] = [];
 
@@ -50,7 +51,7 @@ function requiredStep(text: string) {
 }
 
 describe("P0-007A household responsibility foundation (server)", () => {
-  it("AT1: populated 010 upgrades through 013 with grants, create, backup/restore", async () => {
+  it("AT1: populated 010 upgrades through 013 only with grants, create, backup/restore", async () => {
     const dbPath = path.join(os.tmpdir(), `hd-007a-p010-${Date.now()}.sqlite`);
     temps.push(dbPath);
     const db = openPopulatedP010UpgradeDatabase(dbPath);
@@ -94,7 +95,7 @@ describe("P0-007A household responsibility foundation (server)", () => {
       ),
     ).toEqual({ full_name: "Morgan Reed", email: "morgan@example.test" });
 
-    migrate(db);
+    applyMigrations011Through013(db);
 
     expect(
       (
@@ -117,6 +118,13 @@ describe("P0-007A household responsibility foundation (server)", () => {
           .get() as { c: number }
       ).c,
     ).toBe(1);
+    expect(
+      (
+        db
+          .prepare("SELECT COUNT(*) AS c FROM schema_migrations WHERE id LIKE '014_%'")
+          .get() as { c: number }
+      ).c,
+    ).toBe(0);
     expect(
       (db.prepare("SELECT COUNT(*) AS c FROM schema_migrations").get() as { c: number }).c,
     ).toBe(13);
@@ -165,8 +173,8 @@ describe("P0-007A household responsibility foundation (server)", () => {
 
     expect((db.prepare("PRAGMA foreign_key_check").all() as unknown[]).length).toBe(0);
 
-    // Repeat migrate must not duplicate grants or migrations.
-    migrate(db);
+    // Repeat apply must not duplicate grants or migrations.
+    applyMigrations011Through013(db);
     expect(
       (db.prepare("SELECT COUNT(*) AS c FROM schema_migrations").get() as { c: number }).c,
     ).toBe(13);
@@ -204,7 +212,7 @@ describe("P0-007A household responsibility foundation (server)", () => {
     // Close → reopen simulates restart; responsibility create must work.
     db.close();
     const restarted = openDatabase(dbPath);
-    migrate(restarted);
+    applyMigrations011Through013(restarted);
     const store = new AppStore(restarted);
     const morganGrants = (
       restarted
@@ -216,29 +224,11 @@ describe("P0-007A household responsibility foundation (server)", () => {
     expect(morganGrants).toEqual(
       expect.arrayContaining(["responsibility.manage", "responsibility.execute.own"]),
     );
-    const morganCtx = {
-      sessionId: randomUUID(),
-      userId: randomUUID(),
-      householdId: P010_FIXTURE_IDS.householdId,
-      membershipId: P010_FIXTURE_IDS.morganId,
-      displayName: "Morgan Reed",
-      grants: morganGrants as Awaited<ReturnType<typeof claimManager>>["context"]["grants"],
-      timezone: "America/New_York",
-      csrfSecret: "test",
-    };
 
-    const created = store.createResponsibility(morganCtx, {
-      mutationId: randomUUID(),
-      title: "Post-upgrade Cats",
-      daypart: "anytime",
-      accountableMemberId: P010_FIXTURE_IDS.averyId,
-      weekdays: [1, 2, 3, 4, 5, 6, 7],
-      steps: [requiredStep("Feed")],
-    });
-    expect(created.kind).toBe("responsibility");
-    expect(created.id).toBeTruthy();
+    // Responsibility create after 013-only upgrade requires 014 (covered in p0-007b AT1).
+    expect(store.listResponsibilities(P010_FIXTURE_IDS.householdId)).toEqual([]);
 
-    // Backup → isolated restore preserves responsibility row + migrations.
+    // Backup → isolated restore preserves migrations through 013.
     const backupPath = path.join(os.tmpdir(), `hd-007a-bak-${Date.now()}.sqlite`);
     const restorePath = path.join(os.tmpdir(), `hd-007a-restore-${Date.now()}.sqlite`);
     temps.push(backupPath, restorePath);
@@ -248,15 +238,6 @@ describe("P0-007A household responsibility foundation (server)", () => {
     await migratedBackup.backup(restorePath);
     migratedBackup.close();
     const restored = openDatabase(restorePath);
-    expect(
-      (
-        restored
-          .prepare(
-            `SELECT 1 AS ok FROM routine_definitions WHERE id = ? AND kind = 'responsibility'`,
-          )
-          .get(created.id) as { ok: number } | undefined
-      )?.ok,
-    ).toBe(1);
     expect(
       (
         restored

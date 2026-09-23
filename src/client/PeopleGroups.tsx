@@ -1399,9 +1399,16 @@ function HouseholdActivityState(props: {
           {selectedResponsibility.title}
         </FocusHeading>
         <p className="meta">
-          {selectedResponsibility.accountableMemberName} ·{" "}
-          {progressState(selectedResponsibility)} · {progressCounts(selectedResponsibility)}
+          {selectedResponsibility.accountableMemberId
+            ? selectedResponsibility.accountableMemberName
+            : "Unassigned"}{" "}
+          · {progressState(selectedResponsibility)} · {progressCounts(selectedResponsibility)}
         </p>
+        {!selectedResponsibility.accountableMemberId ? (
+          <p className="status-notice" role="status">
+            Nobody is assigned yet. Edit assignment in Plan to fix this before work can be completed.
+          </p>
+        ) : null}
         <ul className="checklist">
           {selectedResponsibility.steps.map((step) => (
             <li key={step.id} className="step">
@@ -1435,8 +1442,11 @@ function HouseholdActivityState(props: {
               >
                 <span className="compact-activity-title">{occurrence.title}</span>
                 <span className="meta">
-                  {occurrence.accountableMemberName} · {progressCounts(occurrence)} ·{" "}
-                  {progressState(occurrence)}
+                  {occurrence.accountableMemberId
+                    ? occurrence.accountableMemberName
+                    : "Unassigned"}
+                  {!occurrence.accountableMemberId ? " · Needs assignment" : ""} ·{" "}
+                  {progressCounts(occurrence)} · {progressState(occurrence)}
                 </span>
               </button>
             </li>

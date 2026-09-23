@@ -6,6 +6,8 @@ import { expectSignedInAs, fillFocusedResponsibilityCreate } from "../helpers/e2
 
 const PASSPHRASE = "unique-passphrase-ok!";
 const MANAGER_LOGIN = "e2e.manager";
+/** P0-007B: do not rewrite prior P0-007A screenshot evidence (AT16 zero-diff). */
+const CAPTURE_LEGACY_007A_SCREENSHOTS = false;
 const SCREENSHOT_DIR = path.resolve("reports/p0-007a-r1-screenshots");
 
 function requestOrigin(_request?: APIRequestContext): string {
@@ -73,7 +75,7 @@ test.describe("P0-007A authenticated geometry", () => {
     await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "More", exact: true })).toBeVisible();
     if (testInfo.project.name === "chromium") {
-      await durableScreenshot(page, path.join(SCREENSHOT_DIR, "11-geometry-plan-360.png"));
+      if (CAPTURE_LEGACY_007A_SCREENSHOTS) await durableScreenshot(page, path.join(SCREENSHOT_DIR, "11-geometry-plan-360.png"));
     }
 
     await page.setViewportSize({ width: 1280, height: 800 });
@@ -86,7 +88,7 @@ test.describe("P0-007A authenticated geometry", () => {
       .click();
     await expect(page.getByRole("heading", { name: "History" })).toBeVisible();
     if (testInfo.project.name === "chromium-desktop" || testInfo.project.name === "chromium") {
-      await durableScreenshot(page, path.join(SCREENSHOT_DIR, "12-geometry-history-1280.png"));
+      if (CAPTURE_LEGACY_007A_SCREENSHOTS) await durableScreenshot(page, path.join(SCREENSHOT_DIR, "12-geometry-history-1280.png"));
     }
   });
 });

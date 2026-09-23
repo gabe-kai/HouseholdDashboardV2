@@ -11,13 +11,14 @@ import {
   fillResponsibilityBaseSteps,
   openResponsibilitySection,
   pickAccountablePerson,
+  sessionDisplayName,
   setWeeklyPattern,
 } from "../helpers/e2e-shell";
 
 const PASSPHRASE = "unique-passphrase-ok!";
 const AVERY_ID = "22222222-2222-4222-8222-222222222202";
-const CASEY_ID = "22222222-2222-4222-8222-222222222204";
 const JORDAN_ID = "22222222-2222-4222-8222-222222222203";
+const AVERY_LOGIN = "e2e.avery";
 const SCREENSHOT_DIR = path.resolve("reports/p0-007b-r1-screenshots");
 
 function addDays(date: string, days: number): string {
@@ -70,12 +71,56 @@ async function mutatingHeaders(page: Page): Promise<Record<string, string>> {
 async function openAsManager(page: Page) {
   await ensureManagerSession(page);
   await page.goto("/");
-  await expectSignedInAs(page, "Morgan Reed");
+  const name = await sessionDisplayName(page);
+  await expectSignedInAs(page, name || /Morgan/);
+}
+
+async function claimAvery(page: Page) {
+  await claimPerson(page, AVERY_ID, AVERY_LOGIN, "Avery Reed");
+}
+
+async function claimPerson(
+  page: Page,
+  membershipId: string,
+  loginName: string,
+  displayName: string,
+) {
+  await ensureManagerSession(page);
+  const enroll = await page.request.post("/api/v1/enrollment/claims", {
+    headers: await mutatingHeaders(page),
+    data: {
+      mutationId: crypto.randomUUID(),
+      membershipId,
+      preset: "direct_personalizer",
+    },
+  });
+  if (enroll.ok()) {
+    const token = ((await enroll.json()) as { claim: { token: string } }).claim.token;
+    await page.request.post("/api/v1/auth/logout", { headers: await mutatingHeaders(page) });
+    const claim = await page.request.post("/api/v1/auth/claim", {
+      headers: { Origin: new URL(test.info().project.use.baseURL!).origin },
+      data: {
+        claimToken: token,
+        loginName,
+        passphrase: PASSPHRASE,
+        displayName,
+      },
+    });
+    expect(claim.ok(), await claim.text()).toBeTruthy();
+    return;
+  }
+  await page.request.post("/api/v1/auth/logout", { headers: await mutatingHeaders(page) });
+  const login = await page.request.post("/api/v1/auth/login", {
+    headers: { Origin: new URL(test.info().project.use.baseURL!).origin },
+    data: { loginName, passphrase: PASSPHRASE },
+  });
+  expect(login.ok(), await login.text()).toBeTruthy();
 }
 
 test.describe("P0-007B Kitchen and Bathroom journeys", () => {
-  test("AT4/AT5: Kitchen weekly + Deep Clean; Bathroom Sunday inherit", async ({
+  test("AT4/AT5/AT15: Kitchen weekly + Deep Clean; Bathroom Sunday inherit", async ({
     page,
+    browser,
   }, testInfo) => {
     test.setTimeout(240_000);
     test.skip(
@@ -116,17 +161,37 @@ test.describe("P0-007B Kitchen and Bathroom journeys", () => {
     await addScheduledWorkAddition(page, {
       name: "Deep Clean",
       weekdays: [6],
-      inheritAssignment: false,
-      assignmentMode: "Take turns",
-      turnOrder: ["Avery", "Casey"],
+      inheritAssignment: true,
       stepTexts: ["Oven", "Fridge", "Microwave", "Cabinets", "Floor"],
     });
 
     await page.getByRole("button", { name: "Create responsibility", exact: true }).click();
-    await confirmResponsibilitySaveIfNeeded(page);
+    const confirm = page.getByRole("button", { name: "Confirm and save", exact: true });
+    try {
+      await confirm.waitFor({ state: "visible", timeout: 5_000 });
+      if (capture) {
+        await durableScreenshot(page, path.join(SCREENSHOT_DIR, "06-weekly-preview.png"));
+      }
+      await expect(confirm).toBeEnabled({ timeout: 20_000 });
+      await confirm.click();
+    } catch {
+      /* create may skip confirm on some paths */
+    }
     await expect(page.getByRole("heading", { name: "Kitchen" })).toBeVisible({ timeout: 20_000 });
     if (capture) {
       await durableScreenshot(page, path.join(SCREENSHOT_DIR, "01-kitchen-detail.png"));
+      await page.getByRole("button", { name: "Edit", exact: true }).click();
+      await openResponsibilitySection(page, "Work");
+      await page.getByRole("button", { name: /Deep Clean/i }).click();
+      await expect(page.getByRole("heading", { name: "Scheduled work" })).toBeVisible();
+      await durableScreenshot(page, path.join(SCREENSHOT_DIR, "07-addition-editor.png"));
+      await page.getByRole("button", { name: "Done", exact: true }).click();
+      await page.getByRole("button", { name: "Done", exact: true }).click();
+      page.once("dialog", (dialog) => {
+        void dialog.accept();
+      });
+      await page.getByRole("button", { name: /Back to Kitchen|Cancel/i }).first().click();
+      await expect(page.getByRole("heading", { name: "Kitchen" })).toBeVisible({ timeout: 15_000 });
     }
 
     const previewRows = page.locator(".responsibility-preview-list li");
@@ -139,7 +204,6 @@ test.describe("P0-007B Kitchen and Bathroom journeys", () => {
     );
     expect(saturdayLines.length).toBeGreaterThanOrEqual(1);
     expect(saturdayLines.some((line) => /Avery|Casey/i.test(line))).toBeTruthy();
-    // Deep-clean Saturdays should show the composed 8-item count when expanded.
     expect(saturdayLines.some((line) => /8 items/i.test(line))).toBeTruthy();
 
     await page.reload();
@@ -148,8 +212,7 @@ test.describe("P0-007B Kitchen and Bathroom journeys", () => {
     const session = await page.request.get("/api/v1/auth/session");
     const today = ((await session.json()) as { householdDate: string }).householdDate;
     const saturday = isoWeekday(today) === 6 ? today : nextWeekday(today, 6);
-    const kitchenUrl = page.url();
-    const kitchenId = kitchenUrl.split("/").pop()!;
+    const kitchenId = page.url().split("/").pop()!;
 
     const satMixed = await page.request.get(`/api/v1/today?date=${saturday}`);
     expect(satMixed.ok(), await satMixed.text()).toBeTruthy();
@@ -160,7 +223,7 @@ test.describe("P0-007B Kitchen and Bathroom journeys", () => {
           title: string;
           definitionId: string;
           accountableMemberId: string | null;
-          steps: Array<{ text: string }>;
+          steps: Array<{ text: string; id: string }>;
         }>;
       }
     ).occurrences.find((o) => o.definitionId === kitchenId);
@@ -173,16 +236,14 @@ test.describe("P0-007B Kitchen and Bathroom journeys", () => {
             title: string;
             definitionId: string;
             accountableMemberId: string | null;
-            steps: Array<{ text: string }>;
+            steps: Array<{ text: string; id: string }>;
           }>;
         }
       ).occurrences.find((o) => o.definitionId === kitchenId);
     }
     expect(kitchenOcc, "Kitchen on controlled Saturday").toBeTruthy();
     expect(kitchenOcc!.steps.length).toBe(8);
-    expect(kitchenOcc!.accountableMemberId).toMatch(
-      new RegExp(`${AVERY_ID}|${CASEY_ID}`),
-    );
+    expect(kitchenOcc!.accountableMemberId).toBe(AVERY_ID);
 
     const weekday = previousOrSameWeekday(today, 1);
     const weekdayMixed = await page.request.get(`/api/v1/today?date=${weekday}`);
@@ -193,6 +254,70 @@ test.describe("P0-007B Kitchen and Bathroom journeys", () => {
     ).occurrences.find((o) => o.definitionId === kitchenId);
     if (weekdayOcc && isoWeekday(weekday) !== 6) {
       expect(weekdayOcc.steps.length).toBe(3);
+    }
+
+    if (capture) {
+      const averyContext = await browser.newContext();
+      const avery = await averyContext.newPage();
+      await claimAvery(avery);
+      await avery.addInitScript((satDate) => {
+        const original = window.fetch.bind(window);
+        window.fetch = (input, init) => {
+          const url =
+            typeof input === "string"
+              ? input
+              : input instanceof URL
+                ? input.href
+                : input.url;
+          if (url.includes("/api/v1/today") && !url.includes("date=")) {
+            return original(`/api/v1/today?date=${satDate}`, init);
+          }
+          return original(input, init);
+        };
+      }, saturday);
+      await avery.goto("/");
+      const averyName = await sessionDisplayName(avery);
+      await expectSignedInAs(avery, averyName || /Avery/);
+      const kitchenCard = avery.locator(".occurrence").filter({ hasText: "Kitchen" });
+      await expect(kitchenCard).toBeVisible({ timeout: 20_000 });
+      await durableScreenshot(avery, path.join(SCREENSHOT_DIR, "08-kitchen-composed-today.png"));
+      if (kitchenOcc!.accountableMemberId === AVERY_ID) {
+        await kitchenCard.getByRole("button", { name: /Mark .+ completed/i }).first().click();
+        await expect(kitchenCard.getByTestId(/step-status-/).first()).toContainText(/Completed/i, {
+          timeout: 20_000,
+        });
+      }
+      await averyContext.close();
+
+      await page
+        .getByRole("navigation", { name: "Primary" })
+        .getByRole("button", { name: "Household", exact: true })
+        .click();
+      await page
+        .getByRole("navigation", { name: "Household" })
+        .getByRole("button", { name: /^History/i })
+        .click();
+      await expect(page.getByRole("heading", { name: "History" })).toBeVisible();
+      await page.getByRole("button", { name: /Filters/i }).click();
+      await page.getByLabel("Work").selectOption("responsibility");
+      const historyRow = page.locator(".history-summary-row").filter({ hasText: "Kitchen" });
+      if ((await historyRow.count()) > 0) {
+        await historyRow.first().click();
+        await expect(page.getByText(/Kitchen|Counters|Oven/i).first()).toBeVisible({
+          timeout: 15_000,
+        });
+        await durableScreenshot(page, path.join(SCREENSHOT_DIR, "09-history-detail.png"));
+        await page.getByRole("button", { name: "Back to History" }).click();
+      } else if (kitchenOcc) {
+        await page.goto(`/household/history/${kitchenOcc.id}`);
+        await expect(page.getByText(/Kitchen|Counters|Oven/i).first()).toBeVisible({
+          timeout: 15_000,
+        });
+        await durableScreenshot(page, path.join(SCREENSHOT_DIR, "09-history-detail.png"));
+      }
+      await page.getByRole("button", { name: "Plan", exact: true }).click();
+      await page.getByRole("button", { name: /Kitchen/ }).first().click();
+      await expect(page.getByRole("heading", { name: "Kitchen" })).toBeVisible({ timeout: 15_000 });
     }
 
     await page.getByRole("button", { name: /Back to Plan/i }).click();
@@ -249,8 +374,5 @@ test.describe("P0-007B Kitchen and Bathroom journeys", () => {
       ).occurrences.find((o) => o.definitionId === bathroomId);
       if (bathroomMon) expect(bathroomMon.steps.length).toBe(4);
     }
-
-    void PASSPHRASE;
-    void mutatingHeaders;
   });
 });

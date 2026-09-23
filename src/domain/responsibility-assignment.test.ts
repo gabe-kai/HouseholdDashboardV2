@@ -4,6 +4,10 @@ import {
   opportunityIndexForDate,
   resolveAssignmentOwner,
 } from "./responsibility-assignment.js";
+import {
+  householdDateFromInstant,
+  isoWeekdayForHouseholdDate,
+} from "./time.js";
 
 describe("responsibility assignment oracle", () => {
   const alwaysEligible = () => true;
@@ -78,5 +82,66 @@ describe("responsibility assignment oracle", () => {
   it("opportunity index is zero-based from anchor", () => {
     expect(opportunityIndexForDate("2026-09-01", "2026-09-01", [1, 2, 3, 4, 5])).toBe(0);
     expect(opportunityIndexForDate("2026-09-01", "2026-09-02", [1, 2, 3, 4, 5])).toBe(1);
+  });
+
+  it("DST spring-forward household date keeps ISO weekday weekly map", () => {
+    // 2024-03-10 America/New_York spring-forward; 08:00Z is still 2024-03-10 locally.
+    const nyDate = householdDateFromInstant(
+      new Date("2024-03-10T08:00:00.000Z"),
+      "America/New_York",
+    );
+    expect(nyDate).toBe("2024-03-10");
+    expect(isoWeekdayForHouseholdDate(nyDate)).toBe(7);
+    const weekly = resolveAssignmentOwner(
+      nyDate,
+      [1, 2, 3, 4, 5, 6, 7],
+      {
+        mode: "weekly",
+        anchorDate: "2024-03-04",
+        weeklyMap: {
+          1: "mon",
+          2: "tue",
+          3: "wed",
+          4: "thu",
+          5: "fri",
+          6: "sat",
+          7: "sun",
+        },
+      },
+      emptyRing,
+      alwaysEligible,
+    );
+    expect(weekly.accountableMemberId).toBe("sun");
+  });
+
+  it("traveling timezone resolves weekday from household-local date, not UTC", () => {
+    const instant = new Date("2024-03-10T08:00:00.000Z");
+    const laDate = householdDateFromInstant(instant, "America/Los_Angeles");
+    const tokyoDate = householdDateFromInstant(instant, "Asia/Tokyo");
+    expect(laDate).toBe("2024-03-10");
+    expect(tokyoDate).toBe("2024-03-10");
+    expect(isoWeekdayForHouseholdDate(laDate)).toBe(7);
+    // Same calendar date → same weekly owner regardless of travel TZ.
+    const map = {
+      mode: "weekly" as const,
+      anchorDate: "2024-03-04",
+      weeklyMap: {
+        1: "mon",
+        2: "tue",
+        3: "wed",
+        4: "thu",
+        5: "fri",
+        6: "sat",
+        7: "sun",
+      },
+    };
+    expect(
+      resolveAssignmentOwner(laDate, [1, 2, 3, 4, 5, 6, 7], map, emptyRing, alwaysEligible)
+        .accountableMemberId,
+    ).toBe("sun");
+    expect(
+      resolveAssignmentOwner(tokyoDate, [1, 2, 3, 4, 5, 6, 7], map, emptyRing, alwaysEligible)
+        .accountableMemberId,
+    ).toBe("sun");
   });
 });

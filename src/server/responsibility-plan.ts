@@ -80,6 +80,39 @@ export function insertResponsibilityPlan(
   ).run(revisionId, JSON.stringify(plan.assignment), JSON.stringify(plan.scheduledAdditions));
 }
 
+/** When a schedule boundary that introduced a cycle moves, keep that cycle's anchors with it. */
+export function shiftPlanAnchorsForBoundaryMove(
+  plan: StoredResponsibilityPlan,
+  oldBoundaryDate: HouseholdDate,
+  newBoundaryDate: HouseholdDate,
+): StoredResponsibilityPlan {
+  if (oldBoundaryDate === newBoundaryDate) return plan;
+  const shift = (assignment: AssignmentSpec | undefined): AssignmentSpec | undefined => {
+    if (!assignment) return assignment;
+    if (assignment.anchorDate !== oldBoundaryDate) return assignment;
+    return { ...assignment, anchorDate: newBoundaryDate };
+  };
+  return {
+    assignment: shift(plan.assignment)!,
+    scheduledAdditions: plan.scheduledAdditions.map((addition) => ({
+      ...addition,
+      assignment: shift(addition.assignment),
+    })),
+  };
+}
+
+export function updateResponsibilityPlan(
+  db: Database.Database,
+  revisionId: string,
+  plan: StoredResponsibilityPlan,
+): void {
+  db.prepare(
+    `UPDATE revision_responsibility_plans
+     SET assignment_json = ?, scheduled_additions_json = ?
+     WHERE revision_id = ?`,
+  ).run(JSON.stringify(plan.assignment), JSON.stringify(plan.scheduledAdditions), revisionId);
+}
+
 export function normalizeScheduledAdditions(
   additions: ScheduledAdditionSpec[] | undefined,
   _previous: ScheduledAdditionSpec[],

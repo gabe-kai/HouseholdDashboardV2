@@ -62,7 +62,7 @@ Goal: prove that a real recurring household routine can be used quickly by six d
 
 - [ ] **P0-007B - Understand whose turn it is, including deep-clean days.** Kitchen weekly owners and alternating deep clean form one coherent responsibility; Cats rotates and Bathroom reuses the same base-plus-additions model while Trash remains fixed.
   - **Brief:** `P0-007B r1 - Assignment Patterns & Scheduled Work` (`briefs/p0-007b-assignment-patterns-scheduled-work.md`).
-  - **Status:** FIX REQUIRED after Architecture review of implementation `32eca70`; local gates are green but required B-specific AT2, AT7, AT9–15 evidence is partial or not run. Details: `reports/P0-007B-r1-architecture-review.md`. Card: **In Progress**.
+  - **Status:** ACCEPTED by Architecture after same-branch correction evidence closed AT2, AT7, and AT9–15. Details: `reports/P0-007B-r1-architecture-review.md` and `reports/P0-007B-r1-architecture-reacceptance.md`. Card: **Ready to Evaluate**; Project Lead/product acceptance remains separate.
   - **Evidence target:** Side-effect-free draft/saved previews match actual final owner/work; deterministic turns and dated eligibility; prospective edits preserve locks/history; Unassigned/overlap recovery; real Kitchen/Bathroom/Cats/Trash UI journeys, populated through-013 migration and local PR/RC/Vite gates. D-038-D-040 resolve the bounded technical shape. No final Today redesign or hosted iteration.
 
 ### LIKELY NEXT

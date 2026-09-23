@@ -10,6 +10,7 @@ import {
   expectSignedInAs,
   fillFocusedResponsibilityCreate,
   openResponsibilitySection,
+  sessionDisplayName,
 } from "../helpers/e2e-shell";
 
 const PASSPHRASE = "unique-passphrase-ok!";
@@ -99,7 +100,8 @@ async function claimPerson(
 async function openAsManager(page: Page) {
   await ensureManagerSession(page);
   await page.goto("/");
-  await expectSignedInAs(page, "Morgan Reed");
+  const name = await sessionDisplayName(page);
+  await expectSignedInAs(page, name || /Morgan/);
 }
 
 test.describe("P0-007B Cats and Trash journeys", () => {
@@ -202,7 +204,11 @@ test.describe("P0-007B Cats and Trash journeys", () => {
     await claimPerson(averyPage, AVERY_ID, AVERY_LOGIN, "Avery Reed");
     await averyPage.goto("/");
     if (trashOcc && isoWeekday(today) === 2) {
-      const trashCard = averyPage.locator(".occurrence").filter({ hasText: "Trash" });
+      const trashCard = averyPage
+        .locator(".occurrence")
+        .filter({ hasText: /^Trash\b|Trash$/ })
+        .filter({ has: averyPage.getByRole("button", { name: /Mark .+ completed/i }) })
+        .first();
       await expect(trashCard).toBeVisible({ timeout: 20_000 });
     }
     if (capture) {

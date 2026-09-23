@@ -101,6 +101,8 @@ import {
   normalizeAssignmentInput,
   normalizeScheduledAdditions,
   resolveResponsibilityComposition,
+  shiftPlanAnchorsForBoundaryMove,
+  updateResponsibilityPlan,
   validateResponsibilityPlan,
   type CompositionDeps,
   type StoredResponsibilityPlan,
@@ -433,6 +435,16 @@ export class AppStore {
   private clearActivityFailureHook: (() => void) | null = null;
   /** Test-only: after checklist writes, before mutation receipt (AT6). */
   private stepStatusFailureHook: (() => void) | null = null;
+  /**
+   * Test-only: after responsibility plan/reconcile writes, before mutation receipt
+   * (P0-007B AT10). Throwing rolls back plan, occurrences, and receipt together.
+   */
+  private responsibilityPlanFailureHook: (() => void) | null = null;
+  /**
+   * Test-only: after group membership version + responsibility reconcile, before
+   * return (P0-007B AT10). Throwing rolls back group + dependent occurrences.
+   */
+  private groupUpdateFailureHook: (() => void) | null = null;
 
   setCalendarSaveFailureHook(hook: (() => void) | null): void {
     this.calendarSaveFailureHook = hook;
@@ -448,6 +460,14 @@ export class AppStore {
 
   setStepStatusFailureHook(hook: (() => void) | null): void {
     this.stepStatusFailureHook = hook;
+  }
+
+  setResponsibilityPlanFailureHook(hook: (() => void) | null): void {
+    this.responsibilityPlanFailureHook = hook;
+  }
+
+  setGroupUpdateFailureHook(hook: (() => void) | null): void {
+    this.groupUpdateFailureHook = hook;
   }
 
   hasGrant(ctx: AuthContext, grant: Grant): boolean {
@@ -1373,6 +1393,7 @@ export class AppStore {
             null,
           );
         }
+        this.groupUpdateFailureHook?.();
       }
     });
     tx();
@@ -1801,6 +1822,7 @@ export class AppStore {
     input: ResponsibilityInput,
     days = 7,
   ): ResponsibilityPreviewDay[] {
+    this.requireGrant(ctx, "responsibility.manage");
     this.validateResponsibilityInput(ctx, input, { draft: true });
     const today = this.householdDateNow(ctx);
     const previewDays = Math.max(1, Math.min(days, 31));
@@ -2295,6 +2317,7 @@ export class AppStore {
           responsibility,
           refineOutcome,
         };
+        this.responsibilityPlanFailureHook?.();
         this.writeRoutineMutationReceipt(
           input.mutationId,
           ctx.householdId,
@@ -3219,6 +3242,35 @@ export class AppStore {
               `UPDATE routine_schedule_entries SET start_date = ? WHERE id = ?`,
             )
             .run(input.startDate, scheduleEntryId);
+
+          // Moving a boundary that introduced a cycle moves that cycle's anchors with it.
+          const plan = loadResponsibilityPlan(this.db, entry.revision_id);
+          if (plan) {
+            const shifted = shiftPlanAnchorsForBoundaryMove(
+              plan,
+              oldStart,
+              input.startDate,
+            );
+            if (
+              shifted.assignment.anchorDate !== plan.assignment.anchorDate ||
+              JSON.stringify(shifted.scheduledAdditions) !==
+                JSON.stringify(plan.scheduledAdditions)
+            ) {
+              updateResponsibilityPlan(this.db, entry.revision_id, shifted);
+            }
+          }
+          const revision = this.db
+            .prepare(
+              `SELECT effective_date FROM routine_revisions WHERE id = ?`,
+            )
+            .get(entry.revision_id) as { effective_date: string } | undefined;
+          if (revision?.effective_date === oldStart) {
+            this.db
+              .prepare(
+                `UPDATE routine_revisions SET effective_date = ? WHERE id = ?`,
+              )
+              .run(input.startDate, entry.revision_id);
+          }
         }
 
         this.db
@@ -3998,7 +4050,7 @@ export class AppStore {
           household_id: string;
           definition_id: string;
           household_date: string;
-          accountable_member_id: string;
+          accountable_member_id: string | null;
           occurrence_kind: string | null;
           definition_kind: string | null;
         }
@@ -4019,6 +4071,7 @@ export class AppStore {
       row.definition_id,
       row.household_date,
       row.accountable_member_id,
+      kind,
     );
     if (!view) fail("NOT_FOUND", "Occurrence not found");
     return {
@@ -4961,16 +5014,17 @@ export class AppStore {
     if (allowedKinds.length === 0) return [];
     const rows = this.db
       .prepare(
-        `SELECT o.definition_id, o.accountable_member_id, o.kind, hm.sort_order
+        `SELECT o.definition_id, o.accountable_member_id, o.kind,
+                COALESCE(hm.sort_order, 2147483647) AS sort_order
          FROM occurrences o
-         JOIN household_memberships hm ON hm.id = o.accountable_member_id
+         LEFT JOIN household_memberships hm ON hm.id = o.accountable_member_id
          WHERE o.household_id = ? AND o.household_date = ?
            AND (o.canceled_at IS NULL OR o.started_at IS NOT NULL)
-         ORDER BY hm.sort_order, hm.id, o.definition_id`,
+         ORDER BY sort_order, COALESCE(hm.id, ''), o.definition_id`,
       )
       .all(householdId, householdDate) as Array<{
       definition_id: string;
-      accountable_member_id: string;
+      accountable_member_id: string | null;
       kind: string | null;
       sort_order: number;
     }>;
@@ -4980,10 +5034,13 @@ export class AppStore {
       const kind: WorkKind =
         row.kind === "responsibility" ? "responsibility" : "routine";
       if (!allowed.has(kind)) continue;
+      // Routines require an owner; responsibilities may be explicitly Unassigned.
+      if (kind === "routine" && !row.accountable_member_id) continue;
       const view = this.getOccurrenceView(
         row.definition_id,
         householdDate,
         row.accountable_member_id,
+        kind,
       );
       if (!view) continue;
       // Same omit rule as Today: empty unstarted rows are not historically visible.
@@ -4993,10 +5050,10 @@ export class AppStore {
     results.sort((a, b) => {
       const orderA =
         rows.find((row) => row.accountable_member_id === a.accountableMemberId)
-          ?.sort_order ?? 0;
+          ?.sort_order ?? 2147483647;
       const orderB =
         rows.find((row) => row.accountable_member_id === b.accountableMemberId)
-          ?.sort_order ?? 0;
+          ?.sort_order ?? 2147483647;
       if (orderA !== orderB) return orderA - orderB;
       return compareOccurrenceOrder(a, b);
     });

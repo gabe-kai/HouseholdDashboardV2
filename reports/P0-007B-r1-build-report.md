@@ -1,84 +1,85 @@
 # Build Report - BRIEF P0-007B r1
 
 **Brief revision implemented:** 1  
-**Engineering status:** IMPLEMENTED (local PR/RC gates green; awaiting Architecture technical acceptance)  
+**Engineering status:** FIX REQUIRED closed (local; awaiting Architecture re-acceptance)  
 **Branch:** `brief/p0-007b-assignment-patterns-scheduled-work`  
 **Base:** Architecture ACCEPT/PROCEED `ee71cf7`; integrated main parent **`51322e0`**  
-**Working tree:** uncommitted implementation on the brief branch (Project Lead manages Git)  
+**Prior implementation tip:** `32eca70`  
+**Architecture review:** `reports/P0-007B-r1-architecture-review.md` (FIX REQUIRED)  
+**Corrections (this pass):** uncommitted evidence on the same branch after `d69ef33`  
 **Pull request:** N/A  
 
 ## Readiness
 
-Contract unchanged; **no new readiness round**. Architecture ACCEPT/PROCEED for P0-007B r1 remains the authorization. Card **Understand whose turn it is, including deep-clean days** is **In Progress**.
+Contract unchanged; **no new readiness round**. Architecture FIX REQUIRED findings for AT2, AT7, AT9–15 are closed with B-specific automated evidence below. Card **Understand whose turn it is, including deep-clean days** remains **In Progress**.
 
-## What changed
+## What changed (FIX REQUIRED pass)
 
-- **Migration 014** (`db/migrations/014_assignment_patterns_scheduled_work.sql`): nullable unstarted responsibility owners; `structure_fingerprint` / `unassigned_reason`; `revision_responsibility_plans` (assignment + scheduled additions JSON); `occurrence_steps.addition_id` / `addition_heading`; fixed-plan backfill from legacy assignees; recreate 012 integrity triggers after occurrences rebuild.
-- **Domain:** `src/domain/responsibility-assignment.ts`, `responsibility-composition.ts` (+ unit tests) — fixed / take turns / weekly, opportunity-count anchors, composition, overlap rejection.
-- **Server:** `src/server/responsibility-plan.ts`; `store.ts` shared resolve for preview / materialize / reconcile; draft preview API; Unassigned materialization; structure fingerprint on first action; group-change prospective reconcile; legacy fixed fallback when no plan row.
-- **Schemas / routes / client API / outbox:** assignment + scheduled-addition payloads; `POST /api/v1/responsibilities/preview-draft`; route-policy inventory.
-- **UI:** `Responsibilities.tsx` assignment modes, scheduled-work editors, Upcoming preview, Confirm-and-save for non-fixed / owner-setting drafts; Unassigned labels in App / History / PeopleGroups.
-- **Evidence:** `tests/helpers/p013-fixture.ts`; `tests/integration/p0-007b.test.ts`; e2e `z-p0-007b-kitchen-bathroom.spec.ts`, `z-p0-007b-cats-trash.spec.ts`; e2e-shell helpers updated for B Who/Work chrome; prior A e2e adapted to Upcoming/Base nesting; legacy 007A screenshot capture frozen (`CAPTURE_LEGACY_007A_SCREENSHOTS = false`).
-- **Docs:** `docs/protected-behaviors.md` PB-43–46 + sync matrix; `ARCHITECTURE.md` B delivery note; `PROJECT_STATE.md` IMPLEMENTING / card In Progress.
+- **Store / plan:** `shiftPlanAnchorsForBoundaryMove` + `updateResponsibilityPlan`; schedule move shifts cycle anchors (and matching addition anchors) with the boundary; `setResponsibilityPlanFailureHook` / `setGroupUpdateFailureHook`; `previewDraftResponsibility` requires `responsibility.manage`; History LEFT JOIN for Unassigned.
+- **Integration:** `tests/integration/p0-007b.test.ts` AT2b (move shifts anchor, delete restores predecessor, DST/travel TZ, restart, reset phase, group arbitration), AT10b (both race orders + injectable plan/group rollback), AT13 (History headings/Unassigned + clear retains anchors), AT14 (preview-draft grant, foreign household, plan-reference cleanup).
+- **Domain:** DST/travel weekday cases in `responsibility-assignment.test.ts`.
+- **Cleanup:** `has_responsibility_plan_reference` blocker in `cleanup-fixtures.ts`.
+- **E2e:** `z-p0-007b-group-eligibility.spec.ts` (AT7), `z-p0-007b-lifecycle.spec.ts` (AT9), `z-p0-007b-offline-live.spec.ts` (AT11/AT12), `z-p0-007b-geometry.spec.ts` (AT15 360/1280/200%); Kitchen WebKit-eligible journey + B screenshots.
+- **Screenshots (new only under `reports/p0-007b-r1-screenshots/`):** `06-weekly-preview`, `06-unassigned-activity`, `07-addition-editor`, `07-addition-removed`, `08-kitchen-composed-today`, `09-history-detail` (+ prior `01`–`05`). Prior `p0-005` / `p0-006b` / `p0-006c` / `p0-007a` dirs unchanged.
 
 ## Verification performed
 
 | Check | Result |
 | --- | --- |
-| `npm test` (via validate) | **PASS** — **183** tests / **30** files |
-| `npm run validate:pr` | **PASS** — Chromium e2e **47/47** + Vite **2/2** (`reports/p0-007b-r1-validate-pr.log`) |
-| `npm run validate:rc` | **PASS** — Chromium+WebKit **75/75** (+ **15** skipped) + Vite **2/2** (`reports/p0-007b-r1-validate-rc.log`) |
-| Prior `p0-005` / `p0-006b` / `p0-006c` / `p0-007a` screenshots | **PASS** — SHA-256 unchanged through gates (30 files; 007A capture frozen) |
-| Current-brief screenshots | `reports/p0-007b-r1-screenshots/` (Kitchen, Bathroom, Cats, Trash, Today) |
+| `npm test` / vitest | **PASS** — **189** tests / **30** files |
+| `npm run validate:pr` | **PASS** — see `reports/p0-007b-r1-validate-pr.log` (189 unit + Chromium e2e + Vite) |
+| `npm run validate:rc` | **PASS** — see `reports/p0-007b-r1-validate-rc.log` (189 unit + full e2e incl. WebKit + Vite) |
+| Prior `p0-005` / `p0-006b` / `p0-006c` / `p0-007a` screenshot dirs | Unchanged in git working tree |
+| Current-brief screenshots | `reports/p0-007b-r1-screenshots/` (`01`–`09`, including B-only `06`–`09`) |
 | Deployment | **NOT RUN** |
 
 ## Acceptance tests (AT1–16)
 
 | AT | Result | Evidence class | Evidence |
 | --- | --- | --- | --- |
-| 1 - Populated upgrade | **PASS** | Automated | `tests/integration/p0-007b.test.ts` AT1; `tests/helpers/p013-fixture.ts`; older 010/013 baselines retained |
-| 2 - Assignment/date oracle | **PARTIAL** | Automated | Unit + integration AT2 cover fixed / take turns / weekly / group ring / repeated preview. Full DST/travel browser matrix and every boundary-move case **not fully automated** |
-| 3 - Preview read isolation | **PASS** | Automated | Integration AT3 (DB counts unchanged for saved + draft preview) |
-| 4 - Kitchen normal UI | **PASS** | Automated | `z-p0-007b-kitchen-bathroom.spec.ts` Chromium; screenshots `01-kitchen-detail.png` |
-| 5 - Bathroom normal UI | **PASS** | Automated | Same e2e file; Sunday inherit composition (9 steps); `02-bathroom-detail.png` |
-| 6 - Cats and Trash normal UI | **PASS** | Automated | `z-p0-007b-cats-trash.spec.ts`; take-turns Cats + fixed Tuesday Trash; `03`–`05` screenshots |
-| 7 - Eligibility / Unassigned | **PARTIAL** | Automated | Integration AT7 Unassigned materialize + execution forbidden. Full browser group-edit / entrants / tombstone journey **not-run** as a dedicated e2e |
-| 8 - Composition / overlap | **PASS** | Automated | Integration AT8 + composition unit tests |
-| 9 - Lifecycle / range UI | **PARTIAL** | Automated | Prior A lifecycle e2e adapted for Base nesting (AT5/8 schedule later). Dedicated B addition-remove / predecessor-anchor restore UI **partial** |
-| 10 - Lock / race / rollback | **PARTIAL** | Automated | Integration AT10 structure fingerprint stale intent. Full bidirectional group/addition race matrix + injectable rollback **not fully automated** |
-| 11 - Offline / replay | **NOT RUN** | — | Relies on preserved A outbox/generation e2e; no new B multi-context offline kitchen journey |
-| 12 - Live convergence | **NOT RUN** | — | No new dual-manager WS/visibility B e2e; prior A sync paths preserved |
-| 13 - History / reset | **PARTIAL** | Automated | Unassigned History grouping present in client; clear retention covered by prior A/C tests. Mixed B History headings after rule change **not newly e2e’d** |
-| 14 - Authority / reference | **PARTIAL** | Automated | Route-policy includes preview-draft; prior A permission matrix retained. Full B addition/exclusion cleanup inventory expansion **not newly proven** |
-| 15 - Focused UX / evidence | **PARTIAL** | Automated | Kitchen/Cats screenshots on phone Chromium; 360/1280 geometry retained via adapted AT14. WebKit Kitchen journey deferred to `validate:rc` |
-| 16 - Regression gates / report | **PASS** | Automated | This report; `validate:pr` 47+2; `validate:rc` 75+2; prior screenshot dirs SHA-256 unchanged |
+| 1 - Populated upgrade | **PASS** | Automated | `p0-007b.test.ts` AT1; `p013-fixture.ts` |
+| 2 - Assignment/date oracle | **PASS** | Automated | AT2 + **AT2b**: upcoming move shifts `assignment.anchorDate` with boundary; delete restores predecessor owners/indexes; household midnight DST + travel TZ weekday; reopen DB preserves anchors; clear rematerializes same phase; group next-day arbitration with started-today protected. Unit DST/travel cases. |
+| 3 - Preview read isolation | **PASS** | Automated | Integration AT3 |
+| 4 - Kitchen normal UI | **PASS** | Automated | `z-p0-007b-kitchen-bathroom.spec.ts` Chromium + WebKit |
+| 5 - Bathroom normal UI | **PASS** | Automated | Same e2e |
+| 6 - Cats and Trash normal UI | **PASS** | Automated | `z-p0-007b-cats-trash.spec.ts` |
+| 7 - Eligibility / Unassigned | **PASS** | Automated | Integration AT7 + **e2e** `z-p0-007b-group-eligibility.spec.ts`: linked group + exclusions + pending-access eligibility; membership remove (next-day) + returnee; Unassigned warning → Fixed repair preserves occurrence id; family rename updates preview; referenced-group delete blocked (tombstone/reference) |
+| 8 - Composition / overlap | **PASS** | Automated | Integration AT8 + composition unit |
+| 9 - Lifecycle / range UI | **PASS** | Automated | **e2e** `z-p0-007b-lifecycle.spec.ts`: remove used Deep Clean prospectively; started history step count retained; Schedule for later edit; occupied-date collision keeps draft; Delete upcoming restores predecessor owners |
+| 10 - Lock / race / rollback | **PASS** | Automated | AT10 + **AT10b**: first-action vs revise / group / End in both orders; injectable plan + group failure hooks roll back plan/group, occurrences, receipts together |
+| 11 - Offline / replay | **PASS** | Automated | **e2e** AT11: composed Kitchen offline first action → reload → Unassigned replacement owner → reconnect rejects/clears intent without starting Unassigned work; delayed taps + digest/target mismatch |
+| 12 - Live convergence | **PASS** | Automated | **e2e** AT12: dual-manager Plan/detail/preview + old/new owner Today converge on Who save; WS suppress/stale + visibility recovery; held stale preview cannot win; dirty draft keeps Who and surfaces conflict |
+| 13 - History / reset | **PASS** | Automated | **AT13**: composed headings/Unassigned History after rule change; clear retains plan anchors and rematerialized phase |
+| 14 - Authority / reference | **PASS** | Automated | **AT14**: structure vs `responsibility.manage` for create/preview-draft; executor denied; foreign household isolation; `has_responsibility_plan_reference` cleanup blocker |
+| 15 - Focused UX / evidence | **PASS** | Automated | Kitchen WebKit-eligible; B screenshots 06–09; `z-p0-007b-geometry.spec.ts` Edit/Upcoming/Add scheduled work at 360, 1280, and 200% text |
+| 16 - Regression gates / report | **PASS** | Automated | This report; exact PR/RC logs; prior screenshot dirs unchanged |
 
 ## Evidence classes
 
-- **Automated:** Vitest unit/integration; Playwright Chromium (and WebKit under RC).
-- **Manual:** Product clarity of Upcoming / Confirm-and-save preview (outside Engineering gates).
-- **Not run:** Hosted/physical-device; AT11/AT12 dedicated B multi-context; full AT7 browser group journey; production deploy.
+- **Automated:** Vitest unit/integration; Playwright Chromium (+ WebKit under RC); B screenshots under `p0-007b-r1-screenshots/` only.
+- **Manual:** Product clarity of Upcoming / Confirm-and-save (Project Lead evaluation after technical acceptance).
+- **Not run:** Hosted/physical-device; production deploy.
 
 ## Local evaluation recipe (Kitchen / Cats / Bathroom / Trash)
 
 1. Fresh disposable DB; `npm run db:migrate`; bootstrap manager; enroll Avery/Casey/Jordan.
-2. Plan → Add responsibility → Kitchen, every day, weekly Avery/Casey/Avery/Casey/Jordan/Avery/Casey, base Counters/Dishes/Sweep, Saturday Deep Clean (Avery/Casey turns). Confirm preview → create.
-3. Expand Upcoming; verify Saturday shows deep-clean owner and 8 items; weekday shows 3.
-4. Bathroom: fixed Jordan, Sunday inherit addition; verify 9 vs 4 steps.
-5. Convert Cats to Take turns Avery→Casey→Jordan; keep Trash fixed Tuesday Avery.
-6. Advance household test date only via controlled seams (do not write real future checklist intent outside tests).
+2. Plan → Kitchen every day, weekly Avery/Casey/…, base three steps, Saturday Deep Clean turns; Confirm preview → create.
+3. Expand Upcoming; Saturday 8 items; weekday 3.
+4. Bathroom fixed Jordan + Sunday inherit; Cats take turns; Trash fixed Tuesday.
+5. Group-backed turn + Unassigned repair via Plan/People; clear activity on disposable data only.
 
 ## Suggested commit message (do not commit)
 
 ```
-P0-007B: assignment patterns, scheduled work, and Unassigned (r1)
+P0-007B: close r1 FIX REQUIRED B-specific acceptance evidence
 
-Add migration 014, shared composition resolver, responsibility UI,
-and Kitchen/Bathroom/Cats/Trash evidence with populated through-013 fixture.
+Add AT2b/7/9–15 integration and e2e coverage, schedule-move anchor shift,
+plan/group rollback hooks, Unassigned History, and plan-reference cleanup;
+keep prior screenshots frozen.
 ```
 
 ## Coordinator / Project Lead next
 
 - Commit on `brief/p0-007b-assignment-patterns-scheduled-work` when ready.
-- Architecture technical acceptance after reviewing this report and gate logs.
-- Do not merge/deploy until Project Lead authorizes.
+- Architecture re-reviews this corrected Build Report against the same r1 contract.
+- Do not merge/deploy until Architecture accepts and Project Lead authorizes.

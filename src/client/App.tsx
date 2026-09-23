@@ -901,7 +901,9 @@ export function App() {
     reconcileOccurrence(occurrence, outbox),
   );
   const projectedOwn = projectedOccurrences.filter(
-    (occurrence) => occurrence.accountableMemberId === activeSession.member.id,
+    (occurrence) =>
+      occurrence.accountableMemberId !== null &&
+      occurrence.accountableMemberId === activeSession.member.id,
   );
   const pendingCount = outbox.filter((item) => item.state !== "rejected").length;
   const primaryTab = primaryTabFor(location);

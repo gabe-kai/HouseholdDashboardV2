@@ -80,10 +80,11 @@ function groupByPersonThenDate(
     const byPerson = new Map<string, HistoryOccurrenceSummary[]>();
     const names = new Map<string, string>();
     for (const row of rows) {
-      const list = byPerson.get(row.accountableMemberId) ?? [];
+      const memberKey = row.accountableMemberId ?? "__unassigned__";
+      const list = byPerson.get(memberKey) ?? [];
       list.push(row);
-      byPerson.set(row.accountableMemberId, list);
-      names.set(row.accountableMemberId, row.accountableMemberName);
+      byPerson.set(memberKey, list);
+      names.set(memberKey, row.accountableMemberName ?? "Unassigned");
     }
     const people = [...byPerson.entries()]
       .sort((a, b) => {

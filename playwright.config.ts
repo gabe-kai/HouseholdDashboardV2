@@ -40,7 +40,7 @@ export default defineConfig({
   retries: 0,
   workers: 1,
   timeout: 120_000,
-  globalTimeout: 20 * 60_000,
+  globalTimeout: 30 * 60_000,
   expect: { timeout: 20_000 },
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
@@ -78,6 +78,7 @@ export default defineConfig({
         "**/z-p0-006a-geometry.spec.ts",
         "**/z-p0-006c-geometry.spec.ts",
         "**/z-p0-007a-geometry.spec.ts",
+        "**/z-p0-007b-geometry.spec.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],

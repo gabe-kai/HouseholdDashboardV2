@@ -14,10 +14,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  pull-request:
-    name: Pull-request validation
+  # ── Static checks ──────────────────────────────────────────────
+  lint-typecheck:
+    name: "Checks · Lint & typecheck"
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 15
     steps:
       - name: Check out
         uses: actions/checkout@v4
@@ -37,41 +38,253 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+  # ── Automated tests (non-browser) ──────────────────────────────
+  unit:
+    name: "Checks · Unit & integration"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Unit and integration tests
         run: npm test
+
+  # ── Production build (shared by Chromium e2e shards) ───────────
+  build:
+    name: "Build · Production"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Production build
         run: npm run build
 
+      - name: Upload dist for e2e shards
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-dist
+          path: dist/
+          retention-days: 1
+
+  # ── E2E shards (parallel after build; short pasteable logs) ────
+  e2e-phone-core:
+    name: "E2E · Phone core (pre-P0-007)"
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download production dist
+        uses: actions/download-artifact@v4
+        with:
+          name: production-dist
+          path: dist/
+
       - name: Install Playwright Chromium OS deps
         run: npx playwright install --with-deps chromium
 
-      # Split Chromium e2e so a single failure stays in a short, pasteable log.
-      - name: E2E Chromium phone (pre-P0-007)
+      - name: Run phone e2e (exclude P0-007)
         run: npx playwright test --project=chromium --grep-invert "P0-007"
         env:
           CI: true
           E2E_SKIP_BUILD: "1"
 
-      - name: E2E Chromium phone P0-007A
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-e2e-phone-core-failure
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  e2e-phone-007a:
+    name: "E2E · Phone P0-007A"
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download production dist
+        uses: actions/download-artifact@v4
+        with:
+          name: production-dist
+          path: dist/
+
+      - name: Install Playwright Chromium OS deps
+        run: npx playwright install --with-deps chromium
+
+      - name: Run phone e2e P0-007A
         run: npx playwright test --project=chromium --grep "P0-007A"
         env:
           CI: true
           E2E_SKIP_BUILD: "1"
 
-      - name: E2E Chromium phone P0-007B
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-e2e-phone-007a-failure
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  e2e-phone-007b:
+    name: "E2E · Phone P0-007B"
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download production dist
+        uses: actions/download-artifact@v4
+        with:
+          name: production-dist
+          path: dist/
+
+      - name: Install Playwright Chromium OS deps
+        run: npx playwright install --with-deps chromium
+
+      - name: Run phone e2e P0-007B
         run: npx playwright test --project=chromium --grep "P0-007B"
         env:
           CI: true
           E2E_SKIP_BUILD: "1"
 
-      - name: E2E Chromium desktop geometry
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-e2e-phone-007b-failure
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  e2e-desktop:
+    name: "E2E · Desktop geometry"
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download production dist
+        uses: actions/download-artifact@v4
+        with:
+          name: production-dist
+          path: dist/
+
+      - name: Install Playwright Chromium OS deps
+        run: npx playwright install --with-deps chromium
+
+      - name: Run desktop geometry e2e
         run: npx playwright test --project=chromium-desktop
         env:
           CI: true
           E2E_SKIP_BUILD: "1"
 
-      - name: E2E Vite deep-link smoke
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-e2e-desktop-failure
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  e2e-vite:
+    name: "E2E · Vite deep-link"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium OS deps
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Vite deep-link smoke
         run: npm run test:e2e:vite
         env:
           CI: true
@@ -80,9 +293,45 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-e2e-failure
+          name: playwright-e2e-vite-failure
           path: |
             test-results/
             playwright-report/
           if-no-files-found: ignore
           retention-days: 7
+
+  # ── Single aggregate check (branch protection / merge gate) ────
+  validate-pr:
+    name: Pull-request validation
+    needs:
+      - lint-typecheck
+      - unit
+      - build
+      - e2e-phone-core
+      - e2e-phone-007a
+      - e2e-phone-007b
+      - e2e-desktop
+      - e2e-vite
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all thematic jobs
+        run: |
+          set -euo pipefail
+          results=(
+            "${{ needs.lint-typecheck.result }}"
+            "${{ needs.unit.result }}"
+            "${{ needs.build.result }}"
+            "${{ needs.e2e-phone-core.result }}"
+            "${{ needs.e2e-phone-007a.result }}"
+            "${{ needs.e2e-phone-007b.result }}"
+            "${{ needs.e2e-desktop.result }}"
+            "${{ needs.e2e-vite.result }}"
+          )
+          for result in "${results[@]}"; do
+            if [[ "$result" != "success" ]]; then
+              echo "One or more validate-pr jobs failed (got: ${results[*]})"
+              exit 1
+            fi
+          done
+          echo "All validate-pr thematic jobs succeeded."

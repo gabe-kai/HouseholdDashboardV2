@@ -58,20 +58,29 @@ Goal: prove that a real recurring household routine can be used quickly by six d
   - **Brief:** `P0-007A r1 - Household Responsibility Foundation` (`briefs/p0-007a-household-responsibility-foundation.md`).
   - **Result:** Technically accepted at `bb21d74`, acceptance writeback `7539fd0`, merged via PR #15 at `51322e0`. The supplied Design handoff accepts A as the foundation slice and carries presentation findings to C. Card: **Accepted** as that foundation.
 
+- [x] **P0-007B - Understand whose turn it is, including deep-clean days.** Kitchen weekly owners and alternating deep clean form one coherent responsibility; Cats rotates and Bathroom reuses the same base-plus-additions model while Trash remains fixed.
+  - **Brief:** `P0-007B r1 - Assignment Patterns & Scheduled Work` (`briefs/p0-007b-assignment-patterns-scheduled-work.md`).
+  - **Status:** ACCEPTED by Architecture after same-branch correction evidence closed AT2, AT7, and AT9–15; now integrated in inspected `main` at `e8f59b4`. Details: `reports/P0-007B-r1-architecture-review.md` and `reports/P0-007B-r1-architecture-reacceptance.md`. Product acceptance remains separate; Design's revised C proposal builds on this foundation.
+  - **Evidence target:** Side-effect-free draft/saved previews match actual final owner/work; deterministic turns and dated eligibility; prospective edits preserve locks/history; Unassigned/overlap recovery; real Kitchen/Bathroom/Cats/Trash UI journeys, populated through-013 migration and local PR/RC/Vite gates. D-038-D-040 resolve the bounded technical shape. No final Today redesign or hosted iteration.
+
 ### CURRENT
 
-- [ ] **P0-007B - Understand whose turn it is, including deep-clean days.** Kitchen weekly owners and alternating deep clean form one coherent responsibility; Cats rotates and Bathroom reuses the same base-plus-additions model while Trash remains fixed.
-  - **Brief:** `P0-007B r1 - Assignment Patterns & Scheduled Work` (`briefs/p0-007b-assignment-patterns-scheduled-work.md`).
-  - **Status:** ACCEPTED by Architecture after same-branch correction evidence closed AT2, AT7, and AT9–15. Details: `reports/P0-007B-r1-architecture-review.md` and `reports/P0-007B-r1-architecture-reacceptance.md`. Card: **Ready to Evaluate**; Project Lead/product acceptance remains separate.
-  - **Evidence target:** Side-effect-free draft/saved previews match actual final owner/work; deterministic turns and dated eligibility; prospective edits preserve locks/history; Unassigned/overlap recovery; real Kitchen/Bathroom/Cats/Trash UI journeys, populated through-013 migration and local PR/RC/Vite gates. D-038-D-040 resolve the bounded technical shape. No final Today redesign or hosted iteration.
+- [ ] **P0-007C-1 - Know what to do next and what the household still needs.** Mixed personal Today with quiet Completed, one focused Next, compact Later and Anytime; summary-first Household with responsibility owners and routine/person completion drill-down.
+  - **Brief:** `P0-007C-1 r1 - Actionable Today and Household Overview` (`briefs/p0-007c-1-actionable-today-household-overview.md`).
+  - **Status:** IN REVIEW; Engineering readiness pending. Card: **Up Next**. Baseline: inspected integrated `main` at `e8f59b4`; D-041/D-042 define the bounded projection and scope.
+  - **Evidence target:** Real phone/desktop Today and four-person Household journeys; honest obligation counts, privacy/per-kind scope, pending/offline/reset and live summary/detail recovery; local PR/RC/Vite plus CI-selection evidence. Visuals remain ignored local evidence. No display credentials, shared execution, hosting or production changes in this planning task.
 
 ### LIKELY NEXT
 
-- [ ] **P0-007C - See the household's work as one useful day.** Use actual routines, responsibilities and personal tasks for quiet Completed, one dominant Next, compact Later and Anytime Today. Household shows compact responsibility/routine aggregates with drill-down instead of expanded checklists; improve density and friendly copy. Exact presentation/evidence follows B use within the existing proposal; no new Product resubmission or C implementation is requested by B.
+These are the remaining two slices of the **same revised P0-007C Design proposal**, not requests to return to Product for the same information. Only C-1 is presently an implementation brief; refine later details from its evidence.
+
+- [ ] **P0-007C-2 - See the family day from across the room.** Manager-enrolled/revocable household-owned display identity, persistent restricted read-only access and privacy-filtered By person/By work projections. Show household date/time, six-person readable 4K layout and touch drill-down without administrative navigation or a fake member. This is deliberately read-only until C-3; preserve the full interactive outcome.
+- [ ] **P0-007C-3 - Act at the shared display without losing trust.** Normal assigned checklist execution with truthful display actor and unchanged accountable ownership, safe pending/reconnect/restart behavior, and owner-controlled personal-work promotion distinct from visibility. Private work never reaches the display; shared unpromoted work remains detail-only there. Complete cross-device evidence and real 27-inch evaluation at 10 and 16 feet before calling the full C outcome evaluated.
 
 ### LATER
 
-- After evaluation of the completed P0-007 outcome, possible directions include helpers, Cover/Claim, household exceptions/Skip Day, or richer Today timing. None is pre-selected as the next implementation commitment.
+- After real-family evaluation of the completed P0-007C outcome, choose the next pressure: helpers, Cover/Claim, household exceptions/Skip Day, exact-time behavior, richer personal/school projects or notifications. None is pre-selected as the next implementation commitment.
+- Preserve owner-controlled visibility, separately authorized future parent overrides for minors, long-running projects/subtasks/milestones/due dates/daily targets and compact shared project summaries. Due dates or progress must never expose private work. Broader ambient display feeds follow a useful functional display, not before it.
 - Additional ordinary responsibilities (Cars, lawn care, medication, seasonal maintenance), richer personal work, and assignment refinement remain Product pressure tests; no domain-specific implementation is authorized in B.
 - Broader-release privacy, recovery, offline behavior, and operational confidence.
 - Detailed unscheduled product memory: [`PRODUCT.md` — Deferred / Preserved Product Directions](PRODUCT.md#deferred--preserved-product-directions). This inventory is not a sequence of implementation commitments.

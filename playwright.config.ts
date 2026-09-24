@@ -48,7 +48,9 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: `npm run build && npx tsx tests/e2e/start-server.ts`,
+      command: process.env.E2E_SKIP_BUILD
+        ? `npx tsx tests/e2e/start-server.ts`
+        : `npm run build && npx tsx tests/e2e/start-server.ts`,
       url: `${chromiumURL}/api/v1/health`,
       reuseExistingServer: false,
       timeout: 180_000,

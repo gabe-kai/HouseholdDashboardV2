@@ -19,9 +19,9 @@
 
 ## Current focus
 
-**P0-007C-1 r1 - Actionable Today and Household Overview** is **IN REVIEW**, the first of three slices of the revised Design proposal. Authoritative brief: `briefs/p0-007c-1-actionable-today-household-overview.md`; D-041/D-042; card **Know what to do next and what the household still needs** is **Up Next**. Engineering readiness is pending; no C-1 implementation is claimed. C-2 restricted read-only Household Display and C-3 shared execution/personal promotion remain LIKELY NEXT under the same proposal.
+**P0-007C-1 r1 - Actionable Today and Household Overview** is **IN REVIEW** with Engineering readiness **READY**. Authoritative brief: `briefs/p0-007c-1-actionable-today-household-overview.md`; readiness report: `reports/P0-007C-1-r1-engineering-readiness.md`; D-041/D-042; card **Know what to do next and what the household still needs** remains **Up Next**. Architecture ACCEPT / PROCEED is required before implementation. C-2 restricted read-only Household Display and C-3 shared execution/personal promotion remain LIKELY NEXT under the same proposal.
 
-Inspected clean local `main` at **e8f59b4** on 2026-09-24 includes accepted A/B and repository screenshot/history cleanup. Old reports retain historical SHAs; new work should anchor to the actual current tree. B evidence remains `reports/P0-007B-r1-build-report.md` and `reports/P0-007B-r1-architecture-reacceptance.md`; Product acceptance is separate from technical integration.
+Inspected clean integrated `main` at **e8f59b4** on 2026-09-24 includes accepted A/B and repository screenshot/history cleanup. Old reports retain historical SHAs; new work should anchor to the actual current tree. B evidence remains `reports/P0-007B-r1-build-report.md` and `reports/P0-007B-r1-architecture-reacceptance.md`; Product acceptance is separate from technical integration.
 
 ## Internal work status
 
@@ -38,7 +38,7 @@ Inspected clean local `main` at **e8f59b4** on 2026-09-24 includes accepted A/B 
 | P0-006C - Household Profiles and Useful History | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `409d147` via PR #14 | Product acceptance remains separate |
 | P0-007A - Household Responsibility Foundation | r1 | ACCEPTED | Completed foundation | Merged to `main` at `51322e0` via PR #15 | None for A; Design carries presentation feedback to C |
 | P0-007B - Assignment Patterns & Scheduled Work | r1 | ACCEPTED | Integrated foundation | Included in inspected `main` at `e8f59b4` | Product evaluation remains separate; C carries daily-presentation direction |
-| P0-007C-1 - Actionable Today and Household Overview | r1 | IN REVIEW | Engineering readiness next | Suggested: `brief/p0-007c-1-actionable-today-household-overview` (not created) | Consolidated readiness, then Architecture ACCEPT / PROCEED |
+| P0-007C-1 - Actionable Today and Household Overview | r1 | IN REVIEW | Architecture ACCEPT / PROCEED | `brief/p0-007c-1-actionable-today-household-overview` | Architecture ACCEPT / PROCEED before implementation |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -62,15 +62,15 @@ This table is the short repository-side coordination index. An external project 
 
 ## Known blockers
 
-- No known material blocker for C-1 readiness. New C tests must be explicitly included in the existing thematic CI selectors; current selectors cover pre-007/A/B. Required-check branch protection remains an external Project Lead setting.
+- No known material blocker for C-1 implementation after Architecture ACCEPT / PROCEED. New C-1 tests must be explicitly included in thematic CI selectors and the desktop allowlist; current selectors cover pre-007/A/B only. Required-check branch protection remains an external Project Lead setting.
 
 ## Next Project Lead decision
 
-- Review/commit the C-1 planning files and hand off the exact r1 brief for Engineering readiness. Architecture has not created a branch, committed or authorized implementation. No hosted deployment or display hardware is needed for C-1.
+- After Architecture ACCEPT / PROCEED on C-1 r1, authorize implementation on the brief branch. No hosted deployment or display hardware is needed for C-1.
 
 ## Next likely handoff
 
-Engineering reviews **P0-007C-1 revision 1** against current integrated main, records a consolidated readiness report, and awaits Architecture ACCEPT / PROCEED. Card **Know what to do next and what the household still needs** stays **Up Next** until implementation begins. No repeat Design proposal is required to continue C-2/C-3 later.
+Architecture reviews Engineering readiness (**READY**) for **P0-007C-1 revision 1** and returns ACCEPT / PROCEED or a revised contract. Card **Know what to do next and what the household still needs** stays **Up Next** until implementation begins. No repeat Design proposal is required to continue C-2/C-3 later.
 
 ## Notes for all teams
 

@@ -146,10 +146,12 @@ All are required unless an external-evidence boundary is explicitly stated. Unit
 
 ## Engineering readiness
 
-**Reviewed revision:** NOT REVIEWED
-**Readiness:** NOT REVIEWED
+**Reviewed revision:** 1
+**Readiness:** READY
 
-Return one consolidated repository-grounded review of **P0-007C-1 revision 1**, including any changed baseline facts, projection/authority risks and CI-selection implications. Ordinary component organization, layout, copy and test helpers remain Engineering choices. Await Architecture ACCEPT / PROCEED before implementation.
+Consolidated Engineering review of **P0-007C-1 revision 1** against integrated `main` @ `e8f59b4` is in `reports/P0-007C-1-r1-engineering-readiness.md`. No BLOCKER or QUESTION. Ordinary component organization, layout, copy and test helpers remain Engineering choices. **Await Architecture ACCEPT / PROCEED before implementation.** C-2/C-3 remain out of scope.
+
+Material implementation notes (not readiness gates): explicit thematic CI / desktop allowlist selection for C-1 evidence; keep sync/outbox ownership above extracted Today/Household views; progress copy must use domain completion (Done vs Not needed), not `completedCount === total` alone.
 
 ## Revision history
 

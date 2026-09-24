@@ -11,6 +11,7 @@ import {
   fillResponsibilityBaseSteps,
   openResponsibilitySection,
   pickAccountablePerson,
+  pinTodayFetches,
   sessionDisplayName,
   setWeeklyPattern,
 } from "../helpers/e2e-shell";
@@ -260,26 +261,13 @@ test.describe("P0-007B Kitchen and Bathroom journeys", () => {
       const averyContext = await browser.newContext();
       const avery = await averyContext.newPage();
       await claimAvery(avery);
-      await avery.addInitScript((satDate) => {
-        const original = window.fetch.bind(window);
-        window.fetch = (input, init) => {
-          const url =
-            typeof input === "string"
-              ? input
-              : input instanceof URL
-                ? input.href
-                : input.url;
-          if (url.includes("/api/v1/today") && !url.includes("date=")) {
-            return original(`/api/v1/today?date=${satDate}`, init);
-          }
-          return original(input, init);
-        };
-      }, saturday);
+      await pinTodayFetches(avery, saturday);
       await avery.goto("/");
       const averyName = await sessionDisplayName(avery);
       await expectSignedInAs(avery, averyName || /Avery/);
       const kitchenCard = avery.locator(".occurrence").filter({ hasText: "Kitchen" });
       await expect(kitchenCard).toBeVisible({ timeout: 20_000 });
+      await expect(kitchenCard).toContainText(saturday);
       await durableScreenshot(avery, path.join(SCREENSHOT_DIR, "08-kitchen-composed-today.png"));
       if (kitchenOcc!.accountableMemberId === AVERY_ID) {
         await kitchenCard.getByRole("button", { name: /Mark .+ completed/i }).first().click();

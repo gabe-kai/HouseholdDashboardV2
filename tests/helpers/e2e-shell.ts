@@ -10,6 +10,29 @@ export async function expectSignedInAs(page: Page, displayName: string | RegExp)
   await page.getByRole("button", { name: "Account" }).click();
 }
 
+/**
+ * Force every Today read in this page to one household date.
+ * Rewriting only undated `/api/v1/today` calls is not enough: session setup and
+ * outbox flush later request `?date=<real today>` and replace the pinned view.
+ */
+export async function pinTodayFetches(page: Page, householdDate: string) {
+  await page.addInitScript((pinnedDate: string) => {
+    const original = window.fetch.bind(window);
+    window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+      const raw =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      if (!raw.includes("/api/v1/today")) return original(input, init);
+      const next = new URL(raw, window.location.origin);
+      next.searchParams.set("date", pinnedDate);
+      return original(next.toString(), init);
+    };
+  }, householdDate);
+}
+
 /** Resolve the durable display name for the current session (may differ after prior e2e renames). */
 export async function sessionDisplayName(page: Page): Promise<string> {
   const session = await page.request.get("/api/v1/auth/session");

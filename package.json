@@ -27,6 +27,11 @@
     "test": "vitest run",
     "test:e2e": "playwright install chromium webkit && playwright test && npm run test:e2e:vite",
     "test:e2e:chromium": "playwright install chromium && playwright test --project=chromium --project=chromium-desktop && npm run test:e2e:vite",
+    "test:e2e:chromium:phone": "playwright test --project=chromium",
+    "test:e2e:chromium:phone:pre007": "playwright test --project=chromium --grep-invert \"P0-007\"",
+    "test:e2e:chromium:phone:007a": "playwright test --project=chromium --grep \"P0-007A\"",
+    "test:e2e:chromium:phone:007b": "playwright test --project=chromium --grep \"P0-007B\"",
+    "test:e2e:chromium:desktop": "playwright test --project=chromium-desktop",
     "test:e2e:vite": "playwright install chromium && playwright test -c playwright.vite.config.ts",
     "validate": "npm run lint && npm run typecheck && npm test",
     "validate:pr": "npm run validate && npm run build && npm run test:e2e:chromium",
@@ -64,6 +69,7 @@
     "vitest": "^3.2.4"
   },
   "allowScripts": {
-    "better-sqlite3@13.0.3": true
+    "better-sqlite3@13.0.3": true,
+    "esbuild@0.28.2": true
   }
 }

@@ -67,7 +67,11 @@ async function openAsManager(page: Page) {
 }
 
 async function createNamedRoutine(page: Page, title: string, daypart = "evening") {
-  await page.getByRole("button", { name: "Plan", exact: true }).click();
+  const addRoutine = page.getByRole("button", { name: /^(Create routine|Add routine)$/i });
+  if (!(await addRoutine.isVisible().catch(() => false))) {
+    await page.getByRole("button", { name: "Plan", exact: true }).click();
+  }
+  await expect(addRoutine).toBeVisible({ timeout: 15_000 });
   await fillFocusedRoutineCreate(page, {
     title,
     daypart,
@@ -132,6 +136,9 @@ test.describe("P0-005 r3 routine lifecycle UI", () => {
 
     // --- Create + delete unused test routine ---
     await page.getByRole("button", { name: /Back to Routines/i }).click();
+    await expect(page.getByRole("button", { name: /^(Create routine|Add routine)$/i })).toBeVisible({
+      timeout: 15_000,
+    });
     await createNamedRoutine(page, unusedTitle, "anytime");
     await page.getByRole("button", { name: "More", exact: true }).click();
     page.once("dialog", (dialog) => void dialog.accept());

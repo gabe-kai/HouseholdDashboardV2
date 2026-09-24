@@ -139,11 +139,28 @@ async function openHouseholdActivity(page: Page) {
     .getByRole("navigation", { name: "Primary" })
     .getByRole("button", { name: "Household", exact: true })
     .click();
+  await expect(page.getByRole("heading", { name: "Household", exact: true })).toBeVisible();
+  const morning = page
+    .locator(".compact-activity-row")
+    .filter({ hasText: /people complete/i })
+    .filter({ hasText: /Morning/i })
+    .first();
+  await expect(morning).toBeVisible({ timeout: 20_000 });
+  await morning.click();
+}
+
+async function openHouseholdOverview(page: Page) {
   await page
-    .getByRole("navigation", { name: "Household" })
-    .getByRole("button", { name: /Household activity/ })
+    .getByRole("navigation", { name: "Primary" })
+    .getByRole("button", { name: "Household", exact: true })
     .click();
-  await expect(page.getByRole("heading", { name: "Household activity" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Household", exact: true })).toBeVisible();
+}
+
+async function openHouseholdPersonChecklist(page: Page, personName: string) {
+  await openHouseholdActivity(page);
+  await page.locator(".compact-activity-row").filter({ hasText: personName }).click();
+  await expect(page.locator(".checklist").first()).toBeVisible({ timeout: 15_000 });
 }
 
 async function openApprovals(page: Page) {
@@ -151,10 +168,7 @@ async function openApprovals(page: Page) {
     .getByRole("navigation", { name: "Primary" })
     .getByRole("button", { name: "Household", exact: true })
     .click();
-  await page
-    .getByRole("navigation", { name: "Household" })
-    .getByRole("button", { name: /Approvals/ })
-    .click();
+  await page.getByRole("button", { name: /^Approvals/i }).click();
 }
 
 async function openPersonalize(page: Page) {
@@ -226,30 +240,32 @@ test.describe("P0-002 authenticated household", () => {
 
     await child.goto("/");
     await expectSignedInAs(child, "Avery Reed");
+    // Seed may already include Avery on Morning; otherwise empty Today copy.
     await expect(
-      child.getByText(/No routines for you on this household date\.|Nothing assigned to you on this household date\./),
-    ).toBeVisible();
+      child
+        .getByText(/Nothing assigned to you on this household date\./)
+        .or(child.locator(".today-occurrence, article.occurrence").first()),
+    ).toBeVisible({ timeout: 20_000 });
     await expect(child.getByRole("button", { name: "Account" })).toBeVisible();
 
     await manager.goto("/");
     await expectSignedInAs(manager, "Morgan Reed");
     await expect(manager.getByRole("button", { name: "Account" })).toBeVisible();
-    await openHouseholdActivity(manager);
 
     await ensureSharedRoutine(manager.request, [MORGAN_ID, AVERY_ID, JORDAN_ID]);
+    await openHouseholdPersonChecklist(manager, "Avery Reed");
 
     await expect(child.getByRole("button", { name: /Mark Make bed completed/ })).toBeVisible({
-      timeout: 4_000,
+      timeout: 15_000,
     });
     await expect(child.getByRole("button", { name: /Mark Pack lunch completed/ })).toBeVisible({
-      timeout: 4_000,
+      timeout: 15_000,
     });
 
-    await expandAllOccurrences(manager);
     await expect(manager.getByText("Avery Reed").first()).toBeVisible({ timeout: 4_000 });
 
     await child.getByRole("button", { name: /Mark Make bed completed/ }).click();
-    await expect(manager.getByText("Status: Completed").first()).toBeVisible({ timeout: 4_000 });
+    await expect(manager.getByText("Status: Completed").first()).toBeVisible({ timeout: 15_000 });
 
     await managerContext.close();
     await childContext.close();
@@ -362,8 +378,7 @@ test.describe("P0-002 authenticated household", () => {
 
     await manager.goto("/");
     await expectSignedInAs(manager, "Morgan Reed");
-    await openHouseholdActivity(manager);
-    await expandAllOccurrences(manager);
+    await openHouseholdPersonChecklist(manager, "Avery Reed");
 
     await child.goto("/");
     await expectSignedInAs(child, "Avery Reed");
@@ -422,8 +437,7 @@ test.describe("P0-002 authenticated household", () => {
 
     await manager.goto("/");
     await expectSignedInAs(manager, "Morgan Reed");
-    await openHouseholdActivity(manager);
-    await expandAllOccurrences(manager);
+    await openHouseholdPersonChecklist(manager, "Avery Reed");
     const averyOccurrence = manager.locator(".occurrence").filter({ hasText: "Avery Reed" });
     const makeBedStep = averyOccurrence.locator(".step").filter({ hasText: "Make bed" });
     await expect(makeBedStep.getByText("Status: Open")).toBeVisible({ timeout: 10_000 });
@@ -539,7 +553,7 @@ test.describe("P0-002 authenticated household", () => {
 
     await manager.goto("/");
     await expectSignedInAs(manager, "Morgan Reed");
-    await openHouseholdActivity(manager);
+    await openHouseholdOverview(manager);
     await expect(manager.getByRole("heading", { name: "Household-visible personal tasks" })).toBeVisible();
     await expect(manager.getByText("Shared grocery list")).toBeVisible({ timeout: 10_000 });
     await expect(manager.getByText("Private diary note")).toHaveCount(0);

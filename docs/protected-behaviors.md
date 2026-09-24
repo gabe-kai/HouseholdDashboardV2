@@ -80,7 +80,9 @@ invalidation/reconciliation semantics.
 | PB-43 | Closed assignment forms (fixed / take turns / weekly); deterministic opportunity-count anchors; dated group eligibility | unit `responsibility-assignment.test.ts`; integration `p0-007b.test.ts` AT2 | Developer |
 | PB-44 | Base work plus scheduled additions; owner-setting addition owns the composed occurrence; overlap rejection | unit `responsibility-composition.test.ts`; integration `p0-007b.test.ts` AT8; e2e Kitchen/Bathroom | Developer + PR |
 | PB-45 | Shared side-effect-free preview (saved + draft) agrees with materialization; Unassigned nullable only for unstarted responsibilities | integration `p0-007b.test.ts` AT3/AT7/AT10; e2e Cats/Trash + Kitchen | Developer + PR |
-| PB-46 | Populated through-013 upgrade through 014 maps fixed plans losslessly; new screenshots only under `reports/p0-007b-r1-screenshots/` | integration `p0-007b.test.ts` AT1; fixture `tests/helpers/p013-fixture.ts` | Developer |
+| PB-46 | Populated through-013 upgrade through 014 maps fixed plans losslessly; new screenshots only under local archive | integration `p0-007b.test.ts` AT1; fixture `tests/helpers/p013-fixture.ts` | Developer |
+| PB-47 | Personal Today projects Completed/Next/Later/Anytime with one checklist focus; recommendation does not gate execution | unit `today-projection.test.ts` / `progress.test.ts`; e2e `z-p0-007c-1-today.spec.ts`, `z-p0-007c-1-focus.spec.ts` | Developer + PR |
+| PB-48 | Household landing summarizes authorized snapshots (responsibility rows; routine aggregates by definitionId+date); drill-down preserves snapshot identity; private tasks excluded | unit `household-overview.test.ts`; e2e `z-p0-007c-1-household.spec.ts` | Developer + PR |
 
 ### Environment-specific (not counted as automated acceptance)
 

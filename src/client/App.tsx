@@ -4,10 +4,8 @@ import {
   useRef,
   useState,
   useTransition,
-  type Dispatch,
   type FormEvent,
   type ReactNode,
-  type SetStateAction,
 } from "react";
 import { isLockingStepStatus } from "../domain/occurrence-lock";
 import { reconcileOccurrence, retainPendingOmittedOccurrences } from "../domain/reconcile";
@@ -22,7 +20,6 @@ import type {
 import {
   claim,
   connectSync,
-  createPersonalTask,
   createProposal,
   decideProposal,
   fetchPeople,
@@ -36,7 +33,6 @@ import {
   login,
   logout,
   savePersonalLayer,
-  setPersonalTaskStatus,
   setStepStatus,
   rememberCsrfToken,
   type PersonalAddition,
@@ -47,7 +43,9 @@ import {
   type SessionInfo,
 } from "./api";
 import { HistoryView } from "./History";
+import { HouseholdOverview } from "./HouseholdOverview";
 import { HouseholdSettingsView } from "./HouseholdSettings";
+import { TodayView } from "./TodayView";
 import { PeopleGroupsView } from "./PeopleGroups";
 import { ResponsibilitiesView } from "./Responsibilities";
 import { DAYPART_LABELS, RoutinesView } from "./Routines";
@@ -210,12 +208,6 @@ function obligationLabel(obligation: ObligationMeaning): string {
   return "Optional";
 }
 
-function statusLabel(status: StepStatus): string {
-  if (status === "not_needed") return "Not needed";
-  if (status === "completed") return "Completed";
-  return "Open";
-}
-
 function addDays(date: string, days: number): string {
   const instant = new Date(`${date}T12:00:00Z`);
   instant.setUTCDate(instant.getUTCDate() + days);
@@ -247,7 +239,6 @@ export function App() {
   const [tasks, setTasks] = useState<PersonalTask[]>([]);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [outbox, setOutbox] = useState<OutboxItem[]>([]);
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [householdDate, setHouseholdDate] = useState("");
   const [knownActivityGeneration, setKnownActivityGeneration] = useState(0);
   const [activityResetBanner, setActivityResetBanner] = useState(false);
@@ -298,7 +289,6 @@ export function App() {
     setProposals([]);
     setOutbox([]);
     outboxRef.current = [];
-    setExpanded({});
     setHouseholdDate("");
     setKnownActivityGeneration(0);
     activityGenerationRef.current = 0;
@@ -445,24 +435,6 @@ export function App() {
       activityGenerationRef.current = data.activityGeneration;
       setKnownActivityGeneration(data.activityGeneration);
     }
-    setExpanded((current) => {
-      const next = { ...current };
-      for (const occurrence of merged) {
-        const prior = priorById.get(occurrence.id);
-        if (next[occurrence.id] === undefined) {
-          next[occurrence.id] = !occurrence.completed;
-        } else if (
-          prior &&
-          prior.steps.length === 0 &&
-          occurrence.steps.length > 0 &&
-          !occurrence.completed
-        ) {
-          // Re-open if an earlier empty/incomplete snapshot collapsed the container.
-          next[occurrence.id] = true;
-        }
-      }
-      return next;
-    });
   });
 
   const refreshSupportingData = useEffectEvent(
@@ -1168,13 +1140,19 @@ export function App() {
         <TodayView
           occurrences={projectedOwn}
           tasks={tasks.filter((task) => task.ownerMembershipId === session.member.id)}
-          expanded={expanded}
-          setExpanded={setExpanded}
+          pendingOccurrenceIds={
+            new Set(
+              outbox
+                .filter((item) => item.state !== "rejected")
+                .map((item) => item.occurrenceId),
+            )
+          }
           canExecuteRoutine={hasGrant(session, "routine.execute.own")}
           canExecuteResponsibility={hasGrant(session, "responsibility.execute.own")}
           canPersonalize={canPersonalize}
           onOpenPersonalize={openPersonalize}
           onStepChange={queueStepChange}
+          focusScopeKey={`${session.member.id}:${householdDate || session.householdDate}`}
           onTasksChanged={(next) =>
             setTasks((current) => [
               ...current.filter((task) => task.ownerMembershipId !== session.member.id),
@@ -1302,18 +1280,29 @@ export function App() {
         />
       ) : null}
       {!showingUnavailable && showingHouseholdMenu ? (
-        <section>
-          <h1 className="page-heading">Household</h1>
-          <p className="page-subcopy">
-            People, structure, and oversight for this household.
-          </p>
-          <nav className="household-nav" aria-label="Household">
-            {visibleHouseholdItems.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className="list-row"
-                onClick={() => {
+        householdCaps.canViewActivity ? (
+          <HouseholdOverview
+            occurrences={projectedOccurrences}
+            tasks={tasks.filter((task) => task.visibility === "household")}
+            memberships={memberships}
+            pendingOccurrenceIds={
+              new Set(
+                outbox
+                  .filter((item) => item.state !== "rejected")
+                  .map((item) => item.occurrenceId),
+              )
+            }
+            canManageResponsibility={hasGrant(activeSession, "responsibility.manage")}
+            onRepairUnassigned={(definitionId) =>
+              requestNavigate({ name: "plan-responsibility", definitionId })
+            }
+            managementLinks={visibleHouseholdItems
+              .filter((item) => item.id !== "activity")
+              .map((item) => ({
+                id: item.id,
+                label: item.label,
+                description: item.description,
+                onOpen: () => {
                   if (item.id === "people-groups") {
                     requestNavigate({ name: "household-people" });
                     void refreshSupportingData(activeSession);
@@ -1336,17 +1325,59 @@ export function App() {
                     requestNavigate({ name: "household-settings" });
                     return;
                   }
-                  if (item.id === "approvals" || item.id === "activity") {
-                    openHouseholdLeaf(item.id);
+                  if (item.id === "approvals") {
+                    openHouseholdLeaf("approvals");
                   }
-                }}
-              >
-                <span>{item.label}</span>
-                <span className="meta">{item.description}</span>
-              </button>
-            ))}
-          </nav>
-        </section>
+                },
+              }))}
+          />
+        ) : (
+          <section>
+            <h1 className="page-heading">Household</h1>
+            <p className="page-subcopy">
+              People, structure, and oversight for this household.
+            </p>
+            <nav className="household-nav" aria-label="Household">
+              {visibleHouseholdItems.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className="list-row"
+                  onClick={() => {
+                    if (item.id === "people-groups") {
+                      requestNavigate({ name: "household-people" });
+                      void refreshSupportingData(activeSession);
+                      return;
+                    }
+                    if (item.id === "school-calendar") {
+                      requestNavigate({ name: "household-school-calendar" });
+                      return;
+                    }
+                    if (item.id === "history") {
+                      requestNavigate({
+                        name: "household-history",
+                        filters: {
+                          date: householdDate || activeSession.householdDate,
+                        },
+                      });
+                      return;
+                    }
+                    if (item.id === "settings") {
+                      requestNavigate({ name: "household-settings" });
+                      return;
+                    }
+                    if (item.id === "approvals" || item.id === "activity") {
+                      openHouseholdLeaf(item.id);
+                    }
+                  }}
+                >
+                  <span>{item.label}</span>
+                  <span className="meta">{item.description}</span>
+                </button>
+              ))}
+            </nav>
+          </section>
+        )
       ) : null}
       {!showingUnavailable && showingSchoolCalendar ? (
         <SchoolCalendarView
@@ -1415,24 +1446,62 @@ export function App() {
         />
       ) : null}
       {!showingUnavailable && showingActivity ? (
-        <PeopleGroupsView
-          memberships={memberships}
-          tasks={tasks.filter((task) => task.visibility === "household")}
-          occurrences={projectedOccurrences}
-          familyOrderVersion={familyOrderVersion}
-          canManageStructure={canManageStructure}
-          canEnroll={canEnroll}
-          canViewActivity={false}
-          entry="activity"
-          onExit={() => setHouseholdLeaf(null)}
-          onPeopleChanged={(update) => {
-            if (update) {
-              setMemberships(update.people);
-              setFamilyOrderVersion(update.familyOrderVersion);
+        <>
+          <button type="button" className="back-link" onClick={() => setHouseholdLeaf(null)}>
+            Back to Household
+          </button>
+          <HouseholdOverview
+            occurrences={projectedOccurrences}
+            tasks={tasks.filter((task) => task.visibility === "household")}
+            memberships={memberships}
+            pendingOccurrenceIds={
+              new Set(
+                outbox
+                  .filter((item) => item.state !== "rejected")
+                  .map((item) => item.occurrenceId),
+              )
             }
-            if (activeSession) void refreshSupportingData(activeSession);
-          }}
-        />
+            canManageResponsibility={hasGrant(activeSession, "responsibility.manage")}
+            onRepairUnassigned={(definitionId) =>
+              requestNavigate({ name: "plan-responsibility", definitionId })
+            }
+            managementLinks={visibleHouseholdItems
+              .filter((item) => item.id !== "activity")
+              .map((item) => ({
+                id: item.id,
+                label: item.label,
+                description: item.description,
+                onOpen: () => {
+                  setHouseholdLeaf(null);
+                  if (item.id === "people-groups") {
+                    requestNavigate({ name: "household-people" });
+                    void refreshSupportingData(activeSession);
+                    return;
+                  }
+                  if (item.id === "school-calendar") {
+                    requestNavigate({ name: "household-school-calendar" });
+                    return;
+                  }
+                  if (item.id === "history") {
+                    requestNavigate({
+                      name: "household-history",
+                      filters: {
+                        date: householdDate || activeSession.householdDate,
+                      },
+                    });
+                    return;
+                  }
+                  if (item.id === "settings") {
+                    requestNavigate({ name: "household-settings" });
+                    return;
+                  }
+                  if (item.id === "approvals") {
+                    openHouseholdLeaf("approvals");
+                  }
+                },
+              }))}
+          />
+        </>
       ) : null}
       {!showingUnavailable && showingApprovals ? (
         <ApprovalsView
@@ -1711,259 +1780,6 @@ function AuthScreen(props: {
         </button>
       </section>
     </main>
-  );
-}
-
-function TodayView(props: {
-  occurrences: OccurrenceView[];
-  tasks: PersonalTask[];
-  expanded: Record<string, boolean>;
-  setExpanded: Dispatch<SetStateAction<Record<string, boolean>>>;
-  canExecuteRoutine: boolean;
-  canExecuteResponsibility: boolean;
-  canPersonalize: boolean;
-  onOpenPersonalize: () => void;
-  onStepChange: (occurrenceId: string, stepId: string, status: StepStatus) => void;
-  onTasksChanged: (tasks: PersonalTask[]) => void;
-}) {
-  return (
-    <>
-      <section>
-        <h1 className="page-heading">Today</h1>
-        {props.canPersonalize ? (
-          <div className="today-actions">
-            <button
-              type="button"
-              className="btn-ghost"
-              onClick={props.onOpenPersonalize}
-            >
-              Personalize
-            </button>
-          </div>
-        ) : null}
-        {props.occurrences.length === 0 ? (
-          <div className="empty-state">
-            <p>Nothing assigned to you on this household date.</p>
-          </div>
-        ) : (
-          <OccurrenceList
-            occurrences={props.occurrences}
-            expanded={props.expanded}
-            setExpanded={props.setExpanded}
-            canExecuteRoutine={props.canExecuteRoutine}
-            canExecuteResponsibility={props.canExecuteResponsibility}
-            onStepChange={props.onStepChange}
-          />
-        )}
-      </section>
-      <PersonalTasksSection tasks={props.tasks} onChanged={props.onTasksChanged} />
-    </>
-  );
-}
-
-function OccurrenceList(props: {
-  occurrences: OccurrenceView[];
-  expanded: Record<string, boolean>;
-  setExpanded: Dispatch<SetStateAction<Record<string, boolean>>>;
-  canExecuteRoutine: boolean;
-  canExecuteResponsibility: boolean;
-  onStepChange?: (occurrenceId: string, stepId: string, status: StepStatus) => void;
-}) {
-  return props.occurrences.map((occurrence) => {
-    const kind = occurrence.kind === "responsibility" ? "responsibility" : "routine";
-    const canExecute =
-      kind === "responsibility"
-        ? props.canExecuteResponsibility
-        : props.canExecuteRoutine;
-    const open = props.expanded[occurrence.id] ?? !occurrence.completed;
-    return (
-      <article
-        key={occurrence.id}
-        className={`occurrence ${occurrence.completed ? "completed" : ""}`}
-        data-testid={`occurrence-${occurrence.id}`}
-        data-kind={kind}
-        data-completed={occurrence.completed ? "true" : "false"}
-      >
-        <button
-          type="button"
-          className="occurrence-header"
-          aria-expanded={open}
-          onClick={() =>
-            props.setExpanded((current) => ({ ...current, [occurrence.id]: !open }))
-          }
-        >
-          <div>
-            <h2>{occurrence.title}</h2>
-            <div className="meta">
-              {occurrence.accountableMemberName} · {occurrence.householdDate} ·{" "}
-              {DAYPART_LABELS[occurrence.daypart] ?? occurrence.daypart} ·{" "}
-              {occurrence.completed ? "Complete" : "In progress"}
-            </div>
-          </div>
-          <span aria-hidden="true">{open ? "▾" : "▸"}</span>
-        </button>
-        {open ? (
-          <ul className="checklist">
-            {occurrence.steps.map((step) => (
-              <li key={step.id} className="step" data-testid={`step-${step.id}`}>
-                <div className="step-title">
-                  <strong>{step.text}</strong>
-                  <span className="obligation">
-                    {obligationLabel(step.obligation)}
-                    {step.source === "personal" ? " · Personal" : ""}
-                  </span>
-                </div>
-                <div className="meta" data-testid={`step-status-${step.id}`}>
-                  Status: {statusLabel(step.status)}
-                </div>
-                {canExecute && props.onStepChange ? (
-                  <div className="step-actions">
-                    <button
-                      type="button"
-                      aria-pressed={step.status === "open"}
-                      aria-label={`Mark ${step.text} open`}
-                      onClick={() => props.onStepChange?.(occurrence.id, step.id, "open")}
-                    >
-                      Open
-                    </button>
-                    <button
-                      type="button"
-                      aria-pressed={step.status === "completed"}
-                      aria-label={`Mark ${step.text} completed`}
-                      onClick={() => props.onStepChange?.(occurrence.id, step.id, "completed")}
-                    >
-                      Done
-                    </button>
-                    {step.obligation === "as_needed" ? (
-                      <button
-                        type="button"
-                        aria-pressed={step.status === "not_needed"}
-                        aria-label={`Mark ${step.text} not needed today`}
-                        onClick={() =>
-                          props.onStepChange?.(occurrence.id, step.id, "not_needed")
-                        }
-                      >
-                        Not needed
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </article>
-    );
-  });
-}
-
-function PersonalTasksSection(props: {
-  tasks: PersonalTask[];
-  onChanged: (tasks: PersonalTask[]) => void;
-}) {
-  const [title, setTitle] = useState("");
-  const [visibility, setVisibility] = useState<"private" | "household">("private");
-  const [error, setError] = useState<string | null>(null);
-  const open = props.tasks.filter((task) => task.status === "open");
-  const completed = props.tasks.filter((task) => task.status === "completed");
-  const [showCompleted, setShowCompleted] = useState(false);
-
-  async function create(event: FormEvent) {
-    event.preventDefault();
-    setError(null);
-    try {
-      const result = await createPersonalTask(title, visibility);
-      props.onChanged([result.task, ...props.tasks]);
-      setTitle("");
-    } catch (caught) {
-      setError(errorMessage(caught));
-    }
-  }
-
-  async function setStatus(task: PersonalTask, status: "open" | "completed") {
-    setError(null);
-    try {
-      const result = await setPersonalTaskStatus(task.id, status);
-      props.onChanged(
-        props.tasks.map((current) => (current.id === task.id ? result.task : current)),
-      );
-    } catch (caught) {
-      setError(errorMessage(caught));
-    }
-  }
-
-  return (
-    <section className="panel compact-section">
-      <h2>Personal tasks</h2>
-      <form className="inline-form" onSubmit={create}>
-        <label className="grow">
-          <span className="sr-only">New personal task</span>
-          <input
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            placeholder="Add a personal task"
-            required
-          />
-        </label>
-        <label>
-          <span className="sr-only">Task visibility</span>
-          <select
-            aria-label="Task visibility"
-            value={visibility}
-            onChange={(event) =>
-              setVisibility(event.target.value as "private" | "household")
-            }
-          >
-            <option value="private">Private</option>
-            <option value="household">Household</option>
-          </select>
-        </label>
-        <button type="submit" className="secondary">
-          Add
-        </button>
-      </form>
-      <TaskList tasks={open} onStatus={setStatus} />
-      {completed.length > 0 ? (
-        <>
-          <button
-            type="button"
-            className="text-button"
-            aria-expanded={showCompleted}
-            onClick={() => setShowCompleted((current) => !current)}
-          >
-            {showCompleted ? "Hide" : "Show"} completed ({completed.length})
-          </button>
-          {showCompleted ? <TaskList tasks={completed} onStatus={setStatus} /> : null}
-        </>
-      ) : null}
-      {error ? <p role="alert">{error}</p> : null}
-    </section>
-  );
-}
-
-function TaskList(props: {
-  tasks: PersonalTask[];
-  onStatus: (task: PersonalTask, status: "open" | "completed") => void;
-}) {
-  return (
-    <ul className="task-list">
-      {props.tasks.map((task) => (
-        <li key={task.id}>
-          <button
-            type="button"
-            className="task-toggle"
-            aria-label={`Mark ${task.title} ${task.status === "open" ? "completed" : "open"}`}
-            onClick={() =>
-              props.onStatus(task, task.status === "open" ? "completed" : "open")
-            }
-          >
-            <span aria-hidden="true">{task.status === "completed" ? "✓" : "○"}</span>
-            <span>{task.title}</span>
-          </button>
-          <span className="meta">{task.visibility}</span>
-        </li>
-      ))}
-    </ul>
   );
 }
 

@@ -1,7 +1,7 @@
 # BRIEF P0-007C-1 - Actionable Today and Household Overview
 
 **Revision:** 1
-**Status:** IN REVIEW
+**Status:** IMPLEMENTED
 
 One authoritative contract for P0-007C-1. Material changes increment the revision and invalidate prior readiness. Architecture technical acceptance and Project Lead acceptance of the experience are separate. Engineering reviews this revision before implementation and awaits Architecture's ACCEPT / PROCEED.
 

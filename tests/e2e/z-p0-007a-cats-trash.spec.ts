@@ -308,13 +308,9 @@ test.describe("P0-007A Cats and Trash foundation", () => {
       await durableScreenshot(child, path.join(SCREENSHOT_DIR, "03-today-mixed.png"));
     }
 
-    // AT3: manager already on Household activity BEFORE child completes.
+    // AT3: manager already on Household overview BEFORE child completes.
     await page.getByRole("button", { name: "Household", exact: true }).click();
-    await page
-      .getByRole("navigation", { name: "Household" })
-      .getByRole("button", { name: /Household activity/i })
-      .click();
-    await expect(page.getByRole("heading", { name: "Household activity" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Household", exact: true })).toBeVisible();
     const catsRow = page.locator(".compact-activity-row").filter({ hasText: "Cats" });
     await expect(catsRow).toBeVisible({ timeout: 20_000 });
     await expect(catsRow).not.toContainText(/^Complete$/i);
@@ -330,13 +326,9 @@ test.describe("P0-007A Cats and Trash foundation", () => {
     }
     await catsRow.click();
     await expect(page.getByRole("heading", { name: "Cats" })).toBeVisible();
-    await page.getByRole("button", { name: /Back to Household activity/i }).click();
     await page.getByRole("button", { name: /Back to Household/i }).click();
 
-    await page
-      .getByRole("navigation", { name: "Household" })
-      .getByRole("button", { name: /^History/i })
-      .click();
+    await page.getByRole("button", { name: /^History/i }).click();
     await expect(page.getByRole("heading", { name: "History" })).toBeVisible();
     await page.getByRole("button", { name: /Filters/i }).click();
     await page.getByLabel("Work").selectOption("responsibility");

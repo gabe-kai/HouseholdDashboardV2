@@ -10,6 +10,7 @@ import {
   expectSignedInAs,
   fillFocusedResponsibilityCreate,
   openResponsibilitySection,
+  pinTodayFetches,
   sessionDisplayName,
 } from "../helpers/e2e-shell";
 
@@ -202,15 +203,15 @@ test.describe("P0-007B Cats and Trash journeys", () => {
     const averyContext = await browser.newContext();
     const averyPage = await averyContext.newPage();
     await claimPerson(averyPage, AVERY_ID, AVERY_LOGIN, "Avery Reed");
+    await pinTodayFetches(averyPage, tuesday);
     await averyPage.goto("/");
-    if (trashOcc && isoWeekday(today) === 2) {
-      const trashCard = averyPage
-        .locator(".occurrence")
-        .filter({ hasText: /^Trash\b|Trash$/ })
-        .filter({ has: averyPage.getByRole("button", { name: /Mark .+ completed/i }) })
-        .first();
-      await expect(trashCard).toBeVisible({ timeout: 20_000 });
-    }
+    const trashCard = averyPage
+      .locator(".occurrence")
+      .filter({ hasText: /Trash/ })
+      .filter({ has: averyPage.getByRole("button", { name: /Mark .+ completed/i }) })
+      .first();
+    await expect(trashCard).toBeVisible({ timeout: 20_000 });
+    await expect(trashCard).toContainText(tuesday);
     if (capture) {
       await durableScreenshot(averyPage, path.join(SCREENSHOT_DIR, "05-today-cats-trash.png"));
     }

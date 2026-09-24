@@ -38,3 +38,7 @@ test-results/
 playwright-report/
 blob-report/
 playwright/.cache/
+
+# Accepted visual evidence is retained locally for review but is not part of
+# the source/download archive. Keep the text Build Reports and automated tests.
+reports/_local-screenshots/

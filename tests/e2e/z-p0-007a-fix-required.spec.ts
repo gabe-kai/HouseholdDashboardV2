@@ -473,7 +473,20 @@ test.describe("P0-007A Architecture FIX REQUIRED regressions", () => {
       .getByRole("button", { name: /^History/i })
       .click();
     await expect(page.getByRole("heading", { name: "History" })).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByRole("button", { name: new RegExp(renamed) })).toHaveCount(0);
+    // Cleared completion must not remain; today may rematerialize as fresh Incomplete
+    // (same contract as P0-006C clear AT). Absolute title absence races rematerialize.
+    await expect(
+      page
+        .locator(".history-summary-row")
+        .filter({ hasText: renamed })
+        .filter({ hasText: /· Complete ·/ }),
+    ).toHaveCount(0, { timeout: 15_000 });
+    const clearedEmpty = page.getByText(/No recorded household work for this selection/i);
+    const freshIncomplete = page
+      .locator(".history-summary-row")
+      .filter({ hasText: renamed })
+      .filter({ hasText: /Incomplete/ });
+    await expect(clearedEmpty.or(freshIncomplete)).toBeVisible({ timeout: 15_000 });
   });
 
   test("AT14: Work Move-menu Save persists; geometry 360 and 1280 authenticated", async ({

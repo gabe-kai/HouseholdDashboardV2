@@ -17,7 +17,7 @@ jobs:
   pull-request:
     name: Pull-request validation
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Check out
         uses: actions/checkout@v4
@@ -46,12 +46,43 @@ jobs:
       - name: Install Playwright Chromium OS deps
         run: npx playwright install --with-deps chromium
 
-      - name: E2E Chromium (phone + desktop)
-        run: npx playwright test --project=chromium --project=chromium-desktop
+      # Split Chromium e2e so a single failure stays in a short, pasteable log.
+      - name: E2E Chromium phone (pre-P0-007)
+        run: npx playwright test --project=chromium --grep-invert "P0-007"
         env:
           CI: true
+          E2E_SKIP_BUILD: "1"
+
+      - name: E2E Chromium phone P0-007A
+        run: npx playwright test --project=chromium --grep "P0-007A"
+        env:
+          CI: true
+          E2E_SKIP_BUILD: "1"
+
+      - name: E2E Chromium phone P0-007B
+        run: npx playwright test --project=chromium --grep "P0-007B"
+        env:
+          CI: true
+          E2E_SKIP_BUILD: "1"
+
+      - name: E2E Chromium desktop geometry
+        run: npx playwright test --project=chromium-desktop
+        env:
+          CI: true
+          E2E_SKIP_BUILD: "1"
 
       - name: E2E Vite deep-link smoke
         run: npm run test:e2e:vite
         env:
           CI: true
+
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-e2e-failure
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7

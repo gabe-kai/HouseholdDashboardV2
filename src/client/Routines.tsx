@@ -516,8 +516,8 @@ export function RoutinesView(props: {
   }
 
   async function loadDetail(definitionId: string) {
-    selectedDefinitionRef.current = definitionId;
     const generation = ++detailGenerationRef.current;
+    selectedDefinitionRef.current = definitionId;
     try {
       const [routineResult, groupsResult] = await Promise.all([
         fetchRoutine(definitionId),
@@ -553,9 +553,11 @@ export function RoutinesView(props: {
       );
       return;
     }
-    if (view.kind === "list" || view.kind === "ended") {
+    if (view.kind === "list" || view.kind === "ended" || view.kind === "create") {
       selectedDefinitionRef.current = null;
-      setDetailRoutine(null);
+      if (view.kind !== "create") {
+        setDetailRoutine(null);
+      }
       setMoreOpen(false);
       setDeleteOfferEnd(false);
     }
@@ -620,6 +622,8 @@ export function RoutinesView(props: {
     setError(null);
     setStatusMessage(null);
     setDeleteOfferEnd(false);
+    selectedDefinitionRef.current = null;
+    detailGenerationRef.current += 1;
     beginDraft(emptyDraft(props.today));
     setView({ kind: "create" });
     if (props.route.kind !== "list") props.onRouteChange({ kind: "list" });
@@ -795,9 +799,9 @@ export function RoutinesView(props: {
         return;
       }
       const result = await createRoutine(mutationPayload());
-      if (selectedDefinitionRef.current && selectedDefinitionRef.current !== result.routine.id) {
-        return;
-      }
+      // Create always owns navigation to the new routine. A stale detail selection
+      // from a prior routine must not abandon a successful create mid-editor.
+      selectedDefinitionRef.current = result.routine.id;
       applyDetailRoutine(result.routine);
       await loadList();
       const revision = currentRevision(result.routine, props.today);

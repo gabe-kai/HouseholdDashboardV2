@@ -455,10 +455,11 @@ test.describe("P0-007B AT11/AT12 offline and live", () => {
     await triggerVisibilityRefresh(pageB);
     await expect(pageB.getByText(/Avery/i).first()).toBeVisible({ timeout: 20_000 });
 
-    // Hold an older preview GET; newer fetch must win.
+    // Hold an older preview GET; a newer fetch must win (generation arbitration).
     const stalePreview = await pageB.request.get(`/api/v1/responsibilities/${kitchenId}/preview`);
     expect(stalePreview.ok()).toBeTruthy();
     const staleBody = await stalePreview.text();
+    expect(staleBody).not.toMatch(/Jordan/i);
 
     await pageA.getByRole("button", { name: "Edit", exact: true }).click();
     await openResponsibilitySection(pageA, "Who");
@@ -468,6 +469,7 @@ test.describe("P0-007B AT11/AT12 offline and live", () => {
     await pageA.getByRole("button", { name: "Done", exact: true }).click();
     await pageA.getByRole("button", { name: "Save", exact: true }).click();
     await confirmResponsibilitySaveIfNeeded(pageA);
+    await expect(pageA.getByText(/Jordan/i).first()).toBeVisible({ timeout: 20_000 });
 
     let releaseStale!: () => void;
     const staleGate = new Promise<void>((resolve) => {
@@ -488,21 +490,37 @@ test.describe("P0-007B AT11/AT12 offline and live", () => {
       await route.continue();
     });
 
-    const freshWait = pageB.waitForResponse(
-      (response) =>
-        response.url().includes(`/api/v1/responsibilities/${kitchenId}/preview`) &&
-        response.request().method() === "GET",
-      { timeout: 20_000 },
-    );
     await pageB.reload();
     await expect(pageB.getByRole("heading", { name: title })).toBeVisible({ timeout: 20_000 });
-    // Trigger a second preview fetch after the stale one is held.
-    await pageB.getByRole("button", { name: /View all|Show fewer|Edit/i }).first().click().catch(() => undefined);
-    await triggerVisibilityRefresh(pageB);
+    await expect.poll(() => previewGets).toBeGreaterThanOrEqual(1);
+
+    // Start a second preview while the first is still held so generation arbitration can run.
+    await pageB.evaluate(() => {
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => "visible",
+      });
+      Object.defineProperty(document, "hidden", {
+        configurable: true,
+        get: () => false,
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    try {
+      await expect.poll(() => previewGets, { timeout: 10_000 }).toBeGreaterThanOrEqual(2);
+    } catch {
+      // Fallback: remount detail to force another preview fetch.
+      await pageB.goto("/plan");
+      await pageB.goto(`/plan/responsibilities/${kitchenId}`);
+      await expect(pageB.getByRole("heading", { name: title })).toBeVisible({ timeout: 20_000 });
+      await expect.poll(() => previewGets).toBeGreaterThanOrEqual(2);
+    }
+
     releaseStale();
-    await freshWait;
     await expect
-      .poll(async () => pageB.locator(".responsibility-preview-list").innerText())
+      .poll(async () => pageB.locator(".responsibility-preview-list").innerText(), {
+        timeout: 20_000,
+      })
       .toMatch(/Jordan/i);
 
     await pageB.unroute(`**/api/v1/responsibilities/${kitchenId}/preview`);

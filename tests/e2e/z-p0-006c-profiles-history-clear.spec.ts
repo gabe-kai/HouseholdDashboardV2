@@ -1,7 +1,7 @@
 import { test, expect, type Page, type APIRequestContext } from "@playwright/test";
 import path from "node:path";
 import { durableScreenshot } from "../helpers/durable-screenshot";
-import { expectSignedInAs } from "../helpers/e2e-shell";
+import { expectSignedInAs, revealChecklist } from "../helpers/e2e-shell";
 import { touchDragByCdp } from "../helpers/touch-drag";
 
 const PASSPHRASE = "unique-passphrase-ok!";
@@ -330,9 +330,19 @@ test.describe("P0-006C profiles, history, and clear", () => {
     await child.goto("/");
     await expectSignedInAs(child, friendlyName);
     const childCard = child.locator(".occurrence").filter({ hasText: routineTitle });
-    await expect(childCard).toBeVisible({ timeout: 15_000 });
+    await revealChecklist(childCard);
     await childCard.getByRole("button", { name: /Mark Pack Lunchbox completed/ }).click();
-    await expect(childCard.getByText(/Status:\s*Completed/i)).toBeVisible({ timeout: 15_000 });
+    await expect(child.locator(".status-pill[data-kind='pending']")).toHaveCount(0, {
+      timeout: 15_000,
+    });
+    const completedToggle = child.getByRole("button", { name: /^Completed/ });
+    await expect(completedToggle).toBeVisible({ timeout: 15_000 });
+    if ((await completedToggle.getAttribute("aria-expanded")) !== "true") {
+      await completedToggle.click();
+    }
+    await expect(
+      child.locator(".occurrence").filter({ hasText: routineTitle }),
+    ).toHaveAttribute("data-completed", "true", { timeout: 15_000 });
     await childContext.close();
 
     await page
@@ -440,7 +450,7 @@ test.describe("P0-006C profiles, history, and clear", () => {
     await avery.goto("/");
     await expectSignedInAs(avery, friendlyName);
     const freshCard = avery.locator(".occurrence").filter({ hasText: routineTitle });
-    await expect(freshCard).toBeVisible({ timeout: 15_000 });
+    await revealChecklist(freshCard);
     await expect(freshCard.getByText(/Status:\s*Open/i)).toBeVisible();
     await expect(freshCard.getByRole("button", { name: /Mark Pack Lunchbox completed/ })).toBeEnabled();
     await averyContext.close();

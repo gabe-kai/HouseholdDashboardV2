@@ -5,6 +5,7 @@ import { durableScreenshot } from "../helpers/durable-screenshot";
 import {
   expectSignedInAs,
   fillFocusedResponsibilityCreate,
+  revealChecklist,
 } from "../helpers/e2e-shell";
 
 const PASSPHRASE = "unique-passphrase-ok!";
@@ -296,8 +297,9 @@ test.describe("P0-007A Cats and Trash foundation", () => {
     await expectSignedInAs(child, averyName);
     const catsCard = child.locator(".occurrence").filter({ hasText: "Cats" });
     await expect(catsCard).toBeVisible({ timeout: 20_000 });
+    await revealChecklist(catsCard);
     const trashCard = child.locator(".occurrence").filter({ hasText: "Trash & Recycling" });
-    await expect(trashCard).toBeVisible({ timeout: 20_000 });
+    await revealChecklist(trashCard);
     await expect(trashCard).toHaveAttribute("data-completed", "true");
     const todayCards = child.locator(".occurrence");
     const titles = await todayCards.allTextContents();
@@ -315,6 +317,7 @@ test.describe("P0-007A Cats and Trash foundation", () => {
     await expect(catsRow).toBeVisible({ timeout: 20_000 });
     await expect(catsRow).not.toContainText(/^Complete$/i);
 
+    await revealChecklist(catsCard);
     await catsCard.getByRole("button", { name: /Mark Feed cats completed/i }).click();
     await catsCard.getByRole("button", { name: /Mark Refresh water completed/i }).click();
     await expect(catsCard).toHaveAttribute("data-completed", "true", { timeout: 20_000 });

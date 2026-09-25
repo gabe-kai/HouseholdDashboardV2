@@ -47,6 +47,7 @@ export function TodayView(props: {
   onTasksChanged: (tasks: PersonalTask[]) => void;
   /** Session/member/date key — reset focus policy when it changes. */
   focusScopeKey: string;
+  occurrencesLoaded: boolean;
 }) {
   const day = projectPersonalDay(props.occurrences, props.tasks);
   const [focusMode, setFocusMode] = useState<FocusMode>("auto");
@@ -66,23 +67,24 @@ export function TodayView(props: {
 
   const recommendedId = day.recommendedFocusId;
 
+  // Pending completion keeps controls only while focus is still automatic.
+  // Manual expand of another card must win so offline multi-card first actions remain possible.
+  const pendingFocusId = [...props.pendingOccurrenceIds].find((id) =>
+    props.occurrences.some((occurrence) => occurrence.id === id),
+  );
   let focusedId: string | null = null;
   if (focusMode === "collapsed") {
     focusedId = null;
   } else if (focusMode === "manual") {
     focusedId = manualFocusId;
+  } else if (pendingFocusId) {
+    focusedId = pendingFocusId;
   } else {
     focusedId = recommendedId;
   }
-
-  // Keep a pending-focused card open even after optimistic completion.
-  if (
-    focusedId &&
-    props.pendingOccurrenceIds.has(focusedId) &&
-    !props.occurrences.some((occurrence) => occurrence.id === focusedId)
-  ) {
-    // occurrence retained via pending-omitted elsewhere; focus id still valid
-  }
+  const completedExpanded =
+    completedOpen ||
+    day.completed.some((occurrence) => props.pendingOccurrenceIds.has(occurrence.id));
 
   function selectOccurrence(id: string) {
     if (focusedId === id) {
@@ -113,7 +115,11 @@ export function TodayView(props: {
         </div>
       ) : null}
 
-      {!hasRecurring ? (
+      {!props.occurrencesLoaded ? (
+        <p className="status-notice" role="status">
+          Loading today&apos;s work…
+        </p>
+      ) : !hasRecurring ? (
         <div className="empty-state">
           <p>Nothing assigned to you on this household date.</p>
         </div>
@@ -124,14 +130,14 @@ export function TodayView(props: {
           <button
             type="button"
             className="today-section-toggle"
-            aria-expanded={completedOpen}
+            aria-expanded={completedExpanded}
             id="today-completed-heading"
             onClick={() => setCompletedOpen((open) => !open)}
           >
             <h2>Completed</h2>
             <span className="meta">{day.completed.length} quiet</span>
           </button>
-          {completedOpen ? (
+          {completedExpanded ? (
             <ul className="today-compact-list">
               {day.completed.map((occurrence) => (
                 <li key={occurrence.id}>

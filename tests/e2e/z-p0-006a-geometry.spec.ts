@@ -118,7 +118,7 @@ test.describe("P0-006A geometry and text scale", () => {
       await page.getByRole("button", { name: /Back to/i }).first().click();
 
       await page.getByRole("button", { name: "Today", exact: true }).click();
-      await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
       await assertNoHorizontalClip(page);
 
       await page.getByRole("button", { name: "Plan", exact: true }).click();
@@ -149,7 +149,7 @@ test.describe("P0-006A geometry and text scale", () => {
     await page.getByRole("button", { name: /Back to/i }).first().click();
 
     await page.getByRole("button", { name: "Today", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
     await assertNoHorizontalClip(page);
 
     if (testInfo.project.name === "chromium") {

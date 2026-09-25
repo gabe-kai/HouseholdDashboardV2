@@ -19,7 +19,7 @@
 
 ## Current focus
 
-**P0-007C-1 r1 - Actionable Today and Household Overview** is **IMPLEMENTED**. Authoritative brief: `briefs/p0-007c-1-actionable-today-household-overview.md`; Build Report: `reports/P0-007C-1-r1-build-report.md`; readiness: `reports/P0-007C-1-r1-engineering-readiness.md`. Card **Know what to do next and what the household still needs** should move to Ready to Evaluate only after Architecture technical acceptance. C-2/C-3 remain LIKELY NEXT.
+**P0-007C-1 r1 - Actionable Today and Household Overview** is **IMPLEMENTED** with corrected local evidence in `reports/P0-007C-1-r1-build-report.md` (WebKit AT2/AT6, full morning-routine, `validate:pr`/`validate:rc`, AT3/AT9–11 named mapping). Awaiting Architecture re-acceptance. C-2/C-3 remain LIKELY NEXT.
 
 Inspected clean integrated `main` at **e8f59b4** on 2026-09-24 includes accepted A/B and repository screenshot/history cleanup. Old reports retain historical SHAs; new work should anchor to the actual current tree. B evidence remains `reports/P0-007B-r1-build-report.md` and `reports/P0-007B-r1-architecture-reacceptance.md`; Product acceptance is separate from technical integration.
 
@@ -38,7 +38,7 @@ Inspected clean integrated `main` at **e8f59b4** on 2026-09-24 includes accepted
 | P0-006C - Household Profiles and Useful History | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `409d147` via PR #14 | Product acceptance remains separate |
 | P0-007A - Household Responsibility Foundation | r1 | ACCEPTED | Completed foundation | Merged to `main` at `51322e0` via PR #15 | None for A; Design carries presentation feedback to C |
 | P0-007B - Assignment Patterns & Scheduled Work | r1 | ACCEPTED | Integrated foundation | Included in inspected `main` at `e8f59b4` | Product evaluation remains separate; C carries daily-presentation direction |
-| P0-007C-1 - Actionable Today and Household Overview | r1 | IMPLEMENTED | Architecture acceptance | `brief/p0-007c-1-actionable-today-household-overview` | Architecture technical acceptance of Build Report |
+| P0-007C-1 - Actionable Today and Household Overview | r1 | IMPLEMENTED | Architecture re-acceptance | `brief/p0-007c-1-actionable-today-household-overview` | Architecture technical re-acceptance of corrected Build Report |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 

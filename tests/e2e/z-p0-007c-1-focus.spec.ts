@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
-import { expectSignedInAs } from "../helpers/e2e-shell";
+import { expectSignedInAs, revealChecklist } from "../helpers/e2e-shell";
 
 const PASSPHRASE = "unique-passphrase-ok!";
 const AVERY_LOGIN = "e2e.avery";
@@ -156,6 +156,8 @@ test.describe("P0-007C-1 focus retention", () => {
 
     const nextCard = child.locator(".occurrence").filter({ hasText: nextTitle });
     const laterCard = child.locator(".occurrence").filter({ hasText: laterTitle });
+    await expect(nextCard).toBeVisible({ timeout: 15_000 });
+    await revealChecklist(nextCard);
     await expect(nextCard).toHaveAttribute("data-expanded", "true", { timeout: 15_000 });
     await expect(laterCard).toHaveAttribute("data-expanded", "false");
 
@@ -198,5 +200,121 @@ test.describe("P0-007C-1 focus retention", () => {
     await expect(child.locator('.occurrence[data-expanded="true"]')).toHaveCount(0);
 
     await childContext.close();
+  });
+
+  test("AT3: rapid final tap keeps controls until pending settles; keyboard returns focus", async ({
+    page,
+    browser,
+  }, testInfo) => {
+    test.setTimeout(180_000);
+    test.skip(
+      testInfo.project.name === "chromium-desktop",
+      "Phone Chromium/WebKit own this journey",
+    );
+    await page.setViewportSize({ width: 390, height: 844 });
+    const suffix = Date.now().toString(36);
+    const title = `C1 Rapid ${suffix}`;
+    const laterTitle = `C1 Keys ${suffix}`;
+
+    await ensureManagerRequest(page.request);
+    const created = await page.request.post("/api/v1/routines", {
+      headers: await mutatingHeaders(page.request),
+      data: {
+        mutationId: crypto.randomUUID(),
+        title,
+        daypart: "morning",
+        weekdays: [1, 2, 3, 4, 5, 6, 7],
+        assigneeMemberIds: [AVERY_ID],
+        assigneeGroupIds: [],
+        steps: [{ text: "Final step", obligation: "required" }],
+      },
+    });
+    expect(created.ok(), await created.text()).toBeTruthy();
+    const later = await page.request.post("/api/v1/routines", {
+      headers: await mutatingHeaders(page.request),
+      data: {
+        mutationId: crypto.randomUUID(),
+        title: laterTitle,
+        daypart: "evening",
+        weekdays: [1, 2, 3, 4, 5, 6, 7],
+        assigneeMemberIds: [AVERY_ID],
+        assigneeGroupIds: [],
+        steps: [{ text: "Later step", obligation: "required" }],
+      },
+    });
+    expect(later.ok(), await later.text()).toBeTruthy();
+
+    const childContext = await browser.newContext();
+    const child = await childContext.newPage();
+    await claimAvery(child.request);
+    await child.goto("/?mutationDelayMs=2000");
+    await expect(child.getByRole("heading", { name: "Today", exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
+
+    const card = child.locator(".occurrence").filter({ hasText: title });
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    const header = card.getByRole("button").first();
+    if ((await card.getAttribute("data-expanded")) !== "true") {
+      await header.click();
+    }
+    const done = card.getByRole("button", { name: /Mark Final step completed/i });
+    await done.click();
+    await expect(child.locator(".status-pill[data-kind='pending']")).toBeVisible();
+    await expect(done).toBeVisible();
+    await expect(card.locator(".step-actions")).toBeVisible();
+    await expect(child.locator(".status-pill[data-kind='pending']")).toHaveCount(0, {
+      timeout: 15_000,
+    });
+    const completedToggle = child.getByRole("button", { name: /^Completed/ });
+    if ((await completedToggle.getAttribute("aria-expanded")) !== "true") {
+      await completedToggle.click();
+    }
+    const settledHeader = card.getByRole("button").first();
+    if ((await card.getAttribute("data-expanded")) !== "true") {
+      await settledHeader.click();
+    }
+    await expect(card.getByRole("button", { name: /Mark Final step open/i })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    const laterCard = child.locator(".occurrence").filter({ hasText: laterTitle });
+    const laterHeader = laterCard.getByRole("button").first();
+    await laterHeader.focus();
+    if ((await laterCard.getAttribute("data-expanded")) === "true") {
+      await child.keyboard.press("Enter");
+      await expect(laterCard).toHaveAttribute("data-expanded", "false");
+      await expect(laterHeader).toBeFocused();
+    }
+    await child.keyboard.press("Enter");
+    await expect(laterCard).toHaveAttribute("data-expanded", "true");
+    await expect(laterHeader).toBeFocused();
+    await child.keyboard.press("Enter");
+    await expect(laterCard).toHaveAttribute("data-expanded", "false");
+    await expect(laterHeader).toBeFocused();
+
+    await childContext.close();
+  });
+
+  test("AT11: delayed Today read is not an all-done result", async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    test.skip(testInfo.project.name === "chromium-desktop", "Phone journey");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await ensureManagerRequest(page.request);
+    await page.route("**/api/v1/today**", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await route.continue();
+    });
+    await page.goto("/");
+    const loading = page.getByRole("status").filter({ hasText: /Loading today's work/i });
+    await expect(loading).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/Nothing assigned to you on this household date/i)).toHaveCount(0);
+    await expect(page.getByText(/^All done$/i)).toHaveCount(0);
+    await expect(loading).toHaveCount(0, { timeout: 20_000 });
+    await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
   });
 });

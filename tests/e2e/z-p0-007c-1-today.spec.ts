@@ -281,6 +281,24 @@ test.describe("P0-007C-1 actionable Today", () => {
       after!.steps.slice(0, 2).map((s) => s.id),
       generation,
     );
+    // Clear seed Morning / other earlier unfinished work so After school is the sole Next.
+    for (const occurrence of occurrences) {
+      if (
+        occurrence.id === after!.id ||
+        occurrence.id === morning!.id ||
+        occurrence.title === kitchenTitle ||
+        occurrence.title === bedtimeTitle
+      ) {
+        continue;
+      }
+      if (occurrence.completed) continue;
+      await completeSteps(
+        child.request,
+        occurrence,
+        occurrence.steps.filter((step) => step.status !== "completed").map((step) => step.id),
+        generation,
+      );
+    }
 
     await child.goto("/");
     await expectSignedInAs(child, averyName);

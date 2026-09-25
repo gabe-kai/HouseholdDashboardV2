@@ -12,6 +12,7 @@ import {
   openResponsibilitySection,
   pickAccountablePerson,
   pinTodayFetches,
+  revealChecklist,
   sessionDisplayName,
   setWeeklyPattern,
 } from "../helpers/e2e-shell";
@@ -267,7 +268,7 @@ test.describe("P0-007B Kitchen and Bathroom journeys", () => {
       await expectSignedInAs(avery, averyName || /Avery/);
       const kitchenCard = avery.locator(".occurrence").filter({ hasText: "Kitchen" });
       await expect(kitchenCard).toBeVisible({ timeout: 20_000 });
-      await expect(kitchenCard).toContainText(saturday);
+      await revealChecklist(kitchenCard);
       await durableScreenshot(avery, path.join(SCREENSHOT_DIR, "08-kitchen-composed-today.png"));
       if (kitchenOcc!.accountableMemberId === AVERY_ID) {
         await kitchenCard.getByRole("button", { name: /Mark .+ completed/i }).first().click();

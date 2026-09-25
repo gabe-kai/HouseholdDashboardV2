@@ -27,6 +27,7 @@ export function HouseholdOverview(props: {
   memberships: MemberPublic[];
   pendingOccurrenceIds: ReadonlySet<string>;
   canManageResponsibility: boolean;
+  occurrencesLoaded: boolean;
   managementLinks: Array<{ id: string; label: string; description: string; onOpen: () => void }>;
   onRepairUnassigned?: (definitionId: string) => void;
 }) {
@@ -160,8 +161,14 @@ export function HouseholdOverview(props: {
         </p>
       ) : null}
 
+      {!props.occurrencesLoaded ? (
+        <p className="status-notice" role="status">
+          Loading household work…
+        </p>
+      ) : null}
+
       <h2 className="household-overview-heading">Responsibilities</h2>
-      {overview.responsibilities.length === 0 ? (
+      {!props.occurrencesLoaded ? null : overview.responsibilities.length === 0 ? (
         <p className="meta">No responsibility progress to show right now.</p>
       ) : (
         <ul className="household-overview-list">
@@ -199,7 +206,7 @@ export function HouseholdOverview(props: {
       )}
 
       <h2 className="household-overview-heading">Routines</h2>
-      {sortedRoutines.length === 0 ? (
+      {!props.occurrencesLoaded ? null : sortedRoutines.length === 0 ? (
         <p className="meta">No routine progress to show right now.</p>
       ) : (
         <ul className="household-overview-list">
@@ -239,7 +246,7 @@ export function HouseholdOverview(props: {
       )}
 
       <h2 className="household-overview-heading">Household-visible personal tasks</h2>
-      {props.tasks.length === 0 ? (
+      {!props.occurrencesLoaded ? null : props.tasks.length === 0 ? (
         <p className="meta">None right now.</p>
       ) : (
         <ul className="people-list">

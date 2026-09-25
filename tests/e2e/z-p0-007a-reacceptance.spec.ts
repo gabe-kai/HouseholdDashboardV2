@@ -2,6 +2,7 @@ import { test, expect, type APIRequestContext, type Page, type Browser } from "@
 import {
   expectSignedInAs,
   fillFocusedResponsibilityCreate,
+  revealChecklist,
 } from "../helpers/e2e-shell";
 
 const PASSPHRASE = "unique-passphrase-ok!";
@@ -150,6 +151,7 @@ test.describe("P0-007A re-acceptance AT7/AT12/AT15", () => {
     await expectSignedInAs(child, averyName);
     const rapidCard = child.locator(".occurrence").filter({ hasText: rapidTitle });
     await expect(rapidCard).toBeVisible({ timeout: 20_000 });
+    await revealChecklist(rapidCard);
     const doneButtons = rapidCard.getByRole("button", { name: /Mark .+ completed/ });
     await expect(doneButtons).toHaveCount(2);
     const t0 = Date.now();
@@ -172,6 +174,7 @@ test.describe("P0-007A re-acceptance AT7/AT12/AT15", () => {
     await expectSignedInAs(child, averyName);
     const pendingCard = child.locator(".occurrence").filter({ hasText: pendingTitle });
     await expect(pendingCard).toBeVisible({ timeout: 20_000 });
+    await revealChecklist(pendingCard);
     await child.route("**/api/v1/occurrences/**", (route) => route.abort());
     await pendingCard.getByRole("button", { name: /Mark Only step completed/i }).click();
     await expect(child.locator(".status-pill[data-kind='pending']")).toBeVisible();
@@ -234,6 +237,7 @@ test.describe("P0-007A re-acceptance AT7/AT12/AT15", () => {
     await expectSignedInAs(child, averyName);
     const orderCard = child.locator(".occurrence").filter({ hasText: orderTitle });
     await expect(orderCard).toBeVisible({ timeout: 20_000 });
+    await revealChecklist(orderCard);
 
     let releaseOlder!: () => void;
     const olderGate = new Promise<void>((resolve) => {
@@ -283,8 +287,19 @@ test.describe("P0-007A re-acceptance AT7/AT12/AT15", () => {
     await expectSignedInAs(child, averyName);
     const card = child.locator(".occurrence").filter({ hasText: title });
     await expect(card).toBeVisible({ timeout: 20_000 });
+    await revealChecklist(card);
     await card.getByRole("button", { name: /Mark Hist step completed/i }).click();
-    await expect(card).toHaveAttribute("data-completed", "true", { timeout: 20_000 });
+    await expect(child.locator(".status-pill[data-kind='pending']")).toHaveCount(0, {
+      timeout: 20_000,
+    });
+    const completedToggle = child.getByRole("button", { name: /^Completed/ });
+    await expect(completedToggle).toBeVisible({ timeout: 15_000 });
+    if ((await completedToggle.getAttribute("aria-expanded")) !== "true") {
+      await completedToggle.click();
+    }
+    await expect(
+      child.locator(".occurrence").filter({ hasText: title }),
+    ).toHaveAttribute("data-completed", "true", { timeout: 20_000 });
     await childContext.close();
 
     await page

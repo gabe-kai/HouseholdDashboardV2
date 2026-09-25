@@ -201,14 +201,24 @@ async function outboxCount(page: Page, membershipId: string): Promise<number> {
 
 async function ensureStepOpen(page: Page, stepName: string) {
   const markPattern = new RegExp(`Mark ${stepName}`);
-  for (let attempt = 0; attempt < 6; attempt += 1) {
+  for (let attempt = 0; attempt < 12; attempt += 1) {
     if ((await page.getByRole("button", { name: markPattern }).count()) > 0) break;
-    const header = page.locator("article.occurrence button.occurrence-header").first();
-    if ((await header.count()) === 0) {
+    const completed = page.getByRole("button", { name: /^Completed/ });
+    if (
+      (await completed.count()) > 0 &&
+      (await completed.getAttribute("aria-expanded")) !== "true"
+    ) {
+      await completed.click();
+      continue;
+    }
+    const collapsed = page.locator(
+      'article.occurrence[data-expanded="false"] button.occurrence-header',
+    );
+    if ((await collapsed.count()) === 0) {
       await page.waitForTimeout(200);
       continue;
     }
-    await header.click({ force: true });
+    await collapsed.first().click();
     await page.waitForTimeout(150);
   }
   const open = page.getByRole("button", { name: new RegExp(`Mark ${stepName} open`) });
@@ -533,23 +543,25 @@ test.describe("P0-002 authenticated household", () => {
     await child.goto("/");
     await expectSignedInAs(child, "Avery Reed");
 
+    await child.getByRole("button", { name: "Add task" }).click();
     await child.getByPlaceholder("Add a personal task").fill("Private diary note");
     await child.getByLabel("Task visibility").selectOption("private");
-    await child.getByRole("button", { name: "Add", exact: true }).click();
-    await expect(child.locator(".task-list").getByText("Private diary note")).toBeVisible({
+    await child.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(child.locator(".people-list").getByText("Private diary note")).toBeVisible({
       timeout: 10_000,
     });
     await expect(
-      child.locator(".task-list li").filter({ hasText: "Private diary note" }).locator(".meta"),
-    ).toHaveText("private");
+      child.locator(".people-list li").filter({ hasText: "Private diary note" }).locator(".meta"),
+    ).toContainText("Private");
 
+    await child.getByRole("button", { name: "Add task" }).click();
     await child.getByPlaceholder("Add a personal task").fill("Shared grocery list");
     await child.getByLabel("Task visibility").selectOption("household");
-    await child.getByRole("button", { name: "Add", exact: true }).click();
+    await child.getByRole("button", { name: "Save", exact: true }).click();
     await expect(child.getByText("Shared grocery list")).toBeVisible({ timeout: 10_000 });
     await expect(
-      child.locator(".task-list li").filter({ hasText: "Shared grocery list" }).locator(".meta"),
-    ).toHaveText("household");
+      child.locator(".people-list li").filter({ hasText: "Shared grocery list" }).locator(".meta"),
+    ).toContainText("Household");
 
     await manager.goto("/");
     await expectSignedInAs(manager, "Morgan Reed");

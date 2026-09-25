@@ -1,5 +1,5 @@
 import { test, expect, type Page, type APIRequestContext, type Browser } from "@playwright/test";
-import { expectSignedInAs } from "../helpers/e2e-shell";
+import { expectSignedInAs, revealChecklist } from "../helpers/e2e-shell";
 
 const PASSPHRASE = "unique-passphrase-ok!";
 const MANAGER_LOGIN = "e2e.manager";
@@ -233,6 +233,7 @@ test.describe("P0-006C reset-aware outbox", () => {
     await expectSignedInAs(child, averyName);
     const childCard = child.locator(".occurrence").filter({ hasText: title });
     await expect(childCard).toBeVisible({ timeout: 15_000 });
+    await revealChecklist(childCard);
     await expect(childCard.getByText("Pack Lunchbox")).toBeVisible();
 
     await child.route("**/api/v1/occurrences/**", (route) => route.abort());
@@ -245,6 +246,7 @@ test.describe("P0-006C reset-aware outbox", () => {
     await child.unroute("**/api/v1/occurrences/**");
     await child.reload();
     await expectSignedInAs(child, averyName);
+    await revealChecklist(child.locator(".occurrence").filter({ hasText: title }));
 
     await expect
       .poll(async () => {
@@ -269,8 +271,17 @@ test.describe("P0-006C reset-aware outbox", () => {
     await expect(freshCard.getByRole("button", { name: /Mark Pack Lunchbox completed/ })).toBeEnabled();
 
     await freshCard.getByRole("button", { name: /Mark Pack Lunchbox completed/ }).click();
-    await expect(freshCard.getByText(/Status:\s*Completed/i)).toBeVisible({ timeout: 15_000 });
-    await expect(child.locator(".status-pill[data-kind='pending']")).toHaveCount(0);
+    await expect(child.locator(".status-pill[data-kind='pending']")).toHaveCount(0, {
+      timeout: 15_000,
+    });
+    const completedToggle = child.getByRole("button", { name: /^Completed/ });
+    await expect(completedToggle).toBeVisible({ timeout: 15_000 });
+    if ((await completedToggle.getAttribute("aria-expanded")) !== "true") {
+      await completedToggle.click();
+    }
+    await expect(
+      child.locator(".occurrence").filter({ hasText: title }),
+    ).toHaveAttribute("data-completed", "true", { timeout: 15_000 });
 
     await managerContext.close();
     await childContext.close();
@@ -303,6 +314,7 @@ test.describe("P0-006C reset-aware outbox", () => {
     await expectSignedInAs(child, averyName);
     const childCard = child.locator(".occurrence").filter({ hasText: title });
     await expect(childCard).toBeVisible({ timeout: 15_000 });
+    await revealChecklist(childCard);
 
     await child.route("**/api/v1/occurrences/**", (route) => route.abort());
     await childCard.getByRole("button", { name: /Mark Pack Lunchbox completed/ }).click();

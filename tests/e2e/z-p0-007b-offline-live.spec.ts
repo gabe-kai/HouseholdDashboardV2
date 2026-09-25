@@ -8,6 +8,7 @@ import {
   fillResponsibilityBaseSteps,
   openResponsibilitySection,
   pickAccountablePerson,
+  revealChecklist,
   sessionDisplayName,
 } from "../helpers/e2e-shell";
 
@@ -193,6 +194,7 @@ test.describe("P0-007B AT11/AT12 offline and live", () => {
     await expectSignedInAs(avery, averyName || /Avery/);
     const card = avery.locator(".occurrence").filter({ hasText: title });
     await expect(card).toBeVisible({ timeout: 20_000 });
+    await revealChecklist(card);
 
     await avery.route("**/api/v1/occurrences/**", (route) => route.abort());
     await card.getByRole("button", { name: /Mark .+ completed/i }).first().click();

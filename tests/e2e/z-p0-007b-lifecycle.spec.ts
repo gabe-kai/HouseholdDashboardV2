@@ -11,6 +11,7 @@ import {
   fillResponsibilityBaseSteps,
   openResponsibilitySection,
   pickAccountablePerson,
+  revealChecklist,
   sessionDisplayName,
 } from "../helpers/e2e-shell";
 
@@ -197,6 +198,7 @@ test.describe("P0-007B AT9 scheduled-work lifecycle", () => {
     await expectSignedInAs(avery, averyName || /Avery/);
     const card = avery.locator(".occurrence").filter({ hasText: title });
     await expect(card).toBeVisible({ timeout: 20_000 });
+    await revealChecklist(card);
     await card.getByRole("button", { name: /Mark .+ completed/i }).first().click();
     await expect(card.getByTestId(/step-status-/).first()).toContainText(/Completed/i, {
       timeout: 20_000,

@@ -240,6 +240,7 @@ export function App() {
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [outbox, setOutbox] = useState<OutboxItem[]>([]);
   const [householdDate, setHouseholdDate] = useState("");
+  const [occurrencesLoaded, setOccurrencesLoaded] = useState(false);
   const [knownActivityGeneration, setKnownActivityGeneration] = useState(0);
   const [activityResetBanner, setActivityResetBanner] = useState(false);
   const [historyRefreshToken, setHistoryRefreshToken] = useState(0);
@@ -283,6 +284,7 @@ export function App() {
   function clearUiCaches() {
     setOccurrences([]);
     occurrencesRef.current = [];
+    setOccurrencesLoaded(false);
     setMemberships([]);
     setFamilyOrderVersion(0);
     setTasks([]);
@@ -431,6 +433,7 @@ export function App() {
     occurrencesRef.current = merged;
     setHouseholdDate(data.householdDate);
     setOccurrences(merged);
+    setOccurrencesLoaded(true);
     if (!retired && data.activityGeneration > activityGenerationRef.current) {
       activityGenerationRef.current = data.activityGeneration;
       setKnownActivityGeneration(data.activityGeneration);
@@ -1153,6 +1156,7 @@ export function App() {
           onOpenPersonalize={openPersonalize}
           onStepChange={queueStepChange}
           focusScopeKey={`${session.member.id}:${householdDate || session.householdDate}`}
+          occurrencesLoaded={occurrencesLoaded}
           onTasksChanged={(next) =>
             setTasks((current) => [
               ...current.filter((task) => task.ownerMembershipId !== session.member.id),
@@ -1293,6 +1297,7 @@ export function App() {
               )
             }
             canManageResponsibility={hasGrant(activeSession, "responsibility.manage")}
+            occurrencesLoaded={occurrencesLoaded}
             onRepairUnassigned={(definitionId) =>
               requestNavigate({ name: "plan-responsibility", definitionId })
             }
@@ -1462,6 +1467,7 @@ export function App() {
               )
             }
             canManageResponsibility={hasGrant(activeSession, "responsibility.manage")}
+            occurrencesLoaded={occurrencesLoaded}
             onRepairUnassigned={(definitionId) =>
               requestNavigate({ name: "plan-responsibility", definitionId })
             }

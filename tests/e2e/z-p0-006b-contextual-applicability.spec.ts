@@ -6,6 +6,7 @@ import {
   expectSignedInAs,
   fillFocusedRoutineCreate,
   openRoutineSection,
+  revealChecklist,
 } from "../helpers/e2e-shell";
 
 const PASSPHRASE = "unique-passphrase-ok!";
@@ -172,7 +173,9 @@ test.describe("P0-006B contextual routine applicability", () => {
     // --- Exception edit → Today checklist when today is a usual school weekday ---
     if (isoWeekday(today) >= 1 && isoWeekday(today) <= 5) {
       await page.getByRole("button", { name: "Today", exact: true }).click();
-      await expect(page.getByText("Pack Lunchbox")).toBeVisible({ timeout: 15_000 });
+      const morningCard = page.locator(".occurrence").filter({ hasText: morningTitle });
+      await revealChecklist(morningCard);
+      await expect(morningCard.getByText("Pack Lunchbox")).toBeVisible({ timeout: 15_000 });
 
       await page.getByRole("button", { name: "Household", exact: true }).click();
       await page.getByRole("button", { name: /School calendar/i }).click();
@@ -189,6 +192,7 @@ test.describe("P0-006B contextual routine applicability", () => {
       await expect(page.getByText(/No school today/i)).toBeVisible();
 
       await page.getByRole("button", { name: "Today", exact: true }).click();
+      await revealChecklist(page.locator(".occurrence").filter({ hasText: morningTitle }));
       await expect(page.getByText("Stretch")).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText("Pack Lunchbox")).toHaveCount(0);
 

@@ -1,5 +1,5 @@
 import { test, expect, type Page, type APIRequestContext, type Browser } from "@playwright/test";
-import { expectSignedInAs } from "../helpers/e2e-shell";
+import { expectSignedInAs, revealChecklist } from "../helpers/e2e-shell";
 
 const PASSPHRASE = "unique-passphrase-ok!";
 const MANAGER_LOGIN = "e2e.manager";
@@ -201,6 +201,7 @@ test.describe("P0-006B live context and pending recovery", () => {
     await expectSignedInAs(child, "Avery Reed");
     const childCard = child.locator(".occurrence").filter({ hasText: title });
     await expect(childCard).toBeVisible({ timeout: 15_000 });
+    await revealChecklist(childCard);
     await expect(childCard.getByText("Pack Lunchbox")).toBeVisible();
 
     await child.route("**/api/v1/occurrences/**", (route) => route.abort());
@@ -229,8 +230,10 @@ test.describe("P0-006B live context and pending recovery", () => {
       .toBe("omitted");
 
     await triggerVisibilityRefresh(child);
-    await expect(child.locator(".occurrence").filter({ hasText: title })).toBeVisible();
-    await expect(child.locator(".occurrence").filter({ hasText: title }).getByText("Pack Lunchbox")).toBeVisible();
+    const retained = child.locator(".occurrence").filter({ hasText: title });
+    await expect(retained).toBeVisible();
+    await revealChecklist(retained);
+    await expect(retained.getByText("Pack Lunchbox")).toBeVisible();
     await expect(child.locator(".status-pill[data-kind='pending']")).toBeVisible();
 
     await child.reload();
@@ -279,6 +282,7 @@ test.describe("P0-006B live context and pending recovery", () => {
     await expectSignedInAs(viewer, "Avery Reed");
     const viewerCard = viewer.locator(".occurrence").filter({ hasText: title });
     await expect(viewerCard).toBeVisible({ timeout: 15_000 });
+    await revealChecklist(viewerCard);
     await expect(viewerCard.getByText("Pack Lunchbox")).toBeVisible();
 
     await editor.goto("/");
@@ -365,12 +369,12 @@ test.describe("P0-006B live context and pending recovery", () => {
       ).__hdSync?.ignoreMessagesForTest(false);
     });
     await triggerVisibilityRefresh(viewer);
-    await expect(viewer.locator(".occurrence").filter({ hasText: title })).toBeVisible({
+    const viewerCardAfter = viewer.locator(".occurrence").filter({ hasText: title });
+    await expect(viewerCardAfter).toBeVisible({
       timeout: 15_000,
     });
-    await expect(
-      viewer.locator(".occurrence").filter({ hasText: title }).getByText("Pack Lunchbox"),
-    ).toBeVisible();
+    await revealChecklist(viewerCardAfter);
+    await expect(viewerCardAfter.getByText("Pack Lunchbox")).toBeVisible();
 
     expect(routine.id).toBeTruthy();
 

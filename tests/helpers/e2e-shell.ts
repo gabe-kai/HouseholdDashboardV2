@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 /** Quiet chrome: identity lives in Account, not the topbar title. */
 export async function expectSignedInAs(page: Page, displayName: string | RegExp) {
@@ -8,6 +8,25 @@ export async function expectSignedInAs(page: Page, displayName: string | RegExp)
   await page.getByRole("button", { name: "Account" }).click();
   await expect(page.getByRole("menu")).toContainText(displayName);
   await page.getByRole("button", { name: "Account" }).click();
+}
+
+/** Open a Today card's checklist. Completed rows stay behind the quiet section; only one card is expanded. */
+export async function revealChecklist(card: Locator): Promise<void> {
+  const page = card.page();
+  const target = card.first();
+  const completed = page.getByRole("button", { name: /^Completed/ });
+  if (
+    (await completed.count()) > 0 &&
+    !(await target.isVisible().catch(() => false)) &&
+    (await completed.first().getAttribute("aria-expanded")) !== "true"
+  ) {
+    await completed.first().click();
+  }
+  await expect(target).toBeVisible({ timeout: 15_000 });
+  if ((await target.getAttribute("data-expanded")) !== "true") {
+    await target.getByRole("button").first().click();
+  }
+  await expect(target).toHaveAttribute("data-expanded", "true", { timeout: 5_000 });
 }
 
 /**

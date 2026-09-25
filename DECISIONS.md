@@ -821,7 +821,7 @@ Atomically clear both execution graphs and verified checklist receipt payloads, 
 
 ## D-038 - Closed assignment forms resolve turns from dated facts
 
-**Status:** Active for P0-007B r1; implementation not yet started.
+**Status:** Active; P0-007B r1 is technically accepted and integrated. Historical evidence is retained in its reports.
 
 **Decision:** Responsibilities support fixed membership, an ordered cyclic list of unique memberships, and an explicit seven-day weekly map. Recurrence remains independent. Eligibility is either explicit people or one linked group minus exclusions; pending access/age/grants do not determine eligibility. Preserve group/source identity and a saved order rather than flattening linked membership into copied assignments.
 
@@ -841,7 +841,7 @@ Group changes retain the existing next-household-day boundary and saved anchor. 
 
 ## D-039 - Scheduled work composes into one versioned responsibility
 
-**Status:** Active for P0-007B r1; implementation not yet started.
+**Status:** Active; P0-007B r1 is technically accepted and integrated. Historical evidence is retained in its reports.
 
 **Decision:** A responsibility has base steps plus named scheduled additions with stable identities, weekday subsets, ordered steps, and inherited or fixed/cyclic assignment. Additions belong to the parent's immutable plan content and use its current/future plan lifecycle. They do not create new definitions or independent occurrences. Compose base first, then applicable additions in saved order; snapshot source identity, headings, step identity/text/obligation/order and final accountability.
 
@@ -859,7 +859,7 @@ One applicable addition with its own assignment owns the whole composed occurren
 
 ## D-040 - Preview, assignment reconciliation and execution share one resolution boundary
 
-**Status:** Active for P0-007B r1; implementation not yet started.
+**Status:** Active; P0-007B r1 is technically accepted and integrated. Historical evidence is retained in its reports.
 
 **Decision:** One dated resolution result combines governing plan, recurrence, eligibility, assignment, scheduled work and final owner. Saved and unsaved preview reads are side-effect-free; started stored snapshots take precedence. Definition and relevant source versions are pinned in drafts and checked at Save. Preview, actual materialization and reconciliation agree for unchanged inputs.
 
@@ -874,3 +874,41 @@ Plan/addition changes and group changes reconcile affected existing unstarted ro
 **Alternatives considered:** Hiding unresolved work loses a household obligation; a sentinel person corrupts identity; revision-only validation misses group changes; preview materialization and History recomposition violate accepted read/lock boundaries.
 
 **Related briefs:** P0-007B r1; refines D-035's always-assigned A case while preserving D-023/D-024/D-033/D-034/D-037.
+
+---
+
+## D-041 - Personal Today derives one focus from the existing household day
+
+**Status:** Active for P0-007C-1 r1; planned, not implemented.
+
+**Decision:** Present authorized own work as Completed, Next, Later and Anytime Today, mixing routines and responsibilities rather than creating kind-first execution silos. Build a pure presentation projection over existing reconciled occurrence snapshots and owner-scoped personal tasks; do not persist a new universal work-item or dashboard aggregate.
+
+For the initial bounded recommendation, Next is one unfinished non-Anytime occurrence: prefer in-progress work, then existing daypart/definition-ID order with a stable occurrence-ID tie-break. Other scheduled work is Later. Anytime occurrences and open personal tasks stay Anytime; no synthetic due times or clock windows are introduced. A Next recommendation is not an execution gate. Completed undated personal tasks remain inspectable without claiming they were completed on the displayed household date.
+
+Normally only the recommendation is expanded; explicit selection permits at most one recurring checklist open across the page. Preserve manual selection/collapse through unrelated refreshes. Pending final taps cannot disappear or collapse under interaction; settlement may advance the recommendation with safe focus and an undo path. Keep the existing optimistic outbox, pending-omitted snapshots, generation retirement and structural-intent checks above presentation. New-generation reset is not equivalent to ordinary omission.
+
+**Reason:** The current daypart vocabulary has order but no clock boundaries. This gives a useful, deterministic first experience without inventing deadlines, changing scheduling, or replacing proven execution infrastructure. Relevance can be evaluated before Product commits to richer timing.
+
+**Implications:** Use the authoritative household date and existing completion meanings. Optional-open is not performed work; Not needed remains distinct from Done. Personal-task saves retain their current non-outbox contract and honest error handling. Exact-time urgency, project work and shared-device execution remain separate scope.
+
+**Alternatives considered:** Expanding every unfinished checklist hides priorities; client-clock heuristics invent household policy; persisted dashboard records duplicate state; kind-first Today sections preserve the problem Design asks C to solve.
+
+**Related briefs:** P0-007C-1 r1; extends D-021/D-027/D-037 presentation without changing D-023/D-030/D-034/D-040 execution boundaries.
+
+---
+
+## D-042 - Household oversight summarizes authorized snapshots, not live plans
+
+**Status:** Active for P0-007C-1 r1; planned, not implemented.
+
+**Decision:** The existing Household-activity audience receives a summary-first Household landing surface with secondary management navigation. Show one responsibility row per occurrence and routine aggregates keyed by definition ID plus household date. Count represented applicable people and their domain-correct completion; use focused person/checklist detail for evidence. Aggregate labels are presentation, never identity. Started per-person variants and owners remain their stored snapshots even after live plan/group changes.
+
+Use only already-authorized data and retain per-kind management/own-execution rules. A broad client "manager" flag cannot widen reads, totals or execution. Unassigned is visible only to the permitted oversight scope and has no personal executor. Household task projections exclude private work even when the current viewer owns it; personal Today includes only that member's tasks. Keep existing household-visible tasks available in authenticated oversight. No wall-promotion field or display authorization is introduced in C-1.
+
+**Reason:** Recomputing against current plans or groups would erase started survivors, miscount applicability and leak information through totals. A read-first overview needs less presentation, not a new authority or storage model.
+
+**Implications:** Reuse authoritative refresh/reconnect/visibility and generation arbitration for summary and detail; loading/failure is not zero work. Return from drill-down preserves orientation. Keep Today / Plan / Household and existing saved destinations. The revised C proposal is sequenced as C-1 personal/oversight views, C-2 restricted read-only Household Display identity/read model, then C-3 shared execution and explicit personal promotion. Later contracts must define device authority/provenance/privacy before implementation; this decision does not authorize treating a manager session as a display.
+
+**Alternatives considered:** Grouping by title merges different routines; counting live group members mistakes eligibility for stored work; a new materialized summary service duplicates correctness machinery; one enlarged management screen does not satisfy the separate wall-display outcome.
+
+**Related briefs:** P0-007C-1 r1; preserves D-032-D-040. C-2 and C-3 remain roadmap horizons under the supplied Product proposal.

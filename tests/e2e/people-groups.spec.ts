@@ -58,11 +58,7 @@ async function openHouseholdActivity(page: Page) {
     .getByRole("navigation", { name: "Primary" })
     .getByRole("button", { name: "Household", exact: true })
     .click();
-  await page
-    .getByRole("navigation", { name: "Household" })
-    .getByRole("button", { name: /Household activity/ })
-    .click();
-  await expect(page.getByRole("heading", { name: "Household activity" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Household", exact: true })).toBeVisible();
 }
 
 test.describe("P0-004A People & Groups focused UX", () => {
@@ -121,8 +117,7 @@ test.describe("P0-004A People & Groups focused UX", () => {
     await page.getByRole("button", { name: "Back to People & Groups" }).click();
 
     await openHouseholdActivity(page);
-    await page.getByRole("button", { name: "Back to Household" }).click();
-    await openPeopleGroups(page);
+    await page.getByRole("button", { name: /People & Groups/i }).click();
     await expect(page.getByRole("button", { name: /Elizabeth/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /Reed kids/ })).toBeVisible();
   });

@@ -19,7 +19,9 @@
 
 ## Current focus
 
-**P0-007B r1 - Assignment Patterns & Scheduled Work** is **ACCEPTED by Architecture** after the same-branch evidence correction. Authoritative brief: `briefs/p0-007b-assignment-patterns-scheduled-work.md`; prior findings: `reports/P0-007B-r1-architecture-review.md`; re-acceptance: `reports/P0-007B-r1-architecture-reacceptance.md`; Build Report: `reports/P0-007B-r1-build-report.md`. Card **Understand whose turn it is, including deep-clean days** is **Ready to Evaluate**; Project Lead/product acceptance remains separate. C remains LIKELY NEXT under the supplied Design proposal.
+**P0-007C-1 r1 - Actionable Today and Household Overview** is **ACCEPTED by Architecture** after the AT6 four-owner Household matrix e2e passed in Chromium and WebKit (Kitchen/Cats/Bathroom/Trash distinct owners/states). Card **Know what to do next and what the household still needs** is **Ready to Evaluate**; Product speed-of-understanding evaluation remains separate. C-2/C-3 remain the next slices.
+
+Inspected clean integrated `main` at **e8f59b4** on 2026-09-24 includes accepted A/B and repository screenshot/history cleanup. Old reports retain historical SHAs; new work should anchor to the actual current tree. B evidence remains `reports/P0-007B-r1-build-report.md` and `reports/P0-007B-r1-architecture-reacceptance.md`; Product acceptance is separate from technical integration.
 
 ## Internal work status
 
@@ -35,7 +37,8 @@
 | P0-006B - Contextual Routine Applicability | r1 | ACCEPTED | Project Lead/Product | Merged to `main` at `de552ab` | Evaluate the contextual routine experience |
 | P0-006C - Household Profiles and Useful History | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `409d147` via PR #14 | Product acceptance remains separate |
 | P0-007A - Household Responsibility Foundation | r1 | ACCEPTED | Completed foundation | Merged to `main` at `51322e0` via PR #15 | None for A; Design carries presentation feedback to C |
-| P0-007B - Assignment Patterns & Scheduled Work | r1 | ACCEPTED | Project Lead evaluation | `brief/p0-007b-assignment-patterns-scheduled-work` | Evaluate Upcoming, Confirm-and-save, Unassigned repair, and responsibility journeys |
+| P0-007B - Assignment Patterns & Scheduled Work | r1 | ACCEPTED | Integrated foundation | Included in inspected `main` at `e8f59b4` | Product evaluation remains separate; C carries daily-presentation direction |
+| P0-007C-1 - Actionable Today and Household Overview | r1 | ACCEPTED | Project Lead evaluation | `brief/p0-007c-1-actionable-today-household-overview` | Product speed-of-understanding evaluation |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -59,15 +62,15 @@ This table is the short repository-side coordination index. An external project 
 
 ## Known blockers
 
-- P0-007B has no remaining Architecture blocker. Required-check branch protection remains an external Project Lead setting.
+- No known material blocker for C-1 implementation after Architecture ACCEPT / PROCEED. New C-1 tests must be explicitly included in thematic CI selectors and the desktop allowlist; current selectors cover pre-007/A/B only. Required-check branch protection remains an external Project Lead setting.
 
 ## Next Project Lead decision
 
-- Commit the corrected r1 state on `brief/p0-007b-assignment-patterns-scheduled-work` using the Engineering message in `reports/P0-007B-r1-build-report.md`, then merge when ready. Product evaluation follows; no deploy is required for technical acceptance.
+- Evaluate the technically accepted C-1 experience: child Today actionability and parent Household speed of understanding. No hosted deployment is required; remote Actions evidence may follow the normal push/PR workflow.
 
 ## Next likely handoff
 
-Project Lead evaluates technically accepted **P0-007B revision 1**. Card **Understand whose turn it is, including deep-clean days** is **Ready to Evaluate**. C remains LIKELY NEXT.
+Product Lead evaluates technically accepted **P0-007C-1 revision 1**. Product evaluation of Today actionability and Household speed-of-understanding remains separate from Architecture acceptance; C-2 planning follows when the Project Lead continues the approved C proposal.
 
 ## Notes for all teams
 

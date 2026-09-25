@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext, type Browser } from "@playwright/test";
-import { expectSignedInAs } from "../helpers/e2e-shell";
+import { expectSignedInAs, revealChecklist } from "../helpers/e2e-shell";
 
 const PASSPHRASE = "unique-passphrase-ok!";
 const MANAGER_LOGIN = "e2e.manager";
@@ -182,7 +182,9 @@ test.describe("P0-007A mixed-kind reset outbox", () => {
     await expect(catsCard).toBeVisible({ timeout: 15_000 });
 
     await child.route("**/api/v1/occurrences/**", (route) => route.abort());
+    await revealChecklist(routineCard);
     await routineCard.getByRole("button", { name: /Mark Routine step completed/ }).click();
+    await revealChecklist(catsCard);
     await catsCard.getByRole("button", { name: /Mark Feed completed/ }).click();
     await expect(child.locator(".status-pill[data-kind='pending']")).toBeVisible();
 
@@ -196,18 +198,18 @@ test.describe("P0-007A mixed-kind reset outbox", () => {
       .poll(async () => {
         const pending = await child.locator(".status-pill[data-kind='pending']").count();
         const banner = await child.locator(".activity-reset-banner").count();
-        const routineCard = child.locator(".occurrence").filter({ hasText: titles.routineTitle });
-        const catsCard = child
+        const routineCount = await child
           .locator(".occurrence")
-          .filter({ hasText: titles.responsibilityTitle });
-        const routineOpen =
-          (await routineCard.count()) > 0 &&
-          (await routineCard.getByText(/Status:\s*Open/i).count()) > 0;
-        const catsOpen =
-          (await catsCard.count()) > 0 &&
-          (await catsCard.getByText(/Status:\s*Open/i).count()) > 0;
+          .filter({ hasText: titles.routineTitle })
+          .count();
+        const catsCount = await child
+          .locator(".occurrence")
+          .filter({ hasText: titles.responsibilityTitle })
+          .count();
         if (pending > 0) return "pending-ghost";
-        if (routineOpen && catsOpen) return banner > 0 ? "cleared-with-banner" : "cleared-fresh";
+        if (routineCount > 0 && catsCount > 0) {
+          return banner > 0 ? "cleared-with-banner" : "cleared-fresh";
+        }
         return "waiting";
       }, { timeout: 20_000 })
       .toMatch(/^cleared/);
@@ -217,7 +219,9 @@ test.describe("P0-007A mixed-kind reset outbox", () => {
     const freshCats = child.locator(".occurrence").filter({ hasText: titles.responsibilityTitle });
     await expect(freshRoutine).toBeVisible();
     await expect(freshCats).toBeVisible();
+    await revealChecklist(freshRoutine);
     await expect(freshRoutine.getByText(/Status:\s*Open/i)).toBeVisible();
+    await revealChecklist(freshCats);
     await expect(freshCats.getByText(/Status:\s*Open/i)).toBeVisible();
 
     await managerContext.close();

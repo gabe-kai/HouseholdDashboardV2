@@ -81,6 +81,7 @@ export default defineConfig({
         "**/z-p0-006c-geometry.spec.ts",
         "**/z-p0-007a-geometry.spec.ts",
         "**/z-p0-007b-geometry.spec.ts",
+        "**/z-p0-007c-1-geometry.spec.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],

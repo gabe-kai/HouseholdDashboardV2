@@ -96,37 +96,29 @@ test.describe("P0-007C-2 bootstrap isolation", () => {
       `Iso ${Date.now().toString(36)}`,
     );
 
-    const memberFetches: string[] = [];
+    const memberAttempts: string[] = [];
+    const memberPath = (url: string) =>
+      /\/api\/v1\/(today|auth\/session|people|personal-tasks|sync)(\?|$)/.test(
+        new URL(url).pathname,
+      ) && !url.includes("/api/v1/display/");
+
     wall.on("request", (request) => {
       const url = request.url();
-      if (
-        url.includes("/api/v1/today") ||
-        url.includes("/api/v1/auth/session")
-      ) {
-        memberFetches.push(`${request.method()} ${url}`);
-      }
-    });
-    wall.on("response", (response) => {
-      const url = response.url();
-      if (
-        (url.includes("/api/v1/today") || url.includes("/api/v1/auth/session")) &&
-        response.ok()
-      ) {
-        memberFetches.push(`OK ${response.status()} ${url}`);
+      if (memberPath(url)) {
+        memberAttempts.push(`${request.method()} ${url}`);
       }
     });
 
     for (const path of ["/today", "/plan"]) {
-      memberFetches.length = 0;
+      memberAttempts.length = 0;
       await wall.goto(path);
       await assertDisplayShellNoMemberChrome(wall);
-      // Path trap returns to /display.
       await expect
         .poll(() => new URL(wall.url()).pathname)
         .toMatch(/^\/display/);
       expect(
-        memberFetches.filter((entry) => entry.startsWith("OK ")),
-        `successful member fetches on ${path}: ${memberFetches.join(", ")}`,
+        memberAttempts,
+        `member API attempts on ${path}: ${memberAttempts.join(", ")}`,
       ).toEqual([]);
     }
 

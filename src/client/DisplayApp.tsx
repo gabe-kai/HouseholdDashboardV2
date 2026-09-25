@@ -131,12 +131,14 @@ export function DisplayApp() {
   const detailRef = useRef(detail);
   const originFocusRef = useRef<string | null>(null);
   const lastUserInteractionRef = useRef(performance.now());
+  const householdDateRef = useRef<string | null>(null);
 
   detailRef.current = detail;
 
   function clearHouseholdState(reason?: string) {
     accessLostRef.current = true;
     lastAuthorizedAtRef.current = null;
+    householdDateRef.current = null;
     setDashboard(null);
     setPersonDetail(null);
     setOccurrenceDetail(null);
@@ -187,6 +189,16 @@ export function DisplayApp() {
         return;
       }
       markAuthorized();
+      const previousDate = householdDateRef.current;
+      const dateChanged =
+        previousDate != null && previousDate !== next.householdDate;
+      if (dateChanged) {
+        // Close old-day detail before applying the new date/work snapshot.
+        setDetail(null);
+        setPersonDetail(null);
+        setOccurrenceDetail(null);
+      }
+      householdDateRef.current = next.householdDate;
       setDashboard(next);
       setAuthPhase("authenticated");
       setClockElapsedMs(0);
@@ -321,11 +333,28 @@ export function DisplayApp() {
   // Stale / blank deadline while disconnected.
   useEffect(() => {
     if (authPhase !== "authenticated") return;
+    const onOffline = () => {
+      setSyncStatus("disconnected");
+      setStale(true);
+    };
+    const onOnline = () => {
+      setSyncStatus("reconnecting");
+    };
+    window.addEventListener("offline", onOffline);
+    window.addEventListener("online", onOnline);
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      setSyncStatus("disconnected");
+      setStale(true);
+    }
     const timer = window.setInterval(() => {
       const last = lastAuthorizedAtRef.current;
       if (last == null) return;
       const age = performance.now() - last;
-      if (syncStatus === "disconnected" || syncStatus === "reconnecting") {
+      const offline =
+        syncStatus === "disconnected" ||
+        syncStatus === "reconnecting" ||
+        (typeof navigator !== "undefined" && navigator.onLine === false);
+      if (offline) {
         const bound = staleMaxMs();
         if (age > bound) {
           setDashboard(null);
@@ -341,8 +370,12 @@ export function DisplayApp() {
       } else {
         setStale(false);
       }
-    }, 1_000);
-    return () => window.clearInterval(timer);
+    }, 500);
+    return () => {
+      window.removeEventListener("offline", onOffline);
+      window.removeEventListener("online", onOnline);
+      window.clearInterval(timer);
+    };
   }, [authPhase, syncStatus]);
 
   // Visibility / resume: check stale deadline before restoring.

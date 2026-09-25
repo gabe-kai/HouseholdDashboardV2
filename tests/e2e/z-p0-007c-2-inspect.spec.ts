@@ -114,6 +114,96 @@ test.describe("P0-007C-2 wall inspection", () => {
     await wallCtx.close();
   });
 
+  test("AT5/AT7: household-visible task only in owner person detail", async ({
+    page,
+    browser,
+  }) => {
+    const wallCtx = await browser.newContext();
+    const wall = await wallCtx.newPage();
+    await enrollFreshDisplay(page.request, wall, `Task ${Date.now().toString(36)}`);
+
+    const AVERY_ID = "22222222-2222-4222-8222-222222222202";
+    const CASEY_ID = "22222222-2222-4222-8222-222222222204";
+    const AVERY_LOGIN = "e2e.avery";
+    const taskTitle = `Household visible ${Date.now().toString(36)}`;
+    const privateTitle = `PRIVATE_ONLY_${Date.now().toString(36)}`;
+
+    const averyCtx = await browser.newContext();
+    const avery = await averyCtx.newPage();
+    await ensureManagerSession(avery.request);
+    const enroll = await avery.request.post("/api/v1/enrollment/claims", {
+      headers: await mutatingHeaders(avery.request),
+      data: {
+        mutationId: crypto.randomUUID(),
+        membershipId: AVERY_ID,
+        preset: "direct_personalizer",
+      },
+    });
+    if (enroll.ok()) {
+      const token = ((await enroll.json()) as { claim: { token: string } }).claim
+        .token;
+      await avery.request.post("/api/v1/auth/logout", {
+        headers: await mutatingHeaders(avery.request),
+      });
+      const claim = await avery.request.post("/api/v1/auth/claim", {
+        headers: { Origin: requestOrigin() },
+        data: {
+          claimToken: token,
+          loginName: AVERY_LOGIN,
+          passphrase: PASSPHRASE,
+          displayName: "Avery Reed",
+        },
+      });
+      expect(claim.ok(), await claim.text()).toBeTruthy();
+    } else {
+      await avery.request.post("/api/v1/auth/logout", {
+        headers: await mutatingHeaders(avery.request),
+      });
+      const login = await avery.request.post("/api/v1/auth/login", {
+        headers: { Origin: requestOrigin() },
+        data: { loginName: AVERY_LOGIN, passphrase: PASSPHRASE },
+      });
+      expect(login.ok(), await login.text()).toBeTruthy();
+    }
+
+    const createVisible = await avery.request.post("/api/v1/personal-tasks", {
+      headers: await mutatingHeaders(avery.request),
+      data: { title: taskTitle, visibility: "household" },
+    });
+    expect(createVisible.ok(), await createVisible.text()).toBeTruthy();
+    const createPrivate = await avery.request.post("/api/v1/personal-tasks", {
+      headers: await mutatingHeaders(avery.request),
+      data: { title: privateTitle, visibility: "private" },
+    });
+    expect(createPrivate.ok(), await createPrivate.text()).toBeTruthy();
+
+    // Wall By person resting: task title NOT in overview/counts.
+    await wall.evaluate(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await expect(wall.getByTestId("display-overview")).toBeVisible();
+    await expect(wall.getByText(taskTitle)).toHaveCount(0);
+    await expect(wall.getByText(privateTitle)).toHaveCount(0);
+
+    // Open Avery detail: household-visible task visible; private never.
+    await wall.locator(`#display-person-${AVERY_ID}`).click();
+    await expect(wall.getByTestId("display-detail")).toBeVisible({ timeout: 20_000 });
+    await expect(wall.getByText(taskTitle)).toBeVisible({ timeout: 20_000 });
+    await expect(wall.getByText(privateTitle)).toHaveCount(0);
+
+    await wall.getByRole("button", { name: "Back", exact: true }).click();
+    await expect(wall.getByTestId("display-overview")).toBeVisible();
+
+    // Open another person detail: task NOT visible.
+    await wall.locator(`#display-person-${CASEY_ID}`).click();
+    await expect(wall.getByTestId("display-detail")).toBeVisible();
+    await expect(wall.getByText(taskTitle)).toHaveCount(0);
+    await expect(wall.getByText(privateTitle)).toHaveCount(0);
+
+    await averyCtx.close();
+    await wallCtx.close();
+  });
+
   test("AT15: /household/displays is grant-gated; /display never mounts personal App", async ({
     page,
     browser,

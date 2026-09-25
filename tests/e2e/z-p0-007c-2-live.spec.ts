@@ -3,11 +3,13 @@ import {
   expect,
   type APIRequestContext,
   type Page,
+  type Route,
 } from "@playwright/test";
 
 const PASSPHRASE = "unique-passphrase-ok!";
 const MANAGER_LOGIN = "e2e.manager";
 const AVERY_ID = "22222222-2222-4222-8222-222222222202";
+const CASEY_ID = "22222222-2222-4222-8222-222222222204";
 const AVERY_LOGIN = "e2e.avery";
 
 function requestOrigin(): string {
@@ -95,7 +97,7 @@ async function enrollWall(
   wall: Page,
   label: string,
   init?: () => void,
-): Promise<{ displayId: string }> {
+): Promise<{ displayId: string; code: string }> {
   await ensureManagerSession(managerRequest);
   const create = await managerRequest.post("/api/v1/displays", {
     headers: await mutatingHeaders(managerRequest),
@@ -114,11 +116,63 @@ async function enrollWall(
   await wall.getByTestId("display-claim-code").fill(body.enrollment.code);
   await wall.getByRole("button", { name: "Connect display" }).click();
   await expect(wall.getByTestId("display-overview")).toBeVisible({ timeout: 20_000 });
-  return { displayId: body.display.id };
+  return { displayId: body.display.id, code: body.enrollment.code };
+}
+
+function syntheticDashboard(
+  titleMarker: string,
+  opts?: { householdDate?: string; serverTime?: string },
+) {
+  const householdDate = opts?.householdDate ?? "2099-06-15";
+  return {
+    dashboard: {
+      householdDate,
+      timezone: "America/New_York",
+      serverTime: opts?.serverTime ?? new Date().toISOString(),
+      activityGeneration: 1,
+      byPerson: [
+        {
+          membershipId: AVERY_ID,
+          displayName: titleMarker,
+          sortOrder: 0,
+          status: "active",
+          recurringState: "In progress",
+          progress: { done: 0, notNeeded: 0, open: 1, optionalOpen: 0, total: 1 },
+          progressLabel: "0/1 done",
+          unfinished: [
+            {
+              occurrenceId: crypto.randomUUID(),
+              title: titleMarker,
+              kind: "responsibility",
+            },
+          ],
+        },
+      ],
+      byWork: {
+        responsibilities: [
+          {
+            id: crypto.randomUUID(),
+            definitionId: crypto.randomUUID(),
+            householdDate,
+            daypart: "anytime",
+            title: titleMarker,
+            accountableMemberId: AVERY_ID,
+            accountableMemberName: "Avery Reed",
+            completed: false,
+            state: "Not started",
+            progress: { done: 0, notNeeded: 0, open: 1, optionalOpen: 0, total: 1 },
+            progressLabel: "0/1 done",
+            pending: false,
+          },
+        ],
+        routines: [],
+      },
+    },
+  };
 }
 
 test.describe("P0-007C-2 live convergence and recovery", () => {
-  test("AT9: member step completion updates wall without reload", async ({
+  test("AT9: routine/responsibility/order/task converge; open detail refreshes", async ({
     page,
     browser,
   }) => {
@@ -128,14 +182,39 @@ test.describe("P0-007C-2 live convergence and recovery", () => {
 
     await ensureManagerSession(page.request);
     const session = await page.request.get("/api/v1/auth/session");
-    const householdDate = (
-      (await session.json()) as { householdDate: string }
-    ).householdDate;
+    const sessionBody = (await session.json()) as {
+      householdDate: string;
+      familyOrderVersion?: number;
+    };
+    const householdDate = sessionBody.householdDate;
+
+    const routineTitle = `Live routine ${Date.now().toString(36)}`;
+    const createRoutine = await page.request.post("/api/v1/routines", {
+      headers: await mutatingHeaders(page.request),
+      data: {
+        mutationId: crypto.randomUUID(),
+        title: routineTitle,
+        daypart: "morning",
+        weekdays: [1, 2, 3, 4, 5, 6, 7],
+        assigneeMemberIds: [AVERY_ID],
+        assigneeGroupIds: [],
+        steps: [
+          {
+            logicalItemId: crypto.randomUUID(),
+            text: "Routine step live",
+            obligation: "required",
+          },
+        ],
+      },
+    });
+    expect(createRoutine.ok(), await createRoutine.text()).toBeTruthy();
+
+    const respTitle = `Live feed ${Date.now().toString(36)}`;
     const createWork = await page.request.post("/api/v1/responsibilities", {
       headers: await mutatingHeaders(page.request),
       data: {
         mutationId: crypto.randomUUID(),
-        title: `Live feed ${Date.now().toString(36)}`,
+        title: respTitle,
         daypart: "anytime",
         weekdays: [1, 2, 3, 4, 5, 6, 7],
         assignment: {
@@ -155,6 +234,17 @@ test.describe("P0-007C-2 live convergence and recovery", () => {
     expect(createWork.ok(), await createWork.text()).toBeTruthy();
     await page.request.get("/api/v1/today");
 
+    await expect(wall.getByText(new RegExp(respTitle, "i"))).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(wall.getByText(new RegExp(routineTitle, "i"))).toBeVisible({
+      timeout: 30_000,
+    });
+
+    // Open Avery person detail before member completes work.
+    await wall.locator(`#display-person-${AVERY_ID}`).click();
+    await expect(wall.getByTestId("display-detail")).toBeVisible();
+
     const memberCtx = await browser.newContext();
     const member = await memberCtx.newPage();
     await claimAvery(member.request);
@@ -171,17 +261,19 @@ test.describe("P0-007C-2 live convergence and recovery", () => {
         steps: Array<{ id: string; status: string; logicalItemId?: string }>;
       }>;
     };
-    const open = todayBody.occurrences.find(
-      (o) =>
-        o.title.includes("Live feed") &&
-        o.steps.some((s) => s.status === "open"),
+    const openResp = todayBody.occurrences.find(
+      (o) => o.title === respTitle && o.steps.some((s) => s.status === "open"),
     );
-    expect(open, "expected an open Live feed step for Avery").toBeTruthy();
-    const step = open!.steps.find((s) => s.status === "open")!;
+    expect(openResp).toBeTruthy();
+    const respStep = openResp!.steps.find((s) => s.status === "open")!;
+    const openRoutine = todayBody.occurrences.find(
+      (o) => o.title === routineTitle && o.steps.some((s) => s.status === "open"),
+    );
+    expect(openRoutine).toBeTruthy();
+    const routineStep = openRoutine!.steps.find((s) => s.status === "open")!;
 
-    await expect(wall.getByText(/Live feed/i)).toBeVisible({ timeout: 30_000 });
-    const status = await member.request.post(
-      `/api/v1/occurrences/${open!.id}/steps/${step.id}/status`,
+    const completeResp = await member.request.post(
+      `/api/v1/occurrences/${openResp!.id}/steps/${respStep.id}/status`,
       {
         headers: await mutatingHeaders(member.request),
         data: {
@@ -189,86 +281,291 @@ test.describe("P0-007C-2 live convergence and recovery", () => {
           status: "completed",
           performedAt: new Date().toISOString(),
           activityGeneration: todayBody.activityGeneration,
-          kind: open!.kind,
+          kind: openResp!.kind,
           intendedStructure: {
-            revisionId: open!.revisionId,
-            accountableMemberId: open!.accountableMemberId,
-            stepLogicalIds: open!.steps
+            revisionId: openResp!.revisionId,
+            accountableMemberId: openResp!.accountableMemberId,
+            stepLogicalIds: openResp!.steps
               .map((s) => s.logicalItemId)
               .filter((id): id is string => Boolean(id)),
           },
         },
       },
     );
-    expect(status.ok(), await status.text()).toBeTruthy();
+    expect(completeResp.ok(), await completeResp.text()).toBeTruthy();
 
+    const completeRoutine = await member.request.post(
+      `/api/v1/occurrences/${openRoutine!.id}/steps/${routineStep.id}/status`,
+      {
+        headers: await mutatingHeaders(member.request),
+        data: {
+          mutationId: crypto.randomUUID(),
+          status: "completed",
+          performedAt: new Date().toISOString(),
+          activityGeneration: todayBody.activityGeneration,
+          kind: openRoutine!.kind,
+          intendedStructure: {
+            revisionId: openRoutine!.revisionId,
+            accountableMemberId: openRoutine!.accountableMemberId,
+            stepLogicalIds: openRoutine!.steps
+              .map((s) => s.logicalItemId)
+              .filter((id): id is string => Boolean(id)),
+          },
+        },
+      },
+    );
+    expect(completeRoutine.ok(), await completeRoutine.text()).toBeTruthy();
+
+    // Already-open detail refreshes toward completed/quiet state.
     await expect
-      .poll(async () => wall.getByText(/Live feed/i).innerText(), {
+      .poll(async () => wall.getByTestId("display-detail").innerText(), {
         timeout: 30_000,
       })
-      .toMatch(/Done|completed|quiet|Live feed/i);
+      .toMatch(/Done|Complete|completed|quiet|1\/1/i);
 
-    // Progress label/state should move off unfinished after completion.
+    await wall.getByRole("button", { name: "Back", exact: true }).click();
     await expect(wall.getByTestId("display-overview")).toBeVisible();
+
+    // Manager family-order change updates wall person order.
+    await ensureManagerSession(page.request);
+    const people = await page.request.get("/api/v1/people");
+    expect(people.ok()).toBeTruthy();
+    const peopleBody = (await people.json()) as {
+      people: Array<{ id: string; sortOrder: number }>;
+      familyOrderVersion: number;
+    };
+    const ids = peopleBody.people.map((p) => p.id);
+    const reversed = [...ids].reverse();
+    const reorder = await page.request.put("/api/v1/people/order", {
+      headers: await mutatingHeaders(page.request),
+      data: {
+        mutationId: crypto.randomUUID(),
+        expectedVersion: peopleBody.familyOrderVersion,
+        membershipIds: reversed,
+      },
+    });
+    expect(reorder.ok(), await reorder.text()).toBeTruthy();
+    await expect
+      .poll(async () => {
+        return wall.locator(`#display-person-${reversed[0]}`).count();
+      }, { timeout: 30_000 })
+      .toBeGreaterThan(0);
+    // First card should be the first id in the reversed family order.
+    await expect(
+      wall.getByTestId("display-by-person").locator("button.display-person-card").first(),
+    ).toHaveAttribute("id", `display-person-${reversed[0]}`);
+
+    // Reassign responsibility owner → wall updates.
+    const listed = await page.request.get("/api/v1/responsibilities");
+    const responsibilities = (
+      (await listed.json()) as {
+        responsibilities: Array<{ id: string; title: string; version: number }>;
+      }
+    ).responsibilities;
+    const target = responsibilities.find((r) => r.title === respTitle);
+    if (target) {
+      const reassign = await page.request.post(
+        `/api/v1/responsibilities/${target.id}/revisions`,
+        {
+          headers: await mutatingHeaders(page.request),
+          data: {
+            mutationId: crypto.randomUUID(),
+            title: respTitle,
+            daypart: "anytime",
+            weekdays: [1, 2, 3, 4, 5, 6, 7],
+            assignment: {
+              mode: "fixed",
+              anchorDate: householdDate,
+              fixedMemberId: CASEY_ID,
+            },
+            steps: [
+              {
+                logicalItemId: crypto.randomUUID(),
+                text: "Feed cats live",
+                obligation: "required",
+              },
+            ],
+            expectedVersion: target.version,
+            mode: "current",
+          },
+        },
+      );
+      expect(reassign.ok(), await reassign.text()).toBeTruthy();
+    }
+
+    // Household-visible task appears in open Avery detail after create.
+    await wall.locator(`#display-person-${AVERY_ID}`).click();
+    await expect(wall.getByTestId("display-detail")).toBeVisible();
+    const taskTitle = `Wall task ${Date.now().toString(36)}`;
+    await claimAvery(member.request);
+    const createTask = await member.request.post("/api/v1/personal-tasks", {
+      headers: await mutatingHeaders(member.request),
+      data: { title: taskTitle, visibility: "household" },
+    });
+    expect(createTask.ok(), await createTask.text()).toBeTruthy();
+    await expect(wall.getByText(taskTitle)).toBeVisible({ timeout: 30_000 });
+    await wall.getByRole("button", { name: "Back", exact: true }).click();
+    await expect(wall.getByTestId("display-overview")).toBeVisible();
+    await expect(wall.getByText(taskTitle)).toHaveCount(0);
+
+    // Optional C-1 Household overview agreement on owner/status via manager today.
+    await ensureManagerSession(page.request);
+    const managerToday = await page.request.get("/api/v1/today");
+    expect(managerToday.ok()).toBeTruthy();
+    const managerOcc = (
+      (await managerToday.json()) as {
+        occurrences: Array<{
+          title: string;
+          accountableMemberId: string | null;
+          completed: boolean;
+        }>;
+      }
+    ).occurrences.find((o) => o.title === respTitle);
+    const dash = await wall.request.get("/api/v1/display/dashboard");
+    if (dash.ok() && managerOcc) {
+      const wallRow = (
+        (await dash.json()) as {
+          dashboard: {
+            byWork: {
+              responsibilities: Array<{
+                title: string;
+                accountableMemberId: string | null;
+                completed: boolean;
+              }>;
+            };
+          };
+        }
+      ).dashboard.byWork.responsibilities.find((r) => r.title === respTitle);
+      if (wallRow) {
+        expect(wallRow.accountableMemberId).toBe(managerOcc.accountableMemberId);
+        expect(wallRow.completed).toBe(managerOcc.completed);
+      }
+    }
 
     await wallCtx.close();
     await memberCtx.close();
   });
 
-  test("AT10: newer dashboard wins over held older response; poll recovers after socket close", async ({
+  test("AT10: barrier holds older dashboard until #2 queued; visibility recovers after WS close", async ({
     page,
     browser,
   }) => {
     const wallCtx = await browser.newContext();
     const wall = await wallCtx.newPage();
-    await enrollWall(page.request, wall, `Order ${Date.now().toString(36)}`);
 
-    let holdOlder: ((value?: unknown) => void) | null = null;
-    let releaseOlder: Promise<unknown> | null = null;
+    const olderMarker = `OLDER_SNAP_${Date.now().toString(36)}`;
+    const newerMarker = `NEWER_SNAP_${Date.now().toString(36)}`;
+    let armed = false;
     let dashCount = 0;
+    let releaseFirst: (() => void) | null = null;
+    let firstQueued: Promise<void> | null = null;
+    let secondStarted!: () => void;
+    const secondStartedPromise = new Promise<void>((resolve) => {
+      secondStarted = resolve;
+    });
 
-    await wall.route("**/api/v1/display/dashboard", async (route) => {
-      dashCount += 1;
-      if (dashCount === 1) {
-        releaseOlder = new Promise((resolve) => {
-          holdOlder = resolve;
-        });
-        await releaseOlder;
+    // Install route BEFORE wall load.
+    await wall.route("**/api/v1/display/dashboard", async (route: Route) => {
+      if (!armed) {
         await route.continue();
+        return;
+      }
+      dashCount += 1;
+      const n = dashCount;
+      if (n === 1) {
+        firstQueued = new Promise<void>((resolve) => {
+          releaseFirst = resolve;
+        });
+        await firstQueued;
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(syntheticDashboard(olderMarker)),
+        });
+        return;
+      }
+      if (n === 2) {
+        secondStarted();
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(syntheticDashboard(newerMarker)),
+        });
         return;
       }
       await route.continue();
     });
 
-    // Trigger two refreshes: first held, second immediate.
-    await wall.evaluate(() => {
-      window.dispatchEvent(new Event("visibilitychange"));
-    });
-    await wall.waitForTimeout(200);
-    // Release older after a newer request would have started via poll/visibility.
-    holdOlder?.(undefined);
+    await enrollWall(page.request, wall, `Order ${Date.now().toString(36)}`);
+    armed = true;
+    dashCount = 0;
 
-    await expect(wall.getByTestId("display-overview")).toBeVisible();
-
-    // Force socket close then wait for poll recovery.
-    await wall.evaluate(() => {
-      // Close any open websockets.
-      // @ts-expect-error test probe
-      for (const ws of (window as { __HD_WS__?: WebSocket[] }).__HD_WS__ ?? []) {
-        try {
-          ws.close();
-        } catch {
-          /* ignore */
-        }
-      }
+    // Kick two refreshes: hold #1 until #2 has started.
+    void wall.evaluate(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
     });
-    await wall.waitForTimeout(500);
-    await expect(wall.getByTestId("display-overview")).toBeVisible({ timeout: 40_000 });
+    await wall.waitForTimeout(50);
+    void wall.evaluate(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    await Promise.race([
+      secondStartedPromise,
+      wall.waitForTimeout(5_000).then(() => {
+        throw new Error("second dashboard request never started");
+      }),
+    ]);
+    releaseFirst?.();
+
+    await expect(wall.getByText(newerMarker).first()).toBeVisible({ timeout: 20_000 });
+    await expect(wall.getByText(olderMarker)).toHaveCount(0);
+    await wall.unrouteAll({ behavior: "ignoreErrors" }).catch(() => undefined);
+
+    // Force socket loss, change authoritative state offline, then recover via online + visibility.
+    await wallCtx.setOffline(true);
+    await expect
+      .poll(async () => wall.locator(".display-stale").count(), { timeout: 8_000 })
+      .toBeGreaterThan(0);
+
+    await ensureManagerSession(page.request);
+    const session = await page.request.get("/api/v1/auth/session");
+    const householdDate = (
+      (await session.json()) as { householdDate: string }
+    ).householdDate;
+    const recoveryTitle = `Recover ${Date.now().toString(36)}`;
+    const createWork = await page.request.post("/api/v1/responsibilities", {
+      headers: await mutatingHeaders(page.request),
+      data: {
+        mutationId: crypto.randomUUID(),
+        title: recoveryTitle,
+        daypart: "anytime",
+        weekdays: [1, 2, 3, 4, 5, 6, 7],
+        assignment: {
+          mode: "fixed",
+          anchorDate: householdDate,
+          fixedMemberId: AVERY_ID,
+        },
+        steps: [
+          {
+            logicalItemId: crypto.randomUUID(),
+            text: "Recover step",
+            obligation: "required",
+          },
+        ],
+      },
+    });
+    expect(createWork.ok(), await createWork.text()).toBeTruthy();
+
+    await wallCtx.setOffline(false);
+    await wall.evaluate(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await expect(wall.getByText(recoveryTitle)).toBeVisible({ timeout: 40_000 });
 
     await wallCtx.close();
   });
 
-  test("AT11: revoking one of two displays leaves the other working", async ({
+  test("AT11: held pre-revoke response cannot restore; replacement denies old credential", async ({
     page,
     browser,
   }) => {
@@ -299,19 +596,29 @@ test.describe("P0-007C-2 live convergence and recovery", () => {
     ).displays;
     const target = displays.find((d) => d.id === a.displayId)!;
 
-    // Hold a pre-revoke dashboard response for wall A.
+    // Barrier: hold dashboard response in flight, THEN revoke, then release.
+    let inFlight = false;
     let releaseHeld: (() => void) | null = null;
+    const held = new Promise<void>((resolve) => {
+      releaseHeld = resolve;
+    });
     await pageA.route("**/api/v1/display/dashboard", async (route) => {
-      if (!releaseHeld) {
-        await new Promise<void>((resolve) => {
-          releaseHeld = resolve;
-        });
+      if (!inFlight) {
+        inFlight = true;
+        await held;
       }
       await route.continue();
     });
-    void pageA.evaluate(async () => {
-      await fetch("/api/v1/display/dashboard", { credentials: "include" });
+    const fetchPromise = pageA.evaluate(async () => {
+      try {
+        await fetch("/api/v1/display/dashboard", { credentials: "include" });
+      } catch {
+        /* ignore */
+      }
     });
+    await expect
+      .poll(() => inFlight, { timeout: 10_000 })
+      .toBe(true);
 
     const revoke = await page.request.post(
       `/api/v1/displays/${a.displayId}/revoke`,
@@ -324,19 +631,57 @@ test.describe("P0-007C-2 live convergence and recovery", () => {
       },
     );
     expect(revoke.ok(), await revoke.text()).toBeTruthy();
-
     releaseHeld?.();
+    await fetchPromise;
 
-    await expect(pageA.getByTestId("display-setup")).toBeVisible({ timeout: 30_000 });
+    await expect(pageA.getByTestId("display-setup").or(pageA.getByText(/revoked|access ended|expired|Connection lost/i))).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(pageA.getByTestId("display-overview")).toHaveCount(0);
     await expect(pageB.getByTestId("display-overview")).toBeVisible();
+
+    // Replacement enrollment while B remains; claim from new context replacing credential.
+    const list2 = await page.request.get("/api/v1/displays");
+    const bRow = (
+      (await list2.json()) as {
+        displays: Array<{ id: string; configVersion: number }>;
+      }
+    ).displays.find((d) => d.id === b.displayId)!;
+    const issue = await page.request.post(
+      `/api/v1/displays/${b.displayId}/enrollment`,
+      {
+        headers: await mutatingHeaders(page.request),
+        data: {
+          mutationId: crypto.randomUUID(),
+          expectedConfigVersion: bRow.configVersion,
+        },
+      },
+    );
+    expect(issue.ok(), await issue.text()).toBeTruthy();
+    const newCode = ((await issue.json()) as { code: string }).code;
+
+    const replacementCtx = await browser.newContext();
+    const replacement = await replacementCtx.newPage();
+    await replacement.goto("/display");
+    await replacement.getByTestId("display-claim-code").fill(newCode);
+    await replacement.getByRole("button", { name: "Connect display" }).click();
+    await expect(replacement.getByTestId("display-overview")).toBeVisible({
+      timeout: 20_000,
+    });
+
+    // Old context HTTP denied after replacement.
+    const oldDash = await pageB.request.get("/api/v1/display/dashboard");
+    expect(oldDash.ok()).toBeFalsy();
     await pageB.reload();
-    await expect(pageB.getByTestId("display-overview")).toBeVisible({ timeout: 20_000 });
+    await expect(pageB.getByTestId("display-setup")).toBeVisible({ timeout: 20_000 });
+    await expect(pageB.getByTestId("display-overview")).toHaveCount(0);
 
     await wallA.close();
     await wallB.close();
+    await replacementCtx.close();
   });
 
-  test("AT12: offline past stale bound blanks; late response rejected", async ({
+  test("AT12: real offline stale timer blanks; late response and Back cannot restore", async ({
     page,
     browser,
   }) => {
@@ -347,71 +692,211 @@ test.describe("P0-007C-2 live convergence and recovery", () => {
       wall,
       `Stale ${Date.now().toString(36)}`,
       () => {
-        window.__HD_DISPLAY_STALE_MS = 1500;
+        // Long enough to observe stale-before-blank; reset last-auth just before offline.
+        window.__HD_DISPLAY_STALE_MS = 6000;
       },
     );
 
-    let holdNext = true;
-    let releaseHeld: (() => void) | null = null;
-    const held = new Promise<void>((resolve) => {
-      releaseHeld = resolve;
-    });
+    await expect(wall.getByTestId("display-overview")).toBeVisible();
+    const visibleName = await wall
+      .getByTestId("display-by-person")
+      .locator(".display-person-name")
+      .first()
+      .innerText();
 
+    let holdLate = false;
+    let releaseLate: (() => void) | null = null;
+    const lateHeld = new Promise<void>((resolve) => {
+      releaseLate = resolve;
+    });
     await wall.route("**/api/v1/display/dashboard", async (route) => {
-      if (!holdNext) {
+      if (!holdLate) {
         await route.continue();
         return;
       }
-      holdNext = false;
-      await held;
+      holdLate = false;
+      await lateHeld;
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({
-          dashboard: {
-            householdDate: "2099-01-01",
-            timezone: "America/New_York",
-            serverTime: new Date().toISOString(),
-            activityGeneration: 1,
-            byPerson: [
-              {
-                membershipId: "x",
-                displayName: "SHOULD_NOT_APPEAR",
-                sortOrder: 0,
-                status: "active",
-                recurringState: "Done",
-                progress: null,
-                progressLabel: null,
-                unfinished: [],
-              },
-            ],
-            byWork: { responsibilities: [], routines: [] },
-          },
-        }),
+        body: JSON.stringify(syntheticDashboard("SHOULD_NOT_APPEAR_LATE")),
       });
     });
 
-    // Start an in-flight dashboard refresh, then force stale/offline blanking.
+    // Fresh authorized refresh so the stale clock starts now.
     await wall.evaluate(() => {
       document.dispatchEvent(new Event("visibilitychange"));
     });
-    await wall.waitForTimeout(100);
-    await wall.evaluate(() => {
-      window.__HD_DISPLAY_FORCE_STALE__?.();
-    });
+    await expect(wall.getByTestId("display-overview")).toBeVisible();
+    await wall.waitForTimeout(200);
 
+    // Start a late in-flight request, then go truly offline while authenticated.
+    holdLate = true;
+    void wall.evaluate(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await wall.waitForTimeout(50);
+
+    await wallCtx.setOffline(true);
+
+    // Stale label while data still visible (age > bound/2, before blank).
+    await expect(wall.locator(".display-stale")).toBeVisible({ timeout: 8_000 });
+    await expect(wall.getByText(visibleName)).toBeVisible();
+
+    // Past bound → blank/setup; household data cleared.
     await expect
       .poll(async () => {
-        const blank = await wall.getByText(/expired|Connection lost|Waiting|Offline/i).count();
         const overview = await wall.getByTestId("display-overview").count();
-        return blank > 0 || overview === 0;
-      }, { timeout: 10_000 })
+        const blank = await wall.getByText(/Connection lost|expired|Waiting|Offline/i).count();
+        const setup = await wall.getByTestId("display-setup").count();
+        return overview === 0 && (blank > 0 || setup > 0);
+      }, { timeout: 12_000 })
       .toBe(true);
 
-    releaseHeld?.();
-    await wall.waitForTimeout(500);
-    await expect(wall.getByText("SHOULD_NOT_APPEAR")).toHaveCount(0);
+    // Revoke while wall is offline so resume cannot re-auth from cookie alone.
+    await ensureManagerSession(page.request);
+    const list = await page.request.get("/api/v1/displays");
+    const displays = (
+      (await list.json()) as {
+        displays: Array<{ id: string; configVersion: number }>;
+      }
+    ).displays;
+    for (const row of displays) {
+      await page.request.post(`/api/v1/displays/${row.id}/revoke`, {
+        headers: await mutatingHeaders(page.request),
+        data: {
+          mutationId: crypto.randomUUID(),
+          expectedConfigVersion: row.configVersion,
+        },
+      });
+    }
 
+    releaseLate?.();
+    await wall.waitForTimeout(400);
+    await expect(wall.getByText("SHOULD_NOT_APPEAR_LATE")).toHaveCount(0);
+    await expect(wall.getByTestId("display-overview")).toHaveCount(0);
+
+    await wallCtx.setOffline(false);
+    await wall.evaluate(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await expect(wall.getByTestId("display-overview")).toHaveCount(0);
+    await expect(
+      wall.getByTestId("display-setup").or(wall.getByText(/revoked|access ended|expired|Waiting|reconnect/i)),
+    ).toBeVisible({ timeout: 20_000 });
+
+    await wall.goBack().catch(() => undefined);
+    await expect(wall.getByTestId("display-overview")).toHaveCount(0);
+
+    await wall.unrouteAll({ behavior: "ignoreErrors" }).catch(() => undefined);
+    await wallCtx.close();
+  });
+
+  test("AT14: mismatched browser TZ/clock; midnight closes old detail", async ({
+    page,
+    browser,
+  }) => {
+    // Browser local TZ is Pacific while household is America/New_York.
+    // Skew browser Date without Playwright clock fakes (those pause app timers).
+    const wallCtx = await browser.newContext({
+      timezoneId: "America/Los_Angeles",
+    });
+    const wall = await wallCtx.newPage();
+    await wall.addInitScript(() => {
+      const fixedMs = Date.parse("2020-01-01T12:00:00.000Z");
+      Date.now = () => fixedMs;
+    });
+
+    await enrollWall(page.request, wall, `Clock ${Date.now().toString(36)}`);
+
+    const session = await wall.request.get("/api/v1/display/session");
+    expect(session.ok()).toBeTruthy();
+    const info = (await session.json()) as {
+      session: {
+        householdDate: string;
+        timezone: string;
+        serverTime: string;
+      };
+    };
+    expect(info.session.timezone).toBe("America/New_York");
+    expect(info.session.householdDate).not.toBe("2020-01-01");
+
+    const browserNowMs = await wall.evaluate(() => Date.now());
+    expect(new Date(browserNowMs).toISOString().startsWith("2020-01-01")).toBeTruthy();
+
+    const expectedWeekday = new Intl.DateTimeFormat("en-US", {
+      timeZone: info.session.timezone,
+      weekday: "long",
+    }).format(new Date(info.session.serverTime));
+    const expectedDate = new Intl.DateTimeFormat("en-US", {
+      timeZone: info.session.timezone,
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    }).format(new Date(info.session.serverTime));
+
+    const clock = wall.getByTestId("display-clock");
+    await expect(clock).toContainText(expectedWeekday);
+    await expect(clock).toContainText(expectedDate);
+    await expect(clock.locator(".display-time")).not.toBeEmpty();
+
+    // Skewed browser clock / Pacific local must not drive the wall date.
+    await expect(clock).not.toContainText("January 1, 2020");
+    const pacificDate = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Los_Angeles",
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    }).format(new Date(info.session.serverTime));
+    if (pacificDate !== expectedDate) {
+      await expect(clock).not.toContainText(pacificDate);
+    }
+
+    // Open a person detail on the current household day.
+    await wall.locator(`#display-person-${AVERY_ID}`).click();
+    await expect(wall.getByTestId("display-detail")).toBeVisible({ timeout: 20_000 });
+
+    const nextDayMarker = `NEXT_DAY_${Date.now().toString(36)}`;
+    const nextHouseholdDate = "2099-12-31";
+    const nextServerTime = "2099-12-31T15:00:00.000Z";
+    let dashHits = 0;
+    await wall.route("**/api/v1/display/dashboard", async (route) => {
+      dashHits += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          syntheticDashboard(nextDayMarker, {
+            householdDate: nextHouseholdDate,
+            serverTime: nextServerTime,
+          }),
+        ),
+      });
+    });
+
+    // Cross "midnight" via refresh with a new household date snapshot.
+    await wall.evaluate(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await expect.poll(() => dashHits, { timeout: 10_000 }).toBeGreaterThan(0);
+
+    await expect(wall.getByTestId("display-detail")).toHaveCount(0, {
+      timeout: 20_000,
+    });
+    await expect(wall.getByTestId("display-overview")).toBeVisible();
+    await expect(wall.getByText(nextDayMarker).first()).toBeVisible({
+      timeout: 20_000,
+    });
+    const nextExpectedDate = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    }).format(new Date(nextServerTime));
+    await expect(clock).toContainText(nextExpectedDate);
+    await expect(clock).not.toContainText(expectedDate);
+
+    await wall.unrouteAll({ behavior: "ignoreErrors" }).catch(() => undefined);
     await wallCtx.close();
   });
 });

@@ -89,25 +89,27 @@ test.describe("P0-007C-2 Vite development deep links", () => {
     await wallPage.getByRole("button", { name: "Connect display" }).click();
     await expect(wallPage.getByTestId("display-overview")).toBeVisible({ timeout: 20_000 });
 
-    const okMemberFetches: string[] = [];
-    wallPage.on("response", (response) => {
-      const url = response.url();
-      if (
-        (url.includes("/api/v1/today") || url.includes("/api/v1/auth/session")) &&
-        response.ok()
-      ) {
-        okMemberFetches.push(url);
+    const memberAttempts: string[] = [];
+    const memberPath = (url: string) =>
+      /\/api\/v1\/(today|auth\/session|people|personal-tasks|sync)(\?|$)/.test(
+        new URL(url).pathname,
+      ) && !url.includes("/api/v1/display/");
+
+    wallPage.on("request", (request) => {
+      const url = request.url();
+      if (memberPath(url)) {
+        memberAttempts.push(`${request.method()} ${url}`);
       }
     });
 
     for (const path of ["/today", "/plan"]) {
-      okMemberFetches.length = 0;
+      memberAttempts.length = 0;
       await wallPage.goto(path);
       await expect(wallPage.getByTestId("display-shell")).toBeVisible({ timeout: 20_000 });
       await expect(wallPage.getByRole("button", { name: "Today", exact: true })).toHaveCount(
         0,
       );
-      expect(okMemberFetches, path).toEqual([]);
+      expect(memberAttempts, path).toEqual([]);
     }
 
     await wall.close();

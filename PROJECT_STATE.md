@@ -19,7 +19,7 @@
 
 ## Current focus
 
-**P0-007C-2 r1 - Household Display and Read-only Dashboard** is **IMPLEMENTED**; first FIX REQUIRED corrections are committed at **90aaa74**, but Architecture's second review still requires evidence corrections on the same revision (`briefs/p0-007c-2-household-display-read-only-dashboard.md`). Card **See the family day from across the room** remains **In Progress**. Feature implementation: **a2b9e42**. C-3 remains out of scope.
+**P0-007C-2 r1 - Household Display and Read-only Dashboard** second-review evidence is **IMPLEMENTED** locally (uncommitted); first FIX REQUIRED corrections remain at **90aaa74**. Awaiting Architecture re-acceptance of `reports/P0-007C-2-r1-build-report.md`. Card **See the family day from across the room** remains **In Progress**. Feature implementation: **a2b9e42**. C-3 remains out of scope.
 
 Inspected clean integrated `main` at **ef39a89** on 2026-09-24 includes technically accepted **P0-007C-1 r1** via PR **#20**. The Project Lead confirmed merge/cleanup. C-1's card remains **Ready to Evaluate**; technical integration does not assert Product acceptance. Old reports retain historical SHAs; C-2 anchors to this inspected tree.
 
@@ -39,7 +39,7 @@ Inspected clean integrated `main` at **ef39a89** on 2026-09-24 includes technica
 | P0-007A - Household Responsibility Foundation | r1 | ACCEPTED | Completed foundation | Merged to `main` at `51322e0` via PR #15 | None for A; Design carries presentation feedback to C |
 | P0-007B - Assignment Patterns & Scheduled Work | r1 | ACCEPTED | Integrated foundation | Included in inspected `main` at `e8f59b4` | Product evaluation remains separate; C carries daily-presentation direction |
 | P0-007C-1 - Actionable Today and Household Overview | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `ef39a89` via PR #20 | Product speed-of-understanding evaluation |
-| P0-007C-2 - Household Display and Read-only Dashboard | r1 | FIX REQUIRED | Engineering corrections | `brief/p0-007c-2-household-display-read-only-dashboard` | Close second-review AT3, AT5-7, AT9-15 evidence and pin Build Report correction SHA |
+| P0-007C-2 - Household Display and Read-only Dashboard | r1 | IMPLEMENTED | Architecture re-acceptance | `brief/p0-007c-2-household-display-read-only-dashboard` | Re-accept second-review evidence; Project Lead commit |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -63,15 +63,15 @@ This table is the short repository-side coordination index. An external project 
 
 ## Known blockers
 
-- Technical acceptance remains blocked on the second same-r1 evidence review: claim atomicity/concurrency/replay; household-visible-task positive projection; current-day parity; live convergence and ordering; revoke/replacement races; real bounded offline timeout; hosted/local cookie attributes and expiry; browser clock/timezone display behavior; and zero member-data request attempts on display deep links. The first-round archive/bootstrap/denial/AT1-2 findings are closed. Product's actual-wall AT17 remains separate. No deployment is required.
+- No technical blockers for the second-review evidence package. Product's actual-wall AT17 remains separate and does not block technical acceptance. No deployment is required.
 
 ## Next Project Lead decision
 
-- Engineering returns the corrected same-r1 evidence and Build Report SHA/mappings; Architecture re-reviews. After acceptance, the Project Lead can evaluate wall readability on the actual screen (AT17). No hosted deployment is required; remote Actions evidence follows the normal push/PR workflow.
+- Architecture re-reviews the updated Build Report (pinned first-correction SHA `90aaa74`; second-review commit pending). After acceptance, Project Lead commits/pushes and can evaluate wall readability (AT17). No hosted deployment is required.
 
 ## Next likely handoff
 
-Engineering owns the next same-r1 evidence correction and Build Report update; Architecture rechecks the current findings. Project Lead evaluates physical readability (AT17) separately. Project Lead manages Git; suggest a commit message but do not commit, push, merge or deploy.
+Architecture owns re-acceptance of the second-review evidence package. Project Lead evaluates physical readability (AT17) separately and manages Git; suggest a commit message but do not commit, push, merge or deploy unless asked.
 
 ## Notes for all teams
 

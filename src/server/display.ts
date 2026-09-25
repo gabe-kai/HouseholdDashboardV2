@@ -202,10 +202,17 @@ function isoAt(date: Date): string {
  * materialization; never constructs a member AuthContext.
  */
 export class DisplayStore {
+  /** Test-only: throw after claim consume, before session insert, to prove tx rollback. */
+  private claimAfterConsumeHook: (() => void) | null = null;
+
   constructor(
     private readonly db: Database.Database,
     private readonly appStore: AppStore,
   ) {}
+
+  setClaimAfterConsumeFailureHook(hook: (() => void) | null): void {
+    this.claimAfterConsumeHook = hook;
+  }
 
   createDisplay(
     ctx: AuthContext,
@@ -492,6 +499,9 @@ export class DisplayStore {
       if (consume.changes !== 1) {
         fail("UNAUTHORIZED", "Invalid or expired setup code");
       }
+
+      // Test seam: failure here must roll back consume with the session insert.
+      this.claimAfterConsumeHook?.();
 
       // Successful claim invalidates prior sessions for this display.
       this.revokeDisplaySessions(claim.display_id, now);

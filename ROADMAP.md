@@ -72,7 +72,7 @@ Goal: prove that a real recurring household routine can be used quickly by six d
 
 - [ ] **P0-007C-2 - See the family day from across the room.** Manager-enrolled/revocable household-owned display identity, persistent restricted read-only access and privacy-filtered By person/By work projections. Show household date/time, six-person readable 4K layout and touch drill-down without administrative navigation or a fake member. This is deliberately read-only until C-3; preserve the full interactive outcome.
   - **Brief:** `P0-007C-2 r1 - Household Display and Read-only Dashboard` (`briefs/p0-007c-2-household-display-read-only-dashboard.md`).
-  - **Status:** Engineering readiness is **READY** and Architecture returned **ACCEPT / PROCEED** on 2026-09-25. Engineering may implement r1 on `brief/p0-007c-2-household-display-read-only-dashboard` against integrated C-1 **ef39a89**. Card: **Up Next** until implementation starts.
+  - **Status:** Engineering readiness is **READY**. Architecture reviewed implementation commit **a2b9e42** and returned **FIX REQUIRED** against r1 on 2026-09-25. Engineering closes the listed evidence and route-isolation gaps on the same branch/revision. Card: **In Progress**.
   - **Evidence target:** Normal manager-to-wall enrollment, persistent access/revocation, strict HTTP/WS privacy and principal boundaries, unattended current-day truth, live/reset/restart recovery, six-person native/scaled 4K inspection, and local PR/RC/Vite/CI selection. Physical ten/sixteen-foot readability is separately reported Product evidence, not inferred from screenshots. D-043-D-045 define this slice.
 
 ### LIKELY NEXT

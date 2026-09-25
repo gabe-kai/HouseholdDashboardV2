@@ -1,7 +1,7 @@
 # BRIEF P0-007C-2 - Household Display and Read-only Dashboard
 
 **Revision:** 1
-**Status:** IMPLEMENTED
+**Status:** FIX REQUIRED
 
 One authoritative contract for P0-007C-2. Material changes increment the revision and invalidate prior readiness. Engineering returns a consolidated readiness review and awaits Architecture ACCEPT / PROCEED before implementation. Technical acceptance and Product acceptance are separate.
 
@@ -189,9 +189,21 @@ Material implementation notes (not readiness gates): dual-credential route dispa
 
 ## Architecture disposition
 
-**Disposition:** ACCEPT / PROCEED (2026-09-25)
+**Initial disposition:** ACCEPT / PROCEED (2026-09-25), authorizing implementation.
 
-Engineering may implement **P0-007C-2 revision 1** on `brief/p0-007c-2-household-display-read-only-dashboard` against integrated baseline `ef39a89`. Keep C-3 execution and personal-work promotion out of scope. Technical acceptance follows implementation and Build Report review; Product evaluation, including AT17 at-distance readability, remains separate.
+**Current disposition:** FIX REQUIRED (2026-09-25), against the same revision. Implementation is not technically accepted; correction stays on `brief/p0-007c-2-household-display-read-only-dashboard`. No product-contract revision is needed.
+
+### Required corrections
+
+1. Preserve the accepted P0-007B screenshot archive byte-for-byte. Commit `a2b9e42` modifies ten tracked files under `reports/p0-007b-r1-screenshots/`, contrary to the implementation boundary. Restore their original contents from integrated baseline `ef39a89` and ensure the validation run leaves them unchanged.
+2. Close **AT15**: `src/client/main.tsx` chooses the display shell from the URL path alone. With a display session, directly loading a member path such as `/today` mounts the member `App` and starts its requests. Add an auth-aware route guard and prove built and Vite direct loads stay in display setup/restricted mode without mounting or fetching member-app data.
+3. Close **AT4** with an actual method-aware denial matrix for every registered non-allowlisted API route, including routes that mutate state and the display WebSocket. Route-policy inventory/completeness plus a few representative denials do not prove runtime denial before effects.
+4. Complete the required evidence currently reported partial: **AT2** manager UI cancellation/replacement of pending enrollment; **AT3** invalid/expired/used/cancelled/replaced codes, issuer loss, rollback/replay, Origin and non-test rate limits; **AT5** recursive privacy checks across detail/errors/WS and private-only invalidations; **AT6** the six-person composed current-day truth and parity cases; **AT8** vertical fit, 200% text and the stated touch/keyboard checks.
+5. Close **AT9–14** to their named contracts: multi-context member-to-wall convergence; missed notification and held/out-of-order response recovery; two-device targeted revoke/replace races; controlled offline blanking and resume; persisted-cookie server restart and idle/absolute expiry boundaries; and controlled household midnight/DST transitions. The Build Report identifies these as partial or lacking dedicated evidence; map exact tests/results rather than marking implementation wiring alone as PASS.
+6. Extend **AT1** to prove activity clear preserves display identity, credential and setup state. The current migration test creates a display after the migration assertions and does not exercise activity clear.
+7. Update the Build Report to include the implementation commit `a2b9e42`, correction commit(s), and accurate AT mappings after the corrections. Physical **AT17** remains Project Lead evidence and does not block technical acceptance.
+
+Engineering may make these corrections on r1 and return an updated Build Report for re-acceptance. Keep C-3 execution and personal-work promotion out of scope.
 
 ## Revision history
 

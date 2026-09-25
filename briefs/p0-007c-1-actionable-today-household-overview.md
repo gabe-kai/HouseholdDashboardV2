@@ -25,7 +25,7 @@ Opening Household shows responsibility ownership/state and routine completion ac
 
 **Card title:** Know what to do next and what the household still needs
 
-**Suggested column:** Up Next
+**Suggested column:** Ready to Evaluate
 
 **Player-facing goal:** Make the personal day actionable and the household day understandable at a glance.
 

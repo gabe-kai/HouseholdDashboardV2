@@ -6,7 +6,9 @@
 **Commits:**
 - `8eb1dfae3aa9769a4828979c8455595a5854f81b` — feat(P0-007C-1): actionable Today and summary-first Household overview
 - `990facbfabbabb0bf2bfd11e10789298ea0f8385` — fix(P0-007C-1): close Architecture evidence gaps for r1 acceptance  
-  AT6 four-owner Household matrix e2e + this report update are verified locally and await the next commit on this branch.
+- `1413dcdd` — fix(P0-007C-1): prove AT6 four-owner Household matrix in e2e
+
+  AT6 four-owner Household matrix e2e and this report update are committed on this branch.
 **Pull request:** N/A  
 
 ## What changed
@@ -96,7 +98,7 @@
 
 ## Suggested follow-up
 
-- Project Lead: commit AT6 matrix e2e + Build Report update, push, confirm Actions thematic **E2E · Phone P0-007C-1** and aggregate **Pull-request validation**.
+- Project Lead: push the accepted branch and confirm Actions thematic **E2E · Phone P0-007C-1** and aggregate **Pull-request validation**.
 - Architecture final acceptance against this Build Report + brief r1.
 
 ## Suggested commit message

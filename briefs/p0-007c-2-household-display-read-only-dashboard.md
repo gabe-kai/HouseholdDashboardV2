@@ -180,10 +180,12 @@ Required technical evidence is AT1-16. API fixture setup is permitted, but the n
 
 ## Engineering readiness
 
-**Reviewed revision:** NOT REVIEWED
-**Readiness:** NOT REVIEWED
+**Reviewed revision:** 1
+**Readiness:** READY
 
-Review **P0-007C-2 revision 1** against the repository in one consolidated pass. Focus on credential/route separation, permission backfill, shared materialization without impersonation, privacy in HTTP/WS, revocation/late-response behavior and test selection. Ordinary module/table layout, visual composition and helper names are Engineering discretion. Return READY or evidenced material concerns, then await Architecture ACCEPT / PROCEED.
+Consolidated Engineering review of **P0-007C-2 revision 1** against integrated C-1 @ `ef39a89` is in `reports/P0-007C-2-r1-engineering-readiness.md`. No BLOCKER or QUESTION. Ordinary module/table layout, visual composition, Base32 helper placement and client bootstrap structure remain Engineering choices. **Await Architecture ACCEPT / PROCEED before implementation.** C-3 execution/promotion remains out of scope.
+
+Material implementation notes (not readiness gates): dual-credential route dispatch and route-policy principal classes; extract current-day materialization without fabricating a manager `AuthContext`; sanitized display WS with device-scoped revoke; through-014 upgrade fixture + cleanup FK safety; explicit thematic CI / desktop / Vite selection for C-2.
 
 ## Revision history
 

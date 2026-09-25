@@ -1,7 +1,7 @@
 # BRIEF P0-007C-2 - Household Display and Read-only Dashboard
 
 **Revision:** 1
-**Status:** READY
+**Status:** IMPLEMENTED
 
 One authoritative contract for P0-007C-2. Material changes increment the revision and invalidate prior readiness. Engineering returns a consolidated readiness review and awaits Architecture ACCEPT / PROCEED before implementation. Technical acceptance and Product acceptance are separate.
 

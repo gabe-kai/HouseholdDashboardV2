@@ -30,6 +30,8 @@ export type BlockReason =
   | "has_group_membership"
   | "has_structure_receipt"
   | "has_mutation_receipt"
+  | "has_display_authorship"
+  | "has_display_issuance"
   | "missing_membership";
 
 export type CandidateReport = {
@@ -202,6 +204,28 @@ export function evaluateMembership(
   ) {
     blockers.push("has_group_membership");
   }
+
+  if (
+    tableExists(db, "household_displays") &&
+    db
+      .prepare(
+        "SELECT 1 FROM household_displays WHERE created_by_membership_id = ? LIMIT 1",
+      )
+      .get(membershipId)
+  ) {
+    blockers.push("has_display_authorship");
+  }
+  if (
+    tableExists(db, "display_enrollment_claims") &&
+    db
+      .prepare(
+        "SELECT 1 FROM display_enrollment_claims WHERE issued_by_membership_id = ? LIMIT 1",
+      )
+      .get(membershipId)
+  ) {
+    blockers.push("has_display_issuance");
+  }
+
   if (jsonMentionsMembership(db, "structure_mutation_receipts", membershipId)) {
     blockers.push("has_structure_receipt");
   }

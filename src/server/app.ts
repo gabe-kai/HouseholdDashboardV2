@@ -15,7 +15,10 @@ import {
   ClaimSchema,
   ClearRoutineActivitySchema,
   CreateGroupSchema,
+  ClaimDisplaySchema,
+  CreateDisplaySchema,
   CreatePersonSchema,
+  DisplayConfigCommandSchema,
   CreatePersonalTaskSchema,
   CreateProposalSchema,
   CreateResponsibilityRevisionSchema,
@@ -44,6 +47,7 @@ import {
 } from "../shared/schemas.js";
 import type { AppConfig } from "./config.js";
 import { digestEquals, sha256Hex } from "./crypto.js";
+import { DisplayStore, type DisplayContext } from "./display.js";
 import { migrate, openDatabase, resolveDbPath } from "./db.js";
 import { originMatchesConfig } from "./origin.js";
 import { AppStore, type AuthContext } from "./store.js";
@@ -56,11 +60,13 @@ const CSRF_EXEMPT = new Set([
   "/api/v1/health",
   "/api/v1/meta",
   "/api/v1/test/bootstrap-claim",
+  "/api/v1/display/claim",
 ]);
 /** CSRF-exempt auth entry points still require an allowed Origin. */
 const AUTH_ORIGIN_REQUIRED = new Set([
   "/api/v1/auth/login",
   "/api/v1/auth/claim",
+  "/api/v1/display/claim",
 ]);
 
 function errorBody(
@@ -105,8 +111,10 @@ export async function buildApp(
   migrate(db);
   const store = new AppStore(db);
   if (config.autoSeed) store.seed(config.householdTimezone);
+  const displayStore = new DisplayStore(db, store);
   const sync = new SyncHub();
   const requestSessions = new WeakMap<object, AuthContext>();
+  const requestDisplays = new WeakMap<object, DisplayContext>();
 
   const app = Fastify({
     logger: {
@@ -187,6 +195,70 @@ export async function buildApp(
     });
   }
 
+  function displayFromRequest(request: FastifyRequest): DisplayContext | null {
+    const cached = requestDisplays.get(request);
+    if (cached) return cached;
+    const rawToken = request.cookies[config.displayCookieName];
+    if (!rawToken) return null;
+    const session = displayStore.getDisplaySessionByTokenDigest(sha256Hex(rawToken));
+    if (session) requestDisplays.set(request, session);
+    return session;
+  }
+
+  function requireDisplay(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): DisplayContext | null {
+    const session = displayFromRequest(request);
+    if (session) {
+      reply.header("Cache-Control", "no-store");
+      return session;
+    }
+    if (request.cookies[config.displayCookieName]) {
+      clearDisplayCookie(reply);
+    }
+    void reply
+      .code(401)
+      .send(errorBody("UNAUTHORIZED", "Display authentication required", request.id));
+    return null;
+  }
+
+  function setDisplayCookie(
+    reply: FastifyReply,
+    token: string,
+    maxAge: number,
+  ): void {
+    reply.setCookie(config.displayCookieName, token, {
+      httpOnly: true,
+      sameSite: "strict",
+      secure: config.cookieSecure,
+      path: "/",
+      maxAge,
+    });
+  }
+
+  function clearDisplayCookie(reply: FastifyReply): void {
+    reply.clearCookie(config.displayCookieName, {
+      httpOnly: true,
+      sameSite: "strict",
+      secure: config.cookieSecure,
+      path: "/",
+    });
+  }
+
+  function displayInvalidate(
+    householdId: string,
+    reason: "work" | "people" | "reset" | "schedule" | "tasks",
+  ): void {
+    sync.broadcastDisplay(householdId, {
+      type: "display_invalidate",
+      householdId,
+      reason,
+      at: nowUtcIso(),
+    });
+  }
+
+
   function sessionBody(session: AuthContext, csrfToken: string) {
     return {
       member: {
@@ -225,6 +297,29 @@ export async function buildApp(
       ...(version === undefined ? {} : { version }),
       at: nowUtcIso(),
     });
+    if (resource === "personal_task") {
+      if (displayStore.isHouseholdVisibleTask(resourceId, session.householdId)) {
+        displayInvalidate(session.householdId, "tasks");
+      }
+      return;
+    }
+    if (resource === "activity_reset") {
+      displayInvalidate(session.householdId, "reset");
+      return;
+    }
+    if (
+      resource === "membership" ||
+      resource === "group" ||
+      resource === "family_order"
+    ) {
+      displayInvalidate(session.householdId, "people");
+      return;
+    }
+    if (resource === "school_calendar") {
+      displayInvalidate(session.householdId, "schedule");
+      return;
+    }
+    displayInvalidate(session.householdId, "work");
   }
 
   app.addHook("onSend", async (request, reply, payload) => {
@@ -1213,6 +1308,203 @@ export async function buildApp(
     const task = store.setTaskStatus(session, taskId, parsed.data);
     broadcast(session, "personal_task", task!.id);
     return { task };
+  });
+
+
+  app.get("/api/v1/displays", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    return { displays: displayStore.listDisplays(session) };
+  });
+
+  app.post("/api/v1/displays", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const parsed = CreateDisplaySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid display create payload", request.id));
+    }
+    const result = displayStore.createDisplay(session, parsed.data);
+    displayInvalidate(session.householdId, "people");
+    return result;
+  });
+
+  app.post("/api/v1/displays/:displayId/enrollment", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const { displayId } = request.params as { displayId: string };
+    const parsed = DisplayConfigCommandSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid enrollment payload", request.id));
+    }
+    return displayStore.issueEnrollment(session, displayId, parsed.data);
+  });
+
+  app.post("/api/v1/displays/:displayId/enrollment/cancel", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const { displayId } = request.params as { displayId: string };
+    const parsed = DisplayConfigCommandSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid enrollment cancel payload", request.id));
+    }
+    return displayStore.cancelEnrollment(session, displayId, parsed.data);
+  });
+
+  app.post("/api/v1/displays/:displayId/revoke", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const { displayId } = request.params as { displayId: string };
+    const parsed = DisplayConfigCommandSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid revoke payload", request.id));
+    }
+    const result = displayStore.revokeDisplay(session, displayId, parsed.data);
+    sync.closeDisplay(displayId);
+    displayInvalidate(session.householdId, "people");
+    return result;
+  });
+
+  app.post(
+    "/api/v1/display/claim",
+    { config: { rateLimit: claimRateLimit } },
+    async (request, reply) => {
+      if (sessionFromRequest(request)) {
+        return reply.code(409).send(
+          errorBody(
+            "CONFLICT",
+            "Sign out of your household account or use a separate browser/profile before setting up a display",
+            request.id,
+          ),
+        );
+      }
+      const parsed = ClaimDisplaySchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid display claim payload", request.id));
+      }
+      const existing = displayFromRequest(request);
+      const result = displayStore.claimDisplayCode(parsed.data.code, {
+        existingDisplayId: existing?.displayId ?? null,
+      });
+      if (existing && existing.displayId === result.context.displayId) {
+        sync.closeDisplaySession(existing.sessionId);
+      } else if (existing) {
+        // claimDisplayCode already rejected cross-display; defensive
+        sync.closeDisplay(result.context.displayId);
+      }
+      setDisplayCookie(
+        reply,
+        result.token,
+        displayStore.sessionCookieMaxAge(result.context),
+      );
+      reply.header("Cache-Control", "no-store");
+      return {
+        displayId: result.context.displayId,
+        label: result.context.label,
+        householdId: result.context.householdId,
+        timezone: result.context.timezone,
+        absoluteExpiresAt: result.context.absoluteExpiresAt,
+      };
+    },
+  );
+
+  app.get("/api/v1/display/session", async (request, reply) => {
+    const display = requireDisplay(request, reply);
+    if (!display) return;
+    return { session: displayStore.getDisplaySessionInfo(display) };
+  });
+
+  app.get("/api/v1/display/dashboard", async (request, reply) => {
+    const display = requireDisplay(request, reply);
+    if (!display) return;
+    return { dashboard: displayStore.getDisplayDashboard(display) };
+  });
+
+  app.get("/api/v1/display/people/:membershipId", async (request, reply) => {
+    const display = requireDisplay(request, reply);
+    if (!display) return;
+    const { membershipId } = request.params as { membershipId: string };
+    if (!UuidSchema.safeParse(membershipId).success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid membership id", request.id));
+    }
+    return { person: displayStore.getDisplayPersonDetail(display, membershipId) };
+  });
+
+  app.get("/api/v1/display/occurrences/:occurrenceId", async (request, reply) => {
+    const display = requireDisplay(request, reply);
+    if (!display) return;
+    const { occurrenceId } = request.params as { occurrenceId: string };
+    if (!UuidSchema.safeParse(occurrenceId).success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid occurrence id", request.id));
+    }
+    return {
+      occurrence: displayStore.getDisplayOccurrenceDetail(display, occurrenceId),
+    };
+  });
+
+  app.get("/api/v1/display/sync", { websocket: true }, (socket, request) => {
+    if (!originAllowed(request)) {
+      socket.close(4403, "origin rejected");
+      return;
+    }
+    const display = displayFromRequest(request);
+    if (!display) {
+      socket.close(4401, "unauthorized");
+      return;
+    }
+    sync.addDisplay(
+      {
+        householdId: display.householdId,
+        displayId: display.displayId,
+        sessionId: display.sessionId,
+      },
+      socket,
+    );
+    const revalidate = setInterval(() => {
+      const still = displayStore.getDisplaySessionByTokenDigest(
+        sha256Hex(request.cookies[config.displayCookieName] ?? ""),
+      );
+      if (!still || still.sessionId !== display.sessionId) {
+        try {
+          socket.send(
+            JSON.stringify({
+              type: "display_invalidate",
+              householdId: display.householdId,
+              reason: "access_lost",
+              at: nowUtcIso(),
+            }),
+          );
+          socket.close(4401, "revoked");
+        } catch {
+          // closed
+        }
+        clearInterval(revalidate);
+      }
+    }, 30_000);
+    if (typeof revalidate.unref === "function") revalidate.unref();
+    socket.on("close", () => clearInterval(revalidate));
+    socket.send(
+      JSON.stringify({
+        type: "display_invalidate",
+        householdId: display.householdId,
+        reason: "work",
+        at: nowUtcIso(),
+      }),
+    );
   });
 
   app.get("/api/v1/sync", { websocket: true }, (socket, request) => {

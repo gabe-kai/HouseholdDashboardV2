@@ -43,6 +43,7 @@ import {
   type SessionInfo,
 } from "./api";
 import { HistoryView } from "./History";
+import { HouseholdDisplaysView } from "./HouseholdDisplays";
 import { HouseholdOverview } from "./HouseholdOverview";
 import { HouseholdSettingsView } from "./HouseholdSettings";
 import { TodayView } from "./TodayView";
@@ -104,7 +105,8 @@ function primaryTabFor(location: AppLocation): PrimaryTab {
     location.name === "household-school-calendar" ||
     location.name === "household-history" ||
     location.name === "household-history-occurrence" ||
-    location.name === "household-settings"
+    location.name === "household-settings" ||
+    location.name === "household-displays"
   ) {
     return "household";
   }
@@ -116,6 +118,7 @@ function gateLocation(location: AppLocation, session: SessionInfo): AppLocation 
     session.grants.includes("routine.shared.manage") ||
     session.grants.includes("responsibility.manage");
   const canClearActivity = session.grants.includes("household.activity.clear");
+  const canManageDisplays = session.grants.includes("household.display.manage");
   if (
     (location.name === "plan" ||
       location.name === "plan-routine" ||
@@ -134,6 +137,9 @@ function gateLocation(location: AppLocation, session: SessionInfo): AppLocation 
   if (location.name === "household-settings" && !canClearActivity) {
     return { name: "unavailable", attemptedPath: pathFor(location) };
   }
+  if (location.name === "household-displays" && !canManageDisplays) {
+    return { name: "unavailable", attemptedPath: pathFor(location) };
+  }
   return location;
 }
 
@@ -150,6 +156,7 @@ const HOUSEHOLD_MENU_ITEMS: Array<{
     | "approvals"
     | "history"
     | "activity"
+    | "displays"
     | "settings";
   label: string;
   description: string;
@@ -158,6 +165,7 @@ const HOUSEHOLD_MENU_ITEMS: Array<{
     canManageShared: boolean;
     canViewActivity: boolean;
     canClearActivity: boolean;
+    canManageDisplays: boolean;
   }) => boolean;
 }> = [
   {
@@ -189,6 +197,12 @@ const HOUSEHOLD_MENU_ITEMS: Array<{
     label: "Household activity",
     description: "Shared progress and visible tasks",
     visible: (caps) => caps.canViewActivity,
+  },
+  {
+    id: "displays",
+    label: "Household displays",
+    description: "Enroll and revoke wall dashboards",
+    visible: (caps) => caps.canManageDisplays,
   },
   {
     id: "settings",
@@ -868,6 +882,7 @@ export function App() {
   const canClearActivity =
     Boolean(meta?.allowEvaluationHistoryClear) &&
     hasGrant(activeSession, "household.activity.clear");
+  const canManageDisplays = hasGrant(activeSession, "household.display.manage");
   const manager = canManageShared || canEnroll || canDecide || canManageStructure;
   const canDirect = hasGrant(activeSession, "routine.personalize.direct");
   const canPropose = hasGrant(activeSession, "routine.personalize.propose");
@@ -922,6 +937,7 @@ export function App() {
     canManageShared,
     canViewActivity: manager,
     canClearActivity,
+    canManageDisplays,
   };
   const visibleHouseholdItems = HOUSEHOLD_MENU_ITEMS.filter((item) =>
     item.visible(householdCaps),
@@ -957,6 +973,8 @@ export function App() {
     canManageShared;
   const showingSettings =
     gatedLocation.name === "household-settings" && canClearActivity;
+  const showingDisplays =
+    gatedLocation.name === "household-displays" && canManageDisplays;
   const showingUnavailable =
     gatedLocation.name === "unavailable" ||
     ((location.name === "plan" ||
@@ -964,6 +982,7 @@ export function App() {
       location.name === "plan-responsibility") &&
       !canManageShared) ||
     (gatedLocation.name === "household-settings" && !canClearActivity) ||
+    (gatedLocation.name === "household-displays" && !canManageDisplays) ||
     ((gatedLocation.name === "household-history" ||
       gatedLocation.name === "household-history-occurrence") &&
       !canManageShared);
@@ -976,7 +995,9 @@ export function App() {
         ? "Approvals"
         : showingHistory
           ? "History"
-          : showingSettings
+          : showingDisplays
+            ? "Household displays"
+            : showingSettings
             ? "Settings"
             : showingActivity
               ? "Activity"
@@ -1330,6 +1351,10 @@ export function App() {
                     requestNavigate({ name: "household-settings" });
                     return;
                   }
+                  if (item.id === "displays") {
+                    requestNavigate({ name: "household-displays" });
+                    return;
+                  }
                   if (item.id === "approvals") {
                     openHouseholdLeaf("approvals");
                   }
@@ -1369,6 +1394,10 @@ export function App() {
                     }
                     if (item.id === "settings") {
                       requestNavigate({ name: "household-settings" });
+                      return;
+                    }
+                    if (item.id === "displays") {
+                      requestNavigate({ name: "household-displays" });
                       return;
                     }
                     if (item.id === "approvals" || item.id === "activity") {
@@ -1501,6 +1530,10 @@ export function App() {
                     requestNavigate({ name: "household-settings" });
                     return;
                   }
+                  if (item.id === "displays") {
+                    requestNavigate({ name: "household-displays" });
+                    return;
+                  }
                   if (item.id === "approvals") {
                     openHouseholdLeaf("approvals");
                   }
@@ -1579,6 +1612,12 @@ export function App() {
             void noteActivityGeneration(session.member.id, generation);
             setHistoryRefreshToken((n) => n + 1);
           }}
+          onSuccessToast={(message) => showToast(message)}
+        />
+      ) : null}
+      {!showingUnavailable && showingDisplays ? (
+        <HouseholdDisplaysView
+          onBack={() => requestNavigate({ name: "household" })}
           onSuccessToast={(message) => showToast(message)}
         />
       ) : null}

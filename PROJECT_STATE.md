@@ -19,9 +19,9 @@
 
 ## Current focus
 
-**P0-007C-1 r1 - Actionable Today and Household Overview** is **ACCEPTED by Architecture** after the AT6 four-owner Household matrix e2e passed in Chromium and WebKit (Kitchen/Cats/Bathroom/Trash distinct owners/states). Card **Know what to do next and what the household still needs** is **Ready to Evaluate**; Product speed-of-understanding evaluation remains separate. C-2/C-3 remain the next slices.
+**P0-007C-2 r1 - Household Display and Read-only Dashboard** is **IN REVIEW**, with Engineering readiness **NOT REVIEWED**. Card **See the family day from across the room** is **Up Next**. This second slice adds restricted display enrollment, persistent/revocable read access and a readable live wall. C-3 will add execution and personal-work promotion; no new Product proposal is needed.
 
-Inspected clean integrated `main` at **e8f59b4** on 2026-09-24 includes accepted A/B and repository screenshot/history cleanup. Old reports retain historical SHAs; new work should anchor to the actual current tree. B evidence remains `reports/P0-007B-r1-build-report.md` and `reports/P0-007B-r1-architecture-reacceptance.md`; Product acceptance is separate from technical integration.
+Inspected clean integrated `main` at **ef39a89** on 2026-09-24 includes technically accepted **P0-007C-1 r1** via PR **#20**. The Project Lead confirmed merge/cleanup. C-1's card remains **Ready to Evaluate**; technical integration does not assert Product acceptance. Old reports retain historical SHAs; C-2 anchors to this inspected tree.
 
 ## Internal work status
 
@@ -38,7 +38,8 @@ Inspected clean integrated `main` at **e8f59b4** on 2026-09-24 includes accepted
 | P0-006C - Household Profiles and Useful History | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `409d147` via PR #14 | Product acceptance remains separate |
 | P0-007A - Household Responsibility Foundation | r1 | ACCEPTED | Completed foundation | Merged to `main` at `51322e0` via PR #15 | None for A; Design carries presentation feedback to C |
 | P0-007B - Assignment Patterns & Scheduled Work | r1 | ACCEPTED | Integrated foundation | Included in inspected `main` at `e8f59b4` | Product evaluation remains separate; C carries daily-presentation direction |
-| P0-007C-1 - Actionable Today and Household Overview | r1 | ACCEPTED | Project Lead evaluation | `brief/p0-007c-1-actionable-today-household-overview` | Product speed-of-understanding evaluation |
+| P0-007C-1 - Actionable Today and Household Overview | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `ef39a89` via PR #20 | Product speed-of-understanding evaluation |
+| P0-007C-2 - Household Display and Read-only Dashboard | r1 | IN REVIEW | Engineering readiness next | `brief/p0-007c-2-household-display-read-only-dashboard` | Consolidated r1 readiness, then Architecture disposition |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -62,15 +63,15 @@ This table is the short repository-side coordination index. An external project 
 
 ## Known blockers
 
-- No known material blocker for C-1 implementation after Architecture ACCEPT / PROCEED. New C-1 tests must be explicitly included in thematic CI selectors and the desktop allowlist; current selectors cover pre-007/A/B only. Required-check branch protection remains an external Project Lead setting.
+- No known material blocker for C-2 readiness. New principal/credential guards, privacy-filtered reads, shared current-day materialization and display CI selection are explicit planned changes, not existing features. Actual wall browser/OS scaling is TBD for Product evaluation and does not block technical work. Required-check branch protection remains an external Project Lead setting.
 
 ## Next Project Lead decision
 
-- Evaluate the technically accepted C-1 experience: child Today actionability and parent Household speed of understanding. No hosted deployment is required; remote Actions evidence may follow the normal push/PR workflow.
+- Commit the C-2 planning writeback and hand **P0-007C-2 revision 1** to Engineering for readiness review. Later evaluate wall readability on the actual screen; C-1 experience feedback remains welcome. No hosted deployment is required; remote Actions evidence follows the normal push/PR workflow.
 
 ## Next likely handoff
 
-Product Lead evaluates technically accepted **P0-007C-1 revision 1**. Product evaluation of Today actionability and Household speed-of-understanding remains separate from Architecture acceptance; C-2 planning follows when the Project Lead continues the approved C proposal.
+Engineering reviews **P0-007C-2 revision 1** in `briefs/p0-007c-2-household-display-read-only-dashboard.md` against **ef39a89**, including D-043-D-045. Return one consolidated readiness result, then await Architecture ACCEPT / PROCEED before implementation. Suggest a commit message but do not commit, push, merge or deploy.
 
 ## Notes for all teams
 

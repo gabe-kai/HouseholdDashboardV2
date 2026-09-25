@@ -65,16 +65,19 @@ Goal: prove that a real recurring household routine can be used quickly by six d
 
 - [x] **P0-007C-1 - Know what to do next and what the household still needs.** Mixed personal Today with quiet Completed, one focused Next, compact Later and Anytime; summary-first Household with responsibility owners and routine/person completion drill-down.
   - **Brief:** `P0-007C-1 r1 - Actionable Today and Household Overview` (`briefs/p0-007c-1-actionable-today-household-overview.md`).
-  - **Status:** ACCEPTED by Architecture after the AT6 four-owner Chromium/WebKit correction. Card: **Ready to Evaluate**; Product speed-of-understanding evaluation remains separate. Baseline: inspected integrated `main` at `e8f59b4`; D-041/D-042 define the bounded projection and scope.
+  - **Status:** ACCEPTED by Architecture after the AT6 four-owner Chromium/WebKit correction; merged via PR **#20** at **ef39a89**. Card: **Ready to Evaluate**; Product speed-of-understanding evaluation remains separate. D-041/D-042 define the bounded projection and scope.
   - **Evidence target:** Real phone/desktop Today and four-person Household journeys; honest obligation counts, privacy/per-kind scope, pending/offline/reset and live summary/detail recovery; local PR/RC/Vite plus CI-selection evidence. Visuals remain ignored local evidence. No display credentials, shared execution, hosting or production changes in this planning task.
 
 ### CURRENT
 
 - [ ] **P0-007C-2 - See the family day from across the room.** Manager-enrolled/revocable household-owned display identity, persistent restricted read-only access and privacy-filtered By person/By work projections. Show household date/time, six-person readable 4K layout and touch drill-down without administrative navigation or a fake member. This is deliberately read-only until C-3; preserve the full interactive outcome.
+  - **Brief:** `P0-007C-2 r1 - Household Display and Read-only Dashboard` (`briefs/p0-007c-2-household-display-read-only-dashboard.md`).
+  - **Status:** IN REVIEW on `brief/p0-007c-2-household-display-read-only-dashboard`, based on integrated C-1 **ef39a89**. Engineering readiness is **NOT REVIEWED**; implementation awaits review and Architecture ACCEPT / PROCEED. Card: **Up Next**.
+  - **Evidence target:** Normal manager-to-wall enrollment, persistent access/revocation, strict HTTP/WS privacy and principal boundaries, unattended current-day truth, live/reset/restart recovery, six-person native/scaled 4K inspection, and local PR/RC/Vite/CI selection. Physical ten/sixteen-foot readability is separately reported Product evidence, not inferred from screenshots. D-043-D-045 define this slice.
 
 ### LIKELY NEXT
 
-These are the remaining two slices of the **same revised P0-007C Design proposal**, not requests to return to Product for the same information. Only C-1 is presently an implementation brief; refine later details from its evidence.
+This is the final slice of the **same revised P0-007C Design proposal**, not a request to return to Product for the same information. C-1 is integrated and C-2 is now briefed; refine C-3's implementation contract from their evidence.
 
 - [ ] **P0-007C-3 - Act at the shared display without losing trust.** Normal assigned checklist execution with truthful display actor and unchanged accountable ownership, safe pending/reconnect/restart behavior, and owner-controlled personal-work promotion distinct from visibility. Private work never reaches the display; shared unpromoted work remains detail-only there. Complete cross-device evidence and real 27-inch evaluation at 10 and 16 feet before calling the full C outcome evaluated.
 

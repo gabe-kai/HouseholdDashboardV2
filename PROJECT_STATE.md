@@ -19,7 +19,7 @@
 
 ## Current focus
 
-**P0-007C-2 r1 - Household Display and Read-only Dashboard** is **IN REVIEW**, with Engineering readiness **READY** (`reports/P0-007C-2-r1-engineering-readiness.md`). Card **See the family day from across the room** is **Up Next**. Awaiting Architecture ACCEPT / PROCEED before implementation. C-3 execution and personal-work promotion remain out of scope.
+**P0-007C-2 r1 - Household Display and Read-only Dashboard** is **READY**. Engineering readiness is **READY** (`reports/P0-007C-2-r1-engineering-readiness.md`); Architecture returned **ACCEPT / PROCEED** on 2026-09-25. Engineering may implement on the brief branch. Card **See the family day from across the room** stays **Up Next** until implementation starts. C-3 execution and personal-work promotion remain out of scope.
 
 Inspected clean integrated `main` at **ef39a89** on 2026-09-24 includes technically accepted **P0-007C-1 r1** via PR **#20**. The Project Lead confirmed merge/cleanup. C-1's card remains **Ready to Evaluate**; technical integration does not assert Product acceptance. Old reports retain historical SHAs; C-2 anchors to this inspected tree.
 
@@ -39,7 +39,7 @@ Inspected clean integrated `main` at **ef39a89** on 2026-09-24 includes technica
 | P0-007A - Household Responsibility Foundation | r1 | ACCEPTED | Completed foundation | Merged to `main` at `51322e0` via PR #15 | None for A; Design carries presentation feedback to C |
 | P0-007B - Assignment Patterns & Scheduled Work | r1 | ACCEPTED | Integrated foundation | Included in inspected `main` at `e8f59b4` | Product evaluation remains separate; C carries daily-presentation direction |
 | P0-007C-1 - Actionable Today and Household Overview | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `ef39a89` via PR #20 | Product speed-of-understanding evaluation |
-| P0-007C-2 - Household Display and Read-only Dashboard | r1 | IN REVIEW | Architecture disposition | `brief/p0-007c-2-household-display-read-only-dashboard` | Architecture ACCEPT / PROCEED before implementation |
+| P0-007C-2 - Household Display and Read-only Dashboard | r1 | READY | Engineering implementation | `brief/p0-007c-2-household-display-read-only-dashboard` | Build Report and Architecture technical acceptance |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -67,11 +67,11 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next Project Lead decision
 
-- Commit the C-2 readiness writeback when ready. Later evaluate wall readability on the actual screen (AT17); C-1 experience feedback remains welcome. No hosted deployment is required; remote Actions evidence follows the normal push/PR workflow.
+- After the local implementation is ready, review its Build Report and evaluate wall readability on the actual screen (AT17); C-1 experience feedback remains welcome. No hosted deployment is required; remote Actions evidence follows the normal push/PR workflow.
 
 ## Next likely handoff
 
-Architecture ACCEPT / PROCEED on **P0-007C-2 revision 1** against `reports/P0-007C-2-r1-engineering-readiness.md`, then Engineering implements. Suggest a commit message but do not commit, push, merge or deploy until authorized.
+Engineering implements **P0-007C-2 revision 1** under the Architecture ACCEPT / PROCEED recorded in the brief. After implementation, Architecture reviews the Build Report; the Project Lead evaluates physical readability separately. Suggest a commit message but do not commit, push, merge or deploy until authorized.
 
 ## Notes for all teams
 

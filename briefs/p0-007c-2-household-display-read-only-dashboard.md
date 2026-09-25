@@ -1,7 +1,7 @@
 # BRIEF P0-007C-2 - Household Display and Read-only Dashboard
 
 **Revision:** 1
-**Status:** IN REVIEW
+**Status:** READY
 
 One authoritative contract for P0-007C-2. Material changes increment the revision and invalidate prior readiness. Engineering returns a consolidated readiness review and awaits Architecture ACCEPT / PROCEED before implementation. Technical acceptance and Product acceptance are separate.
 
@@ -186,6 +186,12 @@ Required technical evidence is AT1-16. API fixture setup is permitted, but the n
 Consolidated Engineering review of **P0-007C-2 revision 1** against integrated C-1 @ `ef39a89` is in `reports/P0-007C-2-r1-engineering-readiness.md`. No BLOCKER or QUESTION. Ordinary module/table layout, visual composition, Base32 helper placement and client bootstrap structure remain Engineering choices. **Await Architecture ACCEPT / PROCEED before implementation.** C-3 execution/promotion remains out of scope.
 
 Material implementation notes (not readiness gates): dual-credential route dispatch and route-policy principal classes; extract current-day materialization without fabricating a manager `AuthContext`; sanitized display WS with device-scoped revoke; through-014 upgrade fixture + cleanup FK safety; explicit thematic CI / desktop / Vite selection for C-2.
+
+## Architecture disposition
+
+**Disposition:** ACCEPT / PROCEED (2026-09-25)
+
+Engineering may implement **P0-007C-2 revision 1** on `brief/p0-007c-2-household-display-read-only-dashboard` against integrated baseline `ef39a89`. Keep C-3 execution and personal-work promotion out of scope. Technical acceptance follows implementation and Build Report review; Product evaluation, including AT17 at-distance readability, remains separate.
 
 ## Revision history
 

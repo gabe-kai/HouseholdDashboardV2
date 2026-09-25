@@ -15,7 +15,7 @@ import {
   sessionDisplayName,
 } from "../helpers/e2e-shell";
 
-const SCREENSHOT_DIR = path.resolve("reports/p0-007b-r1-screenshots");
+const SCREENSHOT_DIR = path.resolve("reports/_local-screenshots/p0-007b-r1");
 const AVERY_ID = "22222222-2222-4222-8222-222222222202";
 const CASEY_ID = "22222222-2222-4222-8222-222222222204";
 const AVERY_LOGIN = "e2e.avery";

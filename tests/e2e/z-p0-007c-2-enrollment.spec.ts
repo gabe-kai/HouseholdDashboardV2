@@ -140,4 +140,70 @@ test.describe("P0-007C-2 manager-to-wall enrollment", () => {
 
     await conflictCtx.close();
   });
+
+  test("AT2c: cancel and replace outstanding code via UI; old code fails claim", async ({
+    page,
+    browser,
+  }) => {
+    const label = `Codes ${Date.now().toString(36)}`;
+    await openManagerDisplays(page);
+    await page.getByTestId("display-label-input").fill(label);
+    await page.getByRole("button", { name: "Add display" }).click();
+    await expect(page.getByTestId("display-code-panel")).toBeVisible();
+    const firstCode = (await page.getByTestId("display-issued-code").innerText()).trim();
+
+    // Cancel outstanding setup via UI (shared e2e DB may have multiple displays).
+    await page
+      .locator(".display-manager-row")
+      .filter({ hasText: label })
+      .getByRole("button", { name: "Cancel setup" })
+      .click();
+    await expect(
+      page.locator(".display-manager-row").filter({ hasText: label }).getByText(/Needs setup/i),
+    ).toBeVisible();
+
+    const wall = await browser.newContext();
+    const wallPage = await wall.newPage();
+    await wallPage.goto("/display");
+    await wallPage.getByTestId("display-claim-code").fill(firstCode);
+    await wallPage.getByRole("button", { name: "Connect display" }).click();
+    await expect(wallPage.getByText(/Invalid or expired setup code/i)).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(wallPage.getByTestId("display-overview")).toHaveCount(0);
+
+    // Generate a new code and prove it works; then replace and prove old fails.
+    await page
+      .locator(".display-manager-row")
+      .filter({ hasText: label })
+      .getByRole("button", { name: /Generate new code|Replace code/i })
+      .click();
+    await expect(page.getByTestId("display-code-panel")).toBeVisible();
+    const secondCode = (await page.getByTestId("display-issued-code").innerText()).trim();
+    expect(secondCode).not.toBe(firstCode);
+
+    await page
+      .locator(".display-manager-row")
+      .filter({ hasText: label })
+      .getByRole("button", { name: "Replace code" })
+      .click();
+    await expect
+      .poll(async () => (await page.getByTestId("display-issued-code").innerText()).trim(), {
+        timeout: 15_000,
+      })
+      .not.toBe(secondCode);
+    const thirdCode = (await page.getByTestId("display-issued-code").innerText()).trim();
+
+    await wallPage.getByTestId("display-claim-code").fill(secondCode);
+    await wallPage.getByRole("button", { name: "Connect display" }).click();
+    await expect(wallPage.getByText(/Invalid or expired setup code/i)).toBeVisible({
+      timeout: 15_000,
+    });
+
+    await wallPage.getByTestId("display-claim-code").fill(thirdCode);
+    await wallPage.getByRole("button", { name: "Connect display" }).click();
+    await expect(wallPage.getByTestId("display-overview")).toBeVisible({ timeout: 20_000 });
+
+    await wall.close();
+  });
 });

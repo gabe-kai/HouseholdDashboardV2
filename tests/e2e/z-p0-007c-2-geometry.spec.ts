@@ -146,6 +146,40 @@ test.describe("P0-007C-2 geometry", () => {
       expect(metrics.namePx).toBeGreaterThanOrEqual(79.5);
       expect(metrics.timePx).toBeGreaterThanOrEqual(79.5);
       expect(metrics.statusPx).toBeGreaterThanOrEqual(47.5);
+
+      const scroll = await page.evaluate(() => {
+        const cards = [
+          ...document.querySelectorAll(
+            '[data-testid="display-by-person"] .display-person-card',
+          ),
+        ].slice(0, 6);
+        const bottoms = cards.map((card) => card.getBoundingClientRect().bottom);
+        const bottom = bottoms.length ? Math.max(...bottoms) : 0;
+        return {
+          sixCardBottom: bottom,
+          viewportHeight: window.innerHeight,
+          cardCount: cards.length,
+        };
+      });
+      // Six-person resting overview fits the 4K viewport (no substantial scroll for that set).
+      expect(scroll.cardCount).toBe(6);
+      expect(scroll.sixCardBottom).toBeLessThanOrEqual(scroll.viewportHeight + 48);
+
+      await page.getByTestId("display-org-by-work").focus();
+      await expect(page.getByTestId("display-org-by-work")).toBeFocused();
+      const personCard = page.getByTestId("display-by-person").locator("button").first();
+      await personCard.focus();
+      await expect(personCard).toBeFocused();
+
+      // 200% text zoom remains usable (no horizontal overflow).
+      await page.evaluate(() => {
+        document.documentElement.style.zoom = "2";
+      });
+      await assertNoHorizontalOverflow(page);
+      await page.evaluate(() => {
+        document.documentElement.style.zoom = "1";
+      });
+
       await durableScreenshot(page, path.join(SCREENSHOT_DIR, "by-person-3840.png"));
     } else {
       // Proportional scale at 1920 CSS (~half of 4K floors).

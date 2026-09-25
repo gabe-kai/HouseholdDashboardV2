@@ -51,4 +51,65 @@ test.describe("P0-007C-2 Vite development deep links", () => {
     await expect(page.getByTestId("household-displays")).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("heading", { name: "Household displays" })).toBeVisible();
   });
+
+  test("P0-007C-2 AT15 Vite: display cookie keeps /today and /plan in DisplayApp", async ({
+    page,
+    browser,
+  }) => {
+    await ensureManagerSession(page.request);
+    const create = await page.request.post("/api/v1/displays", {
+      headers: {
+        Origin: requestOrigin(),
+        "x-csrf-token": (
+          (await (await page.request.get("/api/v1/auth/session")).json()) as {
+            csrfToken: string;
+          }
+        ).csrfToken,
+      },
+      data: { mutationId: crypto.randomUUID(), label: `ViteIso ${Date.now().toString(36)}` },
+    });
+    expect(create.ok(), await create.text()).toBeTruthy();
+    const code = ((await create.json()) as { enrollment: { code: string } }).enrollment
+      .code;
+    await page.request.post("/api/v1/auth/logout", {
+      headers: {
+        Origin: requestOrigin(),
+        "x-csrf-token": (
+          (await (await page.request.get("/api/v1/auth/session")).json()) as {
+            csrfToken: string;
+          }
+        ).csrfToken,
+      },
+    });
+
+    const wall = await browser.newContext();
+    const wallPage = await wall.newPage();
+    await wallPage.goto("/display");
+    await wallPage.getByTestId("display-claim-code").fill(code);
+    await wallPage.getByRole("button", { name: "Connect display" }).click();
+    await expect(wallPage.getByTestId("display-overview")).toBeVisible({ timeout: 20_000 });
+
+    const okMemberFetches: string[] = [];
+    wallPage.on("response", (response) => {
+      const url = response.url();
+      if (
+        (url.includes("/api/v1/today") || url.includes("/api/v1/auth/session")) &&
+        response.ok()
+      ) {
+        okMemberFetches.push(url);
+      }
+    });
+
+    for (const path of ["/today", "/plan"]) {
+      okMemberFetches.length = 0;
+      await wallPage.goto(path);
+      await expect(wallPage.getByTestId("display-shell")).toBeVisible({ timeout: 20_000 });
+      await expect(wallPage.getByRole("button", { name: "Today", exact: true })).toHaveCount(
+        0,
+      );
+      expect(okMemberFetches, path).toEqual([]);
+    }
+
+    await wall.close();
+  });
 });

@@ -19,7 +19,7 @@
 
 ## Current focus
 
-**P0-007C-2 r1 - Household Display and Read-only Dashboard** is **FIX REQUIRED** after Architecture reviewed implementation commit **a2b9e42** and its Build Report. The issue is evidence/route-isolation completion against the existing contract; no brief revision is required. Card **See the family day from across the room** remains **In Progress**. C-3 remains out of scope.
+**P0-007C-2 r1 - Household Display and Read-only Dashboard** is **IMPLEMENTED** with FIX REQUIRED corrections closed locally (`reports/P0-007C-2-r1-build-report.md`). Card **See the family day from across the room** remains **In Progress** pending Architecture re-acceptance. Implementation commit **a2b9e42**; correction uncommitted. C-3 remains out of scope.
 
 Inspected clean integrated `main` at **ef39a89** on 2026-09-24 includes technically accepted **P0-007C-1 r1** via PR **#20**. The Project Lead confirmed merge/cleanup. C-1's card remains **Ready to Evaluate**; technical integration does not assert Product acceptance. Old reports retain historical SHAs; C-2 anchors to this inspected tree.
 
@@ -39,7 +39,7 @@ Inspected clean integrated `main` at **ef39a89** on 2026-09-24 includes technica
 | P0-007A - Household Responsibility Foundation | r1 | ACCEPTED | Completed foundation | Merged to `main` at `51322e0` via PR #15 | None for A; Design carries presentation feedback to C |
 | P0-007B - Assignment Patterns & Scheduled Work | r1 | ACCEPTED | Integrated foundation | Included in inspected `main` at `e8f59b4` | Product evaluation remains separate; C carries daily-presentation direction |
 | P0-007C-1 - Actionable Today and Household Overview | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `ef39a89` via PR #20 | Product speed-of-understanding evaluation |
-| P0-007C-2 - Household Display and Read-only Dashboard | r1 | FIX REQUIRED | Engineering correction | `brief/p0-007c-2-household-display-read-only-dashboard` | Close brief findings and return updated Build Report for Architecture re-acceptance |
+| P0-007C-2 - Household Display and Read-only Dashboard | r1 | IMPLEMENTED | Architecture re-acceptance | `brief/p0-007c-2-household-display-read-only-dashboard` | Architecture technical re-acceptance of corrected Build Report |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -63,15 +63,15 @@ This table is the short repository-side coordination index. An external project 
 
 ## Known blockers
 
-- Technical acceptance is withheld until the same-r1 fixes listed in the brief are evidenced: direct-route display isolation, the full principal-denial matrix, required AT2–14 coverage, AT1 activity-clear preservation, and byte-identical restoration of the P0-007B screenshot archive. Product's actual-wall AT17 remains separate. No deployment is required.
+- Technical acceptance awaits Architecture re-check of the updated Build Report after the same-r1 correction (auth-aware bootstrap, denial matrix, AT evidence, 007B screenshot archive). Product's actual-wall AT17 remains separate. No deployment is required.
 
 ## Next Project Lead decision
 
-- After the local implementation is ready, review its Build Report and evaluate wall readability on the actual screen (AT17); C-1 experience feedback remains welcome. No hosted deployment is required; remote Actions evidence follows the normal push/PR workflow.
+- After Architecture re-accepts, review the Build Report and evaluate wall readability on the actual screen (AT17); C-1 experience feedback remains welcome. No hosted deployment is required; remote Actions evidence follows the normal push/PR workflow.
 
 ## Next likely handoff
 
-Engineering returns the same-r1 correction and an updated `reports/P0-007C-2-r1-build-report.md`; Architecture then rechecks the named findings. Project Lead evaluates physical readability (AT17) separately. Suggest a commit message but do not commit, push, merge or deploy until authorized.
+Engineering has updated `reports/P0-007C-2-r1-build-report.md` for the FIX REQUIRED correction (uncommitted). Architecture rechecks the named findings. Project Lead evaluates physical readability (AT17) separately. Suggest a commit message in the Build Report; do not commit, push, merge or deploy until authorized.
 
 ## Notes for all teams
 

@@ -101,11 +101,15 @@ function statusForCode(code: string): number {
   }
 }
 
+export type BuildAppOptions = {
+  onRoute?: (routeOptions: { method: string | string[]; url?: string }) => void;
+  /** Override claim rate limit (auth claim + display claim). Tests may lower this under APP_PROFILE=test. */
+  claimRateLimit?: { max: number; timeWindow: string | number };
+};
+
 export async function buildApp(
   config: AppConfig,
-  options?: {
-    onRoute?: (routeOptions: { method: string | string[]; url?: string }) => void;
-  },
+  options?: BuildAppOptions,
 ) {
   const db = openDatabase(resolveDbPath(config.dbPath));
   migrate(db);
@@ -386,10 +390,10 @@ export async function buildApp(
     config.profile === "test"
       ? { max: 1_000, timeWindow: "1 minute" as const }
       : { max: 10, timeWindow: "1 minute" as const };
-  const claimRateLimit =
-    config.profile === "test"
+  const claimRateLimit = options?.claimRateLimit ??
+    (config.profile === "test"
       ? { max: 1_000, timeWindow: "1 minute" as const }
-      : { max: 5, timeWindow: "1 minute" as const };
+      : { max: 5, timeWindow: "1 minute" as const });
 
   app.post(
     "/api/v1/auth/login",

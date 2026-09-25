@@ -19,7 +19,7 @@ import {
 } from "./display-api";
 
 const DEFAULT_IDLE_MS = 90_000;
-const STALE_MAX_MS = 60_000;
+const DEFAULT_STALE_MAX_MS = 60_000;
 const POLL_MS = 30_000;
 const CLOCK_TICK_MS = 15_000;
 
@@ -46,6 +46,10 @@ type AuthPhase = "loading" | "setup" | "authenticated" | "blank";
 declare global {
   interface Window {
     __HD_DISPLAY_IDLE_MS?: number;
+    /** Test override for disconnected/stale blank bound (default 60s). */
+    __HD_DISPLAY_STALE_MS?: number;
+    /** Test-only: mark sync disconnected and age last auth past the stale bound. */
+    __HD_DISPLAY_FORCE_STALE__?: () => void;
   }
 }
 
@@ -53,6 +57,12 @@ function idleMs(): number {
   const override = window.__HD_DISPLAY_IDLE_MS;
   if (typeof override === "number" && override > 0) return override;
   return DEFAULT_IDLE_MS;
+}
+
+function staleMaxMs(): number {
+  const override = window.__HD_DISPLAY_STALE_MS;
+  if (typeof override === "number" && override > 0) return override;
+  return DEFAULT_STALE_MAX_MS;
 }
 
 function errorMessage(error: unknown): string {
@@ -154,8 +164,9 @@ export function DisplayApp() {
     // Reject replies whose request started outside the bound from last success,
     // and also reject if wall-clock since last success already exceeded.
     const now = performance.now();
-    if (now - last > STALE_MAX_MS) return false;
-    if (now - requestStartedAt > STALE_MAX_MS) return false;
+    const bound = staleMaxMs();
+    if (now - last > bound) return false;
+    if (now - requestStartedAt > bound) return false;
     return true;
   }
 
@@ -253,6 +264,16 @@ export function DisplayApp() {
     void bootstrap();
   }, []);
 
+  useEffect(() => {
+    window.__HD_DISPLAY_FORCE_STALE__ = () => {
+      lastAuthorizedAtRef.current = performance.now() - staleMaxMs() - 1;
+      setSyncStatus("disconnected");
+    };
+    return () => {
+      delete window.__HD_DISPLAY_FORCE_STALE__;
+    };
+  }, []);
+
   // Live sync + poll while authenticated and visible.
   useEffect(() => {
     if (authPhase !== "authenticated") return;
@@ -305,7 +326,8 @@ export function DisplayApp() {
       if (last == null) return;
       const age = performance.now() - last;
       if (syncStatus === "disconnected" || syncStatus === "reconnecting") {
-        if (age > STALE_MAX_MS) {
+        const bound = staleMaxMs();
+        if (age > bound) {
           setDashboard(null);
           setPersonDetail(null);
           setOccurrenceDetail(null);
@@ -313,7 +335,7 @@ export function DisplayApp() {
           setStale(false);
           setAuthPhase("blank");
           setBlankReason("Connection lost. Waiting to reconnect…");
-        } else if (age > 5_000) {
+        } else if (age > Math.min(5_000, bound / 2)) {
           setStale(true);
         }
       } else {
@@ -328,7 +350,7 @@ export function DisplayApp() {
     const onVisibility = () => {
       if (document.visibilityState !== "visible") return;
       const last = lastAuthorizedAtRef.current;
-      if (last != null && performance.now() - last > STALE_MAX_MS) {
+      if (last != null && performance.now() - last > staleMaxMs()) {
         setDashboard(null);
         setPersonDetail(null);
         setOccurrenceDetail(null);

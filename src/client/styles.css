@@ -1768,6 +1768,31 @@ textarea {
   gap: var(--space-3);
 }
 
+/* Wall resting overview: multi-column so six people fit without substantial scroll. */
+.display-person-list {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 28rem), 1fr));
+}
+
+@media (min-width: 1920px) {
+  .display-person-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-4);
+  }
+}
+
+@media (min-width: 3000px) {
+  .display-person-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .display-person-unfinished {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
 .display-person-card,
 .display-work-row {
   width: 100%;

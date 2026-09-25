@@ -20,7 +20,7 @@ const AVERY_ID = "22222222-2222-4222-8222-222222222202";
 const AVERY_LOGIN = "e2e.avery";
 const CASEY_ID = "22222222-2222-4222-8222-222222222204";
 const JORDAN_ID = "22222222-2222-4222-8222-222222222203";
-const SCREENSHOT_DIR = path.resolve("reports/p0-007b-r1-screenshots");
+const SCREENSHOT_DIR = path.resolve("reports/_local-screenshots/p0-007b-r1");
 
 function addDays(date: string, days: number): string {
   const [y, m, d] = date.split("-").map(Number);

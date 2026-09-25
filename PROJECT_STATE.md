@@ -19,7 +19,7 @@
 
 ## Current focus
 
-**P0-007C-1 r1 - Actionable Today and Household Overview** is **IMPLEMENTED** with AT6 four-owner Household matrix e2e closed in `reports/P0-007C-1-r1-build-report.md` (Chromium+WebKit; Kitchen/Cats/Bathroom/Trash distinct owners/states). Awaiting Architecture final acceptance. C-2/C-3 remain LIKELY NEXT.
+**P0-007C-1 r1 - Actionable Today and Household Overview** is **ACCEPTED by Architecture** after the AT6 four-owner Household matrix e2e passed in Chromium and WebKit (Kitchen/Cats/Bathroom/Trash distinct owners/states). Card **Know what to do next and what the household still needs** is **Ready to Evaluate**; Product speed-of-understanding evaluation remains separate. C-2/C-3 remain the next slices.
 
 Inspected clean integrated `main` at **e8f59b4** on 2026-09-24 includes accepted A/B and repository screenshot/history cleanup. Old reports retain historical SHAs; new work should anchor to the actual current tree. B evidence remains `reports/P0-007B-r1-build-report.md` and `reports/P0-007B-r1-architecture-reacceptance.md`; Product acceptance is separate from technical integration.
 
@@ -38,7 +38,7 @@ Inspected clean integrated `main` at **e8f59b4** on 2026-09-24 includes accepted
 | P0-006C - Household Profiles and Useful History | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `409d147` via PR #14 | Product acceptance remains separate |
 | P0-007A - Household Responsibility Foundation | r1 | ACCEPTED | Completed foundation | Merged to `main` at `51322e0` via PR #15 | None for A; Design carries presentation feedback to C |
 | P0-007B - Assignment Patterns & Scheduled Work | r1 | ACCEPTED | Integrated foundation | Included in inspected `main` at `e8f59b4` | Product evaluation remains separate; C carries daily-presentation direction |
-| P0-007C-1 - Actionable Today and Household Overview | r1 | IMPLEMENTED | Architecture final acceptance | `brief/p0-007c-1-actionable-today-household-overview` | Architecture technical acceptance of AT6-matrix Build Report |
+| P0-007C-1 - Actionable Today and Household Overview | r1 | ACCEPTED | Project Lead evaluation | `brief/p0-007c-1-actionable-today-household-overview` | Product speed-of-understanding evaluation |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -66,11 +66,11 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next Project Lead decision
 
-- Commit AT6 matrix e2e + Build Report on `brief/p0-007c-1-actionable-today-household-overview`, push for Actions, then Architecture final acceptance of `reports/P0-007C-1-r1-build-report.md`.
+- Evaluate the technically accepted C-1 experience: child Today actionability and parent Household speed of understanding. No hosted deployment is required; remote Actions evidence may follow the normal push/PR workflow.
 
 ## Next likely handoff
 
-Architecture accepts or returns FIX REQUIRED against **P0-007C-1 revision 1** Build Report. Product evaluation of speed-of-understanding follows technical acceptance.
+Product Lead evaluates technically accepted **P0-007C-1 revision 1**. Product evaluation of Today actionability and Household speed-of-understanding remains separate from Architecture acceptance; C-2 planning follows when the Project Lead continues the approved C proposal.
 
 ## Notes for all teams
 

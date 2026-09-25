@@ -1,9 +1,9 @@
 # BRIEF P0-007C-1 - Actionable Today and Household Overview
 
 **Revision:** 1
-**Status:** IMPLEMENTED
+**Status:** ACCEPTED
 
-One authoritative contract for P0-007C-1. Material changes increment the revision and invalidate prior readiness. Architecture technical acceptance and Project Lead acceptance of the experience are separate. Engineering reviews this revision before implementation and awaits Architecture's ACCEPT / PROCEED.
+One authoritative contract for P0-007C-1. Material changes increment the revision and invalidate prior readiness. Architecture technical acceptance and Project Lead acceptance of the experience are separate. Engineering reviewed this revision before implementation; the corrected Build Report is now technically accepted.
 
 ## Why
 
@@ -147,12 +147,13 @@ All are required unless an external-evidence boundary is explicitly stated. Unit
 ## Engineering readiness
 
 **Reviewed revision:** 1
-**Readiness:** READY
+**Readiness:** READY; Architecture ACCEPTED against the corrected Build Report
 
-Consolidated Engineering review of **P0-007C-1 revision 1** against integrated `main` @ `e8f59b4` is in `reports/P0-007C-1-r1-engineering-readiness.md`. No BLOCKER or QUESTION. Ordinary component organization, layout, copy and test helpers remain Engineering choices. **Await Architecture ACCEPT / PROCEED before implementation.** C-2/C-3 remain out of scope.
+Consolidated Engineering review of **P0-007C-1 revision 1** against integrated `main` @ `e8f59b4` is in `reports/P0-007C-1-r1-engineering-readiness.md`. No BLOCKER or QUESTION. Architecture accepted the corrected Build Report after AT6 four-owner Chromium/WebKit evidence; Product readability evaluation remains separate. C-2/C-3 remain out of scope.
 
 Material implementation notes (not readiness gates): explicit thematic CI / desktop allowlist selection for C-1 evidence; keep sync/outbox ownership above extracted Today/Household views; progress copy must use domain completion (Done vs Not needed), not `completedCount === total` alone.
 
 ## Revision history
 
 - **r1 (2026-09-24):** Initial brief from the revised P0-007C proposal. First slice proves actionable personal Today and summary-first Household on accepted A/B, leaving restricted display identity and shared execution/promotion to the next two briefs. Records local-only screenshot policy and explicit C coverage in thematic CI.
+- **Technical acceptance (2026-09-24):** Architecture accepted r1 after AT6 four-owner Household evidence passed in Chromium and WebKit. AT8 remains named reuse of existing authority coverage; Product speed-of-understanding evaluation remains separate.

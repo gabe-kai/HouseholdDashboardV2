@@ -63,18 +63,19 @@ Goal: prove that a real recurring household routine can be used quickly by six d
   - **Status:** ACCEPTED by Architecture after same-branch correction evidence closed AT2, AT7, and AT9–15; now integrated in inspected `main` at `e8f59b4`. Details: `reports/P0-007B-r1-architecture-review.md` and `reports/P0-007B-r1-architecture-reacceptance.md`. Product acceptance remains separate; Design's revised C proposal builds on this foundation.
   - **Evidence target:** Side-effect-free draft/saved previews match actual final owner/work; deterministic turns and dated eligibility; prospective edits preserve locks/history; Unassigned/overlap recovery; real Kitchen/Bathroom/Cats/Trash UI journeys, populated through-013 migration and local PR/RC/Vite gates. D-038-D-040 resolve the bounded technical shape. No final Today redesign or hosted iteration.
 
+- [x] **P0-007C-1 - Know what to do next and what the household still needs.** Mixed personal Today with quiet Completed, one focused Next, compact Later and Anytime; summary-first Household with responsibility owners and routine/person completion drill-down.
+  - **Brief:** `P0-007C-1 r1 - Actionable Today and Household Overview` (`briefs/p0-007c-1-actionable-today-household-overview.md`).
+  - **Status:** ACCEPTED by Architecture after the AT6 four-owner Chromium/WebKit correction. Card: **Ready to Evaluate**; Product speed-of-understanding evaluation remains separate. Baseline: inspected integrated `main` at `e8f59b4`; D-041/D-042 define the bounded projection and scope.
+  - **Evidence target:** Real phone/desktop Today and four-person Household journeys; honest obligation counts, privacy/per-kind scope, pending/offline/reset and live summary/detail recovery; local PR/RC/Vite plus CI-selection evidence. Visuals remain ignored local evidence. No display credentials, shared execution, hosting or production changes in this planning task.
+
 ### CURRENT
 
-- [ ] **P0-007C-1 - Know what to do next and what the household still needs.** Mixed personal Today with quiet Completed, one focused Next, compact Later and Anytime; summary-first Household with responsibility owners and routine/person completion drill-down.
-  - **Brief:** `P0-007C-1 r1 - Actionable Today and Household Overview` (`briefs/p0-007c-1-actionable-today-household-overview.md`).
-  - **Status:** IN REVIEW; Engineering readiness pending. Card: **Up Next**. Baseline: inspected integrated `main` at `e8f59b4`; D-041/D-042 define the bounded projection and scope.
-  - **Evidence target:** Real phone/desktop Today and four-person Household journeys; honest obligation counts, privacy/per-kind scope, pending/offline/reset and live summary/detail recovery; local PR/RC/Vite plus CI-selection evidence. Visuals remain ignored local evidence. No display credentials, shared execution, hosting or production changes in this planning task.
+- [ ] **P0-007C-2 - See the family day from across the room.** Manager-enrolled/revocable household-owned display identity, persistent restricted read-only access and privacy-filtered By person/By work projections. Show household date/time, six-person readable 4K layout and touch drill-down without administrative navigation or a fake member. This is deliberately read-only until C-3; preserve the full interactive outcome.
 
 ### LIKELY NEXT
 
 These are the remaining two slices of the **same revised P0-007C Design proposal**, not requests to return to Product for the same information. Only C-1 is presently an implementation brief; refine later details from its evidence.
 
-- [ ] **P0-007C-2 - See the family day from across the room.** Manager-enrolled/revocable household-owned display identity, persistent restricted read-only access and privacy-filtered By person/By work projections. Show household date/time, six-person readable 4K layout and touch drill-down without administrative navigation or a fake member. This is deliberately read-only until C-3; preserve the full interactive outcome.
 - [ ] **P0-007C-3 - Act at the shared display without losing trust.** Normal assigned checklist execution with truthful display actor and unchanged accountable ownership, safe pending/reconnect/restart behavior, and owner-controlled personal-work promotion distinct from visibility. Private work never reaches the display; shared unpromoted work remains detail-only there. Complete cross-device evidence and real 27-inch evaluation at 10 and 16 feet before calling the full C outcome evaluated.
 
 ### LATER

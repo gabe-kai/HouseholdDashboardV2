@@ -8,7 +8,7 @@ If this document disagrees with the repository about what exists, the repository
 
 ## Technical overview
 
-- **Current repository truth (2026-09-24):** Inspected clean local `main` at **e8f59b4**, containing accepted **P0-007A/B r1**, migrations through **014**, assignment patterns, scheduled work, Unassigned and draft preview. Historical reports retain their original commit references across the subsequent repository-history cleanup. **P0-007C-1 r1** is the current planning contract, IN REVIEW; its presentation changes are not implemented. C-2/C-3 remain the next two slices of the supplied revised C proposal.
+- **Current repository truth (2026-09-24):** Inspected local `main` at **e8f59b4**, containing accepted **P0-007A/B r1**, migrations through **014**, assignment patterns, scheduled work, Unassigned and draft preview. Historical reports retain their original commit references across the subsequent repository-history cleanup. **P0-007C-1 r1** is implemented and technically accepted against its corrected Build Report; Product evaluation remains separate. C-2/C-3 remain the next two slices of the supplied revised C proposal.
 - **Retained P0-005 foundation:** P0-005 r3 entered `main` at `31aad37`: `routine_schedule_entries`, immutable revision content versions, definition `ended_at` / `end_mode` / `deleted_at`, occurrence `canceled_at`, current-plan range reconciliation to the next schedule boundary, upcoming schedule create/edit/move/delete, Delete unused vs End, started/history visibility when live audience excludes a person, and atomic lifecycle receipts. Migrations `007_routine_schedule_lifecycle.sql` and `008_widen_routine_mutation_receipt_kinds.sql` cover lifecycle storage and long-lived-database receipt kinds. r2 locks, personal tomorrow-floor, group next-day, sync/outbox, and Origin/CSRF/WS protections remain preserved. Recorded pre-P0-005 integrated baseline: `93ef494`.
 - **Project type:** Mobile-first, responsive household web application with local/LAN development and a provider-neutral secure single-host release target.
 - **Languages/runtimes:** TypeScript throughout on the Node.js 24 LTS line (`engines.node`: `>=24 <25`, `.nvmrc` pins `24`); browser-delivered HTML and CSS.
@@ -130,9 +130,9 @@ Authoritative contract: `briefs/p0-007b-assignment-patterns-scheduled-work.md` *
 - **Unassigned:** Nullable accountability only for unstarted responsibilities; Plan/Household/History visibility; no personal executor until repaired.
 - **Evidence:** Populated through-013 fixture upgrades through 014; new screenshots only under `reports/p0-007b-r1-screenshots/`. Exact local PR/RC/Vite gates required.
 
-### P0-007C-1 actionable Today and Household overview (planned; IN REVIEW)
+### P0-007C-1 actionable Today and Household overview (implemented; ACCEPTED)
 
-Authoritative contract: `briefs/p0-007c-1-actionable-today-household-overview.md` **r1**, D-041-D-042. Inspected baseline **e8f59b4**. This section is intended architecture, not delivered behavior.
+Authoritative contract: `briefs/p0-007c-1-actionable-today-household-overview.md` **r1**, D-041-D-042. Inspected baseline **e8f59b4**. Engineering implemented it on `brief/p0-007c-1-actionable-today-household-overview`; Architecture accepted r1 after the corrected AT6 four-owner Chromium/WebKit evidence. Product evaluation remains separate.
 
 - **Bounded projection:** Today derives Completed / Next / Later / Anytime from authorized own reconciled occurrences and personal tasks. Prefer in-progress scheduled work for Next, then existing daypart order; no clock windows, synthetic task deadlines or new persisted work model. One expanded checklist, stable manual focus, pending-action retention and generation-aware reset recovery reuse existing state owners.
 - **Snapshot-aware oversight:** Household landing summarizes responsibilities individually and routines per definition/date with represented-person completion counts. Drill-down preserves per-person stored variants; live groups/plans cannot rewrite counts or detail. Keep existing per-kind grants, private-task filtering, Unassigned restrictions and read-only oversight.

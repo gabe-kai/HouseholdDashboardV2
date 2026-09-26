@@ -1,7 +1,7 @@
 # BRIEF P0-007C-2 - Household Display and Read-only Dashboard
 
 **Revision:** 1
-**Status:** FIX REQUIRED
+**Status:** ACCEPTED
 
 One authoritative contract for P0-007C-2. Material changes increment the revision and invalidate prior readiness. Engineering returns a consolidated readiness review and awaits Architecture ACCEPT / PROCEED before implementation. Technical acceptance and Product acceptance are separate.
 
@@ -191,7 +191,7 @@ Material implementation notes (not readiness gates): dual-credential route dispa
 
 **Initial disposition:** ACCEPT / PROCEED (2026-09-25), authorizing implementation.
 
-**Current disposition:** FIX REQUIRED (2026-09-25, fourth review), against the same revision. The first and second correction sets are committed at `90aaa74` and `ba5541c`; the third-review evidence is present in commit `a6d389983b2f1629a202601910eb9cb42ae3c4e0`. Source inspection confirms the new AT6 school-filtered-empty case preserves neighboring work, and AT9 now asserts calendar omission, mandatory reassignment, and unconditional C-1 owner/status parity. The Build Report records `validate:pr` and `validate:rc` as passing. No behavioral or test-gate finding remains. The sole outstanding item is to correct stale Build Report metadata: it still describes the third-review correction as uncommitted and does not pin its actual SHA. No product-contract change or request for r2.
+**Current disposition:** ACCEPTED (2026-09-25). The first and second correction sets are committed at `90aaa74` and `ba5541c`; third-review evidence is committed at `a6d389983b2f1629a202601910eb9cb42ae3c4e0`. Source inspection confirms AT6 school-filtered-empty omission preserves neighboring work, and AT9 asserts calendar omission, mandatory reassignment, and unconditional C-1 owner/status parity. The corrected Build Report pins the evidence commit and records `validate:pr` and `validate:rc` as passing. All required technical acceptance criteria AT1–16 are satisfied. AT17 remains separate Project Lead/Product evidence and does not block technical acceptance. No product-contract change or request for r2.
 
 ### Required corrections — second review (closed by `ba5541c` unless noted below)
 
@@ -205,7 +205,7 @@ Material implementation notes (not readiness gates): dual-credential route dispa
 8. **AT13 cookie/lifetime evidence is incomplete.** The current test uses a test-profile cookie and checks only that `maxAge` is positive; it expires a row after 91 days and inserts an already-expired absolute token. It does not assert hosted `__Host-hd_display` Secure/HttpOnly/SameSite/Path/no-Domain attributes, distinct local cookie behavior, the 90/365-day boundaries, renewal, or cookie lifetime bounded by remaining absolute expiry. Add focused config/HTTP tests for those exact properties. The implementation source appears configured accordingly, but source inspection is not the required behavior evidence.
 9. **AT14 is only server-date evidence.** The integration test verifies the API's household date across a spring-forward interval, midnight and a fall-back instant. It does not vary the browser timezone/clock or assert the rendered wall clock/date, coherent current work after rollover, and safe handling of an open old-day detail. Add a browser-level test using a non-household timezone and deliberately mismatched browser clock, plus the required rollover/detail assertions.
 10. **AT15 test assertion is weaker than its name/contract.** `main.tsx` now probes display session before mounting and the implementation routes an active display to `DisplayApp`, but the e2e records member requests and only asserts there were no successful responses. Assert there are no attempted member-App data requests at all on built and Vite direct personal URLs, while confirming the display shell remains active.
-11. **Pin the Build Report to the committed correction.** It still says correction commit is “N/A (uncommitted at report time)” and therefore does not record the actual correction SHA `90aaa74`. Update its commit list and revise each AT result to PASS/PARTIAL/NOT RUN based on the evidence above. Keep physical **AT17** as separate Project Lead evidence; it does not block technical acceptance.
+11. **Pin the Build Report to the committed correction.** At this review the report said correction commit was “N/A (uncommitted at report time)” and omitted the actual SHA `90aaa74`. Closed by the updated commit list and AT mappings in the subsequent Build Report revision; the later third-review SHA was separately pinned in `77476268db4bc2507cdf7e85b106a944f0c0ebee`. Keep physical **AT17** as separate Project Lead evidence; it does not block technical acceptance.
 
 ### Required corrections — third review (closed by `a6d389983b2f1629a202601910eb9cb42ae3c4e0`)
 
@@ -214,11 +214,11 @@ Material implementation notes (not readiness gates): dual-credential route dispa
 3. **AT16 required gates are still NOT RUN.** The brief requires the exact local `npm run validate:pr` and `npm run validate:rc` commands after implementation. Engineering reports component-level npm test/lint/build/Chromium/Vite passes but explicitly did not rerun either full gate or WebKit. Run both commands on the committed correction and record exact outcomes; `validate:rc` supplies the required WebKit check. Remote Actions evidence can follow push/PR; no deployment is required.
 4. **Correct Build Report metadata and mappings.** `reports/P0-007C-2-r1-build-report.md` still says the second-review correction is uncommitted/pending commit, although it is committed at `ba5541cbc86199749e5783025ae452fdb2794ac4`. Pin that SHA and make status/AT6/AT9/AT16 mappings consistent with the evidence and final gates.
 
-### Required correction — fourth review (metadata only)
+### Required correction — fourth review (closed by `77476268db4bc2507cdf7e85b106a944f0c0ebee`)
 
-Update `reports/P0-007C-2-r1-build-report.md` to replace “third-review correction: N/A (uncommitted at report time)” with the actual evidence correction commit `a6d389983b2f1629a202601910eb9cb42ae3c4e0`; remove stale “pending commit” status/follow-up language and identify the report as awaiting Architecture re-acceptance. No test rerun or code change is requested. The branch is clean and the correction is already committed. Return the corrected report for final Architecture acceptance. AT17 remains separate Project Lead evidence and does not block technical acceptance.
+Update `reports/P0-007C-2-r1-build-report.md` to replace “third-review correction: N/A (uncommitted at report time)” with the actual evidence correction commit `a6d389983b2f1629a202601910eb9cb42ae3c4e0`; remove stale pending-commit status/follow-up language. **Closed:** report correction is committed at `77476268db4bc2507cdf7e85b106a944f0c0ebee`. No test rerun or code change was needed. AT17 remains separate Project Lead evidence and does not block technical acceptance.
 
 ## Revision history
 
 - **r1 (2026-09-24):** Initial contract for the second of the three revised P0-007C slices on integrated C-1 `ef39a89`. Establishes a manager-enrolled, persistent, revocable read-only display, private-data exclusion, current-day projections, six-person wall inspection and local evidence. C-3 execution/promotion remains separate.
-- **Architecture review (2026-09-25):** Third-review behavior and gate findings are closed on commit `a6d389983b2f1629a202601910eb9cb42ae3c4e0`; final technical acceptance awaits correction of Build Report commit/status metadata only.
+- **Architecture review (2026-09-25):** Third-review behavior and gate findings are closed on commit `a6d389983b2f1629a202601910eb9cb42ae3c4e0`; Build Report metadata was corrected in `77476268db4bc2507cdf7e85b106a944f0c0ebee`. P0-007C-2 r1 is technically accepted; AT17 remains separate Product evidence.

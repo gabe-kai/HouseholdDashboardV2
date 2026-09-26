@@ -19,7 +19,7 @@
 
 ## Current focus
 
-**P0-007C-2 r1 - Household Display and Read-only Dashboard** second-review evidence is **IMPLEMENTED** locally (uncommitted); first FIX REQUIRED corrections remain at **90aaa74**. Awaiting Architecture re-acceptance of `reports/P0-007C-2-r1-build-report.md`. Card **See the family day from across the room** remains **In Progress**. Feature implementation: **a2b9e42**. C-3 remains out of scope.
+**P0-007C-2 r1 - Household Display and Read-only Dashboard** has committed corrections through **ba5541c**, but Architecture's third review remains **FIX REQUIRED** on AT6/AT9 evidence, full validation gates and Build Report metadata (`briefs/p0-007c-2-household-display-read-only-dashboard.md`). Card **See the family day from across the room** remains **In Progress**. Feature implementation: **a2b9e42**. C-3 remains out of scope.
 
 Inspected clean integrated `main` at **ef39a89** on 2026-09-24 includes technically accepted **P0-007C-1 r1** via PR **#20**. The Project Lead confirmed merge/cleanup. C-1's card remains **Ready to Evaluate**; technical integration does not assert Product acceptance. Old reports retain historical SHAs; C-2 anchors to this inspected tree.
 
@@ -39,7 +39,7 @@ Inspected clean integrated `main` at **ef39a89** on 2026-09-24 includes technica
 | P0-007A - Household Responsibility Foundation | r1 | ACCEPTED | Completed foundation | Merged to `main` at `51322e0` via PR #15 | None for A; Design carries presentation feedback to C |
 | P0-007B - Assignment Patterns & Scheduled Work | r1 | ACCEPTED | Integrated foundation | Included in inspected `main` at `e8f59b4` | Product evaluation remains separate; C carries daily-presentation direction |
 | P0-007C-1 - Actionable Today and Household Overview | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `ef39a89` via PR #20 | Product speed-of-understanding evaluation |
-| P0-007C-2 - Household Display and Read-only Dashboard | r1 | IMPLEMENTED | Architecture re-acceptance | `brief/p0-007c-2-household-display-read-only-dashboard` | Re-accept second-review evidence; Project Lead commit |
+| P0-007C-2 - Household Display and Read-only Dashboard | r1 | FIX REQUIRED | Engineering corrections | `brief/p0-007c-2-household-display-read-only-dashboard` | Prove AT6/AT9; run `validate:pr` + `validate:rc`; update Build Report SHA/mappings |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -63,15 +63,15 @@ This table is the short repository-side coordination index. An external project 
 
 ## Known blockers
 
-- No technical blockers for the second-review evidence package. Product's actual-wall AT17 remains separate and does not block technical acceptance. No deployment is required.
+- Technical acceptance awaits the remaining AT6 filtered-empty case, AT9 calendar/reassignment/parity evidence, exact PR/RC gate results, and corrected Build Report commit metadata. Product's actual-wall AT17 remains separate and does not block technical acceptance. No deployment is required.
 
 ## Next Project Lead decision
 
-- Architecture re-reviews the updated Build Report (pinned first-correction SHA `90aaa74`; second-review commit pending). After acceptance, Project Lead commits/pushes and can evaluate wall readability (AT17). No hosted deployment is required.
+- Engineering updates the Build Report and runs both local gates; Architecture re-reviews. After acceptance, the Project Lead can evaluate wall readability (AT17). No hosted deployment is required.
 
 ## Next likely handoff
 
-Architecture owns re-acceptance of the second-review evidence package. Project Lead evaluates physical readability (AT17) separately and manages Git; suggest a commit message but do not commit, push, merge or deploy unless asked.
+Engineering owns the remaining same-r1 tests and Build Report writeback. Architecture re-reviews after both gates pass. Project Lead evaluates physical readability (AT17) separately and manages Git; suggest a commit message but do not commit, push, merge or deploy unless asked.
 
 ## Notes for all teams
 

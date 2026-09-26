@@ -19,9 +19,9 @@
 
 ## Current focus
 
-**P0-007C-1 r1 - Actionable Today and Household Overview** is **ACCEPTED by Architecture** after the AT6 four-owner Household matrix e2e passed in Chromium and WebKit (Kitchen/Cats/Bathroom/Trash distinct owners/states). Card **Know what to do next and what the household still needs** is **Ready to Evaluate**; Product speed-of-understanding evaluation remains separate. C-2/C-3 remain the next slices.
+**P0-007C-2 r1 - Household Display and Read-only Dashboard** is **technically ACCEPTED**. AT6/AT9 evidence and PR/RC gates are closed; Build Report pins third-review evidence commit **a6d3899** and was corrected in **7747626**. Card **See the family day from across the room** is ready for Project Lead integration. Product's physical-wall AT17 remains separate and does not block acceptance. Feature implementation: **a2b9e42**. C-3 remains out of scope.
 
-Inspected clean integrated `main` at **e8f59b4** on 2026-09-24 includes accepted A/B and repository screenshot/history cleanup. Old reports retain historical SHAs; new work should anchor to the actual current tree. B evidence remains `reports/P0-007B-r1-build-report.md` and `reports/P0-007B-r1-architecture-reacceptance.md`; Product acceptance is separate from technical integration.
+Inspected clean integrated `main` at **ef39a89** on 2026-09-24 includes technically accepted **P0-007C-1 r1** via PR **#20**. The Project Lead confirmed merge/cleanup. C-1's card remains **Ready to Evaluate**; technical integration does not assert Product acceptance. Old reports retain historical SHAs; C-2 anchors to this inspected tree.
 
 ## Internal work status
 
@@ -38,7 +38,8 @@ Inspected clean integrated `main` at **e8f59b4** on 2026-09-24 includes accepted
 | P0-006C - Household Profiles and Useful History | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `409d147` via PR #14 | Product acceptance remains separate |
 | P0-007A - Household Responsibility Foundation | r1 | ACCEPTED | Completed foundation | Merged to `main` at `51322e0` via PR #15 | None for A; Design carries presentation feedback to C |
 | P0-007B - Assignment Patterns & Scheduled Work | r1 | ACCEPTED | Integrated foundation | Included in inspected `main` at `e8f59b4` | Product evaluation remains separate; C carries daily-presentation direction |
-| P0-007C-1 - Actionable Today and Household Overview | r1 | ACCEPTED | Project Lead evaluation | `brief/p0-007c-1-actionable-today-household-overview` | Product speed-of-understanding evaluation |
+| P0-007C-1 - Actionable Today and Household Overview | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `ef39a89` via PR #20 | Product speed-of-understanding evaluation |
+| P0-007C-2 - Household Display and Read-only Dashboard | r1 | ACCEPTED | Project Lead integration | `brief/p0-007c-2-household-display-read-only-dashboard` | Push/merge/cleanup at Project Lead discretion; AT17 remains separate Product evidence |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -62,15 +63,15 @@ This table is the short repository-side coordination index. An external project 
 
 ## Known blockers
 
-- No known material blocker for C-1 implementation after Architecture ACCEPT / PROCEED. New C-1 tests must be explicitly included in thematic CI selectors and the desktop allowlist; current selectors cover pre-007/A/B only. Required-check branch protection remains an external Project Lead setting.
+- No technical blockers remain. `validate:pr` and `validate:rc` are reported PASS, the inspected AT6/AT9 evidence closes the final contract gaps, and the Build Report metadata is corrected. Product's actual-wall AT17 is separate and does not block technical acceptance. No deployment is required.
 
 ## Next Project Lead decision
 
-- Evaluate the technically accepted C-1 experience: child Today actionability and parent Household speed of understanding. No hosted deployment is required; remote Actions evidence may follow the normal push/PR workflow.
+- Project Lead may push/merge and clean up the accepted branch. Physical wall readability (AT17) can be evaluated separately; it is not a technical merge gate. No hosted deployment is required.
 
 ## Next likely handoff
 
-Product Lead evaluates technically accepted **P0-007C-1 revision 1**. Product evaluation of Today actionability and Household speed-of-understanding remains separate from Architecture acceptance; C-2 planning follows when the Project Lead continues the approved C proposal.
+Architecture technical acceptance is complete. Project Lead owns integration/cleanup and may coordinate Product evaluation of AT17 separately; do not deploy or claim physical readability based only on automation.
 
 ## Notes for all teams
 

@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import type { FastifyInstance } from "fastify";
 import { loadConfig, type AppConfig } from "../../src/server/config.js";
-import { buildApp } from "../../src/server/app.js";
+import { buildApp, type BuildAppOptions } from "../../src/server/app.js";
 import type { AppStore, AuthContext } from "../../src/server/store.js";
 import type { GrantPreset } from "../../src/shared/schemas.js";
 
@@ -74,6 +74,7 @@ export type HttpHarness = {
 
 export async function createHttpHarness(
   overrides: Record<string, string | undefined> = {},
+  buildOptions?: BuildAppOptions,
 ): Promise<HttpHarness> {
   const dbPath = tempDbPath("hd-http");
   const port = String(8797 + Math.floor(Math.random() * 1000));
@@ -90,7 +91,7 @@ export async function createHttpHarness(
     NODE_ENV: "test",
     ...overrides,
   });
-  const built = await buildApp(config);
+  const built = await buildApp(config, buildOptions);
   return {
     app: built.app,
     store: built.store,

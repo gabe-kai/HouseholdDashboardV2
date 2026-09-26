@@ -83,6 +83,9 @@ invalidation/reconciliation semantics.
 | PB-46 | Populated through-013 upgrade through 014 maps fixed plans losslessly; new screenshots only under local archive | integration `p0-007b.test.ts` AT1; fixture `tests/helpers/p013-fixture.ts` | Developer |
 | PB-47 | Personal Today projects Completed/Next/Later/Anytime with one checklist focus; recommendation does not gate execution | unit `today-projection.test.ts` / `progress.test.ts`; e2e `z-p0-007c-1-today.spec.ts`, `z-p0-007c-1-focus.spec.ts` | Developer + PR |
 | PB-48 | Household landing summarizes authorized snapshots (responsibility rows; routine aggregates by definitionId+date); drill-down preserves snapshot identity; private tasks excluded | unit `household-overview.test.ts`; e2e `z-p0-007c-1-household.spec.ts` | Developer + PR |
+| PB-49 | Household Display principal: digest-backed enrollment/session; human routes ignore display cookie; display routes ignore human cookie; no fake member AuthContext |
+| PB-50 | Display privacy: private personal tasks excluded from dashboard/detail/WS; household-visible tasks detail-only; allowlisted fields only |
+| PB-51 | Display revocation/replacement closes affected sockets; version-checked management commands; claim atomicity and issuer recheck |
 
 ### Environment-specific (not counted as automated acceptance)
 

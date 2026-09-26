@@ -3,6 +3,7 @@ import type { Grant, GrantPreset } from "./schemas.js";
 export const GRANT_PRESETS: Record<GrantPreset, Grant[]> = {
   manager: [
     "household.member.enroll",
+    "household.display.manage",
     "household.structure.manage",
     "household.schedule.manage",
     "household.activity.clear",

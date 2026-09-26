@@ -34,6 +34,7 @@ export default defineConfig({
   testIgnore: [
     "**/z-p0-006a-vite-deeplink.spec.ts",
     "**/z-p0-007a-vite-deeplink.spec.ts",
+    "**/z-p0-007c-2-vite-deeplink.spec.ts",
   ],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
@@ -82,10 +83,21 @@ export default defineConfig({
         "**/z-p0-007a-geometry.spec.ts",
         "**/z-p0-007b-geometry.spec.ts",
         "**/z-p0-007c-1-geometry.spec.ts",
+        "**/z-p0-007c-2-geometry.spec.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width: 1280, height: 800 },
+        baseURL: chromiumURL,
+      },
+    },
+    {
+      name: "chromium-display",
+      testMatch: ["**/z-p0-007c-2-geometry.spec.ts"],
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 3840, height: 2160 },
+        deviceScaleFactor: 1,
         baseURL: chromiumURL,
       },
     },

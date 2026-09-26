@@ -300,6 +300,7 @@ test.describe("P0-007B AT11/AT12 offline and live", () => {
     expect(rapid.ok(), await rapid.text()).toBeTruthy();
     const rapidId = ((await rapid.json()) as { responsibility: { id: string } }).responsibility.id;
     const rapidToday = await averyRapid.request.get(`/api/v1/today?date=${today}`);
+    expect(rapidToday.ok()).toBeTruthy();
     const rapidOcc = (
       (await rapidToday.json()) as {
         occurrences: Array<{
@@ -310,39 +311,41 @@ test.describe("P0-007B AT11/AT12 offline and live", () => {
         }>;
       }
     ).occurrences.find((o) => o.definitionId === rapidId);
-    if (rapidOcc) {
-      await averyRapid.goto("/?mutationDelayMs=1500");
-      await expectSignedInAs(averyRapid, (await sessionDisplayName(averyRapid)) || /Avery/);
-      const rapidCard = averyRapid.locator(".occurrence").filter({ hasText: `Rapid ${suffix}` });
-      if (await rapidCard.count()) {
-        const buttons = rapidCard.getByRole("button", { name: /Mark .+ completed/ });
-        await buttons.nth(0).click();
-        await buttons.nth(1).click();
-        await expect(averyRapid.locator(".status-pill[data-kind='pending']")).toBeVisible();
-        await expect(averyRapid.locator(".status-pill[data-kind='pending']")).toHaveCount(0, {
-          timeout: 20_000,
-        });
-      }
-      const mismatch = await averyRapid.request.post(
-        `/api/v1/occurrences/${rapidOcc.id}/steps/${rapidOcc.steps[0]!.id}/status`,
-        {
-          headers: await mutatingHeaders(averyRapid.request),
-          data: {
-            mutationId: crypto.randomUUID(),
-            status: "completed",
-            performedAt: new Date().toISOString(),
-            activityGeneration: 0,
-            kind: "responsibility",
-            intendedStructure: {
-              revisionId: crypto.randomUUID(),
-              accountableMemberId: AVERY_ID,
-              stepLogicalIds: rapidOcc.steps.map((s) => s.logicalItemId ?? crypto.randomUUID()),
-            },
+    expect(rapidOcc, "rapid responsibility must materialize for Avery today").toBeTruthy();
+
+    await averyRapid.goto("/?mutationDelayMs=1500");
+    await expectSignedInAs(averyRapid, (await sessionDisplayName(averyRapid)) || /Avery/);
+    const rapidCard = averyRapid.locator(".occurrence").filter({ hasText: `Rapid ${suffix}` });
+    await expect(rapidCard).toBeVisible({ timeout: 20_000 });
+    await revealChecklist(rapidCard);
+    const buttons = rapidCard.getByRole("button", { name: /Mark .+ completed/ });
+    await expect(buttons).toHaveCount(2);
+    await buttons.nth(0).click();
+    await buttons.nth(1).click();
+    await expect(averyRapid.locator(".status-pill[data-kind='pending']")).toBeVisible();
+    await expect(averyRapid.locator(".status-pill[data-kind='pending']")).toHaveCount(0, {
+      timeout: 20_000,
+    });
+
+    const mismatch = await averyRapid.request.post(
+      `/api/v1/occurrences/${rapidOcc!.id}/steps/${rapidOcc!.steps[0]!.id}/status`,
+      {
+        headers: await mutatingHeaders(averyRapid.request),
+        data: {
+          mutationId: crypto.randomUUID(),
+          status: "completed",
+          performedAt: new Date().toISOString(),
+          activityGeneration: 0,
+          kind: "responsibility",
+          intendedStructure: {
+            revisionId: crypto.randomUUID(),
+            accountableMemberId: AVERY_ID,
+            stepLogicalIds: rapidOcc!.steps.map((s) => s.logicalItemId ?? crypto.randomUUID()),
           },
         },
-      );
-      expect(mismatch.ok()).toBeFalsy();
-    }
+      },
+    );
+    expect(mismatch.ok()).toBeFalsy();
 
     await managerContext.close();
     await averyContext.close();

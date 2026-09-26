@@ -1,13 +1,13 @@
 # Build Report - BRIEF P0-007C-2 r1
 
 **Brief revision implemented:** 1  
-**Engineering status:** IMPLEMENTED (third-review FIX REQUIRED evidence closed; correction pending commit)  
+**Engineering status:** IMPLEMENTED (third-review evidence committed; awaiting Architecture final acceptance)  
 **Branch:** `brief/p0-007c-2-household-display-read-only-dashboard`  
 **Commits:**
 - `a2b9e422efaf824b1414f74086885bba0a689486` — feat(P0-007C-2): household display principal and read-only wall  
 - `90aaa74b3e9b9804fd4a819b997140664ee75062` — fix(P0-007C-2): close FIX REQUIRED evidence and display bootstrap  
 - `ba5541cbc86199749e5783025ae452fdb2794ac4` — fix(P0-007C-2): close second-review AT3–AT15 evidence  
-- Third-review correction: **N/A** (uncommitted at report time)  
+- `a6d389983b2f1629a202601910eb9cb42ae3c4e0` — fix(P0-007C-2): close AT6 school-empty and AT9 calendar evidence  
 **Pull request:** N/A  
 
 ## What changed (third-review evidence)
@@ -72,20 +72,9 @@ C-3 remains out of scope. AT17 remains Product. `reports/p0-007b-r1-screenshots`
 ## Known limitations
 
 - AT17 physical readability remains Product/Project Lead evidence.
-- Third-review correction commit SHA pending authorized commit.
 - Backup restore can revive revoked display sessions (existing operational limitation).
 
 ## Suggested follow-up
 
-- Project Lead: commit correction (message below), push, confirm Actions thematic **E2E · Phone P0-007C-2**.
-- Architecture re-acceptance vs brief r1 third-review findings.
+- Architecture: final acceptance of this Build Report vs brief r1.
 - Product AT17 when hardware is available.
-
-## Suggested commit message
-
-```
-fix(P0-007C-2): close AT6 school-empty and AT9 calendar evidence
-
-Prove school-filtered omit with neighbors, mandatory reassign/C-1
-parity plus calendar exception live, and record validate:pr/rc PASS.
-```

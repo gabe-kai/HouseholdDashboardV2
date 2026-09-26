@@ -1188,8 +1188,99 @@ describe("P0-007C-2 AT6 shared current-day truth", () => {
       .get(catsId) as { started_at: string | null };
     expect(catsRow.started_at).toBeNull();
 
-    // School-filtered empty omit: not set up here — requires school calendar +
-    // school_days applicability aligned to a non-school household date. Marked partial.
+    // School-filtered empty omit: school-only routine vanishes on a no-school day;
+    // neighboring every-time work remains visible.
+    const calendar = harness.store.getSchoolCalendar(ctx);
+    const endYear = Number(today.slice(0, 4)) + 1;
+    harness.store.saveSchoolCalendar(ctx, {
+      mutationId: randomUUID(),
+      expectedVersion: calendar.version,
+      years: [
+        {
+          startDate: `${today.slice(0, 4)}-01-01`,
+          endDate: `${endYear}-12-31`,
+          usualWeekdays: [1, 2, 3, 4, 5, 6, 7],
+          exceptions: [
+            { name: "No school today", startDate: today, endDate: today },
+          ],
+        },
+      ],
+    });
+
+    const schoolOnlyTitle = `School only ${Date.now().toString(36)}`;
+    const neighborTitle = `Neighbor every day ${Date.now().toString(36)}`;
+    harness.store.createRoutine(ctx, {
+      mutationId: randomUUID(),
+      title: schoolOnlyTitle,
+      daypart: "morning",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      assigneeMemberIds: [IDS.avery],
+      assigneeGroupIds: [],
+      steps: [
+        {
+          logicalItemId: randomUUID(),
+          text: "Pack lunchbox",
+          obligation: "required" as const,
+          applicability: { kind: "school_days" as const },
+        },
+      ],
+    });
+    harness.store.createRoutine(ctx, {
+      mutationId: randomUUID(),
+      title: neighborTitle,
+      daypart: "morning",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      assigneeMemberIds: [IDS.avery],
+      assigneeGroupIds: [],
+      steps: [
+        {
+          logicalItemId: randomUUID(),
+          text: "Everyday stretch",
+          obligation: "required" as const,
+          applicability: { kind: "every_time" as const },
+        },
+      ],
+    });
+
+    const schoolDash = await harness.app.inject({
+      method: "GET",
+      url: "/api/v1/display/dashboard",
+      headers: { cookie: displayCookie },
+    });
+    expect(schoolDash.statusCode).toBe(200);
+    const schoolBody = (
+      schoolDash.json() as {
+        dashboard: {
+          byWork: {
+            routines: Array<{ displayTitle: string }>;
+            responsibilities: Array<{ title: string }>;
+          };
+          byPerson: Array<{
+            membershipId: string;
+            unfinished: Array<{ title: string }>;
+          }>;
+        };
+      }
+    ).dashboard;
+    expect(
+      schoolBody.byWork.routines.some((r) =>
+        r.displayTitle.includes(schoolOnlyTitle),
+      ),
+    ).toBe(false);
+    expect(
+      schoolBody.byWork.routines.some((r) =>
+        r.displayTitle.includes(neighborTitle),
+      ),
+    ).toBe(true);
+    const averyUnfinished = schoolBody.byPerson.find(
+      (p) => p.membershipId === IDS.avery,
+    )!.unfinished;
+    expect(averyUnfinished.some((u) => u.title === schoolOnlyTitle)).toBe(false);
+    expect(averyUnfinished.some((u) => u.title === neighborTitle)).toBe(true);
+    // Neighboring responsibilities from earlier in the test also remain.
+    expect(
+      schoolBody.byWork.responsibilities.some((r) => r.title === "Kitchen"),
+    ).toBe(true);
   });
 });
 

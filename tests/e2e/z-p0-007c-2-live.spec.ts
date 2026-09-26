@@ -234,6 +234,34 @@ test.describe("P0-007C-2 live convergence and recovery", () => {
     expect(createWork.ok(), await createWork.text()).toBeTruthy();
     await page.request.get("/api/v1/today");
 
+    // Separate unstarted responsibility for mandatory reassignment → Casey.
+    const reassignTitle = `Reassign live ${Date.now().toString(36)}`;
+    const createReassign = await page.request.post("/api/v1/responsibilities", {
+      headers: await mutatingHeaders(page.request),
+      data: {
+        mutationId: crypto.randomUUID(),
+        title: reassignTitle,
+        daypart: "anytime",
+        weekdays: [1, 2, 3, 4, 5, 6, 7],
+        assignment: {
+          mode: "fixed",
+          anchorDate: householdDate,
+          fixedMemberId: AVERY_ID,
+        },
+        steps: [
+          {
+            logicalItemId: crypto.randomUUID(),
+            text: "Unstarted reassign step",
+            obligation: "required",
+          },
+        ],
+      },
+    });
+    expect(createReassign.ok(), await createReassign.text()).toBeTruthy();
+    const reassignDef = (await createReassign.json()) as {
+      responsibility: { id: string; version: number };
+    };
+
     await expect(wall.getByText(new RegExp(respTitle, "i"))).toBeVisible({
       timeout: 30_000,
     });
@@ -355,45 +383,129 @@ test.describe("P0-007C-2 live convergence and recovery", () => {
       wall.getByTestId("display-by-person").locator("button.display-person-card").first(),
     ).toHaveAttribute("id", `display-person-${reversed[0]}`);
 
-    // Reassign responsibility owner → wall updates.
-    const listed = await page.request.get("/api/v1/responsibilities");
-    const responsibilities = (
-      (await listed.json()) as {
-        responsibilities: Array<{ id: string; title: string; version: number }>;
-      }
-    ).responsibilities;
-    const target = responsibilities.find((r) => r.title === respTitle);
-    if (target) {
-      const reassign = await page.request.post(
-        `/api/v1/responsibilities/${target.id}/revisions`,
-        {
-          headers: await mutatingHeaders(page.request),
-          data: {
-            mutationId: crypto.randomUUID(),
-            title: respTitle,
-            daypart: "anytime",
-            weekdays: [1, 2, 3, 4, 5, 6, 7],
-            assignment: {
-              mode: "fixed",
-              anchorDate: householdDate,
-              fixedMemberId: CASEY_ID,
+    // Reassign unstarted responsibility owner → wall updates (mandatory).
+    const reassign = await page.request.post(
+      `/api/v1/responsibilities/${reassignDef.responsibility.id}/revisions`,
+      {
+        headers: await mutatingHeaders(page.request),
+        data: {
+          mutationId: crypto.randomUUID(),
+          title: reassignTitle,
+          daypart: "anytime",
+          weekdays: [1, 2, 3, 4, 5, 6, 7],
+          assignment: {
+            mode: "fixed",
+            anchorDate: householdDate,
+            fixedMemberId: CASEY_ID,
+          },
+          steps: [
+            {
+              logicalItemId: crypto.randomUUID(),
+              text: "Unstarted reassign step",
+              obligation: "required",
             },
-            steps: [
+          ],
+          expectedVersion: reassignDef.responsibility.version,
+          mode: "current",
+        },
+      },
+    );
+    expect(reassign.ok(), await reassign.text()).toBeTruthy();
+
+    await wall.getByTestId("display-org-by-work").click();
+    await expect
+      .poll(async () => {
+        const text = await wall.getByTestId("display-by-work").innerText();
+        return /Casey/i.test(text) && text.includes(reassignTitle);
+      }, { timeout: 30_000 })
+      .toBe(true);
+
+    // Manager calendar exception: school-only work appears, then omits after exception.
+    const schoolOnlyTitle = `School only live ${Date.now().toString(36)}`;
+    const calGet = await page.request.get("/api/v1/school-calendar");
+    expect(calGet.ok()).toBeTruthy();
+    const calVersion = (
+      (await calGet.json()) as { calendar: { version: number } }
+    ).calendar.version;
+    const endYear = Number(householdDate.slice(0, 4)) + 1;
+    const calAllDays = await page.request.put("/api/v1/school-calendar", {
+      headers: await mutatingHeaders(page.request),
+      data: {
+        mutationId: crypto.randomUUID(),
+        expectedVersion: calVersion,
+        years: [
+          {
+            startDate: `${householdDate.slice(0, 4)}-01-01`,
+            endDate: `${endYear}-12-31`,
+            usualWeekdays: [1, 2, 3, 4, 5, 6, 7],
+            exceptions: [],
+          },
+        ],
+      },
+    });
+    expect(calAllDays.ok(), await calAllDays.text()).toBeTruthy();
+    const calVersion2 = (
+      (await calAllDays.json()) as { calendar: { version: number } }
+    ).calendar.version;
+
+    const createSchoolOnly = await page.request.post("/api/v1/routines", {
+      headers: await mutatingHeaders(page.request),
+      data: {
+        mutationId: crypto.randomUUID(),
+        title: schoolOnlyTitle,
+        daypart: "morning",
+        weekdays: [1, 2, 3, 4, 5, 6, 7],
+        assigneeMemberIds: [AVERY_ID],
+        assigneeGroupIds: [],
+        steps: [
+          {
+            logicalItemId: crypto.randomUUID(),
+            text: "Pack lunchbox",
+            obligation: "required",
+            applicability: { kind: "school_days" },
+          },
+        ],
+      },
+    });
+    expect(createSchoolOnly.ok(), await createSchoolOnly.text()).toBeTruthy();
+
+    await expect(wall.getByText(new RegExp(schoolOnlyTitle, "i"))).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(wall.getByText(new RegExp(respTitle, "i"))).toBeVisible();
+
+    const calException = await page.request.put("/api/v1/school-calendar", {
+      headers: await mutatingHeaders(page.request),
+      data: {
+        mutationId: crypto.randomUUID(),
+        expectedVersion: calVersion2,
+        years: [
+          {
+            startDate: `${householdDate.slice(0, 4)}-01-01`,
+            endDate: `${endYear}-12-31`,
+            usualWeekdays: [1, 2, 3, 4, 5, 6, 7],
+            exceptions: [
               {
-                logicalItemId: crypto.randomUUID(),
-                text: "Feed cats live",
-                obligation: "required",
+                name: "No school today",
+                startDate: householdDate,
+                endDate: householdDate,
               },
             ],
-            expectedVersion: target.version,
-            mode: "current",
           },
-        },
-      );
-      expect(reassign.ok(), await reassign.text()).toBeTruthy();
-    }
+        ],
+      },
+    });
+    expect(calException.ok(), await calException.text()).toBeTruthy();
+
+    await expect(wall.getByText(new RegExp(schoolOnlyTitle, "i"))).toHaveCount(0, {
+      timeout: 30_000,
+    });
+    // Neighboring applicable work remains.
+    await expect(wall.getByText(new RegExp(respTitle, "i"))).toBeVisible();
+    await expect(wall.getByText(new RegExp(routineTitle, "i"))).toBeVisible();
 
     // Household-visible task appears in open Avery detail after create.
+    await wall.getByTestId("display-org-by-person").click();
     await wall.locator(`#display-person-${AVERY_ID}`).click();
     await expect(wall.getByTestId("display-detail")).toBeVisible();
     const taskTitle = `Wall task ${Date.now().toString(36)}`;
@@ -408,7 +520,7 @@ test.describe("P0-007C-2 live convergence and recovery", () => {
     await expect(wall.getByTestId("display-overview")).toBeVisible();
     await expect(wall.getByText(taskTitle)).toHaveCount(0);
 
-    // Optional C-1 Household overview agreement on owner/status via manager today.
+    // C-1 Household overview agreement on owner/status (mandatory) for reassigned work.
     await ensureManagerSession(page.request);
     const managerToday = await page.request.get("/api/v1/today");
     expect(managerToday.ok()).toBeTruthy();
@@ -420,27 +532,46 @@ test.describe("P0-007C-2 live convergence and recovery", () => {
           completed: boolean;
         }>;
       }
-    ).occurrences.find((o) => o.title === respTitle);
+    ).occurrences.find((o) => o.title === reassignTitle);
+    expect(managerOcc, `manager today must include ${reassignTitle}`).toBeTruthy();
+    expect(managerOcc!.accountableMemberId).toBe(CASEY_ID);
+
     const dash = await wall.request.get("/api/v1/display/dashboard");
-    if (dash.ok() && managerOcc) {
-      const wallRow = (
-        (await dash.json()) as {
-          dashboard: {
-            byWork: {
-              responsibilities: Array<{
-                title: string;
-                accountableMemberId: string | null;
-                completed: boolean;
-              }>;
-            };
+    expect(dash.ok(), await dash.text()).toBeTruthy();
+    const wallRow = (
+      (await dash.json()) as {
+        dashboard: {
+          byWork: {
+            responsibilities: Array<{
+              title: string;
+              accountableMemberId: string | null;
+              completed: boolean;
+            }>;
           };
-        }
-      ).dashboard.byWork.responsibilities.find((r) => r.title === respTitle);
-      if (wallRow) {
-        expect(wallRow.accountableMemberId).toBe(managerOcc.accountableMemberId);
-        expect(wallRow.completed).toBe(managerOcc.completed);
+        };
       }
-    }
+    ).dashboard.byWork.responsibilities.find((r) => r.title === reassignTitle);
+    expect(wallRow, `display dashboard must include ${reassignTitle}`).toBeTruthy();
+    expect(wallRow!.accountableMemberId).toBe(managerOcc!.accountableMemberId);
+    expect(wallRow!.completed).toBe(managerOcc!.completed);
+    expect(wallRow!.accountableMemberId).toBe(CASEY_ID);
+
+    // School-only remains omitted after exception; neighbor routine still present.
+    const dash2 = await wall.request.get("/api/v1/display/dashboard");
+    expect(dash2.ok()).toBeTruthy();
+    const dash2Body = (await dash2.json()) as {
+      dashboard: { byWork: { routines: Array<{ displayTitle: string }> } };
+    };
+    expect(
+      dash2Body.dashboard.byWork.routines.some((r) =>
+        r.displayTitle.includes(schoolOnlyTitle),
+      ),
+    ).toBe(false);
+    expect(
+      dash2Body.dashboard.byWork.routines.some((r) =>
+        r.displayTitle.includes(routineTitle),
+      ),
+    ).toBe(true);
 
     await wallCtx.close();
     await memberCtx.close();

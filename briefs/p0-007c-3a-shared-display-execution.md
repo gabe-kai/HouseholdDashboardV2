@@ -109,7 +109,7 @@ Inspected clean `brief/p0-007c-3a-shared-display-execution` at documentation com
 **Implementation status:** FIX REQUIRED (Architecture acceptance review)
 **Build Report:** `reports/P0-007C-3A-r1-build-report.md`
 
-Architecture returned the implementation to Engineering for same-revision corrections. See `reports/P0-007C-3A-r1-architecture-review.md`; no contract change or new readiness pass is required.
+Architecture re-reviewed correction `55afa52`; most findings are closed, with AT11 socket-loss/recovery evidence and Build Report commit metadata still required. See `reports/P0-007C-3A-r1-architecture-reacceptance.md`. No contract change or new readiness pass is required.
 
 C-3B remains out of scope.
 

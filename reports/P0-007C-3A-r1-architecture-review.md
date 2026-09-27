@@ -4,13 +4,13 @@
 **Baseline:** integrated C-2 `main` at `739f7e3`  
 **Implementation:** `606cd25ef11b88ecf9a158caa8942965a6a2d943` on `brief/p0-007c-3a-shared-display-execution`  
 **Build Report:** `reports/P0-007C-3A-r1-build-report.md`  
-**Disposition:** FIX REQUIRED (same revision; contract unchanged)  
+**Disposition:** Superseded by `reports/P0-007C-3A-r1-architecture-reacceptance.md` after correction commit `55afa52`.
 **Next owner:** Engineering  
 **Card:** **Act at the shared display without losing trust** remains **In Progress**.
 
 ## Decision
 
-The implementation establishes the dedicated display write path, truthful actor provenance, focused checklist controls, and core replay/revoke protections. Architecture cannot accept r1 yet: one client behavior contradicts the pending-intent contract, several explicitly required acceptance edges are only partial or not run, and the exact RC gate did not complete.
+The implementation establishes the dedicated display write path, truthful actor provenance, focused checklist controls, and core replay/revoke protections. At initial review Architecture could not accept r1: one client behavior contradicted the pending-intent contract, several explicitly required acceptance edges were partial or not run, and the exact RC gate had not completed. Engineering addressed those findings in the correction commit. The latest disposition and remaining AT11 evidence gap are recorded in the re-review linked above.
 
 No new readiness review or brief revision is required. Close these findings against **P0-007C-3A r1** and return the updated Build Report for re-review. Do not deploy or merge as part of this correction.
 

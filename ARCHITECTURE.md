@@ -156,7 +156,7 @@ Authoritative contract: `briefs/p0-007c-2-household-display-read-only-dashboard.
 
 ### P0-007C-3A shared-display execution (FIX REQUIRED; same-revision corrections pending)
 
-Authoritative contract: `briefs/p0-007c-3a-shared-display-execution.md` **revision 1**, with D-046–D-047. Implementation commit `606cd25` on `brief/p0-007c-3a-shared-display-execution`; Architecture review: `reports/P0-007C-3A-r1-architecture-review.md`. Same-revision corrections are pending for visible outbox retirement disposition, named AT5/8/10/11 evidence, and exact PR/RC gates. C-3B personal-task promotion remains out of scope.
+Authoritative contract: `briefs/p0-007c-3a-shared-display-execution.md` **revision 1**, with D-046–D-047. Implementation commit `606cd25` and correction commit `55afa52` are on `brief/p0-007c-3a-shared-display-execution`. Architecture re-review: `reports/P0-007C-3A-r1-architecture-reacceptance.md`. Remaining same-revision work is an AT11 real WebSocket-loss/missed-update recovery proof and Build Report SHA correction. C-3B personal-task promotion remains out of scope.
 
 ### P0-006C profiles and useful History (technically accepted)
 

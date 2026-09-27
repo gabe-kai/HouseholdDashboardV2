@@ -19,7 +19,7 @@
 
 ## Current focus
 
-Integrated `main` matches `origin/main` at **739f7e3**, merging technically accepted **P0-007C-2 r1** via PR **#21**. On `brief/p0-007c-3a-shared-display-execution`, Engineering implemented **P0-007C-3A r1** at **606cd25**. Architecture returned same-revision **FIX REQUIRED** findings; see `reports/P0-007C-3A-r1-architecture-review.md`. Owner-controlled personal-task promotion remains likely next as 3B. C-2 AT17 physical readability remains separate Product evidence.
+Integrated `main` matches `origin/main` at **739f7e3**, merging technically accepted **P0-007C-2 r1** via PR **#21**. On `brief/p0-007c-3a-shared-display-execution`, Engineering implemented **P0-007C-3A r1** at **606cd25** and corrections at **55afa52**. Architecture re-review closed all but AT11 proof of actual socket loss and recovery of an update missed during disconnection; the Build Report also needs its correction SHA pinned. See `reports/P0-007C-3A-r1-architecture-reacceptance.md`. Owner-controlled personal-task promotion remains likely next as 3B. C-2 AT17 physical readability remains separate Product evidence.
 
 The integrated baseline includes technically accepted **P0-007C-1 r1** via PR **#20** at `ef39a89` and **P0-007C-2 r1** via PR **#21** at `739f7e3`. Technical integration does not assert Product acceptance; C-1/C-2 family evaluation remains separate. Old reports retain the SHAs of their inspected baselines.
 
@@ -66,7 +66,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Known blockers
 
-- P0-007C-3A r1 technical acceptance is held on a silent pending-action retirement behavior, incomplete required AT5/8/10/11 evidence, and the exact `validate:rc` gate not completing. Physical wall evaluation AT17 remains separate Product evidence and does not block technical acceptance of C-3A.
+- P0-007C-3A r1 technical acceptance is held on AT11 evidence that a genuinely closed display WebSocket reconnects and recovers a household update made during the outage, plus correcting the Build Report's stale uncommitted wording. Prior outbox-retirement, AT5/8/10, and exact `validate:rc` findings are closed. Physical wall evaluation AT12 remains separate Product evidence and does not block technical acceptance of C-3A.
 
 ## Next Project Lead decision
 
@@ -74,7 +74,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Engineering returns the corrected P0-007C-3A r1 implementation and Build Report for Architecture re-review. After technical acceptance, Product evaluates shared-display execution and physical readability; do not infer those from automation alone. C-3B personal-task promotion remains a separate brief.
+Engineering returns the focused P0-007C-3A r1 AT11 correction and updated Build Report for Architecture re-review. After technical acceptance, Product evaluates shared-display execution and physical readability; do not infer those from automation alone. C-3B personal-task promotion remains a separate brief.
 
 ## Notes for all teams
 

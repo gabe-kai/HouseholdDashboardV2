@@ -68,18 +68,24 @@ Goal: prove that a real recurring household routine can be used quickly by six d
   - **Status:** ACCEPTED by Architecture after the AT6 four-owner Chromium/WebKit correction; merged via PR **#20** at **ef39a89**. Card: **Ready to Evaluate**; Product speed-of-understanding evaluation remains separate. D-041/D-042 define the bounded projection and scope.
   - **Evidence target:** Real phone/desktop Today and four-person Household journeys; honest obligation counts, privacy/per-kind scope, pending/offline/reset and live summary/detail recovery; local PR/RC/Vite plus CI-selection evidence. Visuals remain ignored local evidence. No display credentials, shared execution, hosting or production changes in this planning task.
 
+- [x] **P0-007C-2 - See the family day from across the room.** A manager enrolls a distinct household-owned display that shows the privacy-filtered family day in By person/By work views, with focused read-only inspection.
+  - **Brief:** `P0-007C-2 r1 - Household Display and Read-only Dashboard` (`briefs/p0-007c-2-household-display-read-only-dashboard.md`).
+  - **Status:** Technically ACCEPTED by Architecture; merged through PR **#21** at **739f7e3**. AT1–16 and PR/RC gates pass. Physical readability at 10 and 16 feet (AT17) remains Project Lead/Product evidence and does not block C-3 planning.
+  - **Evidence target:** Separate display identity and revocation, strict data/privacy boundary, truthful current-day projection, live recovery, and six-person 4K geometry. C-2 intentionally has no display checklist writes or personal-task promotion.
+
 ### CURRENT
 
-- [ ] **P0-007C-2 - See the family day from across the room.** Manager-enrolled/revocable household-owned display identity, persistent restricted read-only access and privacy-filtered By person/By work projections. Show household date/time, six-person readable 4K layout and touch drill-down without administrative navigation or a fake member. This is deliberately read-only until C-3; preserve the full interactive outcome.
-  - **Brief:** `P0-007C-2 r1 - Household Display and Read-only Dashboard` (`briefs/p0-007c-2-household-display-read-only-dashboard.md`).
-  - **Status:** **Technically ACCEPTED** by Architecture on 2026-09-25. Implementation **a2b9e42**, corrections **90aaa74** / **ba5541c**, third-review evidence **a6d3899**, and Build Report metadata correction **7747626** are recorded. AT1–16 and local PR/RC gates pass; AT17 physical wall readability remains separate Product evidence. Project Lead owns integration/cleanup. Card: **In Progress** until integrated.
-  - **Evidence target:** Normal manager-to-wall enrollment, persistent access/revocation, strict HTTP/WS privacy and principal boundaries, unattended current-day truth, live/reset/restart recovery, six-person native/scaled 4K inspection, and local PR/RC/Vite/CI selection. Physical ten/sixteen-foot readability is separately reported Product evidence, not inferred from screenshots. D-043-D-045 define this slice.
+The third approved Product outcome is intentionally decomposed into evidence-gated briefs. Both contribute to the existing user-facing card **Act at the shared display without losing trust**; no new Planning/Design proposal is required.
+
+- [ ] **P0-007C-3A - Complete assigned household work at the shared display.** Let a household member complete today's applicable, already-assigned routine and responsibility work on the enrolled display. Preserve the accountable owner and record the display as the action principal—not as a fake person. Make pending actions idempotent and recoverable across disconnection, reload/restart and reconnect; revocation remains authoritative. Keep C-2 privacy and read-only management boundaries.
+  - **Status:** Ready for Architecture brief preparation against integrated `main` **739f7e3**. The approved intent is in `PRODUCT.md`; no new Planning/Design proposal is needed.
+  - **Evidence target:** Normal UI execution of assigned routine/responsibility steps from the display; actor/owner truth; durable mutation replay; reset/revoke safety; manager/wall convergence; and selected local PR/RC/CI evidence. Do not include personal-task promotion in this first implementation slice.
 
 ### LIKELY NEXT
 
-This is the final slice of the **same revised P0-007C Design proposal**, not a request to return to Product for the same information. C-1 is integrated and C-2 is now briefed; refine C-3's implementation contract from their evidence.
-
-- [ ] **P0-007C-3 - Act at the shared display without losing trust.** Normal assigned checklist execution with truthful display actor and unchanged accountable ownership, safe pending/reconnect/restart behavior, and owner-controlled personal-work promotion distinct from visibility. Private work never reaches the display; shared unpromoted work remains detail-only there. Complete cross-device evidence and real 27-inch evaluation at 10 and 16 feet before calling the full C outcome evaluated.
+- [ ] **P0-007C-3B - Let owners choose personal work to show on the wall.** Add an owner-controlled display-promotion choice, distinct from Only me/Household visibility. Preserve private-task exclusion and keep unpromoted household-visible work detail-only. Refine display placement/interaction from C-3A use; no parental override or task-control authority is implied.
+  - **Status:** Approved direction in the same Product proposal; exact behavior may be refined from C-3A evaluation before briefing.
+  - **Evidence target:** Owner-only promotion, privacy at API/event/client boundaries, expected display projection, and no accidental promotion through visibility changes. Full C evaluation also includes physical 27-inch viewing at 10 and 16 feet.
 
 ### LATER
 

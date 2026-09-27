@@ -917,7 +917,7 @@ Use only already-authorized data and retain per-kind management/own-execution ru
 
 ## D-043 - Household Displays are separately enrolled, revocable non-human principals
 
-**Status:** Active for P0-007C-2 r1; planned, not implemented.
+**Status:** Active; implemented for P0-007C-2 r1 and merged to `main` at `739f7e3` via PR #21. C-3 may add only separately reviewed, narrowly scoped display action authority; it does not inherit member or manager authority.
 
 **Decision:** A Household Display has a stable household-scoped identity independent from users, memberships, assignment and family order. Manager operations use a new `household.display.manage` grant, added to the manager preset and backfilled once from existing `household.member.enroll` holders. Age and work-management grants do not imply this authority. C-2 display credentials authorize only dedicated read-only interfaces; a display is never a fabricated manager/member AuthContext.
 
@@ -939,7 +939,7 @@ Cookie attributes and persistence follow the browser semantics in [MDN Set-Cooki
 
 ## D-044 - Display responses are privacy-filtered projections of the actual household day
 
-**Status:** Active for P0-007C-2 r1; planned, not implemented.
+**Status:** Active; C-2 read projections are implemented and integrated at `739f7e3`. Personal-task promotion and display execution remain C-3 scope and require a separate implementation contract.
 
 **Decision:** Provide dedicated current-day dashboard, person and occurrence reads under the display principal, with an explicit response-field allowlist. Include only friendly identities/order, household date/timezone, authoritative time/generation and the work/status needed for By person/By work/detail. Do not expose account/profile/access secrets, audit data, raw plans or private personal work, including private IDs/counts/events. Per-kind member permissions remain unchanged; display household visibility is an explicitly separate read scope.
 
@@ -959,7 +959,7 @@ Existing personal tasks are all unpromoted in C-2. Only household-visible tasks 
 
 ## D-045 - Display recovery is authorization-aware and stale exposure is bounded
 
-**Status:** Active for P0-007C-2 r1; planned, not implemented.
+**Status:** Active; the C-2 authorization-aware display recovery contract is implemented and integrated at `739f7e3`. Any C-3 write path must preserve revocation, stale-data bounds, and delayed-response fencing while defining pending-command recovery.
 
 **Decision:** `/display` mounts a restricted shell with By person/By work and focused read-only detail, household day/date/time, saved family order and 90-second idle return. Use a six-person 27-inch 4K layout, validate native and scaled browser geometry, and require physical Product judgment at approximately ten and sixteen feet. Do not use the personal shell, universal admin navigation or a member outbox for the device.
 

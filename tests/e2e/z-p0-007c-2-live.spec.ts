@@ -615,16 +615,15 @@ test.describe("P0-007C-2 live convergence and recovery", () => {
         });
         return;
       }
-      if (n === 2) {
-        secondStarted();
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify(syntheticDashboard(newerMarker)),
-        });
-        return;
-      }
-      await route.continue();
+      // Keep serving the newer synthetic snapshot for follow-on polls/sync
+      // refreshes until the assertion unroutes (WebKit otherwise races a real
+      // dashboard read over the marker before expect()).
+      if (n === 2) secondStarted();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(syntheticDashboard(newerMarker)),
+      });
     });
 
     await enrollWall(page.request, wall, `Order ${Date.now().toString(36)}`);

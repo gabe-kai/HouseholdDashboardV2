@@ -6,7 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { householdDateFromInstant } from "../../src/domain/time.js";
+import { householdDateFromInstant, addHouseholdDays } from "../../src/domain/time.js";
 import { migrate } from "../../src/server/db.js";
 import {
   claimManager,
@@ -762,6 +762,352 @@ describe("P0-007C-3A AT5 current-day denial", () => {
       harness.store.getOccurrenceById(occ.id)!.steps[0]!.status,
     ).toBe("open");
   });
+
+  it("denies yesterday/tomorrow, school-filtered-out, ended-unstarted, canceled, removed-step, foreign; started survivor remains actionable", async () => {
+    const harness = await createHttpHarness({ AUTO_SEED: "1" });
+    harnesses.push(harness);
+    const enrolled = await createAndClaimDisplay(harness, "Denial matrix wall");
+    const ctx = enrolled.manager.context;
+    const today = householdDateFromInstant(new Date(), ctx.timezone);
+    const yesterday = addHouseholdDays(today, -1);
+    const tomorrow = addHouseholdDays(today, 1);
+
+    async function denyWrite(
+      occurrenceId: string,
+      stepId: string,
+      payload: Record<string, unknown>,
+    ) {
+      const res = await harness.app.inject({
+        method: "POST",
+        url: `/api/v1/display/occurrences/${occurrenceId}/steps/${stepId}/status`,
+        headers: displayWriteHeaders(
+          harness,
+          enrolled.displayCookie,
+          enrolled.csrfToken,
+        ),
+        payload,
+      });
+      expect(res.statusCode).toBeGreaterThanOrEqual(400);
+      return res;
+    }
+
+    // --- Yesterday / tomorrow targeting ---
+    harness.store.createResponsibility(ctx, {
+      mutationId: randomUUID(),
+      title: "Day Fence Cats",
+      daypart: "anytime",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      accountableMemberId: IDS.avery,
+      steps: [requiredStep("Feed")],
+    });
+    const todayOcc = harness.store
+      .materializeForDate(ctx, today)
+      .find((o) => o.title === "Day Fence Cats")!;
+    const tomorrowOcc = harness.store
+      .materializeForDate(ctx, tomorrow)
+      .find((o) => o.title === "Day Fence Cats")!;
+    const yesterdayOcc = harness.store
+      .materializeForDate(ctx, yesterday)
+      .find((o) => o.title === "Day Fence Cats");
+    const todayDetail = await fetchDisplayOccurrence(
+      harness,
+      enrolled.displayCookie,
+      todayOcc.id,
+    );
+    const intent = todayDetail.intendedStructure ?? intentFromOccurrence(todayDetail);
+
+    await denyWrite(todayDetail.id, todayDetail.steps[0]!.id, {
+      mutationId: randomUUID(),
+      status: "completed",
+      performedAt: new Date().toISOString(),
+      activityGeneration: enrolled.activityGeneration,
+      kind: "responsibility",
+      householdDate: yesterday,
+      intendedStructure: intent,
+    });
+    await denyWrite(todayDetail.id, todayDetail.steps[0]!.id, {
+      mutationId: randomUUID(),
+      status: "completed",
+      performedAt: new Date().toISOString(),
+      activityGeneration: enrolled.activityGeneration,
+      kind: "responsibility",
+      householdDate: tomorrow,
+      intendedStructure: intent,
+    });
+    await denyWrite(tomorrowOcc.id, tomorrowOcc.steps[0]!.id, {
+      mutationId: randomUUID(),
+      status: "completed",
+      performedAt: new Date().toISOString(),
+      activityGeneration: enrolled.activityGeneration,
+      kind: "responsibility",
+      householdDate: today,
+      intendedStructure: intentFromOccurrence(tomorrowOcc),
+    });
+    if (yesterdayOcc) {
+      await denyWrite(yesterdayOcc.id, yesterdayOcc.steps[0]!.id, {
+        mutationId: randomUUID(),
+        status: "completed",
+        performedAt: new Date().toISOString(),
+        activityGeneration: enrolled.activityGeneration,
+        kind: "responsibility",
+        householdDate: today,
+        intendedStructure: intentFromOccurrence(yesterdayOcc),
+      });
+    }
+    expect(
+      harness.store.getOccurrenceById(todayOcc.id)!.steps[0]!.status,
+    ).toBe("open");
+
+    // --- School-filtered-out ---
+    const calendar = harness.store.getSchoolCalendar(ctx);
+    const endYear = Number(today.slice(0, 4)) + 1;
+    harness.store.saveSchoolCalendar(ctx, {
+      mutationId: randomUUID(),
+      expectedVersion: calendar.version,
+      years: [
+        {
+          startDate: `${today.slice(0, 4)}-01-01`,
+          endDate: `${endYear}-12-31`,
+          usualWeekdays: [1, 2, 3, 4, 5, 6, 7],
+          exceptions: [],
+        },
+      ],
+    });
+    const schoolTitle = `School filter ${Date.now().toString(36)}`;
+    harness.store.createRoutine(ctx, {
+      mutationId: randomUUID(),
+      title: schoolTitle,
+      daypart: "morning",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      assigneeMemberIds: [IDS.avery],
+      assigneeGroupIds: [],
+      steps: [
+        {
+          logicalItemId: randomUUID(),
+          text: "Pack lunchbox",
+          obligation: "required" as const,
+          applicability: { kind: "school_days" as const },
+        },
+      ],
+    });
+    const schoolOcc = harness.store
+      .materializeForDate(ctx, today)
+      .find((o) => o.title === schoolTitle)!;
+    const schoolDetail = await fetchDisplayOccurrence(
+      harness,
+      enrolled.displayCookie,
+      schoolOcc.id,
+    );
+    const calAfter = harness.store.getSchoolCalendar(ctx);
+    harness.store.saveSchoolCalendar(ctx, {
+      mutationId: randomUUID(),
+      expectedVersion: calAfter.version,
+      years: [
+        {
+          startDate: `${today.slice(0, 4)}-01-01`,
+          endDate: `${endYear}-12-31`,
+          usualWeekdays: [1, 2, 3, 4, 5, 6, 7],
+          exceptions: [
+            { name: "No school today", startDate: today, endDate: today },
+          ],
+        },
+      ],
+    });
+    harness.store.materializeForDate(ctx, today);
+    await denyWrite(schoolDetail.id, schoolDetail.steps[0]!.id, {
+      mutationId: randomUUID(),
+      status: "completed",
+      performedAt: new Date().toISOString(),
+      activityGeneration: enrolled.activityGeneration,
+      kind: "routine",
+      householdDate: today,
+      intendedStructure:
+        schoolDetail.intendedStructure ?? intentFromOccurrence(schoolDetail),
+    });
+
+    // --- Ended-unstarted / canceled ---
+    const endTitle = `End unstarted ${Date.now().toString(36)}`;
+    const endDef = harness.store.createResponsibility(ctx, {
+      mutationId: randomUUID(),
+      title: endTitle,
+      daypart: "anytime",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      accountableMemberId: IDS.avery,
+      steps: [requiredStep("Wipe")],
+    });
+    const endOcc = harness.store
+      .materializeForDate(ctx, today)
+      .find((o) => o.definitionId === endDef.id)!;
+    const endDetail = await fetchDisplayOccurrence(
+      harness,
+      enrolled.displayCookie,
+      endOcc.id,
+    );
+    const endCur = harness.store.getResponsibilityById(
+      ctx.householdId,
+      endDef.id,
+    );
+    harness.store.endResponsibility(ctx, endDef.id, {
+      mutationId: randomUUID(),
+      expectedVersion: endCur.version,
+    });
+    await denyWrite(endDetail.id, endDetail.steps[0]!.id, {
+      mutationId: randomUUID(),
+      status: "completed",
+      performedAt: new Date().toISOString(),
+      activityGeneration: enrolled.activityGeneration,
+      kind: "responsibility",
+      householdDate: today,
+      intendedStructure:
+        endDetail.intendedStructure ?? intentFromOccurrence(endDetail),
+    });
+    expect(
+      harness.store.getOccurrenceById(endOcc.id)!.steps[0]!.status,
+    ).toBe("open");
+
+    // --- Removed step ---
+    const reviseTitle = `Removed step ${Date.now().toString(36)}`;
+    const keepLogical = randomUUID();
+    const dropLogical = randomUUID();
+    const reviseDef = harness.store.createResponsibility(ctx, {
+      mutationId: randomUUID(),
+      title: reviseTitle,
+      daypart: "anytime",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      accountableMemberId: IDS.avery,
+      steps: [
+        { logicalItemId: keepLogical, text: "Keep", obligation: "required" },
+        { logicalItemId: dropLogical, text: "Drop", obligation: "required" },
+      ],
+    });
+    let reviseOcc = harness.store
+      .materializeForDate(ctx, today)
+      .find((o) => o.definitionId === reviseDef.id)!;
+    const reviseDetail = await fetchDisplayOccurrence(
+      harness,
+      enrolled.displayCookie,
+      reviseOcc.id,
+    );
+    const droppedStep = reviseDetail.steps.find(
+      (s) => s.logicalItemId === dropLogical,
+    )!;
+    const reviseCur = harness.store.getResponsibilityById(
+      ctx.householdId,
+      reviseDef.id,
+    );
+    harness.store.createResponsibilityRevision(ctx, reviseDef.id, {
+      mutationId: randomUUID(),
+      title: reviseTitle,
+      daypart: "anytime",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      accountableMemberId: IDS.avery,
+      steps: [
+        { logicalItemId: keepLogical, text: "Keep", obligation: "required" },
+      ],
+      expectedVersion: reviseCur.version,
+      mode: "current",
+    });
+    reviseOcc = harness.store
+      .materializeForDate(ctx, today)
+      .find((o) => o.definitionId === reviseDef.id)!;
+    await denyWrite(reviseOcc.id, droppedStep.id, {
+      mutationId: randomUUID(),
+      status: "completed",
+      performedAt: new Date().toISOString(),
+      activityGeneration: enrolled.activityGeneration,
+      kind: "responsibility",
+      householdDate: today,
+      intendedStructure:
+        reviseDetail.intendedStructure ?? intentFromOccurrence(reviseDetail),
+    });
+
+    // --- Foreign / unavailable occurrence ---
+    await denyWrite(randomUUID(), randomUUID(), {
+      mutationId: randomUUID(),
+      status: "completed",
+      performedAt: new Date().toISOString(),
+      activityGeneration: enrolled.activityGeneration,
+      kind: "responsibility",
+      householdDate: today,
+      intendedStructure: intent,
+    });
+
+    // --- Started survivor remains actionable ---
+    const survivorTitle = `Survivor ${Date.now().toString(36)}`;
+    const survivorDef = harness.store.createResponsibility(ctx, {
+      mutationId: randomUUID(),
+      title: survivorTitle,
+      daypart: "anytime",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      accountableMemberId: IDS.avery,
+      steps: [requiredStep("Finish"), requiredStep("Confirm")],
+    });
+    const survivorOcc = harness.store
+      .materializeForDate(ctx, today)
+      .find((o) => o.definitionId === survivorDef.id)!;
+    const survivorDetail = await fetchDisplayOccurrence(
+      harness,
+      enrolled.displayCookie,
+      survivorOcc.id,
+    );
+    const startWrite = await harness.app.inject({
+      method: "POST",
+      url: `/api/v1/display/occurrences/${survivorDetail.id}/steps/${survivorDetail.steps[0]!.id}/status`,
+      headers: displayWriteHeaders(
+        harness,
+        enrolled.displayCookie,
+        enrolled.csrfToken,
+      ),
+      payload: {
+        mutationId: randomUUID(),
+        status: "completed",
+        performedAt: new Date().toISOString(),
+        activityGeneration: enrolled.activityGeneration,
+        kind: "responsibility",
+        householdDate: today,
+        intendedStructure:
+          survivorDetail.intendedStructure ??
+          intentFromOccurrence(survivorDetail),
+      },
+    });
+    expect(startWrite.statusCode).toBe(200);
+    const survivorCur = harness.store.getResponsibilityById(
+      ctx.householdId,
+      survivorDef.id,
+    );
+    harness.store.endResponsibility(ctx, survivorDef.id, {
+      mutationId: randomUUID(),
+      expectedVersion: survivorCur.version,
+    });
+    const afterEnd = await fetchDisplayOccurrence(
+      harness,
+      enrolled.displayCookie,
+      survivorOcc.id,
+    );
+    const survivorWrite = await harness.app.inject({
+      method: "POST",
+      url: `/api/v1/display/occurrences/${afterEnd.id}/steps/${afterEnd.steps[1]!.id}/status`,
+      headers: displayWriteHeaders(
+        harness,
+        enrolled.displayCookie,
+        enrolled.csrfToken,
+      ),
+      payload: {
+        mutationId: randomUUID(),
+        status: "completed",
+        performedAt: new Date().toISOString(),
+        activityGeneration: enrolled.activityGeneration,
+        kind: "responsibility",
+        householdDate: today,
+        intendedStructure:
+          afterEnd.intendedStructure ?? intentFromOccurrence(afterEnd),
+      },
+    });
+    expect(survivorWrite.statusCode).toBe(200);
+    expect(
+      harness.store.getOccurrenceById(survivorOcc.id)!.steps[1]!.status,
+    ).toBe("completed");
+  });
 });
 
 describe("P0-007C-3A AT6 edit/action race", () => {
@@ -1310,6 +1656,66 @@ describe("P0-007C-3A AT10 activity clear and generation fence", () => {
     expect(fenced.statusCode).toBeGreaterThanOrEqual(400);
     expect(
       harness.store.getOccurrenceById(rematerialized.id)!.steps[0]!.status,
+    ).toBe("open");
+  });
+
+  it("rejects prior-day householdDate against next-day work (date rollover fence)", async () => {
+    const harness = await createHttpHarness({ AUTO_SEED: "1" });
+    harnesses.push(harness);
+    const enrolled = await createAndClaimDisplay(harness, "Rollover wall");
+    const ctx = enrolled.manager.context;
+    const today = householdDateFromInstant(new Date(), ctx.timezone);
+    const tomorrow = addHouseholdDays(today, 1);
+
+    harness.store.createResponsibility(ctx, {
+      mutationId: randomUUID(),
+      title: "Rollover Cats",
+      daypart: "anytime",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      accountableMemberId: IDS.avery,
+      steps: [requiredStep("Feed")],
+    });
+    const todayOcc = harness.store
+      .materializeForDate(ctx, today)
+      .find((o) => o.title === "Rollover Cats")!;
+    const todayDetail = await fetchDisplayOccurrence(
+      harness,
+      enrolled.displayCookie,
+      todayOcc.id,
+    );
+    const priorDayIntent =
+      todayDetail.intendedStructure ?? intentFromOccurrence(todayDetail);
+
+    // Simulate a queued prior-day tap arriving after the household date advances:
+    // target tomorrow's rematerialized occurrence while still carrying yesterday's date.
+    const nextDayOcc = harness.store
+      .materializeForDate(ctx, tomorrow)
+      .find((o) => o.title === "Rollover Cats")!;
+
+    const rollover = await harness.app.inject({
+      method: "POST",
+      url: `/api/v1/display/occurrences/${nextDayOcc.id}/steps/${nextDayOcc.steps[0]!.id}/status`,
+      headers: displayWriteHeaders(
+        harness,
+        enrolled.displayCookie,
+        enrolled.csrfToken,
+      ),
+      payload: {
+        mutationId: randomUUID(),
+        status: "completed",
+        performedAt: new Date().toISOString(),
+        activityGeneration: enrolled.activityGeneration,
+        kind: "responsibility",
+        householdDate: today,
+        intendedStructure: priorDayIntent,
+      },
+    });
+    expect(rollover.statusCode).toBeGreaterThanOrEqual(400);
+    expect(
+      harness.store.getOccurrenceById(nextDayOcc.id)!.steps[0]!.status,
+    ).toBe("open");
+    expect(
+      harness.store.getOccurrenceById(todayOcc.id)!.steps[0]!.status,
     ).toBe("open");
   });
 });

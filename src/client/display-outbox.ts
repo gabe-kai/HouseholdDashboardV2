@@ -110,25 +110,60 @@ export async function replaceDesiredStateForStep(
   return next;
 }
 
-/** Drop pending/retrying commands that no longer match the authoritative day/generation. */
+/**
+ * Mark pending/retrying commands that no longer match the authoritative
+ * day/generation as rejected with an explanation. Never silently drop them,
+ * and never replay them under the new day/generation.
+ */
+export function retireDisplayOutboxItems(
+  items: DisplayOutboxItem[],
+  opts: { activityGeneration: number; householdDate: string },
+): DisplayOutboxItem[] {
+  return items.map((item) => {
+    if (item.state === "rejected") return item;
+    if (item.householdDate !== opts.householdDate) {
+      return {
+        ...item,
+        state: "rejected" as const,
+        errorMessage:
+          "This change was for a previous day and was not saved. Refresh and try again if still needed.",
+      };
+    }
+    if (
+      item.activityGeneration != null &&
+      item.activityGeneration < opts.activityGeneration
+    ) {
+      return {
+        ...item,
+        state: "rejected" as const,
+        errorMessage:
+          "Household activity was reset; this change was not saved.",
+      };
+    }
+    return item;
+  });
+}
+
 export async function retireMismatchedDisplayOutbox(
   sessionId: string,
   opts: { activityGeneration: number; householdDate: string },
 ): Promise<DisplayOutboxItem[]> {
   let next: DisplayOutboxItem[] = [];
   await update<DisplayOutboxItem[]>(keyForSession(sessionId), (current) => {
-    next = (current ?? []).filter((item) => {
-      if (item.state === "rejected") return true;
-      if (item.householdDate !== opts.householdDate) return false;
-      if (
-        item.activityGeneration != null &&
-        item.activityGeneration < opts.activityGeneration
-      ) {
-        return false;
-      }
-      return true;
-    });
+    next = retireDisplayOutboxItems(current ?? [], opts);
     return next;
   });
   return next;
+}
+
+/** Rejected intents that still need an overview explanation. */
+export function rejectedDisplayOutboxNotices(
+  items: DisplayOutboxItem[],
+): Array<{ mutationId: string; message: string }> {
+  return items
+    .filter((item) => item.state === "rejected" && item.errorMessage)
+    .map((item) => ({
+      mutationId: item.mutationId,
+      message: item.errorMessage!,
+    }));
 }

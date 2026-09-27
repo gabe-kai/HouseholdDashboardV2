@@ -31,6 +31,7 @@ import {
   readDisplayOutbox,
   removeDisplayOutboxItem,
   replaceDesiredStateForStep,
+  rejectedDisplayOutboxNotices,
   retireMismatchedDisplayOutbox,
   type DisplayOutboxItem,
 } from "./display-outbox";
@@ -222,6 +223,9 @@ export function DisplayApp() {
   >("disconnected");
   const [outbox, setOutbox] = useState<DisplayOutboxItem[]>([]);
   const [pendingCue, setPendingCue] = useState<PendingOverviewCue | null>(null);
+  const [retiredNotices, setRetiredNotices] = useState<
+    Array<{ mutationId: string; message: string }>
+  >([]);
   const [savedFlashByStep, setSavedFlashByStep] = useState<Record<string, number>>({});
 
   const lastAuthorizedAtRef = useRef<number | null>(null);
@@ -274,6 +278,7 @@ export function DisplayApp() {
     setOutbox([]);
     outboxRef.current = [];
     setPendingCue(null);
+    setRetiredNotices([]);
     setSavedFlashByStep({});
     setStale(false);
     setBlankReason(reason ?? null);
@@ -319,6 +324,16 @@ export function DisplayApp() {
     if (sessionIdRef.current !== sessionId) return;
     outboxRef.current = items;
     setOutbox(items);
+    const notices = rejectedDisplayOutboxNotices(items);
+    if (notices.length > 0) {
+      setRetiredNotices((current) => {
+        const seen = new Set(current.map((n) => n.mutationId));
+        return [
+          ...current,
+          ...notices.filter((n) => !seen.has(n.mutationId)),
+        ];
+      });
+    }
   });
 
   const flushDisplayOutbox = useEffectEvent(async () => {
@@ -438,6 +453,7 @@ export function DisplayApp() {
         previousDate != null && previousDate !== next.householdDate;
       const sessionId = sessionIdRef.current;
       if (sessionId) {
+        const before = outboxRef.current;
         const retired = await retireMismatchedDisplayOutbox(sessionId, {
           activityGeneration: next.activityGeneration,
           householdDate: next.householdDate,
@@ -445,6 +461,24 @@ export function DisplayApp() {
         if (sessionIdRef.current === sessionId) {
           outboxRef.current = retired;
           setOutbox(retired);
+          const newlyRejected = rejectedDisplayOutboxNotices(retired).filter(
+            (notice) =>
+              before.some(
+                (item) =>
+                  item.mutationId === notice.mutationId &&
+                  item.state !== "rejected",
+              ),
+          );
+          if (newlyRejected.length > 0) {
+            setRetiredNotices((current) => {
+              const seen = new Set(current.map((n) => n.mutationId));
+              return [
+                ...current,
+                ...newlyRejected.filter((n) => !seen.has(n.mutationId)),
+              ];
+            });
+            setPendingCue(null);
+          }
         }
       }
       if (dateChanged) {
@@ -452,6 +486,7 @@ export function DisplayApp() {
         setDetail(null);
         setPersonDetail(null);
         setOccurrenceDetail(null);
+        // Keep retiredNotices; clear only the pending (still-retryable) cue.
         setPendingCue(null);
       }
       householdDateRef.current = next.householdDate;
@@ -1038,6 +1073,19 @@ export function DisplayApp() {
             organization={organization}
             loading={loadingDash}
             pendingCue={pendingCue}
+            retiredNotices={retiredNotices}
+            onDismissRetiredNotice={(mutationId) => {
+              setRetiredNotices((current) =>
+                current.filter((n) => n.mutationId !== mutationId),
+              );
+              const sessionId = sessionIdRef.current;
+              if (!sessionId) return;
+              void removeDisplayOutboxItem(sessionId, mutationId).then((next) => {
+                if (sessionIdRef.current !== sessionId) return;
+                outboxRef.current = next;
+                setOutbox(next);
+              });
+            }}
             onOrganizationChange={setOrganization}
             onOpenPerson={(membershipId, originKey) =>
               openDetail({ kind: "person", membershipId, originKey }, originKey)
@@ -1066,6 +1114,8 @@ function DisplayOverview(props: {
   organization: Organization;
   loading: boolean;
   pendingCue: PendingOverviewCue | null;
+  retiredNotices: Array<{ mutationId: string; message: string }>;
+  onDismissRetiredNotice: (mutationId: string) => void;
   onOrganizationChange: (next: Organization) => void;
   onOpenPerson: (membershipId: string, originKey: string) => void;
   onOpenResponsibility: (occurrenceId: string, originKey: string) => void;
@@ -1076,6 +1126,32 @@ function DisplayOverview(props: {
 
   return (
     <section className="display-overview" data-testid="display-overview">
+      {props.retiredNotices.length > 0 ? (
+        <div
+          className="display-retired-notices"
+          role="status"
+          data-testid="display-retired-notices"
+        >
+          {props.retiredNotices.map((notice) => (
+            <div
+              key={notice.mutationId}
+              className="display-retired-notice"
+              data-testid="display-retired-notice"
+            >
+              <p className="display-work-meta">{notice.message}</p>
+              <button
+                type="button"
+                className="display-work-row"
+                onClick={() => props.onDismissRetiredNotice(notice.mutationId)}
+                data-testid={`display-retired-dismiss-${notice.mutationId}`}
+              >
+                Dismiss
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       {props.pendingCue ? (
         <div className="display-pending-cue" role="status">
           <p className="display-work-meta">

@@ -7,6 +7,10 @@ import {
 import fs from "node:fs";
 import path from "node:path";
 import { durableScreenshot } from "../helpers/durable-screenshot";
+import {
+  disposeRespawnedE2eServers,
+  restartPreservingE2eServer,
+} from "../helpers/e2e-restart-server";
 
 const PASSPHRASE = "unique-passphrase-ok!";
 const MANAGER_LOGIN = "e2e.manager";
@@ -108,15 +112,19 @@ async function ensureResponsibility(
 }
 
 test.describe("P0-007C-3A offline pending", () => {
-  test("AT8 light: disconnect, tap Done, reload/reconnect shows pending then saves", async ({
+  test.afterAll(async () => {
+    await disposeRespawnedE2eServers();
+  });
+
+  test("AT8: disconnect, tap Done, actual server restart, same session saves exactly-once", async ({
     page,
     browser,
   }, testInfo) => {
     test.skip(
       testInfo.project.name !== "chromium",
-      "Phone Chromium offline journey",
+      "Phone Chromium offline/restart journey",
     );
-    test.setTimeout(180_000);
+    test.setTimeout(240_000);
     fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
     const title = await ensureResponsibility(page.request);
@@ -147,17 +155,23 @@ test.describe("P0-007C-3A offline pending", () => {
       path.join(SCREENSHOT_DIR, "offline-pending-detail.png"),
     );
 
+    // Actual local server restart: Fastify close + rebind with preserved DB
+    // (same display session). Keeps Playwright's webServer process alive.
+    const baseURL = test.info().project.use.baseURL!;
+    await restartPreservingE2eServer(baseURL);
+
+    // Allow status posts after restart and reconnect the still-valid session.
+    await wall.unroute("**/api/v1/display/occurrences/**/status");
     await wall.reload();
-    // After reload, authorized session should restore overview or detail with pending cue.
     await expect(
       wall
         .getByTestId("display-overview")
         .or(wall.getByTestId("display-detail"))
         .or(wall.getByTestId("display-pending-cue")),
-    ).toBeVisible({ timeout: 20_000 });
+    ).toBeVisible({ timeout: 30_000 });
+    // Must not render a blank/cached household payload without authorization.
+    await expect(wall.getByTestId("display-setup")).toHaveCount(0);
 
-    // Reconnect: allow status posts again and flush.
-    await wall.unroute("**/api/v1/display/occurrences/**/status");
     await wall.evaluate(() => {
       Object.defineProperty(document, "visibilityState", {
         configurable: true,
@@ -167,7 +181,6 @@ test.describe("P0-007C-3A offline pending", () => {
       window.dispatchEvent(new Event("online"));
     });
 
-    // Open the work again if needed and wait for saved or pending cue resolution.
     if (await wall.getByTestId("display-pending-cue").count()) {
       await wall.getByTestId("display-pending-cue").click();
     } else if (await wall.getByTestId("display-overview").count()) {
@@ -189,15 +202,33 @@ test.describe("P0-007C-3A offline pending", () => {
           const donePressed = await wall
             .locator("[data-testid^=display-step-done-][aria-pressed=true]")
             .count();
+          const rejected = await wall
+            .getByRole("status")
+            .filter({ hasText: /not saved|Could not save|rejected/i })
+            .count();
           const pending = await wall
             .getByRole("status")
             .filter({ hasText: /pending|retry/i })
             .count();
-          return saved > 0 || donePressed > 0 || pending === 0;
+          return saved > 0 || donePressed > 0 || rejected > 0 || pending === 0;
         },
-        { timeout: 30_000 },
+        { timeout: 45_000 },
       )
       .toBeTruthy();
+
+    // Exactly-once: reopen and confirm a single completed step, not duplicated feedback.
+    await wall.getByRole("button", { name: "Back" }).click().catch(() => undefined);
+    if (await wall.getByTestId("display-overview").count()) {
+      await wall.getByTestId("display-org-by-work").click();
+      await wall
+        .getByTestId("display-by-work")
+        .locator("button.display-work-row")
+        .filter({ hasText: title })
+        .click();
+    }
+    await expect(
+      wall.locator("[data-testid^=display-step-done-][aria-pressed=true]"),
+    ).toHaveCount(1, { timeout: 20_000 });
 
     await durableScreenshot(
       wall,

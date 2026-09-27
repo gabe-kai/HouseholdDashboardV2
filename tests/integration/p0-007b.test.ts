@@ -1442,7 +1442,8 @@ describe("P0-007B assignment patterns and scheduled work (server)", () => {
     );
 
     const today = store.householdDateNow(manager.context);
-    let saturday = today;
+    // Always use a past Saturday — never today — so started History stays off the clear/rematerialize window.
+    let saturday = addDays(today, -1);
     while (isoWeekday(saturday) !== 6) {
       saturday = addDays(saturday, -1);
     }

@@ -19,7 +19,7 @@
 
 ## Current focus
 
-Integrated `main` matches `origin/main` at **739f7e3**, merging technically accepted **P0-007C-2 r1** via PR **#21**. On `brief/p0-007c-3a-shared-display-execution`, Engineering implemented **P0-007C-3A r1** and recorded `reports/P0-007C-3A-r1-build-report.md` (authorize tip `6ba1fa2`). Architecture acceptance is next. Owner-controlled personal-task promotion remains likely next as 3B. C-2 AT17 physical readability remains separate Product evidence.
+Integrated `main` matches `origin/main` at **739f7e3**, merging technically accepted **P0-007C-2 r1** via PR **#21**. On `brief/p0-007c-3a-shared-display-execution`, Engineering implemented **P0-007C-3A r1** at **606cd25**. Architecture returned same-revision **FIX REQUIRED** findings; see `reports/P0-007C-3A-r1-architecture-review.md`. Owner-controlled personal-task promotion remains likely next as 3B. C-2 AT17 physical readability remains separate Product evidence.
 
 The integrated baseline includes technically accepted **P0-007C-1 r1** via PR **#20** at `ef39a89` and **P0-007C-2 r1** via PR **#21** at `739f7e3`. Technical integration does not assert Product acceptance; C-1/C-2 family evaluation remains separate. Old reports retain the SHAs of their inspected baselines.
 
@@ -40,7 +40,7 @@ The integrated baseline includes technically accepted **P0-007C-1 r1** via PR **
 | P0-007B - Assignment Patterns & Scheduled Work | r1 | ACCEPTED | Integrated foundation | Included in inspected `main` at `e8f59b4` | Product evaluation remains separate; C carries daily-presentation direction |
 | P0-007C-1 - Actionable Today and Household Overview | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `ef39a89` via PR #20 | Product speed-of-understanding evaluation |
 | P0-007C-2 - Household Display and Read-only Dashboard | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `739f7e3` via PR #21 | Physical readability AT17 and Product acceptance remain separate |
-| P0-007C-3A - Complete Assigned Work at the Shared Display | r1 | IMPLEMENTED | Architecture | `brief/p0-007c-3a-shared-display-execution` | Architecture acceptance vs Build Report |
+| P0-007C-3A - Complete Assigned Work at the Shared Display | r1 | FIX REQUIRED | Engineering | `brief/p0-007c-3a-shared-display-execution` | Close same-revision findings in architecture review |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -66,15 +66,15 @@ This table is the short repository-side coordination index. An external project 
 
 ## Known blockers
 
-- No known blocker to Architecture accepting P0-007C-3A r1. Physical wall evaluation AT17 remains important evidence before declaring the overall C outcome product-evaluated, but does not block technical acceptance of C-3A.
+- P0-007C-3A r1 technical acceptance is held on a silent pending-action retirement behavior, incomplete required AT5/8/10/11 evidence, and the exact `validate:rc` gate not completing. Physical wall evaluation AT17 remains separate Product evidence and does not block technical acceptance of C-3A.
 
 ## Next Project Lead decision
 
-- None required for C-3A technical acceptance; Architecture reviews the Build Report next.
+- None. Engineering should close the same-revision Architecture findings; no product decision or new Design proposal is needed.
 
 ## Next likely handoff
 
-Architecture accepts or returns FIX REQUIRED on P0-007C-3A r1. After technical acceptance, Product evaluates shared-display execution and physical readability; do not infer those from automation alone. C-3B personal-task promotion remains a separate brief.
+Engineering returns the corrected P0-007C-3A r1 implementation and Build Report for Architecture re-review. After technical acceptance, Product evaluates shared-display execution and physical readability; do not infer those from automation alone. C-3B personal-task promotion remains a separate brief.
 
 ## Notes for all teams
 

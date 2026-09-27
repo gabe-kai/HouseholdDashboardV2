@@ -79,7 +79,7 @@ The third approved Product outcome is intentionally decomposed into evidence-gat
 
 - [ ] **P0-007C-3A - Complete assigned household work at the shared display.** Let a household member complete today's applicable, already-assigned routine and responsibility work on the enrolled display. Preserve the accountable owner and record the display as the action principal—not as a fake person. Make pending actions idempotent and recoverable across disconnection, reload/restart and reconnect; revocation remains authoritative. Keep C-2 privacy and read-only management boundaries.
   - **Brief:** `P0-007C-3A r1 - Complete Assigned Work at the Shared Display` (`briefs/p0-007c-3a-shared-display-execution.md`).
-  - **Status:** READY; Engineering review found no blocker or question and Architecture returned **ACCEPT / PROCEED** on r1. Implementation is next on `brief/p0-007c-3a-shared-display-execution`, from integrated C-2 code at **739f7e3**. The approved intent is in `PRODUCT.md`; no new Planning/Design proposal is needed.
+  - **Status:** FIX REQUIRED on r1; implementation commit `606cd25` is on `brief/p0-007c-3a-shared-display-execution`. Architecture review `reports/P0-007C-3A-r1-architecture-review.md` requests visible disposition of retired pending taps, complete named AT5/8/10/11 evidence, and a passing exact `npm run validate:rc`. No contract revision, new readiness pass, or Planning/Design proposal is needed.
   - **Evidence target:** Normal UI execution of assigned routine/responsibility steps from the display; actor/owner truth; durable mutation replay; reset/revoke safety; manager/wall convergence; and selected local PR/RC/CI evidence. Do not include personal-task promotion in this first implementation slice.
 
 ### LIKELY NEXT

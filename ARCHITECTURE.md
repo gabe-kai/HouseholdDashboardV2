@@ -154,9 +154,9 @@ Authoritative contract: `briefs/p0-007c-2-household-display-read-only-dashboard.
 - **Remaining boundary:** Shared-display checklist execution, truthful device action provenance and owner-controlled personal-work promotion belong to C-3. Do not add their schema/UI or treat C-2 as completion of the full interactive Product outcome.
 - **Acceptance:** Technical acceptance is complete. Preserve AT17 as a separate Project Lead/Product evaluation; do not infer physical readability from automated or screenshot evidence.
 
-### P0-007C-3A shared-display execution (IMPLEMENTED; awaiting Architecture acceptance)
+### P0-007C-3A shared-display execution (FIX REQUIRED; same-revision corrections pending)
 
-Authoritative contract: `briefs/p0-007c-3a-shared-display-execution.md` **revision 1**, with D-046–D-047. Implementation on `brief/p0-007c-3a-shared-display-execution` (authorize tip `6ba1fa2`). Build Report: `reports/P0-007C-3A-r1-build-report.md`. C-3B personal-task promotion remains out of scope.
+Authoritative contract: `briefs/p0-007c-3a-shared-display-execution.md` **revision 1**, with D-046–D-047. Implementation commit `606cd25` on `brief/p0-007c-3a-shared-display-execution`; Architecture review: `reports/P0-007C-3A-r1-architecture-review.md`. Same-revision corrections are pending for visible outbox retirement disposition, named AT5/8/10/11 evidence, and exact PR/RC gates. C-3B personal-task promotion remains out of scope.
 
 ### P0-006C profiles and useful History (technically accepted)
 

@@ -154,14 +154,9 @@ Authoritative contract: `briefs/p0-007c-2-household-display-read-only-dashboard.
 - **Remaining boundary:** Shared-display checklist execution, truthful device action provenance and owner-controlled personal-work promotion belong to C-3. Do not add their schema/UI or treat C-2 as completion of the full interactive Product outcome.
 - **Acceptance:** Technical acceptance is complete. Preserve AT17 as a separate Project Lead/Product evaluation; do not infer physical readability from automated or screenshot evidence.
 
-### P0-007C-3A shared-display execution (READY; implementation authorized)
+### P0-007C-3A shared-display execution (IMPLEMENTED; awaiting Architecture acceptance)
 
-Authoritative contract: `briefs/p0-007c-3a-shared-display-execution.md` **revision 1**, with D-046–D-047. Planning branch `brief/p0-007c-3a-shared-display-execution` starts from the integrated C-2 code baseline **739f7e3**; its documentation parent is **340f955**. Engineering readiness review against tip **db37119** returned **READY** (`reports/P0-007C-3A-r1-engineering-readiness.md`). Architecture **ACCEPT / PROCEED** authorizes implementation of r1. No C-3A implementation or test result is claimed here.
-
-- **Narrow write seam:** Add a display-principal command for current-day assigned routine/responsibility step status only. Keep human and display route guards separate; reuse the same transactional checklist rules for obligation, locks, assignment, generation, date and replay. A display action records device actor/session separately from the stored accountable person; physical performer remains unknown.
-- **Intent and recovery:** Display detail must expose the minimal structure intent required for first-action safety. A display-only outbox stores session-bound command metadata, not credentials or household read payloads. Replay requires the same authorized session and current day/generation/structure. C-2's 60-second stale-data blanking and revocation fences still govern whether the wall can offer actions.
-- **Evidence:** Exercise populated migration, route denial, routine/responsibility UI journeys, edit/action transaction ordering, duplicate/lost-response recovery, offline/reload/restart, revoke/replace, activity reset, midnight and multi-device sync. Exact local PR/RC, Vite and CI selection remain required; no hosted deploy is an implementation gate. Physical 27-inch/10–16-foot evaluation remains Product evidence for the complete C outcome.
-- **Boundary:** Owner-controlled personal-task promotion is P0-007C-3B. Household-visible tasks remain detail-only and non-executable on the wall in 3A; private tasks remain excluded server-side.
+Authoritative contract: `briefs/p0-007c-3a-shared-display-execution.md` **revision 1**, with D-046–D-047. Implementation on `brief/p0-007c-3a-shared-display-execution` (authorize tip `6ba1fa2`). Build Report: `reports/P0-007C-3A-r1-build-report.md`. C-3B personal-task promotion remains out of scope.
 
 ### P0-006C profiles and useful History (technically accepted)
 

@@ -691,7 +691,17 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     origin: "none",
     csrf: "n/a",
     grant: null,
-    notes: "One permitted current-day occurrence detail",
+    notes: "One permitted current-day occurrence detail with structural intent",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/display/occurrences/:occurrenceId/steps/:stepId/status",
+    auth: "display",
+    principal: "display",
+    origin: "mutation_when_configured",
+    csrf: "required",
+    grant: null,
+    notes: "Display-principal checklist status for current-day assigned work",
   },
   {
     method: "GET",

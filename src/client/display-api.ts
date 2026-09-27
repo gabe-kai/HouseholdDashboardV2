@@ -1,9 +1,10 @@
 /**
- * Display-principal HTTP/WS helpers (P0-007C-2).
- * Never stores household payloads in localStorage.
+ * Display-principal HTTP/WS helpers (P0-007C-2 / C-3A).
+ * Never stores household payloads or display CSRF in localStorage.
  */
 import type { HouseholdOverview } from "../domain/household-overview";
 import type { StepProgressCounts, WorkState } from "../domain/progress";
+import type { IntendedStructure, StepStatus, WorkKind } from "../shared/schemas";
 
 export type ApiError = Error & {
   code?: string;
@@ -12,6 +13,7 @@ export type ApiError = Error & {
 };
 
 export type DisplaySessionInfo = {
+  sessionId: string;
   displayId: string;
   label: string;
   householdId: string;
@@ -21,6 +23,8 @@ export type DisplaySessionInfo = {
   absoluteExpiresAt: string;
   lastSeenAt: string;
   activityGeneration: number;
+  /** In-memory only — never persist. */
+  csrfToken: string;
 };
 
 export type DisplayPersonSummary = {
@@ -74,6 +78,7 @@ export type DisplayPersonDetail = {
 export type DisplayOccurrenceDetail = {
   id: string;
   definitionId: string;
+  revisionId: string;
   title: string;
   kind: "routine" | "responsibility";
   daypart: string;
@@ -84,14 +89,27 @@ export type DisplayOccurrenceDetail = {
   state: WorkState;
   progress: StepProgressCounts;
   progressLabel: string;
+  /** Minimal first-action intent; IDs only — no plan/audit payload. */
+  intendedStructure?: IntendedStructure;
   steps: Array<{
     id: string;
     text: string;
     status: string;
     obligation: string;
     position: number;
+    logicalItemId?: string;
     source?: string;
   }>;
+};
+
+export type SetDisplayStepStatusBody = {
+  mutationId: string;
+  status: StepStatus;
+  performedAt: string;
+  activityGeneration?: number;
+  kind?: WorkKind;
+  householdDate: string;
+  intendedStructure: IntendedStructure;
 };
 
 export type DisplayInvalidateMessage = {
@@ -188,6 +206,25 @@ export async function fetchDisplayOccurrence(
     `/api/v1/display/occurrences/${encodeURIComponent(occurrenceId)}`,
   );
   return data.occurrence;
+}
+
+export async function setDisplayStepStatus(
+  occurrenceId: string,
+  stepId: string,
+  body: SetDisplayStepStatusBody,
+  csrfToken: string,
+): Promise<{ occurrence: DisplayOccurrenceDetail }> {
+  return displayRequest(
+    `/api/v1/display/occurrences/${encodeURIComponent(occurrenceId)}/steps/${encodeURIComponent(stepId)}/status`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-csrf-token": csrfToken,
+      },
+      body: JSON.stringify(body),
+    },
+  );
 }
 
 export function connectDisplaySync(

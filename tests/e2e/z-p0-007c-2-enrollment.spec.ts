@@ -92,7 +92,8 @@ test.describe("P0-007C-2 manager-to-wall enrollment", () => {
         .filter({ hasText: name.split(" ")[0]! });
       await expect(person).toBeVisible({ timeout: 20_000 });
     }
-    await expect(wallPage.getByText(/Read-only wall view/i)).toBeVisible();
+    await expect(wallPage.getByTestId("display-overview")).toBeVisible();
+    await expect(wallPage.getByText(/Shared wall checklist/i)).toBeVisible();
     // No personal Today chrome
     await expect(wallPage.getByRole("button", { name: "Today", exact: true })).toHaveCount(0);
 

@@ -1,7 +1,7 @@
 # BRIEF P0-007C-3A - Complete Assigned Work at the Shared Display
 
 **Revision:** 1
-**Status:** READY
+**Status:** IMPLEMENTED
 
 This is the authoritative contract for P0-007C-3A. Engineering reviews this revision against the repository before implementation. Technical acceptance and Product acceptance are separate.
 
@@ -105,11 +105,11 @@ Inspected clean `brief/p0-007c-3a-shared-display-execution` at documentation com
 ## Engineering readiness
 
 **Reviewed revision:** 1  
-**Readiness:** READY  
-**Review artifact:** `reports/P0-007C-3A-r1-engineering-readiness.md`  
-**Inspected tip:** `db37119` on `brief/p0-007c-3a-shared-display-execution` (C-2 baseline `739f7e3`)
+**Readiness:** READY (Architecture ACCEPT / PROCEED received)  
+**Implementation status:** IMPLEMENTED  
+**Build Report:** `reports/P0-007C-3A-r1-build-report.md`
 
-No BLOCKER or QUESTION. Architecture disposition: **ACCEPT / PROCEED** on r1. Engineering may implement this revision; C-3B remains out of scope.
+C-3B remains out of scope.
 
 ## Revision history
 

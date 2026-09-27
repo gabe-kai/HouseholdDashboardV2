@@ -4,6 +4,13 @@ import type {
   ResponsibilityOverviewRow,
   RoutineAggregateRow,
 } from "../domain/household-overview";
+import { formatStepProgress, stepProgressCounts, workState } from "../domain/progress";
+import { isOccurrenceComplete } from "../domain/completion";
+import type {
+  IntendedStructure,
+  ObligationMeaning,
+  StepStatus,
+} from "../shared/schemas";
 import {
   claimDisplay,
   connectDisplaySync,
@@ -11,12 +18,23 @@ import {
   fetchDisplayOccurrence,
   fetchDisplayPerson,
   fetchDisplaySession,
+  setDisplayStepStatus,
   type ApiError,
   type DisplayDashboard,
   type DisplayOccurrenceDetail,
   type DisplayPersonDetail,
   type DisplaySessionInfo,
 } from "./display-api";
+import {
+  clearDisplaySessionOutbox,
+  patchDisplayOutboxItem,
+  readDisplayOutbox,
+  removeDisplayOutboxItem,
+  replaceDesiredStateForStep,
+  retireMismatchedDisplayOutbox,
+  type DisplayOutboxItem,
+} from "./display-outbox";
+import { newClientId } from "./id";
 
 const DEFAULT_IDLE_MS = 90_000;
 const DEFAULT_STALE_MAX_MS = 60_000;
@@ -42,6 +60,11 @@ type DetailState =
     };
 
 type AuthPhase = "loading" | "setup" | "authenticated" | "blank";
+
+type PendingOverviewCue = {
+  occurrenceId: string;
+  title: string;
+};
 
 declare global {
   interface Window {
@@ -102,6 +125,81 @@ function needsAssignmentRows(dashboard: DisplayDashboard): ResponsibilityOvervie
   return dashboard.byWork.responsibilities.filter((row) => row.accountableMemberId === null);
 }
 
+function statusLabel(status: string): string {
+  if (status === "completed") return "Done";
+  if (status === "not_needed") return "Not needed";
+  if (status === "open") return "Open";
+  return status;
+}
+
+function intendedStructureForOccurrence(
+  occurrence: DisplayOccurrenceDetail,
+): IntendedStructure | null {
+  if (occurrence.intendedStructure) return occurrence.intendedStructure;
+  if (!occurrence.accountableMemberId) return null;
+  const stepLogicalIds = occurrence.steps
+    .map((step) => step.logicalItemId)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+  if (stepLogicalIds.length === 0) return null;
+  return {
+    revisionId: occurrence.revisionId,
+    accountableMemberId: occurrence.accountableMemberId,
+    stepLogicalIds,
+  };
+}
+
+function applyOptimisticStepStatus(
+  occurrence: DisplayOccurrenceDetail,
+  stepId: string,
+  status: StepStatus,
+): DisplayOccurrenceDetail {
+  const steps = occurrence.steps.map((step) =>
+    step.id === stepId ? { ...step, status } : step,
+  );
+  const completed = isOccurrenceComplete(
+    steps.map((step) => ({
+      obligation: step.obligation as ObligationMeaning,
+      status: step.status as StepStatus,
+    })),
+  );
+  const progress = stepProgressCounts(steps);
+  return {
+    ...occurrence,
+    steps,
+    completed,
+    state: workState({ completed, startedAt: null, steps }),
+    progress,
+    progressLabel: formatStepProgress(progress),
+  };
+}
+
+function stepFeedback(
+  outbox: DisplayOutboxItem[],
+  occurrenceId: string,
+  stepId: string,
+): { kind: "pending" | "error"; text: string } | null {
+  const items = outbox.filter(
+    (item) => item.occurrenceId === occurrenceId && item.stepId === stepId,
+  );
+  const rejected = [...items].reverse().find((item) => item.state === "rejected");
+  if (rejected) {
+    return {
+      kind: "error",
+      text: rejected.errorMessage ?? "Could not save this change.",
+    };
+  }
+  const active = items.find(
+    (item) => item.state === "pending" || item.state === "retrying",
+  );
+  if (active) {
+    return {
+      kind: "pending",
+      text: active.state === "retrying" ? "Saving…" : "Pending…",
+    };
+  }
+  return null;
+}
+
 export function DisplayApp() {
   const [authPhase, setAuthPhase] = useState<AuthPhase>("loading");
   const [session, setSession] = useState<DisplaySessionInfo | null>(null);
@@ -122,6 +220,9 @@ export function DisplayApp() {
   const [syncStatus, setSyncStatus] = useState<
     "connected" | "disconnected" | "reconnecting"
   >("disconnected");
+  const [outbox, setOutbox] = useState<DisplayOutboxItem[]>([]);
+  const [pendingCue, setPendingCue] = useState<PendingOverviewCue | null>(null);
+  const [savedFlashByStep, setSavedFlashByStep] = useState<Record<string, number>>({});
 
   const lastAuthorizedAtRef = useRef<number | null>(null);
   const accessLostRef = useRef(false);
@@ -132,21 +233,52 @@ export function DisplayApp() {
   const originFocusRef = useRef<string | null>(null);
   const lastUserInteractionRef = useRef(performance.now());
   const householdDateRef = useRef<string | null>(null);
+  /** Display CSRF — memory only; never localStorage. */
+  const csrfTokenRef = useRef<string | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
+  const sessionRef = useRef<DisplaySessionInfo | null>(null);
+  const outboxRef = useRef<DisplayOutboxItem[]>([]);
+  const flushInFlightRef = useRef(false);
+  const occurrenceDetailRef = useRef<DisplayOccurrenceDetail | null>(null);
 
   detailRef.current = detail;
+  sessionRef.current = session;
+  outboxRef.current = outbox;
+  occurrenceDetailRef.current = occurrenceDetail;
+
+  function rememberSessionSecrets(next: DisplaySessionInfo | null) {
+    csrfTokenRef.current = next?.csrfToken ?? null;
+    sessionIdRef.current = next?.sessionId ?? null;
+  }
+
+  async function retireSessionOutbox(sessionId: string | null) {
+    if (!sessionId) return;
+    await clearDisplaySessionOutbox(sessionId);
+    if (sessionIdRef.current === sessionId) {
+      outboxRef.current = [];
+      setOutbox([]);
+    }
+  }
 
   function clearHouseholdState(reason?: string) {
+    const retiringSessionId = sessionIdRef.current;
     accessLostRef.current = true;
     lastAuthorizedAtRef.current = null;
     householdDateRef.current = null;
+    rememberSessionSecrets(null);
     setDashboard(null);
     setPersonDetail(null);
     setOccurrenceDetail(null);
     setDetail(null);
     setSession(null);
+    setOutbox([]);
+    outboxRef.current = [];
+    setPendingCue(null);
+    setSavedFlashByStep({});
     setStale(false);
     setBlankReason(reason ?? null);
     setAuthPhase("setup");
+    void retireSessionOutbox(retiringSessionId);
   }
 
   function markAuthorized() {
@@ -172,6 +304,118 @@ export function DisplayApp() {
     return true;
   }
 
+  /** New taps only while an authorized in-memory view remains within the C-2 lease. */
+  function actionsAllowed(): boolean {
+    if (accessLostRef.current) return false;
+    if (authPhase !== "authenticated") return false;
+    if (!csrfTokenRef.current || !sessionIdRef.current) return false;
+    const last = lastAuthorizedAtRef.current;
+    if (last == null) return false;
+    return performance.now() - last <= staleMaxMs();
+  }
+
+  const loadOutboxForSession = useEffectEvent(async (sessionId: string) => {
+    const items = await readDisplayOutbox(sessionId);
+    if (sessionIdRef.current !== sessionId) return;
+    outboxRef.current = items;
+    setOutbox(items);
+  });
+
+  const flushDisplayOutbox = useEffectEvent(async () => {
+    const sessionId = sessionIdRef.current;
+    const csrf = csrfTokenRef.current;
+    const currentSession = sessionRef.current;
+    if (!sessionId || !csrf || !currentSession) return;
+    if (flushInFlightRef.current) return;
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    flushInFlightRef.current = true;
+    try {
+      let items = await readDisplayOutbox(sessionId);
+      if (sessionIdRef.current !== sessionId) return;
+      outboxRef.current = items;
+      setOutbox(items);
+
+      for (const item of items) {
+        if (sessionIdRef.current !== sessionId || item.state === "rejected") continue;
+        items = await patchDisplayOutboxItem(sessionId, item.mutationId, {
+          state: "retrying",
+        });
+        if (sessionIdRef.current === sessionId) {
+          outboxRef.current = items;
+          setOutbox(items);
+        }
+        try {
+          const result = await setDisplayStepStatus(
+            item.occurrenceId,
+            item.stepId,
+            {
+              mutationId: item.mutationId,
+              status: item.status,
+              performedAt: item.performedAt,
+              activityGeneration: item.activityGeneration,
+              ...(item.kind ? { kind: item.kind } : {}),
+              householdDate: item.householdDate,
+              intendedStructure: item.intendedStructure,
+            },
+            csrf,
+          );
+          if (sessionIdRef.current !== sessionId) return;
+          items = await removeDisplayOutboxItem(sessionId, item.mutationId);
+          outboxRef.current = items;
+          setOutbox(items);
+          markAuthorized();
+          if (
+            occurrenceDetailRef.current?.id === result.occurrence.id ||
+            detailRef.current?.kind === "occurrence" ||
+            detailRef.current?.kind === "routine-person"
+          ) {
+            const pendingForOcc = items.filter(
+              (entry) =>
+                entry.occurrenceId === result.occurrence.id &&
+                entry.state !== "rejected",
+            );
+            let nextOccurrence = result.occurrence;
+            for (const pending of pendingForOcc) {
+              nextOccurrence = applyOptimisticStepStatus(
+                nextOccurrence,
+                pending.stepId,
+                pending.status,
+              );
+            }
+            setOccurrenceDetail(nextOccurrence);
+          }
+          setSavedFlashByStep((current) => ({
+            ...current,
+            [`${item.occurrenceId}:${item.stepId}`]: Date.now(),
+          }));
+        } catch (caught) {
+          if (sessionIdRef.current !== sessionId) return;
+          const code = (caught as ApiError).code;
+          const message = errorMessage(caught);
+          if (isUnauthorized(caught)) {
+            clearHouseholdState("Display access ended. Enter a new setup code.");
+            return;
+          }
+          const rejected =
+            code === "VALIDATION" || code === "FORBIDDEN" || code === "NOT_FOUND" ||
+            code === "CONFLICT";
+          items = await patchDisplayOutboxItem(sessionId, item.mutationId, {
+            state: rejected ? "rejected" : "pending",
+            errorMessage: message,
+          });
+          outboxRef.current = items;
+          setOutbox(items);
+          if (rejected) continue;
+          break;
+        }
+      }
+      await refreshDashboard({ quiet: true });
+      await refreshDetail();
+    } finally {
+      flushInFlightRef.current = false;
+    }
+  });
+
   const refreshDashboard = useEffectEvent(async (opts?: { quiet?: boolean }) => {
     if (accessLostRef.current) return;
     const started = performance.now();
@@ -192,14 +436,36 @@ export function DisplayApp() {
       const previousDate = householdDateRef.current;
       const dateChanged =
         previousDate != null && previousDate !== next.householdDate;
+      const sessionId = sessionIdRef.current;
+      if (sessionId) {
+        const retired = await retireMismatchedDisplayOutbox(sessionId, {
+          activityGeneration: next.activityGeneration,
+          householdDate: next.householdDate,
+        });
+        if (sessionIdRef.current === sessionId) {
+          outboxRef.current = retired;
+          setOutbox(retired);
+        }
+      }
       if (dateChanged) {
         // Close old-day detail before applying the new date/work snapshot.
         setDetail(null);
         setPersonDetail(null);
         setOccurrenceDetail(null);
+        setPendingCue(null);
       }
       householdDateRef.current = next.householdDate;
       setDashboard(next);
+      setSession((current) =>
+        current
+          ? {
+              ...current,
+              householdDate: next.householdDate,
+              serverTime: next.serverTime,
+              activityGeneration: next.activityGeneration,
+            }
+          : current,
+      );
       setAuthPhase("authenticated");
       setClockElapsedMs(0);
     } catch (error) {
@@ -228,7 +494,19 @@ export function DisplayApp() {
         const occurrence = await fetchDisplayOccurrence(current.occurrenceId);
         if (gen !== detailGenRef.current || !withinFreshnessBound(started)) return;
         markAuthorized();
-        setOccurrenceDetail(occurrence);
+        const pendingForOcc = outboxRef.current.filter(
+          (item) =>
+            item.occurrenceId === occurrence.id && item.state !== "rejected",
+        );
+        let nextOccurrence = occurrence;
+        for (const pending of pendingForOcc) {
+          nextOccurrence = applyOptimisticStepStatus(
+            nextOccurrence,
+            pending.stepId,
+            pending.status,
+          );
+        }
+        setOccurrenceDetail(nextOccurrence);
       }
     } catch (error) {
       if (isUnauthorized(error)) {
@@ -244,15 +522,20 @@ export function DisplayApp() {
     try {
       const nextSession = await fetchDisplaySession();
       if (!nextSession) {
+        rememberSessionSecrets(null);
         setAuthPhase("setup");
         return;
       }
       accessLostRef.current = false;
+      rememberSessionSecrets(nextSession);
       markAuthorized();
       setSession(nextSession);
       setAuthPhase("authenticated");
+      await loadOutboxForSession(nextSession.sessionId);
       await refreshDashboard({ quiet: true });
+      void flushDisplayOutbox();
     } catch {
+      rememberSessionSecrets(null);
       setAuthPhase("setup");
     } finally {
       bootstrappingRef.current = false;
@@ -286,6 +569,23 @@ export function DisplayApp() {
     };
   }, []);
 
+  // Clear "Saved" flash after a short window.
+  useEffect(() => {
+    const keys = Object.keys(savedFlashByStep);
+    if (keys.length === 0) return;
+    const timer = window.setTimeout(() => {
+      const cutoff = Date.now() - 2_500;
+      setSavedFlashByStep((current) => {
+        const next: Record<string, number> = {};
+        for (const [key, at] of Object.entries(current)) {
+          if (at >= cutoff) next[key] = at;
+        }
+        return next;
+      });
+    }, 2_600);
+    return () => window.clearTimeout(timer);
+  }, [savedFlashByStep]);
+
   // Live sync + poll while authenticated and visible.
   useEffect(() => {
     if (authPhase !== "authenticated") return;
@@ -305,7 +605,12 @@ export function DisplayApp() {
         clearHouseholdState("Display access was revoked.");
         return;
       }
+      if (msg.reason === "reset") {
+        void refreshDashboard({ quiet: true }).then(() => flushDisplayOutbox());
+        return;
+      }
       scheduleRefresh();
+      void flushDisplayOutbox();
     }, setSyncStatus);
 
     const poll = window.setInterval(() => {
@@ -339,6 +644,7 @@ export function DisplayApp() {
     };
     const onOnline = () => {
       setSyncStatus("reconnecting");
+      void flushDisplayOutbox();
     };
     window.addEventListener("offline", onOffline);
     window.addEventListener("online", onOnline);
@@ -378,7 +684,7 @@ export function DisplayApp() {
     };
   }, [authPhase, syncStatus]);
 
-  // Visibility / resume: check stale deadline before restoring.
+  // Visibility / resume: check stale deadline before restoring; flush pending.
   useEffect(() => {
     const onVisibility = () => {
       if (document.visibilityState !== "visible") return;
@@ -396,6 +702,7 @@ export function DisplayApp() {
       if (authPhase === "authenticated" || authPhase === "blank") {
         void refreshDashboard({ quiet: true });
         void refreshDetail();
+        void flushDisplayOutbox();
       }
     };
     document.addEventListener("visibilitychange", onVisibility);
@@ -407,6 +714,7 @@ export function DisplayApp() {
   }, [authPhase]);
 
   // Idle return from detail (user interaction only resets).
+  // Unresolved pending commands leave an overview cue with a way back.
   useEffect(() => {
     if (!detail) return;
     lastUserInteractionRef.current = performance.now();
@@ -419,12 +727,31 @@ export function DisplayApp() {
     }
     const timer = window.setInterval(() => {
       if (performance.now() - lastUserInteractionRef.current >= idleMs()) {
-        const origin = detail.originKey;
+        const leaving = detailRef.current;
+        const origin = leaving?.originKey;
+        let cue: PendingOverviewCue | null = null;
+        if (
+          leaving &&
+          (leaving.kind === "occurrence" || leaving.kind === "routine-person")
+        ) {
+          const pendingForOcc = outboxRef.current.filter(
+            (item) =>
+              item.occurrenceId === leaving.occurrenceId &&
+              (item.state === "pending" || item.state === "retrying"),
+          );
+          if (pendingForOcc.length > 0) {
+            cue = {
+              occurrenceId: leaving.occurrenceId,
+              title: occurrenceDetailRef.current?.title ?? "Assigned work",
+            };
+          }
+        }
+        setPendingCue(cue);
         setDetail(null);
         setPersonDetail(null);
         setOccurrenceDetail(null);
         queueMicrotask(() => {
-          document.getElementById(origin)?.focus();
+          if (origin) document.getElementById(origin)?.focus();
         });
       }
     }, 500);
@@ -470,6 +797,7 @@ export function DisplayApp() {
 
   function openDetail(next: DetailState, originElementId: string) {
     originFocusRef.current = originElementId;
+    setPendingCue(null);
     setDetail(next);
     setPersonDetail(null);
     setOccurrenceDetail(null);
@@ -487,7 +815,19 @@ export function DisplayApp() {
       void fetchDisplayOccurrence(next.occurrenceId)
         .then((occurrence) => {
           markAuthorized();
-          setOccurrenceDetail(occurrence);
+          const pendingForOcc = outboxRef.current.filter(
+            (item) =>
+              item.occurrenceId === occurrence.id && item.state !== "rejected",
+          );
+          let nextOccurrence = occurrence;
+          for (const pending of pendingForOcc) {
+            nextOccurrence = applyOptimisticStepStatus(
+              nextOccurrence,
+              pending.stepId,
+              pending.status,
+            );
+          }
+          setOccurrenceDetail(nextOccurrence);
         })
         .catch((error) => {
           if (isUnauthorized(error)) clearHouseholdState();
@@ -496,9 +836,76 @@ export function DisplayApp() {
   }
 
   function closeDetail() {
+    const leaving = detailRef.current;
+    if (
+      leaving &&
+      (leaving.kind === "occurrence" || leaving.kind === "routine-person")
+    ) {
+      const pendingForOcc = outboxRef.current.filter(
+        (item) =>
+          item.occurrenceId === leaving.occurrenceId &&
+          (item.state === "pending" || item.state === "retrying"),
+      );
+      if (pendingForOcc.length > 0) {
+        setPendingCue({
+          occurrenceId: leaving.occurrenceId,
+          title: occurrenceDetailRef.current?.title ?? "Assigned work",
+        });
+      }
+    }
     setDetail(null);
     setPersonDetail(null);
     setOccurrenceDetail(null);
+  }
+
+  async function queueDisplayStepChange(
+    occurrence: DisplayOccurrenceDetail,
+    stepId: string,
+    status: StepStatus,
+  ) {
+    if (!actionsAllowed()) return;
+    const currentSession = sessionRef.current;
+    const sessionId = sessionIdRef.current;
+    const csrf = csrfTokenRef.current;
+    if (!currentSession || !sessionId || !csrf) return;
+    if (occurrence.accountableMemberId == null) return;
+    const intendedStructure = intendedStructureForOccurrence(occurrence);
+    if (!intendedStructure) return;
+
+    const item: DisplayOutboxItem = {
+      mutationId: newClientId(),
+      occurrenceId: occurrence.id,
+      stepId,
+      status,
+      performedAt: new Date().toISOString(),
+      activityGeneration: currentSession.activityGeneration,
+      kind: occurrence.kind,
+      householdDate: occurrence.householdDate,
+      intendedStructure,
+      displaySessionId: sessionId,
+      displayId: currentSession.displayId,
+      householdId: currentSession.householdId,
+      state: "pending",
+    };
+
+    setOccurrenceDetail((current) =>
+      current && current.id === occurrence.id
+        ? applyOptimisticStepStatus(current, stepId, status)
+        : current,
+    );
+    setSavedFlashByStep((current) => {
+      const next = { ...current };
+      delete next[`${occurrence.id}:${stepId}`];
+      return next;
+    });
+
+    const next = await replaceDesiredStateForStep(sessionId, item);
+    if (sessionIdRef.current !== sessionId) return;
+    outboxRef.current = next;
+    setOutbox(next);
+    if (typeof navigator === "undefined" || navigator.onLine) {
+      void flushDisplayOutbox();
+    }
   }
 
   const clock =
@@ -507,6 +914,8 @@ export function DisplayApp() {
       : session != null
         ? formatClock(session.serverTime, session.timezone, clockElapsedMs)
         : null;
+
+  const canAct = actionsAllowed();
 
   return (
     <div className="display-shell" data-testid="display-shell">
@@ -523,11 +932,19 @@ export function DisplayApp() {
           )}
         </div>
         <p className="display-readonly-note" role="note">
-          Read-only wall view. Completing work happens on personal devices.
+          Shared wall checklist. Tap Done, Not needed, or Open on assigned work —
+          phones and Household stay in sync.
         </p>
         {stale ? (
           <p className="display-stale" role="status">
             Offline — showing last update
+          </p>
+        ) : null}
+        {outbox.some((item) => item.state === "pending" || item.state === "retrying") ? (
+          <p className="display-stale" role="status">
+            <span className="status-pill" data-kind="pending">
+              Saving checklist changes…
+            </span>
           </p>
         ) : null}
       </header>
@@ -594,8 +1011,14 @@ export function DisplayApp() {
             dashboard={dashboard}
             personDetail={personDetail}
             occurrenceDetail={occurrenceDetail}
+            outbox={outbox}
+            savedFlashByStep={savedFlashByStep}
+            canAct={canAct}
             loading={loadingDash && !personDetail && !occurrenceDetail}
             onBack={closeDetail}
+            onStepChange={(occurrence, stepId, status) =>
+              void queueDisplayStepChange(occurrence, stepId, status)
+            }
             onOpenOccurrence={(occurrenceId, originKey) =>
               openDetail({ kind: "occurrence", occurrenceId, originKey }, originKey)
             }
@@ -614,6 +1037,7 @@ export function DisplayApp() {
             dashboard={dashboard}
             organization={organization}
             loading={loadingDash}
+            pendingCue={pendingCue}
             onOrganizationChange={setOrganization}
             onOpenPerson={(membershipId, originKey) =>
               openDetail({ kind: "person", membershipId, originKey }, originKey)
@@ -623,6 +1047,12 @@ export function DisplayApp() {
             }
             onOpenRoutine={(aggregateKey, originKey) =>
               openDetail({ kind: "routine", aggregateKey, originKey }, originKey)
+            }
+            onOpenPendingCue={(occurrenceId) =>
+              openDetail(
+                { kind: "occurrence", occurrenceId, originKey: "display-pending-cue" },
+                "display-pending-cue",
+              )
             }
           />
         )
@@ -635,15 +1065,34 @@ function DisplayOverview(props: {
   dashboard: DisplayDashboard;
   organization: Organization;
   loading: boolean;
+  pendingCue: PendingOverviewCue | null;
   onOrganizationChange: (next: Organization) => void;
   onOpenPerson: (membershipId: string, originKey: string) => void;
   onOpenResponsibility: (occurrenceId: string, originKey: string) => void;
   onOpenRoutine: (aggregateKey: string, originKey: string) => void;
+  onOpenPendingCue: (occurrenceId: string) => void;
 }) {
   const unassigned = needsAssignmentRows(props.dashboard);
 
   return (
     <section className="display-overview" data-testid="display-overview">
+      {props.pendingCue ? (
+        <div className="display-pending-cue" role="status">
+          <p className="display-work-meta">
+            Checklist changes still pending for {props.pendingCue.title}.
+          </p>
+          <button
+            type="button"
+            id="display-pending-cue"
+            className="display-work-row"
+            onClick={() => props.onOpenPendingCue(props.pendingCue!.occurrenceId)}
+            data-testid="display-pending-cue"
+          >
+            Return to {props.pendingCue.title}
+          </button>
+        </div>
+      ) : null}
+
       <div className="display-org-toggle" role="group" aria-label="Organization">
         <button
           type="button"
@@ -873,8 +1322,16 @@ function DisplayDetailPanel(props: {
   dashboard: DisplayDashboard;
   personDetail: DisplayPersonDetail | null;
   occurrenceDetail: DisplayOccurrenceDetail | null;
+  outbox: DisplayOutboxItem[];
+  savedFlashByStep: Record<string, number>;
+  canAct: boolean;
   loading: boolean;
   onBack: () => void;
+  onStepChange: (
+    occurrence: DisplayOccurrenceDetail,
+    stepId: string,
+    status: StepStatus,
+  ) => void;
   onOpenOccurrence: (occurrenceId: string, originKey: string) => void;
   onOpenRoutinePerson: (
     aggregateKey: string,
@@ -903,6 +1360,10 @@ function DisplayDetailPanel(props: {
         props.occurrenceDetail ? (
           <OccurrenceDetailView
             occurrence={props.occurrenceDetail}
+            outbox={props.outbox}
+            savedFlashByStep={props.savedFlashByStep}
+            canAct={props.canAct}
+            onStepChange={props.onStepChange}
             onBackToRoutine={
               props.detail.kind === "routine-person"
                 ? (() => {
@@ -987,8 +1448,19 @@ function PersonDetailView(props: {
 
 function OccurrenceDetailView(props: {
   occurrence: DisplayOccurrenceDetail;
+  outbox: DisplayOutboxItem[];
+  savedFlashByStep: Record<string, number>;
+  canAct: boolean;
+  onStepChange: (
+    occurrence: DisplayOccurrenceDetail,
+    stepId: string,
+    status: StepStatus,
+  ) => void;
   onBackToRoutine?: () => void;
 }) {
+  const needsAssignment = props.occurrence.accountableMemberId === null;
+  const executable = props.canAct && !needsAssignment;
+
   return (
     <div>
       {props.onBackToRoutine ? (
@@ -999,25 +1471,95 @@ function OccurrenceDetailView(props: {
       <h1 className="display-detail-title">{props.occurrence.title}</h1>
       <p className="display-work-meta">
         {props.occurrence.accountableMemberName}
-        {props.occurrence.accountableMemberId === null ? " · Needs assignment" : ""} ·{" "}
-        {props.occurrence.state} · {props.occurrence.progressLabel}
+        {needsAssignment ? " · Needs assignment" : ""} · {props.occurrence.state} ·{" "}
+        {props.occurrence.progressLabel}
       </p>
+      {needsAssignment ? (
+        <p className="display-alert" role="status">
+          Needs assignment before this work can be completed at the wall.
+        </p>
+      ) : null}
       <ol className="display-step-list">
         {props.occurrence.steps
           .slice()
           .sort((a, b) => a.position - b.position)
-          .map((step) => (
-            <li
-              key={step.id}
-              className={step.status === "done" || step.status === "not_needed" ? "completed-quiet" : ""}
-            >
-              <span className="display-work-title">{step.text}</span>
-              <span className="display-work-meta">
-                {step.status}
-                {step.source ? ` · ${step.source}` : ""}
-              </span>
-            </li>
-          ))}
+          .map((step) => {
+            const feedback = stepFeedback(props.outbox, props.occurrence.id, step.id);
+            const savedKey = `${props.occurrence.id}:${step.id}`;
+            const showSaved =
+              !feedback && typeof props.savedFlashByStep[savedKey] === "number";
+            const quiet =
+              step.status === "completed" || step.status === "not_needed";
+            return (
+              <li
+                key={step.id}
+                className={quiet ? "display-step completed-quiet" : "display-step"}
+                data-testid={`display-step-${step.id}`}
+              >
+                <span className="display-work-title">{step.text}</span>
+                <span className="display-work-meta">
+                  {statusLabel(step.status)}
+                  {step.source ? ` · ${step.source}` : ""}
+                </span>
+                {feedback ? (
+                  <span
+                    className="status-pill"
+                    data-kind={feedback.kind === "error" ? "error" : "pending"}
+                    role="status"
+                  >
+                    {feedback.text}
+                  </span>
+                ) : null}
+                {showSaved ? (
+                  <span className="status-pill" data-kind="ok" role="status">
+                    Saved
+                  </span>
+                ) : null}
+                {executable ? (
+                  <div className="display-step-actions" role="group" aria-label={step.text}>
+                    <button
+                      type="button"
+                      className="display-step-action"
+                      aria-pressed={step.status === "completed"}
+                      aria-label={`Mark ${step.text} done`}
+                      onClick={() =>
+                        props.onStepChange(props.occurrence, step.id, "completed")
+                      }
+                      data-testid={`display-step-done-${step.id}`}
+                    >
+                      Done
+                    </button>
+                    {step.obligation === "as_needed" ? (
+                      <button
+                        type="button"
+                        className="display-step-action"
+                        aria-pressed={step.status === "not_needed"}
+                        aria-label={`Mark ${step.text} not needed`}
+                        onClick={() =>
+                          props.onStepChange(props.occurrence, step.id, "not_needed")
+                        }
+                        data-testid={`display-step-not-needed-${step.id}`}
+                      >
+                        Not needed
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="display-step-action"
+                      aria-pressed={step.status === "open"}
+                      aria-label={`Mark ${step.text} open`}
+                      onClick={() =>
+                        props.onStepChange(props.occurrence, step.id, "open")
+                      }
+                      data-testid={`display-step-open-${step.id}`}
+                    >
+                      Open
+                    </button>
+                  </div>
+                ) : null}
+              </li>
+            );
+          })}
       </ol>
     </div>
   );

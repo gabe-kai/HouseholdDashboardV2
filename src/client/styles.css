@@ -1854,3 +1854,48 @@ textarea {
   opacity: 0.9;
 }
 
+.display-pending-cue {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3);
+  border-left: 4px solid var(--accent);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.display-step {
+  display: grid;
+  gap: 0.35em;
+  padding: 0.35em 0;
+}
+
+.display-step-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: 0.25em;
+}
+
+.display-step-action {
+  min-height: max(var(--display-touch), 3.25rem);
+  min-width: max(var(--display-touch), 6.5rem);
+  font-size: var(--display-secondary);
+  padding: 0.65em 1.1em;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.display-step-action[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.display-step .status-pill {
+  font-size: max(1rem, calc(var(--display-secondary) * 0.85));
+  justify-self: start;
+}
+

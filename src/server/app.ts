@@ -40,6 +40,7 @@ import {
   SaveSchoolCalendarSchema,
   SetPersonalTaskStatusSchema,
   SetStepStatusSchema,
+  SetDisplayStepStatusSchema,
   UpdateGroupSchema,
   UpdatePersonSchema,
   UuidSchema,
@@ -67,6 +68,10 @@ const AUTH_ORIGIN_REQUIRED = new Set([
   "/api/v1/auth/login",
   "/api/v1/auth/claim",
   "/api/v1/display/claim",
+]);
+/** Display-principal writes: Origin + display-session CSRF (never member CSRF). */
+const DISPLAY_CSRF_ROUTES = new Set([
+  "/api/v1/display/occurrences/:occurrenceId/steps/:stepId/status",
 ]);
 
 function errorBody(
@@ -346,6 +351,30 @@ export async function buildApp(
     }
 
     if (CSRF_EXEMPT.has(routePath)) return;
+
+    if (DISPLAY_CSRF_ROUTES.has(routePath)) {
+      if (config.publicOrigin && !originAllowed(request)) {
+        return reply
+          .code(403)
+          .send(errorBody("ORIGIN", "Request origin is not allowed", request.id));
+      }
+      const display = displayFromRequest(request);
+      if (!display) {
+        return reply
+          .code(401)
+          .send(errorBody("UNAUTHORIZED", "Display authentication required", request.id));
+      }
+      const token = request.headers["x-csrf-token"];
+      const tokenMatches =
+        typeof token === "string" &&
+        digestEquals(sha256Hex(token), sha256Hex(display.csrfSecret));
+      if (!tokenMatches) {
+        return reply
+          .code(403)
+          .send(errorBody("CSRF", "CSRF token is invalid", request.id));
+      }
+      return;
+    }
 
     const session = requireSession(request, reply);
     if (!session) return reply;
@@ -1459,6 +1488,53 @@ export async function buildApp(
       occurrence: displayStore.getDisplayOccurrenceDetail(display, occurrenceId),
     };
   });
+
+  app.post(
+    "/api/v1/display/occurrences/:occurrenceId/steps/:stepId/status",
+    async (request, reply) => {
+      const display = requireDisplay(request, reply);
+      if (!display) return;
+      const params = request.params as { occurrenceId: string; stepId: string };
+      if (!UuidSchema.safeParse(params.occurrenceId).success) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid occurrence id", request.id));
+      }
+      if (!UuidSchema.safeParse(params.stepId).success) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid step id", request.id));
+      }
+      const parsed = SetDisplayStepStatusSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid status payload", request.id));
+      }
+
+      const delayMs = Number(request.headers["x-mutation-delay-ms"] ?? 0);
+      if (config.profile !== "hosted" && delayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, Math.min(delayMs, 10_000)));
+      }
+
+      const result = displayStore.setDisplayStepStatus(
+        display,
+        params.occurrenceId,
+        params.stepId,
+        parsed.data,
+      );
+      // Converge human Today/Household and other displays.
+      sync.broadcast({
+        type: "household_change",
+        householdId: display.householdId,
+        resource: "occurrence",
+        resourceId: params.occurrenceId,
+        at: nowUtcIso(),
+      });
+      displayInvalidate(display.householdId, "work");
+      return result;
+    },
+  );
 
   app.get("/api/v1/display/sync", { websocket: true }, (socket, request) => {
     if (!originAllowed(request)) {

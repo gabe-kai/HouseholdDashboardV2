@@ -34,6 +34,8 @@ export type DisplayContext = {
   timezone: string;
   absoluteExpiresAt: string;
   lastSeenAt: string;
+  /** Session-bound CSRF secret; never returned to clients as digests. */
+  csrfSecret: string;
 };
 
 export type DisplayListItem = {
@@ -140,6 +142,7 @@ export type DisplayPersonDetail = {
 export type DisplayOccurrenceDetail = {
   id: string;
   definitionId: string;
+  revisionId: string;
   title: string;
   kind: "routine" | "responsibility";
   daypart: string;
@@ -150,17 +153,26 @@ export type DisplayOccurrenceDetail = {
   state: WorkState;
   progress: StepProgressCounts;
   progressLabel: string;
+  /** Minimal first-action intent; IDs only — no plan/audit payload. */
+  intendedStructure?: {
+    revisionId: string;
+    accountableMemberId: string;
+    stepLogicalIds: string[];
+    structureFingerprint?: string;
+  };
   steps: Array<{
     id: string;
     text: string;
     status: string;
     obligation: string;
     position: number;
+    logicalItemId?: string;
     source?: string;
   }>;
 };
 
 export type DisplaySessionInfo = {
+  sessionId: string;
   displayId: string;
   label: string;
   householdId: string;
@@ -170,6 +182,8 @@ export type DisplaySessionInfo = {
   absoluteExpiresAt: string;
   lastSeenAt: string;
   activityGeneration: number;
+  /** In-memory CSRF proof for display writes; not a durable credential. */
+  csrfToken: string;
 };
 
 type DisplayCommandKind =
@@ -513,6 +527,7 @@ export class DisplayStore {
         .run(nextVersion, claim.display_id);
 
       const token = randomToken(32);
+      const csrfSecret = randomToken(32);
       const sessionId = randomUUID();
       const absoluteExpiresAt = isoAt(
         new Date(now.getTime() + DISPLAY_ABSOLUTE_MS),
@@ -520,13 +535,15 @@ export class DisplayStore {
       this.db
         .prepare(
           `INSERT INTO display_sessions
-           (id, display_id, token_digest, created_at, last_seen_at, absolute_expires_at, revoked_at)
-           VALUES (?, ?, ?, ?, ?, ?, NULL)`,
+           (id, display_id, token_digest, csrf_secret, created_at, last_seen_at,
+            absolute_expires_at, revoked_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, NULL)`,
         )
         .run(
           sessionId,
           claim.display_id,
           sha256Hex(token),
+          csrfSecret,
           isoAt(now),
           isoAt(now),
           absoluteExpiresAt,
@@ -543,6 +560,7 @@ export class DisplayStore {
           timezone: claim.timezone,
           absoluteExpiresAt,
           lastSeenAt: isoAt(now),
+          csrfSecret,
         },
       };
     });
@@ -553,7 +571,7 @@ export class DisplayStore {
   getDisplaySessionByTokenDigest(digest: string): DisplayContext | null {
     const row = this.db
       .prepare(
-        `SELECT s.id AS session_id, s.display_id, s.created_at, s.last_seen_at,
+        `SELECT s.id AS session_id, s.display_id, s.csrf_secret, s.created_at, s.last_seen_at,
                 s.absolute_expires_at, d.household_id, d.label, d.revoked_at AS display_revoked_at,
                 h.timezone
          FROM display_sessions s
@@ -565,6 +583,7 @@ export class DisplayStore {
       | {
           session_id: string;
           display_id: string;
+          csrf_secret: string;
           created_at: string;
           last_seen_at: string;
           absolute_expires_at: string;
@@ -575,6 +594,7 @@ export class DisplayStore {
         }
       | undefined;
     if (!row || row.display_revoked_at) return null;
+    if (!row.csrf_secret) return null;
 
     const now = new Date();
     const idleExpired =
@@ -601,6 +621,7 @@ export class DisplayStore {
       timezone: row.timezone,
       absoluteExpiresAt: row.absolute_expires_at,
       lastSeenAt: isoAt(now),
+      csrfSecret: row.csrf_secret,
     };
   }
 
@@ -630,6 +651,7 @@ export class DisplayStore {
 
   getDisplaySessionInfo(ctx: DisplayContext): DisplaySessionInfo {
     return {
+      sessionId: ctx.sessionId,
       displayId: ctx.displayId,
       label: ctx.label,
       householdId: ctx.householdId,
@@ -639,6 +661,7 @@ export class DisplayStore {
       absoluteExpiresAt: ctx.absoluteExpiresAt,
       lastSeenAt: ctx.lastSeenAt,
       activityGeneration: this.appStore.getActivityGeneration(ctx.householdId),
+      csrfToken: ctx.csrfSecret,
     };
   }
 
@@ -775,9 +798,28 @@ export class DisplayStore {
     if (!occurrence) fail("NOT_FOUND", "Occurrence not found");
 
     const progress = stepProgressCounts(occurrence.steps);
+    const stepLogicalIds = occurrence.steps
+      .map((step) => step.logicalItemId)
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+    const fingerprintRow = this.db
+      .prepare(`SELECT structure_fingerprint FROM occurrences WHERE id = ?`)
+      .get(occurrence.id) as { structure_fingerprint: string | null } | undefined;
+    const structureFingerprint = fingerprintRow?.structure_fingerprint ?? null;
+    const intendedStructure =
+      occurrence.accountableMemberId && stepLogicalIds.length > 0
+        ? {
+            revisionId: occurrence.revisionId,
+            accountableMemberId: occurrence.accountableMemberId,
+            stepLogicalIds,
+            ...(structureFingerprint
+              ? { structureFingerprint }
+              : {}),
+          }
+        : undefined;
     return {
       id: occurrence.id,
       definitionId: occurrence.definitionId,
+      revisionId: occurrence.revisionId,
       title: occurrence.title,
       kind: occurrence.kind,
       daypart: occurrence.daypart,
@@ -788,14 +830,45 @@ export class DisplayStore {
       state: workState(occurrence),
       progress,
       progressLabel: formatStepProgress(progress),
+      ...(intendedStructure ? { intendedStructure } : {}),
       steps: occurrence.steps.map((step, index) => ({
         id: step.id,
         text: step.text,
         status: step.status,
         obligation: step.obligation,
         position: index,
+        ...(step.logicalItemId ? { logicalItemId: step.logicalItemId } : {}),
         ...(step.source ? { source: step.source } : {}),
       })),
+    };
+  }
+
+  /**
+   * Display-principal checklist write for current-day assigned work.
+   * Returns allowlisted occurrence detail only (no raw report/audit row).
+   */
+  setDisplayStepStatus(
+    ctx: DisplayContext,
+    occurrenceId: string,
+    stepId: string,
+    input: {
+      mutationId: string;
+      status: "open" | "completed" | "not_needed";
+      performedAt: string;
+      activityGeneration?: number;
+      kind?: "routine" | "responsibility";
+      householdDate: string;
+      intendedStructure: {
+        revisionId: string;
+        accountableMemberId: string;
+        stepLogicalIds: string[];
+        structureFingerprint?: string;
+      };
+    },
+  ): { occurrence: DisplayOccurrenceDetail } {
+    this.appStore.setStepStatusForDisplay(ctx, occurrenceId, stepId, input);
+    return {
+      occurrence: this.getDisplayOccurrenceDetail(ctx, occurrenceId),
     };
   }
 

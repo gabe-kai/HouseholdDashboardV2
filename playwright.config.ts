@@ -84,6 +84,7 @@ export default defineConfig({
         "**/z-p0-007b-geometry.spec.ts",
         "**/z-p0-007c-1-geometry.spec.ts",
         "**/z-p0-007c-2-geometry.spec.ts",
+        "**/z-p0-007c-3a-geometry.spec.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],
@@ -93,7 +94,10 @@ export default defineConfig({
     },
     {
       name: "chromium-display",
-      testMatch: ["**/z-p0-007c-2-geometry.spec.ts"],
+      testMatch: [
+        "**/z-p0-007c-2-geometry.spec.ts",
+        "**/z-p0-007c-3a-geometry.spec.ts",
+      ],
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width: 3840, height: 2160 },

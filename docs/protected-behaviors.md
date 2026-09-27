@@ -86,6 +86,8 @@ invalidation/reconciliation semantics.
 | PB-49 | Household Display principal: digest-backed enrollment/session; human routes ignore display cookie; display routes ignore human cookie; no fake member AuthContext |
 | PB-50 | Display privacy: private personal tasks excluded from dashboard/detail/WS; household-visible tasks detail-only; allowlisted fields only |
 | PB-51 | Display revocation/replacement closes affected sockets; version-checked management commands; claim atomicity and issuer recheck |
+| PB-52 | Display execution: dedicated display status route; device actor ≠ accountable member; performer unknown; shared checklist locks/generation/intent; display Origin+CSRF; current-day assigned work only |
+| PB-53 | Display pending recovery: session-keyed minimal outbox; 60s stale queue bound; revoke/replace/reset/day fences; no durable household payload cache |
 
 ### Environment-specific (not counted as automated acceptance)
 
@@ -127,6 +129,7 @@ Duplicate, late, and missed events must be safe.
 | GET `/responsibilities/:id/preview` | saved seven-day resolution (read-only) | *(none)* | — | — | never materializes | n/a |
 | POST `/responsibilities/preview-draft` | draft/saved-plan preview (read-only; manager) | *(none)* | — | — | never materializes; no rotation advance | n/a |
 | POST `/occurrences/.../status` | occurrence step + report; locking statuses set `started_at` once; responsibility sets performer; intendedStructure bind | `occurrence` (+version) | today, history, activity | membership outbox overlay; pending locking action protects structure | same `mutationId` idempotent; started survivors allowed after audience/end; canceled unstarted rejected; undo never clears `started_at`; cross-kind receipt conflict | refresh today; flush outbox; merge keeps local structure while locking action pending |
+| POST `/display/occurrences/.../status` | same checklist core; report `actor_class=display` + display/session ids; performer null; accountable unchanged | `occurrence` + display `work` invalidate | display detail/dashboard; member today/history | display-session outbox (minimal command only) | same `mutationId` bound to display session; revoke blocks later commit; generation/day fences | reauth same session; flush display outbox; blank after 60s |
 | PUT `/personal-layer` | personal layer revision (definition-scoped) | `routine` (definitionId) | preview, future today, Personalize | — | new layer revision for that definition | preview/today for definition |
 | POST `/proposals` | proposal pending (definition-scoped) | `proposal` | proposals | — | new proposal bound to definitionId | fetch proposals |
 | POST `/proposals/:id/decide` | proposal (+ optional layer for stored definition) | `proposal`; `routine` if approved | proposals, preview | — | same decision idempotent; opposite conflicts; archived target rejectable | fetch proposals + preview |

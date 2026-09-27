@@ -974,3 +974,41 @@ Use no-store responses and no durable client cache of household payloads. A disc
 **Alternatives considered:** Permanent wall login backed by a human session, websocket-only freshness, unbounded stale local storage, and tests limited to viewport screenshots each fail a required authority/recovery or physical-readability boundary.
 
 **Related briefs:** P0-007C-2 r1; extends D-011/D-027/D-034/D-042. Shared-device writes remain C-3 work.
+
+---
+
+## D-046 - Shared-display execution records a device actor without changing accountability
+
+**Status:** Active for planned P0-007C-3A r1; not implemented at the inspected C-2 baseline `739f7e3`.
+
+**Decision:** An enrolled Household Display may submit desired step status only through a dedicated display-principal command for its own household's currently applicable, already-assigned routine and responsibility occurrences on the current household date. It does not inherit a member's `execute.own` grant, impersonate an assignee, manage work, or complete personal tasks. Server authorization derives the stored accountable membership, kind and step; Unassigned responsibility work cannot be executed at the wall. Assigned work may belong to a person whose app access is still pending.
+
+The checklist write core is shared between human and display callers, with principal-specific authorization and the same atomic status/obligation, first-action structural lock, generation, date and replay rules. A display write carries structural intent from the authorized detail read for both work kinds; an edit-first race rejects stale intent, and an action-first race protects the started snapshot. A forward migration represents actor type and display identity/session explicitly in reports and receipts. It preserves the accountable member and leaves the physical performer unknown for wall actions. Existing human actor and performer records retain their prior meaning; historical reports are not backfilled as display actions.
+
+Display writes require an active display session, allowed same-origin `Origin` and a session-bound CSRF proof held only in client memory. One mutation ID is bound to principal class, active session, household, occurrence, step, intended structure, activity generation and desired state; authorization and generation are rechecked inside the write transaction before applying or replaying a receipt. Revoke/replace blocks later commits while retaining any action committed before revocation. The display command returns only allowlisted current-day state, not audit rows. Member routes remain member-only and display routes remain display-only.
+
+**Reason:** The wall is shared by people who are not individually authenticated there. Crediting the assigned person is the approved interaction, but storing that person as the authenticated actor or known physical performer would be false. A narrow display command preserves the existing execution/History model without lending the device management authority.
+
+**Implications:** Extend route policy, schema, checklist receipt binding, activity-clear linkage, current-day detail intent and protected-behavior tests after migration 015. Existing human `setStepStatus` semantics remain protected. No Cover/Claim, helper credit or retrospective performance inference is introduced.
+
+**Alternatives considered:** Reusing a manager/member session, sending an assignee ID as the actor, or adding display cookies to the human status route would misstate identity or broaden authority. A separate checklist engine would risk disagreement on locks and obligations.
+
+**Related briefs:** P0-007C-3A r1; extends D-004/D-023/D-034/D-036/D-043–D-045.
+
+---
+
+## D-047 - Display pending actions survive interruption within the display's authorization lease
+
+**Status:** Active for planned P0-007C-3A r1; not implemented at the inspected C-2 baseline `739f7e3`.
+
+**Decision:** A display-specific durable outbox stores minimal desired-state commands, mutation IDs, current household date/generation, structural intent and a binding to the active display session. It does not store display credentials, names, step text, whole occurrence snapshots or household read payloads, and it never shares the member-keyed outbox. After a loaded authorized wall loses connectivity, new actions may queue only while C-2's previously authorized in-memory view remains within its 60-second stale limit. Cold offline load and blanked state cannot accept new actions.
+
+On reconnect/reload/restart, validate the same active display session and authoritative day/generation before replay. Server receipts make same-command retries idempotent. Revocation, credential replacement/expiry, activity reset, date rollover or stale structure retires or rejects unsafe pending intent with visible feedback; it must not silently replay under a new principal or into new work. Actions committed before revocation remain recorded. A later authorized activity reset may erase them under D-034/D-037 and advances the generation fence. Existing authorization-aware blanking, delayed-response fences, no-store reads and private-data filtering continue to govern display presentation.
+
+**Reason:** Shared-screen taps must not disappear during ordinary interruptions, but a persistent cache of the household dashboard would defeat the read-only display's privacy and stale-data boundary. The minimal command queue provides recoverability without preserving family content offline.
+
+**Implications:** The client can show pending state only alongside currently authorized in-memory/authoritative detail. After a cold offline load it shows no household content; queued commands remain inert until reauthorization. Tests cover response loss, duplicate replay, restart, revoke/replace, reset and midnight races. No background sync or offline-first initial load is required.
+
+**Alternatives considered:** Reusing the human outbox would mix principals and retain occurrence snapshots; dropping taps on disconnect would violate the approved shared-execution experience; caching the whole wall past the stale deadline would weaken D-045.
+
+**Related briefs:** P0-007C-3A r1; extends D-004/D-034/D-045.

@@ -19,7 +19,7 @@
 
 ## Current focus
 
-Clean local `main` matches `origin/main` at **739f7e3**, merging technically accepted **P0-007C-2 r1** via PR **#21**. The approved P0-007C proposal's final outcome, **Act at the shared display without losing trust**, is ready for Architecture decomposition. The smallest next slice is **P0-007C-3A - Complete assigned household work at the shared display**; owner-controlled personal-task promotion remains likely next as 3B, refined from 3A evaluation. No new Planning/Design proposal is needed. C-2 AT17 physical readability remains separate Product evidence and does not block C-3A planning.
+Integrated `main` matches `origin/main` at **739f7e3**, merging technically accepted **P0-007C-2 r1** via PR **#21**. On `brief/p0-007c-3a-shared-display-execution`, Architecture has prepared **P0-007C-3A r1 - Complete Assigned Work at the Shared Display** for Engineering readiness review. The branch's documentation parent is **340f955**; C-3A implementation has not started. Owner-controlled personal-task promotion remains likely next as 3B, refined from 3A evaluation. No new Planning/Design proposal is needed. C-2 AT17 physical readability remains separate Product evidence and does not block C-3A.
 
 The integrated baseline includes technically accepted **P0-007C-1 r1** via PR **#20** at `ef39a89` and **P0-007C-2 r1** via PR **#21** at `739f7e3`. Technical integration does not assert Product acceptance; C-1/C-2 family evaluation remains separate. Old reports retain the SHAs of their inspected baselines.
 
@@ -40,6 +40,7 @@ The integrated baseline includes technically accepted **P0-007C-1 r1** via PR **
 | P0-007B - Assignment Patterns & Scheduled Work | r1 | ACCEPTED | Integrated foundation | Included in inspected `main` at `e8f59b4` | Product evaluation remains separate; C carries daily-presentation direction |
 | P0-007C-1 - Actionable Today and Household Overview | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `ef39a89` via PR #20 | Product speed-of-understanding evaluation |
 | P0-007C-2 - Household Display and Read-only Dashboard | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `739f7e3` via PR #21 | Physical readability AT17 and Product acceptance remain separate |
+| P0-007C-3A - Complete Assigned Work at the Shared Display | r1 | IN REVIEW | Engineering readiness | `brief/p0-007c-3a-shared-display-execution` | Consolidated repository-grounded readiness review against r1 |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -65,15 +66,15 @@ This table is the short repository-side coordination index. An external project 
 
 ## Known blockers
 
-- No blocker to drafting P0-007C-3A. Its intended outcome is already in `PRODUCT.md`; C-2 is accepted and integrated. Physical wall evaluation AT17 remains important evidence before declaring the overall C outcome product-evaluated, but does not block the C-3A brief or local implementation.
+- No known blocker to Engineering reviewing P0-007C-3A r1. C-2 is accepted and integrated. Physical wall evaluation AT17 remains important evidence before declaring the overall C outcome product-evaluated, but does not block the C-3A brief or local implementation.
 
 ## Next Project Lead decision
 
-- Architecture prepares P0-007C-3A r1 from the existing approved proposal and inspected `main` at `739f7e3`; Engineering then reviews that exact revision against the repository.
+- Engineering reviews P0-007C-3A r1 against the repository and returns one consolidated readiness disposition before implementation.
 
 ## Next likely handoff
 
-Architecture owns C-3 decomposition and brief creation. No return to Planning/Design is required for the same approved outcome. After technical acceptance, Product evaluates shared-display execution and physical readability; do not infer those from automation alone.
+Engineering owns the P0-007C-3A r1 readiness review next; Architecture responds ACCEPT / REVISE / REFER TO DESIGN / DEFER. No return to Planning/Design is required for the same approved outcome. After technical acceptance, Product evaluates shared-display execution and physical readability; do not infer those from automation alone.
 
 ## Notes for all teams
 

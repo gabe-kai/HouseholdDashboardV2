@@ -23,6 +23,9 @@ export type AppConfig = {
   trustedProxy: boolean;
   sessionIdleDays: number;
   sessionAbsoluteDays: number;
+  displayCookieName: string;
+  displayIdleDays: number;
+  displayAbsoluteDays: number;
   autoSeed: boolean;
   /** Evaluation-only clear of routine activity history. Default on in development/test; off in hosted unless ALLOW_EVALUATION_HISTORY_CLEAR=1. */
   allowEvaluationHistoryClear: boolean;
@@ -81,6 +84,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     trustedProxy: env.TRUSTED_PROXY === "1",
     sessionIdleDays: 7,
     sessionAbsoluteDays: 30,
+    displayCookieName: hosted ? "__Host-hd_display" : "hd_dev_display",
+    displayIdleDays: 90,
+    displayAbsoluteDays: 365,
     autoSeed: profile !== "hosted" && (env.AUTO_SEED === "1" || env.AUTO_SEED === "true"),
     allowEvaluationHistoryClear,
   };

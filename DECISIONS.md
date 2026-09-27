@@ -879,7 +879,7 @@ Plan/addition changes and group changes reconcile affected existing unstarted ro
 
 ## D-041 - Personal Today derives one focus from the existing household day
 
-**Status:** Active for P0-007C-1 r1; planned, not implemented.
+**Status:** Active; P0-007C-1 r1 is technically accepted and integrated via PR #20 at ef39a89. Product evaluation remains separate.
 
 **Decision:** Present authorized own work as Completed, Next, Later and Anytime Today, mixing routines and responsibilities rather than creating kind-first execution silos. Build a pure presentation projection over existing reconciled occurrence snapshots and owner-scoped personal tasks; do not persist a new universal work-item or dashboard aggregate.
 
@@ -899,7 +899,7 @@ Normally only the recommendation is expanded; explicit selection permits at most
 
 ## D-042 - Household oversight summarizes authorized snapshots, not live plans
 
-**Status:** Active for P0-007C-1 r1; planned, not implemented.
+**Status:** Active; P0-007C-1 r1 is technically accepted and integrated via PR #20 at ef39a89. Product evaluation remains separate.
 
 **Decision:** The existing Household-activity audience receives a summary-first Household landing surface with secondary management navigation. Show one responsibility row per occurrence and routine aggregates keyed by definition ID plus household date. Count represented applicable people and their domain-correct completion; use focused person/checklist detail for evidence. Aggregate labels are presentation, never identity. Started per-person variants and owners remain their stored snapshots even after live plan/group changes.
 
@@ -911,4 +911,66 @@ Use only already-authorized data and retain per-kind management/own-execution ru
 
 **Alternatives considered:** Grouping by title merges different routines; counting live group members mistakes eligibility for stored work; a new materialized summary service duplicates correctness machinery; one enlarged management screen does not satisfy the separate wall-display outcome.
 
-**Related briefs:** P0-007C-1 r1; preserves D-032-D-040. C-2 and C-3 remain roadmap horizons under the supplied Product proposal.
+**Related briefs:** P0-007C-1 r1; preserves D-032-D-040. P0-007C-2 r1 now defines the display read boundary; C-3 remains the next horizon under the supplied Product proposal.
+
+---
+
+## D-043 - Household Displays are separately enrolled, revocable non-human principals
+
+**Status:** Active for P0-007C-2 r1; planned, not implemented.
+
+**Decision:** A Household Display has a stable household-scoped identity independent from users, memberships, assignment and family order. Manager operations use a new `household.display.manage` grant, added to the manager preset and backfilled once from existing `household.member.enroll` holders. Age and work-management grants do not imply this authority. C-2 display credentials authorize only dedicated read-only interfaces; a display is never a fabricated manager/member AuthContext.
+
+Managers issue one-time 80-bit Base32 setup codes with ten-minute server expiry, digest-only storage, allowed-Origin/rate-limited redemption and transactional consumption/session issuance. Management commands are scoped/versioned/replay-safe without storing plaintext secrets in receipts. Lost issuance responses use a fresh code. Replacement claims revoke previous active credentials only on successful redemption; explicit revocation invalidates both credentials and claims immediately. Recheck the issuer's active management authority on redemption. A browser with a valid human session must sign out through the existing guarded flow or use a separate context; an active display cannot silently switch household bindings.
+
+Display sessions use separate opaque 256-bit tokens and digest storage. Hosted cookie `__Host-hd_display` is Secure, HttpOnly, SameSite Strict, Path `/`, no Domain; explicit local/test cookie is `hd_dev_display`. Persistent cookies and server expiry support 90-day inactivity/365-day absolute lifetime, with manager re-enrollment on expiry and ordinary reads refreshing contact. The existing human session policy is unchanged. If credential classes coexist, the active display cannot inherit human authority; display startup must precede mounting/fetching the member App.
+
+**Reason:** A device left signed in as a manager would inherit private data and administrative powers, and a fictional member would corrupt assignment and future action attribution. Separate identity provides a durable reference for C-3 without authorizing execution now.
+
+**Implications:** Forward migration(s) after 014, explicit principal-aware HTTP/WS dispatch and route inventory, issuer-reference cleanup protection, and preservation of display setup through activity clear. Revocation closes only affected display connections. Default access, cookie/session lifetime, and code parameters are Architecture choices for this household display, not externally mandated values.
+
+Cookie attributes and persistence follow the browser semantics in [MDN Set-Cookie](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie); separate server-side expiry/revocation and unpredictable identifiers follow the principles in [OWASP Session Management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html). No new identity provider or external credential service is introduced.
+
+**Alternatives considered:** Parent sessions or fake member accounts misstate authority; JavaScript-stored bearer tokens expose credentials unnecessarily; human-session expiry creates avoidable recurring wall setup; elaborate device management is outside the requested outcome.
+
+**Related briefs:** P0-007C-2 r1; extends D-006/D-007 for a distinct principal class while retaining human behavior.
+
+---
+
+## D-044 - Display responses are privacy-filtered projections of the actual household day
+
+**Status:** Active for P0-007C-2 r1; planned, not implemented.
+
+**Decision:** Provide dedicated current-day dashboard, person and occurrence reads under the display principal, with an explicit response-field allowlist. Include only friendly identities/order, household date/timezone, authoritative time/generation and the work/status needed for By person/By work/detail. Do not expose account/profile/access secrets, audit data, raw plans or private personal work, including private IDs/counts/events. Per-kind member permissions remain unchanged; display household visibility is an explicitly separate read scope.
+
+Reuse the existing household-date materialization/resolution core behind separately authorized member and display readers. A display's read-only authority still permits normal system-owned materialization/reconciliation of today's unstarted snapshots so the wall works before a human opens Today. Reads cannot execute/lock work, advance turns, edit plans or generate arbitrary/history dates. Snapshot IDs, started survivors, composed responsibility ownership/work, applicability, Unassigned and reset generation/floor remain authoritative. No independent display scheduler or persisted universal WorkItem is introduced.
+
+Existing personal tasks are all unpromoted in C-2. Only household-visible tasks appear in permitted person detail; none contributes to resting-board rows/counts. C-3 will introduce explicit owner-controlled promotion independently of visibility. Private work never enters the display payload. This extends D-010 household-visible reads to the new restricted household device without changing task ownership or human access.
+
+**Reason:** Reusing member DTOs risks exposing private/profile information, and deriving a second schedule can disagree with real occurrences. Treating stored-only reads as the whole wall would show an empty new day until somebody else generated it. The composed projection avoids both problems while preserving the distinction between viewing and acting.
+
+**Implications:** Sanitize WS invalidation separately from the current resource-ID stream; private-only changes do not appear. Reuse C-1 progress/aggregation where applicable but retain stable identity and correct count units. Future project summaries may be added as reviewed projection entries; no project schema or empty future UI is built now.
+
+**Alternatives considered:** A manager session plus CSS hiding cannot enforce privacy; cloned schedule calculations drift; reading only previously generated rows makes an unattended display incomplete; broad generic work-schema migration is unnecessary.
+
+**Related briefs:** P0-007C-2 r1; preserves D-010/D-023/D-030/D-033-D-042, with C-3 promotion/execution separately briefed.
+
+---
+
+## D-045 - Display recovery is authorization-aware and stale exposure is bounded
+
+**Status:** Active for P0-007C-2 r1; planned, not implemented.
+
+**Decision:** `/display` mounts a restricted shell with By person/By work and focused read-only detail, household day/date/time, saved family order and 90-second idle return. Use a six-person 27-inch 4K layout, validate native and scaled browser geometry, and require physical Product judgment at approximately ten and sixteen feet. Do not use the personal shell, universal admin navigation or a member outbox for the device.
+
+A separate display WS channel invalidates permitted projections; check device access on upgrade, before data send and at least every thirty seconds. On committed revoke/replacement/expiry close the affected sockets. The client refreshes on changes/reconnect/visibility and at least every thirty seconds while visible; coalesce requests and reject old session/date/activity-generation responses. Server current-day projection supplies the authoritative clock/date, including midnight and DST transitions.
+
+Use no-store responses and no durable client cache of household payloads. A disconnected screen can retain an explicitly stale in-memory view for no more than sixty seconds from its last authorized refresh, then blanks until reauthorized. Delayed replies cannot restart freshness from their arrival time. Observed access loss clears household state immediately and fences all prior replies; background resume checks the deadline before rendering. Cookies persist enrollment, not the visible household data. Cold offline load is reconnecting, not an offline copy of private family status.
+
+**Reason:** A cookie valid only at socket connection leaves revocation ineffective, and an indefinitely cached wall may retain household information after its authority is withdrawn. Bounded stale display also makes outages honest without requiring all devices to be reachable to revoke one.
+
+**Implications:** Evidence covers HTTP/WS denial, remote revocation, delayed replies, restart/expiry, missed events, reset and controlled household-date transitions. Local/LAN testing remains the development path. The stale deadline cannot guarantee instantaneous remote erasure on a disconnected device; Product readability and later C-3 execution evidence are separate from technical tests.
+
+**Alternatives considered:** Permanent wall login backed by a human session, websocket-only freshness, unbounded stale local storage, and tests limited to viewport screenshots each fail a required authority/recovery or physical-readability boundary.
+
+**Related briefs:** P0-007C-2 r1; extends D-011/D-027/D-034/D-042. Shared-device writes remain C-3 work.

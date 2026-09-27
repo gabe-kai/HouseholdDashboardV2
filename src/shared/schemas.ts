@@ -21,6 +21,7 @@ export const UuidSchema = z.string().uuid();
 
 export const GrantSchema = z.enum([
   "household.member.enroll",
+  "household.display.manage",
   "household.structure.manage",
   "household.schedule.manage",
   "household.activity.clear",
@@ -682,3 +683,18 @@ export type RoutineMutationResult = {
   routine: RoutineDefinitionPublic;
   refineOutcome?: PlanRefineOutcome;
 };
+
+export const CreateDisplaySchema = z.object({
+  mutationId: UuidSchema,
+  label: z.string().trim().min(1).max(80),
+});
+
+export const DisplayConfigCommandSchema = z.object({
+  mutationId: UuidSchema,
+  expectedConfigVersion: z.number().int().positive(),
+});
+
+export const ClaimDisplaySchema = z.object({
+  code: z.string().min(1).max(64),
+});
+

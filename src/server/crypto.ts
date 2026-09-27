@@ -47,3 +47,32 @@ export function assertArgon2idPhc(phc: string): void {
     }
   }
 }
+
+/** RFC 4648 Base32 alphabet without padding. */
+const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
+/** 16-character (80-bit) cryptographically random Base32 code. */
+export function randomBase32Code(length = 16): string {
+  if (length < 1) throw new Error("Base32 code length must be positive");
+  const bytes = randomBytes(Math.ceil((length * 5) / 8));
+  let bits = 0;
+  let value = 0;
+  let out = "";
+  for (const byte of bytes) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5 && out.length < length) {
+      out += BASE32_ALPHABET[(value >>> (bits - 5)) & 31]!;
+      bits -= 5;
+    }
+  }
+  while (out.length < length) {
+    out += BASE32_ALPHABET[randomBytes(1)[0]! & 31]!;
+  }
+  return out;
+}
+
+/** Strip separators/spaces and uppercase for display enrollment codes. */
+export function normalizeDisplayCode(input: string): string {
+  return input.replace(/[\s\-_]+/g, "").toUpperCase();
+}

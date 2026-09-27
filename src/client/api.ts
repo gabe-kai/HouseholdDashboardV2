@@ -872,6 +872,84 @@ export async function setPersonalTaskStatus(
   );
 }
 
+export type DisplayListItem = {
+  id: string;
+  label: string;
+  configVersion: number;
+  createdAt: string;
+  revokedAt: string | null;
+  hasActiveSession: boolean;
+  hasOutstandingClaim: boolean;
+  claimExpiresAt: string | null;
+  lastSeenAt: string | null;
+  absoluteExpiresAt: string | null;
+};
+
+export type DisplayEnrollmentPayload = {
+  claimId: string;
+  code: string;
+  expiresAt: string;
+  displayId: string;
+  label: string;
+  configVersion?: number;
+  secretAlreadyIssued?: boolean;
+};
+
+export async function fetchDisplays() {
+  const data = await request<{ displays: DisplayListItem[] }>("/api/v1/displays");
+  return data.displays;
+}
+
+export async function createDisplay(body: { mutationId: string; label: string }) {
+  return request<{
+    display: DisplayListItem;
+    enrollment: DisplayEnrollmentPayload;
+    configVersion: number;
+  }>("/api/v1/displays", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function issueDisplayEnrollment(
+  displayId: string,
+  body: { mutationId: string; expectedConfigVersion: number },
+) {
+  return request<DisplayEnrollmentPayload>(
+    `/api/v1/displays/${encodeURIComponent(displayId)}/enrollment`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export async function cancelDisplayEnrollment(
+  displayId: string,
+  body: { mutationId: string; expectedConfigVersion: number },
+) {
+  return request<{ displayId: string; configVersion: number; cancelled: boolean }>(
+    `/api/v1/displays/${encodeURIComponent(displayId)}/enrollment/cancel`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export async function revokeDisplay(
+  displayId: string,
+  body: { mutationId: string; expectedConfigVersion: number },
+) {
+  return request<{ displayId: string; configVersion: number; revoked: boolean }>(
+    `/api/v1/displays/${encodeURIComponent(displayId)}/revoke`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+}
+
 export function connectSync(
   onMessage: (notification: SyncNotification) => void,
   onStatus?: (status: "connected" | "reconnecting") => void,

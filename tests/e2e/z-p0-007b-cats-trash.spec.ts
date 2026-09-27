@@ -20,7 +20,7 @@ const AVERY_ID = "22222222-2222-4222-8222-222222222202";
 const AVERY_LOGIN = "e2e.avery";
 const CASEY_ID = "22222222-2222-4222-8222-222222222204";
 const JORDAN_ID = "22222222-2222-4222-8222-222222222203";
-const SCREENSHOT_DIR = path.resolve("reports/p0-007b-r1-screenshots");
+const SCREENSHOT_DIR = path.resolve("reports/_local-screenshots/p0-007b-r1");
 
 function addDays(date: string, days: number): string {
   const [y, m, d] = date.split("-").map(Number);
@@ -38,8 +38,8 @@ function isoWeekday(date: string): number {
   return day === 0 ? 7 : day;
 }
 
-function nextOrSameWeekday(from: string, weekday: number): string {
-  let candidate = from;
+function nextWeekday(from: string, weekday: number): string {
+  let candidate = addDays(from, 1);
   while (isoWeekday(candidate) !== weekday) {
     candidate = addDays(candidate, 1);
   }
@@ -161,7 +161,8 @@ test.describe("P0-007B Cats and Trash journeys", () => {
 
     const session = await page.request.get("/api/v1/auth/session");
     const today = ((await session.json()) as { householdDate: string }).householdDate;
-    const tuesday = nextOrSameWeekday(today, 2);
+    // Strictly next Tuesday — never today — so pinned Avery view stays off live "today".
+    const tuesday = nextWeekday(today, 2);
 
     const catsPreview = await page.request.get(`/api/v1/responsibilities/${catsId}/preview`);
     expect(catsPreview.ok()).toBeTruthy();

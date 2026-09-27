@@ -1606,3 +1606,251 @@ textarea {
   justify-content: space-between;
   gap: var(--space-3);
 }
+
+/* ── Household Displays manager (phone) ───────────────────────── */
+
+.household-displays {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.add-display-form {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.add-display-form label {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.display-code-panel {
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.display-code-value {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+  word-break: break-all;
+}
+
+.display-code-actions,
+.display-manager-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.display-manager-row {
+  align-items: flex-start;
+  flex-direction: column;
+}
+
+.display-manager-list {
+  display: grid;
+  gap: var(--space-3);
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+/* ── Display wall shell (P0-007C-2) ───────────────────────────── */
+/*
+ * Geometry floors at native 3840×2160 CSS px:
+ *   primary names / time ≥ 80px
+ *   work titles / status ≥ 48px
+ *   touch targets ≥ 48px
+ * Scales proportionally via vw for smaller windows.
+ */
+.display-shell {
+  /* 80px / 48px at 3840 CSS px; scales with viewport width */
+  --display-primary: max(2rem, min(5rem, calc(100vw * 80 / 3840)));
+  --display-secondary: max(1.25rem, min(3rem, calc(100vw * 48 / 3840)));
+  --display-touch: max(48px, 2.5vw);
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: clamp(1rem, 2vw, 3rem);
+  display: grid;
+  gap: clamp(1rem, 1.5vw, 2rem);
+  align-content: start;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.display-header {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.display-clock {
+  display: grid;
+  gap: 0.15em;
+}
+
+.display-weekday,
+.display-time,
+.display-person-name,
+.display-detail-title,
+.display-setup-title {
+  font-size: var(--display-primary);
+  line-height: var(--line-tight);
+  font-weight: 650;
+}
+
+.display-date,
+.display-person-status,
+.display-work-title,
+.display-section-title,
+.display-work-meta,
+.display-person-unfinished,
+.display-readonly-note,
+.display-setup-copy,
+.display-status,
+.display-empty,
+.display-stale,
+.display-alert {
+  font-size: var(--display-secondary);
+  line-height: var(--line-height);
+}
+
+.display-readonly-note,
+.display-stale {
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.display-org-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.display-org-button,
+.display-back,
+.display-setup-submit,
+.display-person-card,
+.display-work-row {
+  min-height: var(--display-touch);
+  min-width: var(--display-touch);
+  font-size: var(--display-secondary);
+  padding: 0.55em 0.9em;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.display-org-button.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.display-person-list,
+.display-work-list,
+.display-task-list,
+.display-step-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+/* Wall resting overview: multi-column so six people fit without substantial scroll. */
+.display-person-list {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 28rem), 1fr));
+}
+
+@media (min-width: 1920px) {
+  .display-person-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-4);
+  }
+}
+
+@media (min-width: 3000px) {
+  .display-person-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .display-person-unfinished {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
+.display-person-card,
+.display-work-row {
+  width: 100%;
+  display: grid;
+  gap: 0.25em;
+}
+
+.display-person-unfinished,
+.display-work-meta {
+  color: var(--text-muted);
+}
+
+.display-needs-assignment {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3);
+  border-left: 4px solid var(--warning);
+}
+
+.display-setup {
+  max-width: 40rem;
+  display: grid;
+  gap: var(--space-4);
+}
+
+.display-setup-form {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.display-setup-label {
+  display: grid;
+  gap: var(--space-2);
+  font-size: var(--display-secondary);
+}
+
+.display-setup-input {
+  min-height: var(--display-touch);
+  font-size: var(--display-secondary);
+  letter-spacing: 0.08em;
+  padding: 0.5em 0.75em;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.display-alert {
+  color: var(--error);
+  margin: 0;
+}
+
+.display-detail {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.display-back.secondary {
+  justify-self: start;
+  opacity: 0.9;
+}
+

@@ -14,6 +14,7 @@
  *   /household/history                  → History summary (?date/from/to/person/routine/status/kind)
  *   /household/history/:occurrenceId    → History occurrence detail (filters preserved in search)
  *   /household/settings                 → Data & testing
+ *   /household/displays                 → Household displays (manage grant)
  *
  * Edit/create/picker/ended-list and other secondary surfaces stay in-app local
  * state under their parent URL unless noted. Browser Back follows history;
@@ -50,6 +51,7 @@ export type AppLocation =
       filters?: HistoryFilters;
     }
   | { name: "household-settings" }
+  | { name: "household-displays" }
   | { name: "unavailable"; attemptedPath: string };
 
 const INTENDED_PATH_KEY = "hd_intended_path";
@@ -139,6 +141,10 @@ export function parsePath(pathname: string, search = ""): AppLocation {
     return { name: "household-settings" };
   }
 
+  if (path === "/household/displays") {
+    return { name: "household-displays" };
+  }
+
   if (path === "/household/history") {
     return { name: "household-history", filters: parseHistoryFilters(search) };
   }
@@ -188,6 +194,8 @@ export function pathFor(location: AppLocation): string {
       return `/household/history/${encodeURIComponent(location.occurrenceId)}${historySearch(location.filters)}`;
     case "household-settings":
       return "/household/settings";
+    case "household-displays":
+      return "/household/displays";
     case "unavailable":
       return location.attemptedPath || "/today";
   }
@@ -207,6 +215,7 @@ export function parentLocation(location: AppLocation): AppLocation {
     case "household-school-calendar":
     case "household-history":
     case "household-settings":
+    case "household-displays":
     case "unavailable":
       return { name: "household" };
     case "household-person":

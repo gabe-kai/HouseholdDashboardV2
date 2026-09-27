@@ -15,7 +15,7 @@ import {
   sessionDisplayName,
 } from "../helpers/e2e-shell";
 
-const SCREENSHOT_DIR = path.resolve("reports/p0-007b-r1-screenshots");
+const SCREENSHOT_DIR = path.resolve("reports/_local-screenshots/p0-007b-r1");
 const AVERY_ID = "22222222-2222-4222-8222-222222222202";
 const CASEY_ID = "22222222-2222-4222-8222-222222222204";
 const AVERY_LOGIN = "e2e.avery";
@@ -123,6 +123,16 @@ test.describe("P0-007B AT9 scheduled-work lifecycle", () => {
     const title = `Lifecycle Kitchen ${suffix}`;
 
     await openAsManager(page);
+    const bootSession = await page.request.get("/api/v1/auth/session");
+    const today = ((await bootSession.json()) as { householdDate: string }).householdDate;
+    // Deep Clean must not land on "today" — when today is Saturday, started retention
+    // would otherwise share the composed day with addition removal.
+    const todayWd = isoWeekday(today);
+    const additionWeekday = todayWd === 6 ? 5 : 6;
+    const composedDay = nextWeekday(today, additionWeekday);
+    const day2 = addDays(today, 2);
+    const day4 = addDays(today, 4);
+
     await page.getByRole("button", { name: "Plan", exact: true }).click();
     await page.getByRole("button", { name: /Add responsibility/i }).click();
 
@@ -143,7 +153,7 @@ test.describe("P0-007B AT9 scheduled-work lifecycle", () => {
     await fillResponsibilityBaseSteps(page, ["Counters", "Dishes", "Sweep"]);
     await addScheduledWorkAddition(page, {
       name: "Deep Clean",
-      weekdays: [6],
+      weekdays: [additionWeekday],
       inheritAssignment: true,
       stepTexts: ["Oven", "Fridge", "Microwave", "Cabinets", "Floor"],
     });
@@ -153,17 +163,11 @@ test.describe("P0-007B AT9 scheduled-work lifecycle", () => {
     await expect(page.getByRole("heading", { name: title })).toBeVisible({ timeout: 20_000 });
     const kitchenId = page.url().split("/").pop()!;
 
-    const session = await page.request.get("/api/v1/auth/session");
-    const today = ((await session.json()) as { householdDate: string }).householdDate;
-    const saturday = isoWeekday(today) === 6 ? today : nextWeekday(today, 6);
-    const day2 = addDays(today, 2);
-    const day4 = addDays(today, 4);
-
-    // Materialize Saturday (composed) and start today's occurrence before removing the addition.
-    const satMixed = await page.request.get(`/api/v1/today?date=${saturday}`);
-    expect(satMixed.ok(), await satMixed.text()).toBeTruthy();
-    const kitchenSat = (
-      (await satMixed.json()) as {
+    // Materialize the composed addition day and start today's occurrence before removing it.
+    const composedMixed = await page.request.get(`/api/v1/today?date=${composedDay}`);
+    expect(composedMixed.ok(), await composedMixed.text()).toBeTruthy();
+    const kitchenComposed = (
+      (await composedMixed.json()) as {
         occurrences: Array<{
           id: string;
           definitionId: string;
@@ -171,8 +175,8 @@ test.describe("P0-007B AT9 scheduled-work lifecycle", () => {
         }>;
       }
     ).occurrences.find((o) => o.definitionId === kitchenId);
-    expect(kitchenSat, "Saturday Kitchen materialized").toBeTruthy();
-    expect(kitchenSat!.steps.length).toBe(8);
+    expect(kitchenComposed, "Composed Kitchen materialized").toBeTruthy();
+    expect(kitchenComposed!.steps.length).toBe(8);
 
     const todayMixed = await page.request.get(`/api/v1/today?date=${today}`);
     const kitchenToday = (
@@ -230,8 +234,8 @@ test.describe("P0-007B AT9 scheduled-work lifecycle", () => {
       await durableScreenshot(page, path.join(SCREENSHOT_DIR, "07-addition-removed.png"));
     }
 
-    const futureSaturday = saturday === today ? nextWeekday(today, 6) : saturday;
-    const futureMixed = await page.request.get(`/api/v1/today?date=${futureSaturday}`);
+    const futureComposed = composedDay;
+    const futureMixed = await page.request.get(`/api/v1/today?date=${futureComposed}`);
     expect(futureMixed.ok()).toBeTruthy();
     const futureOcc = (
       (await futureMixed.json()) as {

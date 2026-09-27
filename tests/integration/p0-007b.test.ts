@@ -146,7 +146,7 @@ describe("P0-007B assignment patterns and scheduled work (server)", () => {
     ).toBe(1);
     expect(
       (db.prepare("SELECT COUNT(*) AS c FROM schema_migrations").get() as { c: number }).c,
-    ).toBe(14);
+    ).toBe(15);
 
     const catsPlan = db
       .prepare(
@@ -172,7 +172,7 @@ describe("P0-007B assignment patterns and scheduled work (server)", () => {
     migrate(db);
     expect(
       (db.prepare("SELECT COUNT(*) AS c FROM schema_migrations").get() as { c: number }).c,
-    ).toBe(14);
+    ).toBe(15);
 
     db.close();
     const restarted = openDatabase(dbPath);
@@ -274,7 +274,7 @@ describe("P0-007B assignment patterns and scheduled work (server)", () => {
     );
 
     const today = store.householdDateNow(manager.context);
-    let tuesday = today;
+    let tuesday = addDays(today, -1);
     while (isoWeekday(tuesday) !== 2) {
       tuesday = addDays(tuesday, -1);
     }
@@ -304,7 +304,7 @@ describe("P0-007B assignment patterns and scheduled work (server)", () => {
     )!;
     expect(fixedOcc.accountableMemberId).toBe(IDS.avery);
 
-    let cycleAnchor = today;
+    let cycleAnchor = addDays(today, -1);
     while (isoWeekday(cycleAnchor) !== 1) {
       cycleAnchor = addDays(cycleAnchor, -1);
     }
@@ -664,7 +664,8 @@ describe("P0-007B assignment patterns and scheduled work (server)", () => {
     );
 
     const today = store.householdDateNow(manager.context);
-    let mon = today;
+    // Strictly past Monday — never today — so anchor/sample dates stay off the live day.
+    let mon = addDays(today, -1);
     while (isoWeekday(mon) !== 1) {
       mon = addDays(mon, -1);
     }
@@ -1442,7 +1443,8 @@ describe("P0-007B assignment patterns and scheduled work (server)", () => {
     );
 
     const today = store.householdDateNow(manager.context);
-    let saturday = today;
+    // Always use a past Saturday — never today — so started History stays off the clear/rematerialize window.
+    let saturday = addDays(today, -1);
     while (isoWeekday(saturday) !== 6) {
       saturday = addDays(saturday, -1);
     }

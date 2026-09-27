@@ -3434,28 +3434,23 @@ export class AppStore {
     return tx();
   }
 
-  materializeForDate(ctx: AuthContext, householdDate: HouseholdDate): OccurrenceView[] {
+  /**
+   * Household-wide date materialization without member grant filtering.
+   * Display and member readers authorize separately, then call this core.
+   */
+  materializeHouseholdDate(
+    householdId: string,
+    householdDate: HouseholdDate,
+  ): OccurrenceView[] {
     if (!isValidHouseholdDate(householdDate)) fail("VALIDATION", "Invalid household date");
-    const floor = this.getActivityResetFloor(ctx.householdId);
+    const floor = this.getActivityResetFloor(householdId);
     if (floor && compareHouseholdDates(householdDate, floor) < 0) {
-      return [];
-    }
-    const canManageRoutine = this.hasGrant(ctx, "routine.shared.manage");
-    const canExecuteRoutine = this.hasGrant(ctx, "routine.execute.own");
-    const canManageResponsibility = this.hasGrant(ctx, "responsibility.manage");
-    const canExecuteResponsibility = this.hasGrant(ctx, "responsibility.execute.own");
-    if (
-      !canManageRoutine &&
-      !canExecuteRoutine &&
-      !canManageResponsibility &&
-      !canExecuteResponsibility
-    ) {
       return [];
     }
 
     const definitions = [
-      ...this.listDefinitions(ctx.householdId, "routine", { includeArchived: true }),
-      ...this.listDefinitions(ctx.householdId, "responsibility", {
+      ...this.listDefinitions(householdId, "routine", { includeArchived: true }),
+      ...this.listDefinitions(householdId, "responsibility", {
         includeArchived: true,
       }),
     ];
@@ -3492,7 +3487,7 @@ export class AppStore {
               ? this.resolveCompositionForRevision(
                   revision.id,
                   householdDate,
-                  ctx.householdId,
+                  householdId,
                 )
               : null;
           const canCreateNew =
@@ -3543,7 +3538,7 @@ export class AppStore {
           }
 
           const view = this.ensureResponsibilityOccurrence(
-            ctx.householdId,
+            householdId,
             definition.id,
             revisionView,
             householdDate,
@@ -3617,7 +3612,7 @@ export class AppStore {
           }
           if (!revisionView) continue;
           const view = this.ensureOccurrence(
-            ctx.householdId,
+            householdId,
             definition.id,
             revisionView,
             householdDate,
@@ -3631,6 +3626,24 @@ export class AppStore {
     });
     tx();
     results.sort(compareOccurrenceOrder);
+    return results;
+  }
+
+  materializeForDate(ctx: AuthContext, householdDate: HouseholdDate): OccurrenceView[] {
+    const canManageRoutine = this.hasGrant(ctx, "routine.shared.manage");
+    const canExecuteRoutine = this.hasGrant(ctx, "routine.execute.own");
+    const canManageResponsibility = this.hasGrant(ctx, "responsibility.manage");
+    const canExecuteResponsibility = this.hasGrant(ctx, "responsibility.execute.own");
+    if (
+      !canManageRoutine &&
+      !canExecuteRoutine &&
+      !canManageResponsibility &&
+      !canExecuteResponsibility
+    ) {
+      return [];
+    }
+
+    const results = this.materializeHouseholdDate(ctx.householdId, householdDate);
     return results.filter((item) => {
       if (item.kind === "responsibility") {
         if (canManageResponsibility) return true;

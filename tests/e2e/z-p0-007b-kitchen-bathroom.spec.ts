@@ -39,8 +39,8 @@ function isoWeekday(date: string): number {
   return day === 0 ? 7 : day;
 }
 
-function previousOrSameWeekday(from: string, weekday: number): string {
-  let candidate = from;
+function previousWeekday(from: string, weekday: number): string {
+  let candidate = addDays(from, -1);
   while (isoWeekday(candidate) !== weekday) {
     candidate = addDays(candidate, -1);
   }
@@ -213,7 +213,9 @@ test.describe("P0-007B Kitchen and Bathroom journeys", () => {
 
     const session = await page.request.get("/api/v1/auth/session");
     const today = ((await session.json()) as { householdDate: string }).householdDate;
-    const saturday = isoWeekday(today) === 6 ? today : nextWeekday(today, 6);
+    // Never use today as the composed Saturday — starting Avery there collides with
+    // live "today" when CI runs on Saturday (same class of flake as AT9/AT13).
+    const saturday = nextWeekday(today, 6);
     const kitchenId = page.url().split("/").pop()!;
 
     const satMixed = await page.request.get(`/api/v1/today?date=${saturday}`);
@@ -247,14 +249,15 @@ test.describe("P0-007B Kitchen and Bathroom journeys", () => {
     expect(kitchenOcc!.steps.length).toBe(8);
     expect(kitchenOcc!.accountableMemberId).toBe(AVERY_ID);
 
-    const weekday = previousOrSameWeekday(today, 1);
+    // Strictly past Monday — never today — so the non-composed baseline stays off live day.
+    const weekday = previousWeekday(today, 1);
     const weekdayMixed = await page.request.get(`/api/v1/today?date=${weekday}`);
     const weekdayOcc = (
       (await weekdayMixed.json()) as {
         occurrences: Array<{ definitionId: string; steps: Array<{ text: string }> }>;
       }
     ).occurrences.find((o) => o.definitionId === kitchenId);
-    if (weekdayOcc && isoWeekday(weekday) !== 6) {
+    if (weekdayOcc) {
       expect(weekdayOcc.steps.length).toBe(3);
     }
 
@@ -338,7 +341,8 @@ test.describe("P0-007B Kitchen and Bathroom journeys", () => {
 
     await page.reload();
     const bathroomId = page.url().split("/").pop()!;
-    const sunday = isoWeekday(today) === 7 ? today : nextWeekday(today, 7);
+    // Strictly next Sunday — never today — so Sunday-extra composition stays isolated.
+    const sunday = nextWeekday(today, 7);
     const sunMixed = await page.request.get(`/api/v1/today?date=${sunday}`);
     const bathroomSun = (
       (await sunMixed.json()) as {
@@ -353,15 +357,13 @@ test.describe("P0-007B Kitchen and Bathroom journeys", () => {
     expect(bathroomSun!.accountableMemberId).toBe(JORDAN_ID);
     expect(bathroomSun!.steps.length).toBe(9);
 
-    const monday = previousOrSameWeekday(today, 1);
-    if (isoWeekday(monday) !== 7) {
-      const monMixed = await page.request.get(`/api/v1/today?date=${monday}`);
-      const bathroomMon = (
-        (await monMixed.json()) as {
-          occurrences: Array<{ definitionId: string; steps: Array<{ text: string }> }>;
-        }
-      ).occurrences.find((o) => o.definitionId === bathroomId);
-      if (bathroomMon) expect(bathroomMon.steps.length).toBe(4);
-    }
+    const monday = previousWeekday(today, 1);
+    const monMixed = await page.request.get(`/api/v1/today?date=${monday}`);
+    const bathroomMon = (
+      (await monMixed.json()) as {
+        occurrences: Array<{ definitionId: string; steps: Array<{ text: string }> }>;
+      }
+    ).occurrences.find((o) => o.definitionId === bathroomId);
+    if (bathroomMon) expect(bathroomMon.steps.length).toBe(4);
   });
 });

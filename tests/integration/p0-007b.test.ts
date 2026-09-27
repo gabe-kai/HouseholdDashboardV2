@@ -274,7 +274,7 @@ describe("P0-007B assignment patterns and scheduled work (server)", () => {
     );
 
     const today = store.householdDateNow(manager.context);
-    let tuesday = today;
+    let tuesday = addDays(today, -1);
     while (isoWeekday(tuesday) !== 2) {
       tuesday = addDays(tuesday, -1);
     }
@@ -304,7 +304,7 @@ describe("P0-007B assignment patterns and scheduled work (server)", () => {
     )!;
     expect(fixedOcc.accountableMemberId).toBe(IDS.avery);
 
-    let cycleAnchor = today;
+    let cycleAnchor = addDays(today, -1);
     while (isoWeekday(cycleAnchor) !== 1) {
       cycleAnchor = addDays(cycleAnchor, -1);
     }
@@ -664,7 +664,8 @@ describe("P0-007B assignment patterns and scheduled work (server)", () => {
     );
 
     const today = store.householdDateNow(manager.context);
-    let mon = today;
+    // Strictly past Monday — never today — so anchor/sample dates stay off the live day.
+    let mon = addDays(today, -1);
     while (isoWeekday(mon) !== 1) {
       mon = addDays(mon, -1);
     }

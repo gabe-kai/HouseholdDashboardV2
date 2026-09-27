@@ -19,7 +19,7 @@
 
 ## Current focus
 
-Integrated `main` matches `origin/main` at **739f7e3**, merging technically accepted **P0-007C-2 r1** via PR **#21**. On `brief/p0-007c-3a-shared-display-execution`, Engineering reviewed **P0-007C-3A r1** against the repository and returned **READY** (`reports/P0-007C-3A-r1-engineering-readiness.md`). The branch tip inspected is **db37119** (docs parent **340f955**); C-3A implementation has not started and awaits Architecture ACCEPT / PROCEED. Owner-controlled personal-task promotion remains likely next as 3B. C-2 AT17 physical readability remains separate Product evidence and does not block C-3A.
+Integrated `main` matches `origin/main` at **739f7e3**, merging technically accepted **P0-007C-2 r1** via PR **#21**. On `brief/p0-007c-3a-shared-display-execution`, Engineering reviewed **P0-007C-3A r1** against the repository and returned **READY** (`reports/P0-007C-3A-r1-engineering-readiness.md`). Architecture responded **ACCEPT / PROCEED** on r1; Engineering owns implementation next. The reviewed branch tip was **db37119** (docs parent **340f955**). Owner-controlled personal-task promotion remains likely next as 3B. C-2 AT17 physical readability remains separate Product evidence and does not block C-3A.
 
 The integrated baseline includes technically accepted **P0-007C-1 r1** via PR **#20** at `ef39a89` and **P0-007C-2 r1** via PR **#21** at `739f7e3`. Technical integration does not assert Product acceptance; C-1/C-2 family evaluation remains separate. Old reports retain the SHAs of their inspected baselines.
 
@@ -40,7 +40,7 @@ The integrated baseline includes technically accepted **P0-007C-1 r1** via PR **
 | P0-007B - Assignment Patterns & Scheduled Work | r1 | ACCEPTED | Integrated foundation | Included in inspected `main` at `e8f59b4` | Product evaluation remains separate; C carries daily-presentation direction |
 | P0-007C-1 - Actionable Today and Household Overview | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `ef39a89` via PR #20 | Product speed-of-understanding evaluation |
 | P0-007C-2 - Household Display and Read-only Dashboard | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `739f7e3` via PR #21 | Physical readability AT17 and Product acceptance remain separate |
-| P0-007C-3A - Complete Assigned Work at the Shared Display | r1 | READY | Architecture | `brief/p0-007c-3a-shared-display-execution` | Architecture ACCEPT / PROCEED before implementation |
+| P0-007C-3A - Complete Assigned Work at the Shared Display | r1 | READY | Engineering | `brief/p0-007c-3a-shared-display-execution` | Implement reviewed r1 and return Build Report |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -66,15 +66,15 @@ This table is the short repository-side coordination index. An external project 
 
 ## Known blockers
 
-- No known blocker to implementing P0-007C-3A r1 after Architecture ACCEPT. C-2 is accepted and integrated. Physical wall evaluation AT17 remains important evidence before declaring the overall C outcome product-evaluated, but does not block the C-3A brief or local implementation.
+- No known blocker to implementing P0-007C-3A r1. C-2 is accepted and integrated. Physical wall evaluation AT17 remains important evidence before declaring the overall C outcome product-evaluated, but does not block C-3A implementation.
 
 ## Next Project Lead decision
 
-- None required for C-3A readiness; Architecture should ACCEPT / PROCEED (or revise) on Engineering's READY disposition.
+- None required for C-3A implementation under the accepted r1 brief.
 
 ## Next likely handoff
 
-Architecture responds ACCEPT / REVISE / REFER TO DESIGN / DEFER on P0-007C-3A r1. On ACCEPT, Engineering implements. No return to Planning/Design is required for the same approved outcome. After technical acceptance, Product evaluates shared-display execution and physical readability; do not infer those from automation alone.
+Engineering implements P0-007C-3A r1 and returns a Build Report for Architecture technical acceptance. No return to Planning/Design is required for the same approved outcome. After technical acceptance, Product evaluates shared-display execution and physical readability; do not infer those from automation alone.
 
 ## Notes for all teams
 

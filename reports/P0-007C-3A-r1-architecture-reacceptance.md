@@ -1,12 +1,12 @@
 # Architecture Re-review - P0-007C-3A r1
 
-**Disposition:** FIX REQUIRED (one remaining AT11 evidence gap; same revision)  
-**Brief:** `briefs/p0-007c-3a-shared-display-execution.md`  
-**Reviewed correction:** `55afa52eb60bb95703b6b0656835940aa0de7484` on `brief/p0-007c-3a-shared-display-execution`  
-**Prior review:** `reports/P0-007C-3A-r1-architecture-review.md`  
-**Build Report:** `reports/P0-007C-3A-r1-build-report.md`  
-**Next owner:** Engineering  
-**Card:** **Act at the shared display without losing trust** remains **In Progress**.
+**Disposition:** ACCEPTED<br>
+**Brief:** `briefs/p0-007c-3a-shared-display-execution.md`<br>
+**Reviewed implementation:** `9369d4aaf2ed1eae51d4e6f3e946853e015daeb1` on `brief/p0-007c-3a-shared-display-execution`<br>
+**Prior review:** `reports/P0-007C-3A-r1-architecture-review.md`<br>
+**Build Report:** `reports/P0-007C-3A-r1-build-report.md`<br>
+**Next owner:** Project Lead / Product evaluation<br>
+**Card:** **Act at the shared display without losing trust** may move to **Ready to Evaluate**.
 
 ## Corrections verified by inspection
 
@@ -14,18 +14,13 @@
 - AT5 now names and exercises the denial matrix, including prior/future dates, school-filtered work, ended/canceled work, removed steps, foreign work, and an actionable started survivor.
 - AT8 closes the active Fastify app, builds a fresh app and database connection against the preserved SQLite file, then rebinds the listener and reuses the same display session. This is accepted as the local server-application restart seam; the report discloses that the Playwright-managed Node process remains alive.
 - AT10 now covers a queued prior-day action, authoritative date advance, no replay, and visible retirement notice.
+- AT11 now observes the live display sync socket, closes it through the test seam, holds dashboard/sync traffic for wall B, commits Wipe from wall A while B remains on the pre-outage snapshot, then restores the socket and proves B catches up without reload. The delayed/out-of-order occurrence read assertion remains in the journey. The reported focused AT11 run passes 3/3.
 - The Build Report records a successful exact `npm run validate:rc`, including Chromium/WebKit and Vite. Architecture did not independently rerun the suite.
 
-## Remaining required correction
+## Final disposition
 
-**AT11 — demonstrate real socket loss and recovery of a missed update.** In `tests/e2e/z-p0-007c-3a-live.spec.ts`, the current sequence dispatches a synthetic `offline` DOM event and calls `page.route()` after the display WebSocket has already been created. That does not demonstrate that the open WebSocket closed: the client reconnect path is driven by the WebSocket's `onclose` event. The test also performs no new action on another context while wall B is disconnected, so it cannot prove that visibility/reconnect refresh recovers a missed invalidation.
+Architecture accepts **P0-007C-3A r1** at the reviewed commit above. The dedicated display action path, actor/owner separation, durable/rejected outbox behavior, edit/action and revoke/replay boundaries, rollover handling, live recovery, and stated PR/RC evidence meet the r1 contract.
 
-Add a deterministic test seam or use Playwright's WebSocket controls/server-side connection close to prove the actual socket closes and the client reconnects. While wall B is disconnected, commit a checklist update from the phone, manager, or other display. Restore connectivity/visibility and prove wall B converges to authoritative state without a page reload. Retain the existing delayed/out-of-order read assertion and verify it cannot overwrite that recovered state or erase pending feedback.
+The final correction SHA is pinned in the Build Report. No new readiness review, brief revision, deployment, or C-3B work is required. Physical 27-inch readability remains **NOT RUN** and belongs to Product evaluation; it does not block technical acceptance. Technical acceptance does not imply Project Lead acceptance of the broader C outcome.
 
-## Build Report correction
-
-The current checkout is clean at `55afa52`, but the Build Report still says the correction is uncommitted and awaiting Coordinator/user commit. Pin the actual correction SHA (`55afa52eb60bb95703b6b0656835940aa0de7484`) and remove the stale pending-commit wording before final acceptance.
-
-## Disposition
-
-No new readiness review, brief revision, Product decision, deployment, or C-3B work is needed. Return the focused AT11 evidence and corrected Build Report against P0-007C-3A r1. After that, Architecture can accept the slice and the card can move to **Ready to Evaluate**; the broader C outcome remains unevaluated until C-3B and Project Lead evidence are complete.
+The Project Lead may move the card to **Ready to Evaluate**. External board: none configured.

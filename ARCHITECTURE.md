@@ -154,9 +154,9 @@ Authoritative contract: `briefs/p0-007c-2-household-display-read-only-dashboard.
 - **Remaining boundary:** Shared-display checklist execution, truthful device action provenance and owner-controlled personal-work promotion belong to C-3. Do not add their schema/UI or treat C-2 as completion of the full interactive Product outcome.
 - **Acceptance:** Technical acceptance is complete. Preserve AT17 as a separate Project Lead/Product evaluation; do not infer physical readability from automated or screenshot evidence.
 
-### P0-007C-3A shared-display execution (FIX REQUIRED; same-revision corrections pending)
+### P0-007C-3A shared-display execution (technically accepted)
 
-Authoritative contract: `briefs/p0-007c-3a-shared-display-execution.md` **revision 1**, with D-046–D-047. Implementation commit `606cd25` and correction commit `55afa52` are on `brief/p0-007c-3a-shared-display-execution`. Architecture re-review: `reports/P0-007C-3A-r1-architecture-reacceptance.md`. Remaining same-revision work is an AT11 real WebSocket-loss/missed-update recovery proof and Build Report SHA correction. C-3B personal-task promotion remains out of scope.
+Authoritative contract: `briefs/p0-007c-3a-shared-display-execution.md` **revision 1**, with D-046–D-047. Implementation and final AT11 correction are accepted at `9369d4a` on `brief/p0-007c-3a-shared-display-execution`; Build Report: `reports/P0-007C-3A-r1-build-report.md`; Architecture reacceptance: `reports/P0-007C-3A-r1-architecture-reacceptance.md`. Engineering reports exact `validate:rc` PASS (253 unit/integration, 131 Playwright, 5 Vite); Architecture inspected the correction but did not rerun tests. Card: **Act at the shared display without losing trust** is ready for Project Lead evaluation. Physical AT12 remains Product evidence; C-3B is not included in this acceptance.
 
 ### P0-006C profiles and useful History (technically accepted)
 

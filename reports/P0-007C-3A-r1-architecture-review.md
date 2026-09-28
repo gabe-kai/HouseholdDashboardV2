@@ -1,10 +1,10 @@
-# Architecture Review - P0-007C-3A r1
+# Initial Architecture Review - P0-007C-3A r1 (historical)
 
 **Brief:** `briefs/p0-007c-3a-shared-display-execution.md`  
 **Baseline:** integrated C-2 `main` at `739f7e3`  
 **Implementation:** `606cd25ef11b88ecf9a158caa8942965a6a2d943` on `brief/p0-007c-3a-shared-display-execution`  
 **Build Report:** `reports/P0-007C-3A-r1-build-report.md`  
-**Disposition:** Superseded by `reports/P0-007C-3A-r1-architecture-reacceptance.md` after correction commit `55afa52`.
+**Disposition:** Initial FIX REQUIRED findings were closed; final disposition is ACCEPTED in `reports/P0-007C-3A-r1-architecture-reacceptance.md` at `9369d4a`.
 **Next owner:** Engineering  
 **Card:** **Act at the shared display without losing trust** remains **In Progress**.
 

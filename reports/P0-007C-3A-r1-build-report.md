@@ -1,14 +1,14 @@
 # Build Report - BRIEF P0-007C-3A r1
 
 **Brief revision implemented:** 1  
-**Engineering status:** IMPLEMENTED (AT11 WS re-review evidence + exact `validate:rc` PASS; awaiting Architecture re-review)  
+**Engineering status:** IMPLEMENTED; Architecture accepted P0-007C-3A r1 at `9369d4a`<br>
 **Branch:** `brief/p0-007c-3a-shared-display-execution`  
 **Commits:**
 - Implementation: `606cd25` (`feat(P0-007C-3A): shared-display checklist execution`)
 - Docs tip prior to first corrections: `03cd4a6`
 - First FIX REQUIRED correction: `55afa52eb60bb95703b6b0656835940aa0de7484` (`fix(P0-007C-3A): close r1 FIX REQUIRED evidence gaps`)
 - Re-review tip: `f1d4896` (`P0-007C-3A: record r1 re-review and remaining AT11 gap`)
-- AT11 WS re-review evidence (socket close + mid-outage write + reconnect converge + delayed read): tip after `f1d4896` — pin SHA when Project Lead commits
+- AT11 WS re-review correction: `9369d4aaf2ed1eae51d4e6f3e946853e015daeb1` (`fix(P0-007C-3A): prove AT11 real WS close and mid-outage converge`)
 **Pull request:** N/A (not opened by this Build Report)
 
 ## What changed
@@ -102,7 +102,6 @@ An enrolled Household Display can complete today's assigned routine and responsi
 
 ## Suggested follow-up
 
-- Architecture re-review of AT11 WS evidence against `reports/P0-007C-3A-r1-architecture-reacceptance.md`.
-- Project Lead: commit AT11 WS re-review tip and pin that SHA in Commits above.
-- Product evaluation / physical AT17 after Architecture acceptance.
+- Architecture accepted r1 after AT11 WS re-review; see `reports/P0-007C-3A-r1-architecture-reacceptance.md`.
+- Product evaluation / physical AT12 remains Project Lead evidence.
 - P0-007C-3B after C-3A evaluation.

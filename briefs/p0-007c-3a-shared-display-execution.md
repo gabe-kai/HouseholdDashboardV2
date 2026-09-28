@@ -1,7 +1,7 @@
 # BRIEF P0-007C-3A - Complete Assigned Work at the Shared Display
 
 **Revision:** 1
-**Status:** FIX REQUIRED
+**Status:** ACCEPTED
 
 This is the authoritative contract for P0-007C-3A. Engineering reviews this revision against the repository before implementation. Technical acceptance and Product acceptance are separate.
 
@@ -106,10 +106,10 @@ Inspected clean `brief/p0-007c-3a-shared-display-execution` at documentation com
 
 **Reviewed revision:** 1  
 **Readiness:** READY (Architecture ACCEPT / PROCEED received)  
-**Implementation status:** FIX REQUIRED (Architecture acceptance review)
+**Implementation status:** ACCEPTED by Architecture against r1 at `9369d4a`
 **Build Report:** `reports/P0-007C-3A-r1-build-report.md`
 
-Architecture re-reviewed correction `55afa52`; most findings are closed, with AT11 socket-loss/recovery evidence and Build Report commit metadata still required. See `reports/P0-007C-3A-r1-architecture-reacceptance.md`. No contract change or new readiness pass is required.
+Architecture accepted r1 after the AT11 socket-loss/missed-update recovery evidence closed the final finding. See `reports/P0-007C-3A-r1-architecture-reacceptance.md`. Product acceptance remains separate; C-3B remains out of scope.
 
 C-3B remains out of scope.
 

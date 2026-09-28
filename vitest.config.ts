@@ -11,5 +11,8 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts", "tests/integration/**/*.test.ts"],
+    // Denial-matrix and populated-upgrade integration tests exceed Vitest's
+    // 5s default under CI/machine load; keep headroom without hiding hangs.
+    testTimeout: 20_000,
   },
 });

@@ -19,7 +19,7 @@
 - Display occurrence detail exposes minimal structural intent; History shows display submitter without inventing a human performer.
 - Display-only IndexedDB outbox (session-keyed, minimal fields) + focused Done / Not needed / Open controls in `/display`.
 - **FIX REQUIRED batch (`55afa52`):** retired outbox explanations; AT5/8/10 evidence; AT11 dual-display skeleton; exact `validate:rc` PASS; C-2 WebKit AT10 harden.
-- **AT11 re-review:** `__HD_DISPLAY_CLOSE_SYNC__` / `dropSocket` closes the observed live display sync WebSocket; Playwright awaits that socket’s `close`; wall A commits Wipe **Saved** (scoped — not Counters’ flash) while wall B sync/dashboard are held and the frozen pre-outage `1/2 done` snapshot is asserted unchanged; `__HD_DISPLAY_RECONNECT_SYNC__` clears abort backoff and restores the socket; visibility/pageshow HTTP refresh proves wall B converges without reload; delayed/out-of-order occurrence read retained. Initial converge requires real `1/2 done` (not a loose `/done/` match on stale `0/2 done`).
+- **AT11 re-review:** `__HD_DISPLAY_CLOSE_SYNC__` / `dropSocket` closes the observed live display sync WebSocket; Playwright awaits that socket’s `close`; wall A commits Wipe to `not_needed` (asserted via phone `/api/v1/today`, not a lingering Counters Saved flash) while wall B sync/dashboard are held and the frozen pre-outage `1/2 done` snapshot is asserted unchanged; `__HD_DISPLAY_RECONNECT_SYNC__` clears abort backoff and restores the socket; visibility/pageshow HTTP refresh proves wall B converges without reload; delayed/out-of-order occurrence read retained. Initial converge requires real `1/2 done` (not a loose `/done/` match on stale `0/2 done`).
 - PB-52/53, route-policy, CI job `e2e-phone-007c3a`, package script, geometry allowlist, through-015 upgrade fixture.
 
 ## Files changed
@@ -65,7 +65,7 @@ An enrolled Household Display can complete today's assigned routine and responsi
 | 8 Offline/reload/restart | `z-p0-007c-3a-offline.spec.ts` Fastify close+rebind | PASS |
 | 9 Revoke/replace | `p0-007c-3a.test.ts` AT9 | PASS |
 | 10 Reset / day rollover | integration + e2e date-seam retirement | PASS |
-| 11 Live recovery | `z-p0-007c-3a-live.spec.ts`: two displays + phone; observe open sync WS; `__HD_DISPLAY_CLOSE_SYNC__` closes it; wall A Wipe **Saved** during held outage; wall B frozen `1/2 done` unchanged; `__HD_DISPLAY_RECONNECT_SYNC__` + visibility/pageshow converge without reload; delayed older occurrence read discarded | PASS |
+| 11 Live recovery | `z-p0-007c-3a-live.spec.ts`: two displays + phone; observe open sync WS; `__HD_DISPLAY_CLOSE_SYNC__` closes it; wall A Wipe `not_needed` during held outage (phone today API); wall B frozen `1/2 done` unchanged; `__HD_DISPLAY_RECONNECT_SYNC__` + visibility/pageshow converge without reload; delayed older occurrence read discarded | PASS |
 | 12 Privacy / usability | geometry 4K/1920 | PASS (local); physical 27″ **NOT RUN** |
 | 13 Gates | Exact `npm run validate:rc` | PASS |
 

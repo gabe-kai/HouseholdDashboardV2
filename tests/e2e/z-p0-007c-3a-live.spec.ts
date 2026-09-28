@@ -319,6 +319,12 @@ test.describe("P0-007C-3A live recovery and date rollover", () => {
     const wallB = await wallBCtx.newPage();
     const phone = await phoneCtx.newPage();
 
+    // Observe wall B sync sockets from creation so we can close the live one.
+    const wallBSyncSockets: import("@playwright/test").WebSocket[] = [];
+    wallB.on("websocket", (ws) => {
+      if (ws.url().includes("/api/v1/display/sync")) wallBSyncSockets.push(ws);
+    });
+
     await enrollWall(page.request, wallA, `Wall A ${Date.now().toString(36)}`);
     await enrollWall(page.request, wallB, `Wall B ${Date.now().toString(36)}`);
 
@@ -340,54 +346,157 @@ test.describe("P0-007C-3A live recovery and date rollover", () => {
     ).toBeVisible({ timeout: 20_000 });
 
     // Other display and phone converge without reload.
+    // Require real "1/2 done" — "/done/" alone matches stale "0/2 done".
     await wallB.getByTestId("display-org-by-work").click();
+    const wallBRow = wallB
+      .getByTestId("display-by-work")
+      .locator("button.display-work-row")
+      .filter({ hasText: title });
     await expect
       .poll(
         async () => {
-          const row = wallB
-            .getByTestId("display-by-work")
-            .locator("button.display-work-row")
-            .filter({ hasText: title });
-          if ((await row.count()) === 0) return false;
-          const text = await row.first().innerText();
-          return /1\/2|done|progress/i.test(text) || text.includes("1");
+          if ((await wallBRow.count()) === 0) return false;
+          return /1\/2\s*done/i.test(await wallBRow.first().innerText());
         },
         { timeout: 30_000 },
       )
       .toBeTruthy();
+    const preOutageWallBText = await wallBRow.first().innerText();
+    expect(preOutageWallBText).toMatch(/1\/2\s*done/i);
 
     await expect
       .poll(
         async () => {
           const text = await phone.locator("body").innerText();
-          return /Counters|completed|done|1\//i.test(text);
+          return /1\/2\s*done|Counters.*done|completed/i.test(text);
         },
         { timeout: 30_000 },
       )
       .toBeTruthy();
 
-    // Force WebSocket loss on wall B, then visibility recovery.
-    await wallB.evaluate(() => {
-      window.dispatchEvent(new Event("offline"));
+    // Close the live display sync socket (Playwright cannot call WebSocket.close()).
+    // Abort sync upgrades + dashboard GETs so reconnect cannot apply the mid-outage write.
+    await expect
+      .poll(
+        () => wallBSyncSockets.some((ws) => !ws.isClosed()),
+        { timeout: 15_000 },
+      )
+      .toBeTruthy();
+    const liveSync = [...wallBSyncSockets].reverse().find((ws) => !ws.isClosed());
+    expect(liveSync, "wall B should have an open display sync socket").toBeTruthy();
+
+    const socketClosed = new Promise<void>((resolve) => {
+      liveSync!.on("close", () => resolve());
     });
-    // Hard-close sockets by aborting sync upgrade briefly.
     await wallB.route("**/api/v1/display/sync**", (route) => route.abort());
-    await wallB.evaluate(() => {
-      document.dispatchEvent(new Event("visibilitychange"));
+    await wallB.route("**/api/v1/display/dashboard**", (route) => {
+      if (route.request().method() === "GET") return route.abort();
+      return route.continue();
     });
-    await wallB.waitForTimeout(500);
-    await wallB.unroute("**/api/v1/display/sync**");
-    await wallB.evaluate(() => {
-      Object.defineProperty(document, "visibilityState", {
-        configurable: true,
-        get: () => "visible",
-      });
+    // Deterministic seam: close the live socket so client onclose drives reconnect.
+    const closedBySeam = await wallB.evaluate(() => {
+      if (typeof window.__HD_DISPLAY_CLOSE_SYNC__ !== "function") return false;
+      window.__HD_DISPLAY_CLOSE_SYNC__();
+      return true;
+    });
+    expect(closedBySeam, "__HD_DISPLAY_CLOSE_SYNC__ must be installed").toBe(true);
+    await socketClosed;
+    expect(liveSync!.isClosed()).toBe(true);
+
+    // Checklist change from wall A while wall B's sync socket is down — must commit.
+    // Scope to Wipe; nudge flush in case a prior in-flight flush skipped this queue.
+    const wipeStep = wallA
+      .locator("[data-testid^=display-step-]")
+      .filter({ hasText: "Wipe" });
+    const wipeNotNeeded = wipeStep.locator("[data-testid^=display-step-not-needed-]");
+    await expect(wipeNotNeeded).toBeVisible({ timeout: 10_000 });
+    await wipeNotNeeded.click();
+    await expect(wipeNotNeeded).toHaveAttribute("aria-pressed", "true");
+    await wallA.evaluate(() => {
       document.dispatchEvent(new Event("visibilitychange"));
       window.dispatchEvent(new Event("online"));
     });
-    await expect(wallB.getByTestId("display-overview")).toBeVisible({
-      timeout: 20_000,
+    await expect
+      .poll(
+        async () => {
+          const today = await phone.request.get("/api/v1/today");
+          if (!today.ok()) return false;
+          const body = (await today.json()) as {
+            occurrences: Array<{
+              title: string;
+              steps: Array<{ text: string; status: string }>;
+            }>;
+          };
+          const row = body.occurrences.find((entry) => entry.title === title);
+          const wipe = row?.steps.find((step) => step.text === "Wipe");
+          return wipe?.status === "not_needed";
+        },
+        { timeout: 30_000 },
+      )
+      .toBeTruthy();
+    await expect(wipeStep.getByText(/Pending/i)).toHaveCount(0);
+    await expect(wipeStep.locator(".display-work-meta")).toContainText(/Not needed/i);
+
+    // Wall B must retain the frozen pre-outage snapshot (missed the invalidation).
+    await expect(wallBRow).toBeVisible();
+    await expect
+      .poll(async () => (await wallBRow.innerText()) === preOutageWallBText, {
+        timeout: 8_000,
+      })
+      .toBeTruthy();
+    expect(await wallBRow.innerText()).toMatch(/1\/2\s*done/i);
+    expect(await wallBRow.innerText()).not.toMatch(/not needed/i);
+
+    // Restore sync + dashboard; no page reload — overview stays mounted.
+    // Catch-up is HTTP refresh on visibility (WS will not replay the missed invalidate).
+    await wallB.unroute("**/api/v1/display/sync**");
+    await wallB.unroute("**/api/v1/display/dashboard**");
+    const reconnectWs = wallB.waitForEvent("websocket", {
+      predicate: (ws) =>
+        ws.url().includes("/api/v1/display/sync") && !ws.isClosed(),
+      timeout: 45_000,
     });
+    const nudgeWallBRefresh = () =>
+      wallB.evaluate(() => {
+        Object.defineProperty(document, "visibilityState", {
+          configurable: true,
+          get: () => "visible",
+        });
+        document.dispatchEvent(new Event("visibilitychange"));
+        window.dispatchEvent(new Event("pageshow"));
+        window.dispatchEvent(new Event("online"));
+      });
+    // Clear abort-induced backoff and open immediately; HTTP visibility catches up the miss.
+    await wallB.evaluate(() => {
+      window.__HD_DISPLAY_RECONNECT_SYNC__?.();
+    });
+    await nudgeWallBRefresh();
+    await reconnectWs;
+    await expect(wallB.getByTestId("display-overview")).toBeVisible();
+    await expect(wallB.getByTestId("display-setup")).toHaveCount(0);
+
+    // Wall B converges to authoritative post-outage checklist state without reload.
+    await expect
+      .poll(
+        async () => {
+          await nudgeWallBRefresh();
+          if ((await wallBRow.count()) === 0) return true;
+          const text = await wallBRow.first().innerText();
+          // Not-needed changes the label away from "N/M done".
+          return (
+            /not needed/i.test(text) ||
+            (/complete/i.test(text) && !/1\/2\s*done/i.test(text)) ||
+            /2\/2/i.test(text)
+          );
+        },
+        { timeout: 40_000, intervals: [500, 1_000, 2_000] },
+      )
+      .toBeTruthy();
+    if ((await wallBRow.count()) > 0) {
+      const recovered = await wallBRow.first().innerText();
+      expect(recovered).not.toBe(preOutageWallBText);
+      expect(recovered).toMatch(/not needed|complete|2\/2/i);
+    }
 
     // Delayed older occurrence read must not restore stale open step.
     let occArmed = false;
@@ -459,6 +568,7 @@ test.describe("P0-007C-3A live recovery and date rollover", () => {
     );
 
     await wallA.unrouteAll({ behavior: "ignoreErrors" }).catch(() => undefined);
+    await wallB.unrouteAll({ behavior: "ignoreErrors" }).catch(() => undefined);
     await wallACtx.close();
     await wallBCtx.close();
     await phoneCtx.close();

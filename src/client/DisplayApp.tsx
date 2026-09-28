@@ -74,6 +74,9 @@ declare global {
     __HD_DISPLAY_STALE_MS?: number;
     /** Test-only: mark sync disconnected and age last auth past the stale bound. */
     __HD_DISPLAY_FORCE_STALE__?: () => void;
+    /** Test-only: close the live display sync WebSocket (reconnect may follow). */
+    __HD_DISPLAY_CLOSE_SYNC__?: () => void;
+    __HD_DISPLAY_RECONNECT_SYNC__?: () => void;
   }
 }
 
@@ -243,6 +246,7 @@ export function DisplayApp() {
   const sessionRef = useRef<DisplaySessionInfo | null>(null);
   const outboxRef = useRef<DisplayOutboxItem[]>([]);
   const flushInFlightRef = useRef(false);
+  const flushAgainRef = useRef(false);
   const occurrenceDetailRef = useRef<DisplayOccurrenceDetail | null>(null);
 
   detailRef.current = detail;
@@ -341,9 +345,13 @@ export function DisplayApp() {
     const csrf = csrfTokenRef.current;
     const currentSession = sessionRef.current;
     if (!sessionId || !csrf || !currentSession) return;
-    if (flushInFlightRef.current) return;
+    if (flushInFlightRef.current) {
+      flushAgainRef.current = true;
+      return;
+    }
     if (typeof navigator !== "undefined" && navigator.onLine === false) return;
     flushInFlightRef.current = true;
+    flushAgainRef.current = false;
     try {
       let items = await readDisplayOutbox(sessionId);
       if (sessionIdRef.current !== sessionId) return;
@@ -428,6 +436,10 @@ export function DisplayApp() {
       await refreshDetail();
     } finally {
       flushInFlightRef.current = false;
+      if (flushAgainRef.current) {
+        flushAgainRef.current = false;
+        void flushDisplayOutbox();
+      }
     }
   });
 
@@ -635,7 +647,7 @@ export function DisplayApp() {
       }, 250);
     };
 
-    const disconnect = connectDisplaySync((msg) => {
+    const sync = connectDisplaySync((msg) => {
       if (msg.reason === "access_lost") {
         clearHouseholdState("Display access was revoked.");
         return;
@@ -647,6 +659,8 @@ export function DisplayApp() {
       scheduleRefresh();
       void flushDisplayOutbox();
     }, setSyncStatus);
+    window.__HD_DISPLAY_CLOSE_SYNC__ = () => sync.dropSocket();
+    window.__HD_DISPLAY_RECONNECT_SYNC__ = () => sync.reconnectNow();
 
     const poll = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
@@ -654,7 +668,9 @@ export function DisplayApp() {
     }, POLL_MS);
 
     return () => {
-      disconnect();
+      delete window.__HD_DISPLAY_CLOSE_SYNC__;
+      delete window.__HD_DISPLAY_RECONNECT_SYNC__;
+      sync.disconnect();
       window.clearInterval(poll);
       if (refreshTimer) clearTimeout(refreshTimer);
     };

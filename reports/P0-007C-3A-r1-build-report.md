@@ -1,12 +1,14 @@
 # Build Report - BRIEF P0-007C-3A r1
 
 **Brief revision implemented:** 1  
-**Engineering status:** IMPLEMENTED (FIX REQUIRED corrections applied; awaiting Architecture re-review)  
+**Engineering status:** IMPLEMENTED (AT11 WS re-review evidence + exact `validate:rc` PASS; awaiting Architecture re-review)  
 **Branch:** `brief/p0-007c-3a-shared-display-execution`  
 **Commits:**
 - Implementation: `606cd25` (`feat(P0-007C-3A): shared-display checklist execution`)
-- Docs tip prior to correction coding: `03cd4a6` (`P0-007C-3A: record r1 acceptance corrections`)
-- Correction commit(s): *working tree ready for Coordinator/user commit* (retired-outbox UX, AT5/8/10/11 evidence, C-2 WebKit AT10 race harden, exact `validate:rc` PASS)
+- Docs tip prior to first corrections: `03cd4a6`
+- First FIX REQUIRED correction: `55afa52eb60bb95703b6b0656835940aa0de7484` (`fix(P0-007C-3A): close r1 FIX REQUIRED evidence gaps`)
+- Re-review tip: `f1d4896` (`P0-007C-3A: record r1 re-review and remaining AT11 gap`)
+- AT11 WS re-review evidence (socket close + mid-outage write + reconnect converge + delayed read): tip after `f1d4896` — pin SHA when Project Lead commits
 **Pull request:** N/A (not opened by this Build Report)
 
 ## What changed
@@ -16,7 +18,8 @@
 - Principal-aware shared checklist write core: display derives owner/kind from stored occurrence; records device actor; performer unknown; structural intent required for wall writes.
 - Display occurrence detail exposes minimal structural intent; History shows display submitter without inventing a human performer.
 - Display-only IndexedDB outbox (session-keyed, minimal fields) + focused Done / Not needed / Open controls in `/display`.
-- **FIX REQUIRED (same r1):** pending date/generation mismatches are marked `rejected` with accessible overview notices (no silent drop); AT5 denial matrix, AT8 Fastify close+rebind restart, AT10 date rollover, and AT11 dual-display/WS/delayed-read evidence added; exact `npm run validate:rc` PASS.
+- **FIX REQUIRED batch (`55afa52`):** retired outbox explanations; AT5/8/10 evidence; AT11 dual-display skeleton; exact `validate:rc` PASS; C-2 WebKit AT10 harden.
+- **AT11 re-review:** `__HD_DISPLAY_CLOSE_SYNC__` / `dropSocket` closes the observed live display sync WebSocket; Playwright awaits that socket’s `close`; wall A commits Wipe **Saved** (scoped — not Counters’ flash) while wall B sync/dashboard are held and the frozen pre-outage `1/2 done` snapshot is asserted unchanged; `__HD_DISPLAY_RECONNECT_SYNC__` clears abort backoff and restores the socket; visibility/pageshow HTTP refresh proves wall B converges without reload; delayed/out-of-order occurrence read retained. Initial converge requires real `1/2 done` (not a loose `/done/` match on stale `0/2 done`).
 - PB-52/53, route-policy, CI job `e2e-phone-007c3a`, package script, geometry allowlist, through-015 upgrade fixture.
 
 ## Files changed
@@ -29,8 +32,8 @@
 - `src/shared/schemas.ts` - `SetDisplayStepStatusSchema`; `StepReportPublic` actor fields
 - `src/client/display-outbox.ts` - display-only pending queue; retire → rejected with reason
 - `src/client/display-outbox.test.ts` - date/generation retirement unit coverage
-- `src/client/display-api.ts` - CSRF session fields + status POST
-- `src/client/DisplayApp.tsx` - executable checklist UI + flush/retire notices
+- `src/client/display-api.ts` - CSRF session fields + status POST; `DisplaySyncHandle.dropSocket` / `reconnectNow`
+- `src/client/DisplayApp.tsx` - executable checklist UI + flush/retire notices; `__HD_DISPLAY_CLOSE_SYNC__` / `__HD_DISPLAY_RECONNECT_SYNC__`
 - `src/client/History.tsx` - display actor cue
 - `src/client/styles.css` - large step action targets
 - `docs/protected-behaviors.md` - PB-52/53 + sync matrix row
@@ -56,46 +59,50 @@ An enrolled Household Display can complete today's assigned routine and responsi
 | 2 Authorization matrix | `p0-007c-3a.test.ts` AT2; denial-matrix length 5 | PASS |
 | 3 Routine journey | `z-p0-007c-3a-execution.spec.ts` + integration writes | PASS |
 | 4 Responsibility journey | same execution spec + integration unassigned denial | PASS |
-| 5 Current-day denial | integration AT5: wrong date, required `not_needed`, yesterday/tomorrow, school-filtered-out, ended-unstarted/canceled, removed step, foreign UUID, started survivor actionable | PASS |
+| 5 Current-day denial | integration AT5 full matrix | PASS |
 | 6 Edit/action race | `p0-007c-3a.test.ts` AT6 + failure hook | PASS |
 | 7 Replay/race | `p0-007c-3a.test.ts` AT7 | PASS |
-| 8 Offline/reload/restart | `z-p0-007c-3a-offline.spec.ts`: abort POST, Fastify close+rebind (generation bump, DB preserved), same session saves exactly-once | PASS |
+| 8 Offline/reload/restart | `z-p0-007c-3a-offline.spec.ts` Fastify close+rebind | PASS |
 | 9 Revoke/replace | `p0-007c-3a.test.ts` AT9 | PASS |
-| 10 Reset / day rollover | integration generation clear + prior-day→next-day fence; e2e AT10 date-seam retirement notice (`display-retired-notices`) | PASS |
-| 11 Live recovery | `z-p0-007c-3a-live.spec.ts`: two displays + Avery phone converge; forced WS loss/visibility recovery; delayed older occurrence read discarded | PASS |
-| 12 Privacy / usability | geometry 4K/1920 controls; private tasks remain excluded by C-2 projection | PASS (local); physical 27″ AT **NOT RUN** (Product) |
-| 13 Gates | Exact `npm run validate:rc` | **PASS** |
+| 10 Reset / day rollover | integration + e2e date-seam retirement | PASS |
+| 11 Live recovery | `z-p0-007c-3a-live.spec.ts`: two displays + phone; observe open sync WS; `__HD_DISPLAY_CLOSE_SYNC__` closes it; wall A Wipe **Saved** during held outage; wall B frozen `1/2 done` unchanged; `__HD_DISPLAY_RECONNECT_SYNC__` + visibility/pageshow converge without reload; delayed older occurrence read discarded | PASS |
+| 12 Privacy / usability | geometry 4K/1920 | PASS (local); physical 27″ **NOT RUN** |
+| 13 Gates | Exact `npm run validate:rc` | PASS |
 
 ## Verification performed
 
-- `npx vitest run src/client/display-outbox.test.ts tests/integration/p0-007c-3a.test.ts` — PASS
-- Focused Chromium C-3A live + offline specs — PASS
-- Exact `npm run validate:rc` — **PASS** (unit/integration 253; Playwright Chromium+WebKit **131 passed**; Vite deep-link **5 passed**; ~14m e2e). Durable log: `reports/_local-screenshots/p0-007c-3a-r1/validate-rc-3.log`
-- Prior RC attempts failed only on known C-2 WebKit AT10 live-recovery flake (`NEWER_SNAP` overwritten by a real dashboard poll); isolated re-run PASS; suite harden keeps serving the newer synthetic until unroute; subsequent exact RC clean.
-- Physical 27-inch / 10–16-foot readability — **NOT RUN** (Product)
-- Hosted deploy — **NOT RUN** (not required; no deploy/merge in this pass)
+- Focused Chromium AT11 (`z-p0-007c-3a-live.spec.ts` AT11) after Wipe API commit + flush follow-up — PASS (3/3 loop; log `at11-focused-rerun3.log` / `at11-loop-*.log`)
+- Exact `npm run validate:rc` after AT11 re-review — **PASS** (253 unit; 131 Playwright; 5 Vite; log `validate-rc-at11d.log`; `RC_EXIT=0`)
+- Prior exact `validate:rc` at `55afa52` — PASS (253 unit; 131 Playwright; 5 Vite; log `validate-rc-3.log`)
+- Interim RC logs `validate-rc-at11.log` / `at11b` / `at11c` — FAIL on AT11 evidence gaps (false converge / Saved flash / flush race); fixed in tip
+- C-2 WebKit AT10: failed under full RC twice, PASS on isolated re-run, then suite harden + clean RC
+- Physical 27-inch readability — **NOT RUN** (Product)
+- Hosted deploy — **NOT RUN** (not required)
 
 ## Deviations from brief revision
 
 - Display session info returns `sessionId` + `csrfToken` so the client can key the outbox and authorize writes (within allowlisted session metadata).
-- AT8 proves HTTP server restart via Fastify close+rebind in the Playwright-managed process (SQLite preserved) rather than killing the webServer PID mid-suite.
+- AT8 proves HTTP server restart via Fastify close+rebind in the Playwright-managed process (SQLite preserved).
+- AT11 uses display-only test seams `__HD_DISPLAY_CLOSE_SYNC__` (close live socket) and `__HD_DISPLAY_RECONNECT_SYNC__` (clear abort backoff + open); reconnect remains the production `onclose` / visibility refresh path.
 
 ## Discoveries for Architecture
 
-- Hard-coded `schema_migrations` tip counts in older upgrade tests (003/005/006c/007b/C-2) must bump when adding migrations; tip is **16**.
-- C-2 enrollment UI assertion depended on “Read-only wall view” copy; updated to “Shared wall checklist”.
+- Hard-coded `schema_migrations` tip counts must bump when adding migrations; tip is **16**.
 - C-2 WebKit AT10 barrier test must not `route.continue()` follow-on dashboard polls while the newer synthetic marker is under assertion.
+- Playwright page WebSocket objects are observational only; closing the live display sync socket for AT11 requires an app test seam or server-side drop.
+- AT11 initial converge must assert real `1/2 done`; a loose `/done|progress/` match false-passes on stale `0/2 done` under suite load.
+- AT11 mid-outage commit must wait for authoritative Wipe `not_needed` (phone `/api/v1/today`), not any step’s lingering Saved flash.
+- Display outbox flush must re-enter when a queue arrives during an in-flight flush (`flushAgainRef`).
 
 ## Known limitations
 
 - C-3B personal-task promotion/completion not implemented.
 - Physical wall readability remains Product evidence.
 - Display outbox does not persist household read payloads; cold offline load still shows setup/blank, not a cached dashboard.
-- Correction implementation is uncommitted pending Coordinator/user commit authorization.
 
 ## Suggested follow-up
 
-- Architecture re-review of this corrected r1 against `reports/P0-007C-3A-r1-architecture-review.md`.
-- Commit the FIX REQUIRED working tree; pin the correction SHA in this report after commit.
-- Product evaluation of shared-display execution and physical AT17 after Architecture acceptance.
-- P0-007C-3B owner-controlled personal-task promotion after C-3A evaluation.
+- Architecture re-review of AT11 WS evidence against `reports/P0-007C-3A-r1-architecture-reacceptance.md`.
+- Project Lead: commit AT11 WS re-review tip and pin that SHA in Commits above.
+- Product evaluation / physical AT17 after Architecture acceptance.
+- P0-007C-3B after C-3A evaluation.

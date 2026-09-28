@@ -227,10 +227,18 @@ export async function setDisplayStepStatus(
   );
 }
 
+export type DisplaySyncHandle = {
+  disconnect: () => void;
+  /** Close the live socket without cancelling reconnect (AT11 / recovery tests). */
+  dropSocket: () => void;
+  /** Clear backoff and open immediately (AT11 restore after held outage). */
+  reconnectNow: () => void;
+};
+
 export function connectDisplaySync(
   onMessage: (msg: DisplayInvalidateMessage) => void,
   onStatus?: (status: "connected" | "disconnected" | "reconnecting") => void,
-): () => void {
+): DisplaySyncHandle {
   let socket: WebSocket | null = null;
   let stopped = false;
   let attempt = 0;
@@ -285,9 +293,33 @@ export function connectDisplaySync(
 
   open();
 
-  return () => {
-    stopped = true;
-    clearRetry();
-    socket?.close();
+  return {
+    disconnect: () => {
+      stopped = true;
+      clearRetry();
+      socket?.close();
+    },
+    dropSocket: () => {
+      socket?.close();
+    },
+    reconnectNow: () => {
+      if (stopped) return;
+      clearRetry();
+      attempt = 0;
+      const current = socket;
+      socket = null;
+      if (current) {
+        // Prevent the old socket's onclose from scheduling a second open.
+        current.onclose = () => {
+          onStatus?.("disconnected");
+        };
+        try {
+          current.close();
+        } catch {
+          /* ignore */
+        }
+      }
+      open();
+    },
   };
 }

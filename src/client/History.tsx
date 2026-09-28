@@ -662,6 +662,9 @@ function HistoryDetailView(props: {
                   return (
                   <li key={report.id}>
                     <strong>{report.actingMemberName ?? "Unknown actor"}</strong>
+                    {report.actorClass === "display" ? (
+                      <span className="meta"> · wall display</span>
+                    ) : null}
                     <div className="meta">
                       {statusLabel(report.resultingState)} · performed{" "}
                       {formatInstant(report.performedAt)} · recorded{" "}

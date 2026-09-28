@@ -7,36 +7,119 @@ import { buildApp } from "../../src/server/app.js";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const dbPath = path.resolve(root, process.env.DB_PATH ?? "runtime/e2e.sqlite");
 const port = process.env.PORT ?? "8790";
+const preserveDb = process.env.E2E_PRESERVE_DB === "1";
+const restartFlagPath = path.resolve(
+  path.dirname(dbPath),
+  `.e2e-restart-${port}`,
+);
+const generationPath = path.resolve(
+  path.dirname(dbPath),
+  `.e2e-gen-${port}`,
+);
 
-async function main() {
-  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-  if (fs.existsSync(dbPath)) fs.rmSync(dbPath);
+type Listening = {
+  app: Awaited<ReturnType<typeof buildApp>>["app"];
+};
 
+let current: Listening | null = null;
+let restartInFlight: Promise<void> | null = null;
+
+function bumpListenGeneration(): number {
+  const prev = fs.existsSync(generationPath)
+    ? Number(fs.readFileSync(generationPath, "utf8")) || 0
+    : 0;
+  const next = prev + 1;
+  fs.writeFileSync(generationPath, `${next}\n`, "utf8");
+  return next;
+}
+
+async function listenFresh(): Promise<Listening> {
   process.env.NODE_ENV = "production";
   process.env.APP_PROFILE = "test";
   process.env.AUTO_SEED = "1";
   process.env.DB_PATH = dbPath;
   process.env.BACKUP_DIR = path.resolve(root, "runtime/backups");
-  process.env.HOUSEHOLD_TIMEZONE = process.env.HOUSEHOLD_TIMEZONE ?? "America/New_York";
+  process.env.HOUSEHOLD_TIMEZONE =
+    process.env.HOUSEHOLD_TIMEZONE ?? "America/New_York";
   process.env.HOST = process.env.HOST ?? "127.0.0.1";
   process.env.PORT = port;
-  process.env.PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN ?? `http://127.0.0.1:${port}`;
+  process.env.PUBLIC_ORIGIN =
+    process.env.PUBLIC_ORIGIN ?? `http://127.0.0.1:${port}`;
   process.env.EVAL_LAN_ACCESS = "0";
+
+  const config = loadConfig();
+  const { app } = await buildApp(config);
+  await app.listen({ host: config.host, port: config.port });
+  const generation = bumpListenGeneration();
+  console.log(
+    `E2E server listening on http://${config.host}:${config.port} (generation ${generation})`,
+  );
+  return { app };
+}
+
+async function rebindHttpServer(): Promise<void> {
+  if (restartInFlight) {
+    await restartInFlight;
+    return;
+  }
+  restartInFlight = (async () => {
+    const previous = current;
+    if (previous) {
+      try {
+        await previous.app.close();
+      } catch {
+        /* already closed */
+      }
+    }
+    current = await listenFresh();
+    console.log(
+      `E2E server rebound (generation advanced; DB preserved)`,
+    );
+  })();
+  try {
+    await restartInFlight;
+  } finally {
+    restartInFlight = null;
+  }
+}
+
+async function main() {
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+  if (!preserveDb && fs.existsSync(dbPath)) fs.rmSync(dbPath);
+  if (!preserveDb) {
+    for (const side of [restartFlagPath, generationPath]) {
+      if (fs.existsSync(side)) fs.rmSync(side);
+    }
+  }
+  if (fs.existsSync(restartFlagPath)) fs.rmSync(restartFlagPath);
 
   if (!fs.existsSync(path.resolve(root, "dist/client/index.html"))) {
     console.error("dist/client missing — run npm run build first.");
     process.exit(1);
   }
 
-  const config = loadConfig();
-  const { app } = await buildApp(config);
-  await app.listen({ host: config.host, port: config.port });
-  console.log(`E2E server ready on http://${config.host}:${config.port}`);
+  current = await listenFresh();
+  console.log(`E2E server ready on http://${process.env.HOST}:${port}`);
+
+  // Soft restart seam for AT8: close + rebuild + re-listen without exiting
+  // the Playwright-managed process (Windows-safe; preserves SQLite).
+  const watch = setInterval(() => {
+    if (!fs.existsSync(restartFlagPath)) return;
+    try {
+      fs.rmSync(restartFlagPath);
+    } catch {
+      return;
+    }
+    void rebindHttpServer().catch((err) => {
+      console.error("E2E server rebind failed", err);
+    });
+  }, 200);
 
   const shutdown = async (signal: string) => {
+    clearInterval(watch);
     console.log(`E2E server shutting down (${signal})`);
     try {
-      await app.close();
+      if (current) await current.app.close();
     } finally {
       process.exit(0);
     }

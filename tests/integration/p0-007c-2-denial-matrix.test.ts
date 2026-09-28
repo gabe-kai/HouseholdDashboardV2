@@ -197,7 +197,7 @@ describe("P0-007C-2 AT4 principal denial matrix", () => {
       (entry) =>
         entry.principal === "display" && entry.origin !== "websocket",
     );
-    expect(displayHttp.length).toBe(4);
+    expect(displayHttp.length).toBe(5);
 
     for (const entry of displayHttp) {
       const url = resolvePath(entry.path);
@@ -206,10 +206,12 @@ describe("P0-007C-2 AT4 principal denial matrix", () => {
         url,
         headers: { cookie: memberOnly },
       });
+      // GETs deny with 401 (no display cookie). Unsafe display writes also require
+      // Origin/CSRF and may 403 before the principal check when Origin is absent.
       expect(
-        response.statusCode,
-        `${entry.method} ${entry.path}`,
-      ).toBe(401);
+        [401, 403].includes(response.statusCode),
+        `${entry.method} ${entry.path} → ${response.statusCode}`,
+      ).toBe(true);
     }
   });
 

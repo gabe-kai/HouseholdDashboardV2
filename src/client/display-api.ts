@@ -1,9 +1,10 @@
 /**
- * Display-principal HTTP/WS helpers (P0-007C-2).
- * Never stores household payloads in localStorage.
+ * Display-principal HTTP/WS helpers (P0-007C-2 / C-3A).
+ * Never stores household payloads or display CSRF in localStorage.
  */
 import type { HouseholdOverview } from "../domain/household-overview";
 import type { StepProgressCounts, WorkState } from "../domain/progress";
+import type { IntendedStructure, StepStatus, WorkKind } from "../shared/schemas";
 
 export type ApiError = Error & {
   code?: string;
@@ -12,6 +13,7 @@ export type ApiError = Error & {
 };
 
 export type DisplaySessionInfo = {
+  sessionId: string;
   displayId: string;
   label: string;
   householdId: string;
@@ -21,6 +23,8 @@ export type DisplaySessionInfo = {
   absoluteExpiresAt: string;
   lastSeenAt: string;
   activityGeneration: number;
+  /** In-memory only — never persist. */
+  csrfToken: string;
 };
 
 export type DisplayPersonSummary = {
@@ -74,6 +78,7 @@ export type DisplayPersonDetail = {
 export type DisplayOccurrenceDetail = {
   id: string;
   definitionId: string;
+  revisionId: string;
   title: string;
   kind: "routine" | "responsibility";
   daypart: string;
@@ -84,14 +89,27 @@ export type DisplayOccurrenceDetail = {
   state: WorkState;
   progress: StepProgressCounts;
   progressLabel: string;
+  /** Minimal first-action intent; IDs only — no plan/audit payload. */
+  intendedStructure?: IntendedStructure;
   steps: Array<{
     id: string;
     text: string;
     status: string;
     obligation: string;
     position: number;
+    logicalItemId?: string;
     source?: string;
   }>;
+};
+
+export type SetDisplayStepStatusBody = {
+  mutationId: string;
+  status: StepStatus;
+  performedAt: string;
+  activityGeneration?: number;
+  kind?: WorkKind;
+  householdDate: string;
+  intendedStructure: IntendedStructure;
 };
 
 export type DisplayInvalidateMessage = {
@@ -190,10 +208,37 @@ export async function fetchDisplayOccurrence(
   return data.occurrence;
 }
 
+export async function setDisplayStepStatus(
+  occurrenceId: string,
+  stepId: string,
+  body: SetDisplayStepStatusBody,
+  csrfToken: string,
+): Promise<{ occurrence: DisplayOccurrenceDetail }> {
+  return displayRequest(
+    `/api/v1/display/occurrences/${encodeURIComponent(occurrenceId)}/steps/${encodeURIComponent(stepId)}/status`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-csrf-token": csrfToken,
+      },
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export type DisplaySyncHandle = {
+  disconnect: () => void;
+  /** Close the live socket without cancelling reconnect (AT11 / recovery tests). */
+  dropSocket: () => void;
+  /** Clear backoff and open immediately (AT11 restore after held outage). */
+  reconnectNow: () => void;
+};
+
 export function connectDisplaySync(
   onMessage: (msg: DisplayInvalidateMessage) => void,
   onStatus?: (status: "connected" | "disconnected" | "reconnecting") => void,
-): () => void {
+): DisplaySyncHandle {
   let socket: WebSocket | null = null;
   let stopped = false;
   let attempt = 0;
@@ -248,9 +293,33 @@ export function connectDisplaySync(
 
   open();
 
-  return () => {
-    stopped = true;
-    clearRetry();
-    socket?.close();
+  return {
+    disconnect: () => {
+      stopped = true;
+      clearRetry();
+      socket?.close();
+    },
+    dropSocket: () => {
+      socket?.close();
+    },
+    reconnectNow: () => {
+      if (stopped) return;
+      clearRetry();
+      attempt = 0;
+      const current = socket;
+      socket = null;
+      if (current) {
+        // Prevent the old socket's onclose from scheduling a second open.
+        current.onclose = () => {
+          onStatus?.("disconnected");
+        };
+        try {
+          current.close();
+        } catch {
+          /* ignore */
+        }
+      }
+      open();
+    },
   };
 }

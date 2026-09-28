@@ -273,9 +273,21 @@ export const SetStepStatusSchema = z.object({
   kind: WorkKindSchema.optional(),
   /**
    * Required for responsibility first-action safety: revision + owner + step logical IDs.
-   * Routines may omit; mismatched responsibility intent is rejected.
+   * Display writes require this for both routines and responsibilities.
+   * Member routine writes may omit; mismatched responsibility intent is rejected.
    */
   intendedStructure: IntendedStructureSchema.optional(),
+});
+
+/** Display-principal status command; structural intent and household date required. */
+export const SetDisplayStepStatusSchema = z.object({
+  mutationId: UuidSchema,
+  status: StepStatusSchema,
+  performedAt: InstantSchema,
+  activityGeneration: z.number().int().nonnegative().optional(),
+  kind: WorkKindSchema.optional(),
+  householdDate: HouseholdDateSchema,
+  intendedStructure: IntendedStructureSchema,
 });
 
 export const LoginSchema = z.object({
@@ -446,9 +458,13 @@ export type StepReportPublic = {
   occurrenceId: string;
   occurrenceStepId: string;
   accountableMemberId: string;
-  actingMemberId: string;
+  /** Who submitted the command: human member or enrolled display. */
+  actorClass: "member" | "display";
+  /** Membership actor when actorClass is member; null for display actions. */
+  actingMemberId: string | null;
+  actingDisplayId?: string | null;
   actingMemberName: string | null;
-  /** Actual performer when recorded; null for legacy unknown. */
+  /** Actual performer when recorded; null for legacy unknown and all display actions. */
   performerMemberId: string | null;
   performedAt: string;
   recordedAt: string;

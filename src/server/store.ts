@@ -3671,6 +3671,102 @@ export class AppStore {
       intendedStructure?: IntendedStructure;
     },
   ) {
+    return this.applyChecklistStepStatus(
+      {
+        class: "member",
+        householdId: ctx.householdId,
+        membershipId: ctx.membershipId,
+        auth: ctx,
+      },
+      occurrenceId,
+      stepId,
+      {
+        mutationId: input.mutationId,
+        status: input.status,
+        performedAt: input.performedAt,
+        activityGeneration: input.activityGeneration,
+        kind: input.kind,
+        intendedStructure: input.intendedStructure,
+      },
+    );
+  }
+
+  /**
+   * Display-principal checklist write. Rechecks active display session inside
+   * the write transaction; binds receipts to display session, not a membership.
+   */
+  setStepStatusForDisplay(
+    display: {
+      sessionId: string;
+      displayId: string;
+      householdId: string;
+      label: string;
+    },
+    occurrenceId: string,
+    stepId: string,
+    input: {
+      mutationId: string;
+      status: StepStatus;
+      performedAt: string;
+      activityGeneration?: number;
+      kind?: WorkKind;
+      householdDate: string;
+      intendedStructure: IntendedStructure;
+    },
+  ) {
+    return this.applyChecklistStepStatus(
+      {
+        class: "display",
+        householdId: display.householdId,
+        displayId: display.displayId,
+        sessionId: display.sessionId,
+        label: display.label,
+      },
+      occurrenceId,
+      stepId,
+      {
+        mutationId: input.mutationId,
+        status: input.status,
+        performedAt: input.performedAt,
+        activityGeneration: input.activityGeneration,
+        kind: input.kind,
+        householdDate: input.householdDate,
+        intendedStructure: input.intendedStructure,
+        requireIntendedStructure: true,
+        currentDayOnly: true,
+      },
+    );
+  }
+
+  private applyChecklistStepStatus(
+    actor:
+      | {
+          class: "member";
+          householdId: string;
+          membershipId: string;
+          auth: AuthContext;
+        }
+      | {
+          class: "display";
+          householdId: string;
+          displayId: string;
+          sessionId: string;
+          label: string;
+        },
+    occurrenceId: string,
+    stepId: string,
+    input: {
+      mutationId: string;
+      status: StepStatus;
+      performedAt: string;
+      activityGeneration?: number;
+      kind?: WorkKind;
+      householdDate?: string;
+      intendedStructure?: IntendedStructure;
+      requireIntendedStructure?: boolean;
+      currentDayOnly?: boolean;
+    },
+  ) {
     if (Number.isNaN(new Date(input.performedAt).getTime()) || !input.performedAt.endsWith("Z")) {
       fail("VALIDATION", "Invalid performed instant");
     }
@@ -3679,6 +3775,30 @@ export class AppStore {
     const reportId = randomUUID();
 
     const tx = this.db.transaction(() => {
+      if (actor.class === "display") {
+        const sessionRow = this.db
+          .prepare(
+            `SELECT s.id, s.revoked_at, d.revoked_at AS display_revoked_at
+             FROM display_sessions s
+             JOIN household_displays d ON d.id = s.display_id
+             WHERE s.id = ? AND s.display_id = ? AND d.household_id = ?`,
+          )
+          .get(actor.sessionId, actor.displayId, actor.householdId) as
+          | {
+              id: string;
+              revoked_at: string | null;
+              display_revoked_at: string | null;
+            }
+          | undefined;
+        if (
+          !sessionRow ||
+          sessionRow.revoked_at ||
+          sessionRow.display_revoked_at
+        ) {
+          fail("UNAUTHORIZED", "Display session is no longer active");
+        }
+      }
+
       const occurrence = this.db
         .prepare(
           `SELECT o.id, o.household_id, o.accountable_member_id, o.household_date,
@@ -3708,7 +3828,7 @@ export class AppStore {
             ended_at: string | null;
           }
         | undefined;
-      if (!occurrence || occurrence.household_id !== ctx.householdId) {
+      if (!occurrence || occurrence.household_id !== actor.householdId) {
         fail("NOT_FOUND", "Occurrence not found");
       }
       const occurrenceKind: WorkKind =
@@ -3719,23 +3839,51 @@ export class AppStore {
       if (input.kind && input.kind !== occurrenceKind) {
         fail("CONFLICT", "Checklist kind does not match this occurrence");
       }
-      if (occurrenceKind === "responsibility") {
-        this.requireGrant(ctx, "responsibility.execute.own");
+
+      if (actor.class === "member") {
+        if (occurrenceKind === "responsibility") {
+          this.requireGrant(actor.auth, "responsibility.execute.own");
+        } else {
+          this.requireGrant(actor.auth, "routine.execute.own");
+        }
+        if (occurrenceKind === "responsibility" && !occurrence.accountable_member_id) {
+          fail("FORBIDDEN", "Unassigned responsibilities cannot be completed");
+        }
+        if (occurrence.accountable_member_id !== actor.membershipId) {
+          fail("FORBIDDEN", "Cannot modify another member's occurrence");
+        }
       } else {
-        this.requireGrant(ctx, "routine.execute.own");
-      }
-      if (occurrenceKind === "responsibility" && !occurrence.accountable_member_id) {
-        fail("FORBIDDEN", "Unassigned responsibilities cannot be completed");
-      }
-      if (occurrence.accountable_member_id !== ctx.membershipId) {
-        fail("FORBIDDEN", "Cannot modify another member's occurrence");
+        if (!occurrence.accountable_member_id) {
+          fail("FORBIDDEN", "Unassigned responsibilities cannot be completed");
+        }
+        // Confirm the occurrence is in the current-day display projection.
+        const projected = this.materializeHouseholdDate(
+          actor.householdId,
+          this.householdDateNowForHousehold(actor.householdId),
+        );
+        if (!projected.some((item) => item.id === occurrenceId)) {
+          fail("NOT_FOUND", "Occurrence not found");
+        }
       }
 
-      this.assertActivityGeneration(ctx.householdId, input.activityGeneration);
-      const activityGeneration = this.getActivityGeneration(ctx.householdId);
+      this.assertActivityGeneration(actor.householdId, input.activityGeneration);
+      const activityGeneration = this.getActivityGeneration(actor.householdId);
 
-      const today = this.householdDateNow(ctx);
-      if (compareHouseholdDates(occurrence.household_date, today) > 0) {
+      const today =
+        actor.class === "member"
+          ? this.householdDateNow(actor.auth)
+          : this.householdDateNowForHousehold(actor.householdId);
+      if (input.currentDayOnly) {
+        if (occurrence.household_date !== today) {
+          fail("FORBIDDEN", "Display can only act on today's assigned work");
+        }
+        if (input.householdDate && input.householdDate !== today) {
+          fail("VALIDATION", "Household date does not match the current day");
+        }
+        if (input.householdDate && input.householdDate !== occurrence.household_date) {
+          fail("CONFLICT", "This checklist changed; refresh and try again");
+        }
+      } else if (compareHouseholdDates(occurrence.household_date, today) > 0) {
         fail("VALIDATION", "This checklist isn't available yet");
       }
       if (
@@ -3770,7 +3918,7 @@ export class AppStore {
           const composed = this.resolveCompositionForRevision(
             occurrence.revision_id,
             occurrence.household_date,
-            ctx.householdId,
+            actor.householdId,
           );
           if (composed) {
             if (composed.accountableMemberId !== occurrence.accountable_member_id) {
@@ -3784,7 +3932,10 @@ export class AppStore {
               directMemberIds: this.revisionAssignees(occurrence.revision_id),
               groupMemberIdSets: [],
             });
-            if (!owners.includes(occurrence.accountable_member_id)) {
+            if (
+              !occurrence.accountable_member_id ||
+              !owners.includes(occurrence.accountable_member_id)
+            ) {
               fail(
                 "FORBIDDEN",
                 "This person is no longer accountable for that day",
@@ -3796,7 +3947,10 @@ export class AppStore {
             occurrence.revision_id,
             occurrence.household_date,
           );
-          if (!participants.includes(occurrence.accountable_member_id)) {
+          if (
+            !occurrence.accountable_member_id ||
+            !participants.includes(occurrence.accountable_member_id)
+          ) {
             fail(
               "FORBIDDEN",
               "This person is no longer on this routine for that day",
@@ -3805,9 +3959,11 @@ export class AppStore {
         }
       }
 
-      if (occurrenceKind === "responsibility") {
+      const requireIntent =
+        input.requireIntendedStructure || occurrenceKind === "responsibility";
+      if (requireIntent) {
         if (!input.intendedStructure) {
-          fail("VALIDATION", "Intended structure is required for responsibilities");
+          fail("VALIDATION", "Intended structure is required");
         }
         const stepLogicalIds = (
           this.db
@@ -3843,6 +3999,7 @@ export class AppStore {
       const receipt = this.db
         .prepare(
           `SELECT household_id, occurrence_id, occurrence_step_id, actor_membership_id,
+                  actor_class, actor_display_id, actor_display_session_id,
                   kind, resulting_state, activity_generation, payload_digest, response_json
            FROM mutation_receipts WHERE mutation_id = ?`,
         )
@@ -3852,6 +4009,9 @@ export class AppStore {
             occurrence_id: string | null;
             occurrence_step_id: string | null;
             actor_membership_id: string | null;
+            actor_class: string | null;
+            actor_display_id: string | null;
+            actor_display_session_id: string | null;
             kind: string | null;
             resulting_state: string | null;
             activity_generation: number | null;
@@ -3860,11 +4020,18 @@ export class AppStore {
           }
         | undefined;
       if (receipt) {
+        const actorBound =
+          actor.class === "member"
+            ? (receipt.actor_class === "member" || receipt.actor_class === null) &&
+              receipt.actor_membership_id === actor.membershipId
+            : receipt.actor_class === "display" &&
+              receipt.actor_display_id === actor.displayId &&
+              receipt.actor_display_session_id === actor.sessionId;
         const bound =
-          receipt.household_id === ctx.householdId &&
+          receipt.household_id === actor.householdId &&
           receipt.occurrence_id === occurrenceId &&
           receipt.occurrence_step_id === stepId &&
-          receipt.actor_membership_id === ctx.membershipId &&
+          actorBound &&
           receipt.kind === occurrenceKind &&
           receipt.resulting_state === input.status &&
           receipt.payload_digest === digest &&
@@ -3894,7 +4061,14 @@ export class AppStore {
       }
 
       const performerMemberId =
-        occurrenceKind === "responsibility" ? ctx.membershipId : null;
+        actor.class === "member" && occurrenceKind === "responsibility"
+          ? actor.membershipId
+          : null;
+      const actingMemberId = actor.class === "member" ? actor.membershipId : null;
+      const actorClass = actor.class;
+      const actingDisplayId = actor.class === "display" ? actor.displayId : null;
+      const actingDisplaySessionId =
+        actor.class === "display" ? actor.sessionId : null;
 
       this.db
         .prepare("UPDATE occurrence_steps SET status = ? WHERE id = ?")
@@ -3916,8 +4090,9 @@ export class AppStore {
         .prepare(
           `INSERT INTO step_reports
            (id, mutation_id, occurrence_id, occurrence_step_id, accountable_member_id,
-            acting_member_id, performer_member_id, performed_at, recorded_at, resulting_state)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            actor_class, acting_member_id, acting_display_id, acting_display_session_id,
+            performer_member_id, performed_at, recorded_at, resulting_state)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           reportId,
@@ -3925,7 +4100,10 @@ export class AppStore {
           occurrenceId,
           stepId,
           occurrence.accountable_member_id,
-          ctx.membershipId,
+          actorClass,
+          actingMemberId,
+          actingDisplayId,
+          actingDisplaySessionId,
           performerMemberId,
           input.performedAt,
           recordedAt,
@@ -3939,7 +4117,14 @@ export class AppStore {
           occurrenceId,
           occurrenceStepId: stepId,
           accountableMemberId: occurrence.accountable_member_id,
-          actingMemberId: ctx.membershipId,
+          actorClass,
+          actingMemberId,
+          actingDisplayId,
+          actingDisplaySessionId,
+          actingMemberName:
+            actor.class === "member"
+              ? actor.auth.displayName
+              : actor.label,
           performerMemberId,
           performedAt: input.performedAt,
           recordedAt,
@@ -3951,18 +4136,22 @@ export class AppStore {
         .prepare(
           `INSERT INTO mutation_receipts
            (mutation_id, response_json, created_at, household_id, occurrence_id,
-            occurrence_step_id, actor_membership_id, kind, resulting_state,
+            occurrence_step_id, actor_membership_id, actor_class, actor_display_id,
+            actor_display_session_id, kind, resulting_state,
             activity_generation, payload_digest)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           input.mutationId,
           JSON.stringify(payload),
           recordedAt,
-          ctx.householdId,
+          actor.householdId,
           occurrenceId,
           stepId,
-          ctx.membershipId,
+          actingMemberId,
+          actorClass,
+          actingDisplayId,
+          actingDisplaySessionId,
           occurrenceKind,
           input.status,
           activityGeneration,
@@ -3971,6 +4160,15 @@ export class AppStore {
       return payload;
     });
     return tx();
+  }
+
+  /** Household-local date without a member AuthContext (display principal). */
+  householdDateNowForHousehold(householdId: string, now = new Date()): HouseholdDate {
+    const timezone = this.db
+      .prepare(`SELECT timezone FROM households WHERE id = ?`)
+      .get(householdId) as { timezone: string } | undefined;
+    if (!timezone) fail("NOT_FOUND", "Household not found");
+    return householdDateFromInstant(now, timezone.timezone);
   }
 
   historyForDate(ctx: AuthContext, householdDate: HouseholdDate): OccurrenceView[] {
@@ -4097,11 +4295,14 @@ export class AppStore {
     const rows = this.db
       .prepare(
         `SELECT sr.id, sr.mutation_id, sr.occurrence_id, sr.occurrence_step_id,
-                sr.accountable_member_id, sr.acting_member_id, sr.performer_member_id,
-                sr.performed_at, sr.recorded_at, sr.resulting_state,
-                hm.display_name AS acting_name
+                sr.accountable_member_id, sr.actor_class, sr.acting_member_id,
+                sr.acting_display_id, sr.acting_display_session_id,
+                sr.performer_member_id, sr.performed_at, sr.recorded_at, sr.resulting_state,
+                hm.display_name AS acting_member_name,
+                hd.label AS acting_display_label
          FROM step_reports sr
          LEFT JOIN household_memberships hm ON hm.id = sr.acting_member_id
+         LEFT JOIN household_displays hd ON hd.id = sr.acting_display_id
          WHERE sr.occurrence_id = ?
          ORDER BY sr.recorded_at, sr.id`,
       )
@@ -4111,26 +4312,41 @@ export class AppStore {
       occurrence_id: string;
       occurrence_step_id: string;
       accountable_member_id: string;
-      acting_member_id: string;
+      actor_class: string | null;
+      acting_member_id: string | null;
+      acting_display_id: string | null;
+      acting_display_session_id: string | null;
       performer_member_id: string | null;
       performed_at: string;
       recorded_at: string;
       resulting_state: StepStatus;
-      acting_name: string | null;
+      acting_member_name: string | null;
+      acting_display_label: string | null;
     }>;
-    return rows.map((row) => ({
-      id: row.id,
-      mutationId: row.mutation_id,
-      occurrenceId: row.occurrence_id,
-      occurrenceStepId: row.occurrence_step_id,
-      accountableMemberId: row.accountable_member_id,
-      actingMemberId: row.acting_member_id,
-      actingMemberName: row.acting_name,
-      performerMemberId: row.performer_member_id ?? null,
-      performedAt: row.performed_at,
-      recordedAt: row.recorded_at,
-      resultingState: row.resulting_state,
-    }));
+    return rows.map((row) => {
+      const actorClass =
+        row.actor_class === "display" ? ("display" as const) : ("member" as const);
+      return {
+        id: row.id,
+        mutationId: row.mutation_id,
+        occurrenceId: row.occurrence_id,
+        occurrenceStepId: row.occurrence_step_id,
+        accountableMemberId: row.accountable_member_id,
+        actorClass,
+        actingMemberId: row.acting_member_id,
+        actingDisplayId: row.acting_display_id,
+        actingMemberName:
+          actorClass === "display"
+            ? row.acting_display_label
+              ? `Display · ${row.acting_display_label}`
+              : "Household display"
+            : row.acting_member_name,
+        performerMemberId: row.performer_member_id ?? null,
+        performedAt: row.performed_at,
+        recordedAt: row.recorded_at,
+        resultingState: row.resulting_state,
+      };
+    });
   }
 
   getActivityGeneration(householdId: string): number {

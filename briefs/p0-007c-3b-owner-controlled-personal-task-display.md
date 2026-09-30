@@ -1,7 +1,7 @@
 # BRIEF P0-007C-3B - Owner-Controlled Personal Work on the Wall
 
 **Revision:** 1  
-**Status:** IN REVIEW
+**Status:** READY
 
 `ACCEPTED` will mean Architecture has accepted this implementation against r1. Project Lead acceptance of the completed P0-007C experience remains separate.
 
@@ -94,8 +94,11 @@ Inspected clean `main` at **6510fb4** (PR **#22**) before drafting; migrations e
 **Readiness:** READY  
 **Review artifact:** `reports/P0-007C-3B-r1-engineering-readiness.md`  
 **Baseline inspected:** `6510fb4`  
-**Disposition:** READY for Architecture ACCEPT / PROCEED. No BLOCKER or QUESTION. Implementation must not start until Architecture responds.
+**Disposition:** READY. No BLOCKER or QUESTION.
+
+**Architecture disposition:** ACCEPT / PROCEED. Engineering may begin implementing this exact r1. The IMPORTANT delivery notes are already represented in the behavioral contract and acceptance tests; they do not require a revision change.
 
 ## Revision history
 
 - **r1:** Initial authoritative contract for owner-controlled personal-task display promotion after C-3A evaluation.
+- **r1 readiness:** Engineering READY against `6510fb4`; Architecture accepted readiness and authorized implementation without changing the contract.

@@ -19,7 +19,7 @@
 
 ## Current focus
 
-Integrated `main` matches `origin/main` at **6510fb4**, merging technically accepted **P0-007C-3A r1** via PR **#22** after AT11 socket-loss/missed-update recovery evidence. Reacceptance: `reports/P0-007C-3A-r1-architecture-reacceptance.md`. The Project Lead reports the existing 27-inch wall readable at approximately 10 and 16 feet but finds its resting views visually busy; this is partial evaluation, not full Product acceptance. **P0-007C-3B r1** Engineering readiness is **READY** against that baseline (`reports/P0-007C-3B-r1-engineering-readiness.md`); implementation waits for Architecture ACCEPT / PROCEED.
+Integrated `main` matches `origin/main` at **6510fb4**, merging technically accepted **P0-007C-3A r1** via PR **#22** after AT11 socket-loss/missed-update recovery evidence. Reacceptance: `reports/P0-007C-3A-r1-architecture-reacceptance.md`. The Project Lead reports the existing 27-inch wall readable at approximately 10 and 16 feet but finds its resting views visually busy; this is partial evaluation, not full Product acceptance. **P0-007C-3B r1** is **READY**; Architecture accepted Engineering readiness and authorized implementation on `brief/p0-007c-3b-personal-work-wall-promotion`.
 
 The integrated baseline also includes accepted **P0-007C-1 r1** via PR **#20** at `ef39a89` and **P0-007C-2 r1** via PR **#21** at `739f7e3`. Old reports retain the SHAs of their inspected baselines.
 
@@ -41,7 +41,7 @@ The integrated baseline also includes accepted **P0-007C-1 r1** via PR **#20** a
 | P0-007C-1 - Actionable Today and Household Overview | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `ef39a89` via PR #20 | Product speed-of-understanding evaluation |
 | P0-007C-2 - Household Display and Read-only Dashboard | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `739f7e3` via PR #21 | Physical readability reported; full Product acceptance remains separate |
 | P0-007C-3A - Complete Assigned Work at the Shared Display | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `6510fb4` via PR #22 | Product evaluation remains separate; display density feedback recorded |
-| P0-007C-3B - Owner-Controlled Personal Work on the Wall | r1 | READY | Engineering → Architecture ACCEPT/PROCEED | `brief/p0-007c-3b-personal-work-wall-promotion` @ readiness tip; baseline `6510fb4` | Architecture ACCEPT / PROCEED before implementation |
+| P0-007C-3B - Owner-Controlled Personal Work on the Wall | r1 | READY | Engineering | `brief/p0-007c-3b-personal-work-wall-promotion` @ `2a348fe`; baseline `6510fb4` | Implementation and Build Report |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -68,7 +68,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Known blockers
 
-- No technical blocker for P0-007C-3B r1. Engineering readiness is READY; coding waits for Architecture ACCEPT / PROCEED. Wall density and responsibility-authoring friction are recorded Product feedback, not an authorization to broaden C-3B.
+- No technical blocker is known for P0-007C-3B r1. Architecture accepted Engineering readiness; implementation is authorized. Wall density and responsibility-authoring friction are recorded Product feedback, not an authorization to broaden C-3B.
 
 ## Next Project Lead decision
 
@@ -76,7 +76,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Architecture reviews Engineering readiness for **`briefs/p0-007c-3b-owner-controlled-personal-task-display.md` revision 1** and returns ACCEPT / PROCEED (or revises the contract). Implementation must not start before that response. The Project Lead continues to own Git commits/merge and Product evaluation.
+Engineering implements **`briefs/p0-007c-3b-owner-controlled-personal-task-display.md` revision 1** on the existing brief branch and returns its Build Report for Architecture technical acceptance. The Project Lead continues to own Git commits/merge and Product evaluation.
 
 ## Notes for all teams
 

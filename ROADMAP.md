@@ -84,7 +84,7 @@ The third approved Product outcome is intentionally decomposed into evidence-gat
 
 - [ ] **P0-007C-3B - Let owners choose personal work to show on the wall.** Add an owner-controlled display-promotion choice, distinct from Only me/Household visibility. Preserve private-task exclusion and keep unpromoted household-visible work detail-only. Refine display placement/interaction from C-3A use; no parental override or task-control authority is implied.
   - **Brief:** `P0-007C-3B r1 - Owner-Controlled Personal Work on the Wall` (`briefs/p0-007c-3b-owner-controlled-personal-task-display.md`).
-  - **Status:** IN REVIEW with Architecture contract D-048–D-049; Engineering readiness and implementation have not begun. Project card **Act at the shared display without losing trust** remains unfinished; technical and Product acceptance are separate.
+  - **Status:** READY; Architecture accepted Engineering's readiness review and authorized implementation on `brief/p0-007c-3b-personal-work-wall-promotion`. Project card **Act at the shared display without losing trust** remains unfinished; technical and Product acceptance are separate.
   - **Evidence target:** Owner-only sharing/promotion with stable completion-time meaning, default-off populated upgrade, private exclusion at API/event/client boundaries, compact open-task placement in both wall summaries, withdrawal without stale resurrection, C-3A regression, local PR/RC gates and a new physical density/readability judgment for the changed 27-inch view.
 
 ### LIKELY NEXT

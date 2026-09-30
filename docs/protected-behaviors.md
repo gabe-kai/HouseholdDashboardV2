@@ -88,6 +88,8 @@ invalidation/reconciliation semantics.
 | PB-51 | Display revocation/replacement closes affected sockets; version-checked management commands; claim atomicity and issuer recheck |
 | PB-52 | Display execution: dedicated display status route; device actor ≠ accountable member; performer unknown; shared checklist locks/generation/intent; display Origin+CSRF; current-day assigned work only |
 | PB-53 | Display pending recovery: session-keyed minimal outbox; 60s stale queue bound; revoke/replace/reset/day fences; no durable household payload cache |
+| PB-54 | Personal-task wall promotion: owner-only visibility/promotion distinct from Private/Household; private clears promotion; completedAt preserved across sharing edits; no display personal-task writes |
+| PB-55 | Promoted personal sync privacy: private task IDs never fan out to nonowners or display WS; household→private / unpromote / completion withdraws display resting content via sanitized invalidation |
 
 ### Environment-specific (not counted as automated acceptance)
 
@@ -140,8 +142,9 @@ Duplicate, late, and missed events must be safe.
 | GET `/history` | stored occurrence summaries (read-only) | *(none)* | — | — | never materializes | n/a |
 | GET `/history/occurrences/:id` | stored detail + step_reports | *(none)* | — | — | foreign → NOT_FOUND | n/a |
 | POST `/household/activity/clear` | erase checklist graph + scoped receipts; bump generation/floor; acknowledged `routines_and_responsibilities` (legacy rejected when responsibility data exists) | `activity_reset` | today, History, settings | retire older outbox for this membership | same `mutationId` replay; expectedGeneration conflict; config∧grant gate | refresh today/history; clear old outbox |
-| POST `/personal-tasks` | task | `personal_task` | personal-tasks | — | new task | fetch personal-tasks |
-| POST `/personal-tasks/:id/status` | task status | `personal_task` | personal-tasks | — | same `mutationId` idempotent | fetch personal-tasks |
+| POST `/personal-tasks` | task (+ optional promote when household) | `personal_task` (owner-only if private) | personal-tasks | display `tasks` if household before/after | new task | fetch personal-tasks / display dashboard |
+| POST `/personal-tasks/:id/status` | task status | `personal_task` (owner-only if private) | personal-tasks | display `tasks` if household before/after | same `mutationId` idempotent | fetch personal-tasks / display dashboard |
+| POST `/personal-tasks/:id/sharing` | visibility + show on shared dashboard | `personal_task` (owner-only if resulting private) | personal-tasks | display `tasks` if household before/after | same `mutationId` + digest; `expectedSharingVersion` conflict | fetch personal-tasks / display dashboard |
 | POST `/test/bootstrap-claim` | claim | *(none)* | — | — | test-only | n/a |
 
 WebSocket `GET /api/v1/sync` delivers invalidations only. Connect also sends a synthetic

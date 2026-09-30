@@ -1,4 +1,4 @@
-﻿import fs from "node:fs";
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -102,7 +102,7 @@ describe("P0-007C-2 display HTTP principal boundaries", () => {
     expect(dashOk.statusCode).toBe(200);
     expect(dashOk.headers["cache-control"]).toBe("no-store");
 
-    // Claim while signed in as human → 409
+    // Claim while signed in as human ? 409
     const conflict = await harness.app.inject({
       method: "POST",
       url: "/api/v1/display/claim",
@@ -180,7 +180,7 @@ describe("P0-007C-2 through-014 upgrade (AT1)", () => {
     ).toBe(1);
     expect(
       (db.prepare("SELECT COUNT(*) AS c FROM schema_migrations").get() as { c: number }).c,
-    ).toBe(16);
+    ).toBe(17);
 
     const morganGrants = (
       db
@@ -230,7 +230,7 @@ describe("P0-007C-2 through-014 upgrade (AT1)", () => {
     migrate(db);
     expect(
       (db.prepare("SELECT COUNT(*) AS c FROM schema_migrations").get() as { c: number }).c,
-    ).toBe(16);
+    ).toBe(17);
 
     const displayId = randomUUID();
     db.prepare(

@@ -1275,6 +1275,21 @@ function DisplayOverview(props: {
                           : ""}
                       </span>
                     ) : null}
+                    {(person.promotedPersonalTasks ?? []).length > 0 ? (
+                      <span
+                        className="display-person-personal"
+                        data-testid={`display-person-promoted-${person.membershipId}`}
+                      >
+                        Personal ·{" "}
+                        {(person.promotedPersonalTasks ?? [])
+                          .slice(0, 3)
+                          .map((task) => task.title)
+                          .join(" · ")}
+                        {(person.promotedPersonalTasks ?? []).length > 3
+                          ? ` · +${(person.promotedPersonalTasks ?? []).length - 3} more`
+                          : ""}
+                      </span>
+                    ) : null}
                   </button>
                 </li>
               );
@@ -1303,6 +1318,23 @@ function DisplayByWork(props: {
 
   return (
     <div data-testid="display-by-work">
+      {(props.dashboard.promotedPersonalTasks ?? []).length > 0 ? (
+        <div className="display-promoted-personal" data-testid="display-promoted-personal">
+          <h2 className="display-section-title">Personal on wall</h2>
+          <ul className="display-work-list">
+            {(props.dashboard.promotedPersonalTasks ?? []).map((task) => (
+              <li key={task.id}>
+                <div className="display-work-row display-personal-row">
+                  <span className="display-work-title">{task.title}</span>
+                  <span className="display-work-meta">
+                    {task.ownerDisplayName} · Personal
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {unassigned.length > 0 ? (
         <div className="display-needs-assignment">
           <h2 className="display-section-title">Needs assignment</h2>
@@ -1529,7 +1561,10 @@ function PersonDetailView(props: {
               className={task.status === "completed" ? "completed-quiet" : ""}
             >
               <span className="display-work-title">{task.title}</span>
-              <span className="display-work-meta">{task.status}</span>
+              <span className="display-work-meta">
+                {task.status}
+                {task.showOnSharedDashboard ? " · Shared dashboard" : ""}
+              </span>
             </li>
           ))}
         </ul>

@@ -34,6 +34,7 @@
     "test:e2e:chromium:phone:007c1": "playwright test --project=chromium --grep \"P0-007C-1\"",
     "test:e2e:chromium:phone:007c2": "playwright test --project=chromium --grep \"P0-007C-2\"",
     "test:e2e:chromium:phone:007c3a": "playwright test --project=chromium --grep \"P0-007C-3A\"",
+    "test:e2e:chromium:phone:007c3b": "playwright test --project=chromium --grep \"P0-007C-3B\"",
     "test:e2e:chromium:desktop": "playwright test --project=chromium-desktop --project=chromium-display",
     "test:e2e:vite": "playwright install chromium && playwright test -c playwright.vite.config.ts",
     "validate": "npm run lint && npm run typecheck && npm test",

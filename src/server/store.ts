@@ -5039,7 +5039,11 @@ export class AppStore {
 
   createTask(
     ctx: AuthContext,
-    input: { title: string; visibility: "private" | "household" },
+    input: {
+      title: string;
+      visibility: "private" | "household";
+      showOnSharedDashboard?: boolean;
+    },
   ) {
     this.requireGrant(ctx, "personal_task.create");
     const title = input.title.trim();
@@ -5047,13 +5051,18 @@ export class AppStore {
     if (input.visibility !== "private" && input.visibility !== "household") {
       fail("VALIDATION", "Invalid task visibility");
     }
+    const showOnSharedDashboard = Boolean(input.showOnSharedDashboard);
+    if (input.visibility === "private" && showOnSharedDashboard) {
+      fail("VALIDATION", "Private tasks cannot be shown on the shared dashboard");
+    }
     const id = randomUUID();
     const createdAt = nowUtcIso();
     this.db
       .prepare(
         `INSERT INTO personal_tasks
-         (id, household_id, owner_membership_id, title, visibility, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, 'open', ?, ?)`,
+         (id, household_id, owner_membership_id, title, visibility, status,
+          show_on_shared_dashboard, completed_at, sharing_version, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 'open', ?, NULL, 0, ?, ?)`,
       )
       .run(
         id,
@@ -5061,6 +5070,7 @@ export class AppStore {
         ctx.membershipId,
         title,
         input.visibility,
+        showOnSharedDashboard ? 1 : 0,
         createdAt,
         createdAt,
       );
@@ -5098,9 +5108,24 @@ export class AppStore {
     }
     const updatedAt = nowUtcIso();
     const tx = this.db.transaction(() => {
-      this.db
-        .prepare("UPDATE personal_tasks SET status = ?, updated_at = ? WHERE id = ?")
-        .run(input.status, updatedAt, taskId);
+      if (input.status === "completed") {
+        this.db
+          .prepare(
+            `UPDATE personal_tasks
+             SET status = ?, updated_at = ?,
+                 completed_at = COALESCE(completed_at, ?)
+             WHERE id = ?`,
+          )
+          .run(input.status, updatedAt, updatedAt, taskId);
+      } else {
+        this.db
+          .prepare(
+            `UPDATE personal_tasks
+             SET status = ?, updated_at = ?, completed_at = NULL
+             WHERE id = ?`,
+          )
+          .run(input.status, updatedAt, taskId);
+      }
       const response = this.getTask(taskId)!;
       this.db
         .prepare(
@@ -5111,6 +5136,126 @@ export class AppStore {
       return response;
     });
     return tx();
+  }
+
+  setTaskSharing(
+    ctx: AuthContext,
+    taskId: string,
+    input: {
+      mutationId: string;
+      visibility: "private" | "household";
+      showOnSharedDashboard: boolean;
+      expectedSharingVersion: number;
+    },
+  ) {
+    const before = this.getTask(taskId);
+    if (!before || before.householdId !== ctx.householdId) {
+      fail("NOT_FOUND", "Task not found");
+    }
+    if (before.ownerMembershipId !== ctx.membershipId) {
+      fail("FORBIDDEN", "Only the task owner may change sharing");
+    }
+    if (input.visibility !== "private" && input.visibility !== "household") {
+      fail("VALIDATION", "Invalid task visibility");
+    }
+    // Private always clears promotion atomically.
+    const showOnSharedDashboard =
+      input.visibility === "private" ? false : Boolean(input.showOnSharedDashboard);
+    if (input.visibility === "private" && input.showOnSharedDashboard) {
+      fail("VALIDATION", "Private tasks cannot be shown on the shared dashboard");
+    }
+
+    const digest = createHash("sha256")
+      .update(
+        JSON.stringify({
+          visibility: input.visibility,
+          showOnSharedDashboard,
+          expectedSharingVersion: input.expectedSharingVersion,
+        }),
+        "utf8",
+      )
+      .digest("hex");
+
+    const prior = this.db
+      .prepare(
+        `SELECT task_id, owner_membership_id, payload_digest, response_json
+         FROM personal_task_sharing_mutations WHERE mutation_id = ?`,
+      )
+      .get(input.mutationId) as
+      | {
+          task_id: string;
+          owner_membership_id: string;
+          payload_digest: string;
+          response_json: string;
+        }
+      | undefined;
+    if (prior) {
+      if (
+        prior.task_id !== taskId ||
+        prior.owner_membership_id !== ctx.membershipId ||
+        prior.payload_digest !== digest
+      ) {
+        fail("CONFLICT", "Task sharing couldn't be updated");
+      }
+      return JSON.parse(prior.response_json) as ReturnType<AppStore["getTask"]>;
+    }
+
+    if (before.sharingVersion !== input.expectedSharingVersion) {
+      fail("CONFLICT", "Task sharing was changed elsewhere");
+    }
+
+    const updatedAt = nowUtcIso();
+    const tx = this.db.transaction(() => {
+      this.db
+        .prepare(
+          `UPDATE personal_tasks
+           SET visibility = ?,
+               show_on_shared_dashboard = ?,
+               sharing_version = sharing_version + 1,
+               updated_at = ?
+           WHERE id = ?`,
+        )
+        .run(
+          input.visibility,
+          showOnSharedDashboard ? 1 : 0,
+          updatedAt,
+          taskId,
+        );
+      const response = this.getTask(taskId)!;
+      this.db
+        .prepare(
+          `INSERT INTO personal_task_sharing_mutations
+           (mutation_id, task_id, owner_membership_id, payload_digest, response_json, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          input.mutationId,
+          taskId,
+          ctx.membershipId,
+          digest,
+          JSON.stringify(response),
+          updatedAt,
+        );
+      return response;
+    });
+    return tx();
+  }
+
+  /** Snapshot used for display invalidation before/after mutations. */
+  getTaskDisplayRelevance(taskId: string, householdId: string): {
+    visibility: "private" | "household";
+    showOnSharedDashboard: boolean;
+    status: "open" | "completed";
+    ownerMembershipId: string;
+  } | null {
+    const task = this.getTask(taskId);
+    if (!task || task.householdId !== householdId) return null;
+    return {
+      visibility: task.visibility,
+      showOnSharedDashboard: task.showOnSharedDashboard,
+      status: task.status,
+      ownerMembershipId: task.ownerMembershipId,
+    };
   }
 
   private authContextFromRow(row: {
@@ -8014,6 +8159,9 @@ export class AppStore {
           title: string;
           visibility: "private" | "household";
           status: "open" | "completed";
+          show_on_shared_dashboard: number;
+          completed_at: string | null;
+          sharing_version: number;
           created_at: string;
           updated_at: string;
         }
@@ -8026,9 +8174,14 @@ export class AppStore {
           title: row.title,
           visibility: row.visibility,
           status: row.status,
+          showOnSharedDashboard: row.show_on_shared_dashboard === 1,
+          sharingVersion: row.sharing_version,
           createdAt: row.created_at,
           updatedAt: row.updated_at,
-          completedAt: row.status === "completed" ? row.updated_at : null,
+          completedAt:
+            row.status === "completed"
+              ? (row.completed_at ?? row.updated_at)
+              : null,
         }
       : null;
   }

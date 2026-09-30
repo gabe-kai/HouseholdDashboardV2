@@ -39,6 +39,7 @@ import {
   SavePersonalLayerSchema,
   SaveSchoolCalendarSchema,
   SetPersonalTaskStatusSchema,
+  UpdatePersonalTaskSharingSchema,
   SetStepStatusSchema,
   SetDisplayStepStatusSchema,
   UpdateGroupSchema,
@@ -307,9 +308,7 @@ export async function buildApp(
       at: nowUtcIso(),
     });
     if (resource === "personal_task") {
-      if (displayStore.isHouseholdVisibleTask(resourceId, session.householdId)) {
-        displayInvalidate(session.householdId, "tasks");
-      }
+      // Prefer notifyPersonalTaskChange for task mutations; this path is unused.
       return;
     }
     if (resource === "activity_reset") {
@@ -329,6 +328,38 @@ export async function buildApp(
       return;
     }
     displayInvalidate(session.householdId, "work");
+  }
+
+  function notifyPersonalTaskChange(input: {
+    session: AuthContext;
+    before: {
+      visibility: "private" | "household";
+      showOnSharedDashboard: boolean;
+      status: "open" | "completed";
+      ownerMembershipId: string;
+    } | null;
+    after: {
+      id: string;
+      visibility: "private" | "household";
+      showOnSharedDashboard: boolean;
+      status: "open" | "completed";
+      ownerMembershipId: string;
+    };
+  }): void {
+    const { session, before, after } = input;
+    const wasHousehold = before?.visibility === "household";
+    const isHousehold = after.visibility === "household";
+    sync.broadcastPersonalTask({
+      householdId: session.householdId,
+      ownerMembershipId: after.ownerMembershipId,
+      visibility: after.visibility,
+      taskId: after.id,
+      at: nowUtcIso(),
+      previouslyHouseholdVisible: wasHousehold,
+    });
+    if (wasHousehold || isHousehold) {
+      displayInvalidate(session.householdId, "tasks");
+    }
   }
 
   app.addHook("onSend", async (request, reply, payload) => {
@@ -1318,7 +1349,7 @@ export async function buildApp(
         .send(errorBody("VALIDATION", "Invalid personal task", request.id));
     }
     const task = store.createTask(session, parsed.data);
-    broadcast(session, "personal_task", task.id);
+    notifyPersonalTaskChange({ session, before: null, after: task });
     return { task };
   });
 
@@ -1338,8 +1369,28 @@ export async function buildApp(
         .code(400)
         .send(errorBody("VALIDATION", "Invalid task status", request.id));
     }
+    const before = store.getTaskDisplayRelevance(taskId, session.householdId);
     const task = store.setTaskStatus(session, taskId, parsed.data);
-    broadcast(session, "personal_task", task!.id);
+    notifyPersonalTaskChange({ session, before, after: task! });
+    return { task };
+  });
+
+  app.post("/api/v1/personal-tasks/:taskId/sharing", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const { taskId } = request.params as { taskId: string };
+    const parsed = UpdatePersonalTaskSharingSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid task sharing", request.id));
+    }
+    const before = store.getTaskDisplayRelevance(taskId, session.householdId);
+    const task = store.setTaskSharing(session, taskId, parsed.data);
+    if (!task) {
+      return reply.code(404).send(errorBody("NOT_FOUND", "Task not found", request.id));
+    }
+    notifyPersonalTaskChange({ session, before, after: task });
     return { task };
   });
 
@@ -1597,7 +1648,7 @@ export async function buildApp(
       socket.close(4401, "unauthorized");
       return;
     }
-    sync.add(session.householdId, socket);
+    sync.add(session.householdId, session.membershipId, socket);
     socket.send(
       JSON.stringify({
         type: "household_change",

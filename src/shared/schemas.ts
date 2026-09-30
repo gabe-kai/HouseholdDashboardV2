@@ -389,15 +389,43 @@ export const DecideProposalSchema = z.object({
   decision: z.enum(["approved", "rejected"]),
 });
 
-export const CreatePersonalTaskSchema = z.object({
-  title: z.string().trim().min(1).max(200),
-  visibility: z.enum(["private", "household"]),
-});
+export const CreatePersonalTaskSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200),
+    visibility: z.enum(["private", "household"]),
+    showOnSharedDashboard: z.boolean().optional().default(false),
+  })
+  .superRefine((value, ctx) => {
+    if (value.visibility === "private" && value.showOnSharedDashboard) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Private tasks cannot be shown on the shared dashboard",
+        path: ["showOnSharedDashboard"],
+      });
+    }
+  });
 
 export const SetPersonalTaskStatusSchema = z.object({
   mutationId: UuidSchema,
   status: z.enum(["open", "completed"]),
 });
+
+export const UpdatePersonalTaskSharingSchema = z
+  .object({
+    mutationId: UuidSchema,
+    visibility: z.enum(["private", "household"]),
+    showOnSharedDashboard: z.boolean(),
+    expectedSharingVersion: z.number().int().nonnegative(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.visibility === "private" && value.showOnSharedDashboard) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Private tasks cannot be shown on the shared dashboard",
+        path: ["showOnSharedDashboard"],
+      });
+    }
+  });
 
 export type OccurrenceStepView = {
   id: string;

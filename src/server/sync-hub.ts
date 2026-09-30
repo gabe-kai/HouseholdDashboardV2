@@ -5,6 +5,7 @@ type MemberClient = {
   kind: "member";
   socket: WebSocket;
   householdId: string;
+  membershipId: string;
 };
 
 type DisplayClient = {
@@ -44,8 +45,13 @@ export class SyncHub {
     if (typeof this.pingTimer.unref === "function") this.pingTimer.unref();
   }
 
-  add(householdId: string, socket: WebSocket): void {
-    const client: MemberClient = { kind: "member", householdId, socket };
+  add(householdId: string, membershipId: string, socket: WebSocket): void {
+    const client: MemberClient = {
+      kind: "member",
+      householdId,
+      membershipId,
+      socket,
+    };
     this.clients.add(client);
     socket.on("close", () => this.clients.delete(client));
   }
@@ -73,6 +79,53 @@ export class SyncHub {
       if (client.socket.readyState === 1) {
         client.socket.send(payload);
       }
+    }
+  }
+
+  /**
+   * Personal-task fan-out: private task IDs go only to the owner.
+   * Household-visible tasks may include the resource ID for all members.
+   * When a formerly household-visible task becomes private, nonowners get a
+   * sanitized ping (empty resourceId) so they refetch without receiving the ID.
+   */
+  broadcastPersonalTask(input: {
+    householdId: string;
+    ownerMembershipId: string;
+    visibility: "private" | "household";
+    taskId: string;
+    at: string;
+    previouslyHouseholdVisible?: boolean;
+  }): void {
+    const full: SyncNotification = {
+      type: "household_change",
+      householdId: input.householdId,
+      resource: "personal_task",
+      resourceId: input.taskId,
+      at: input.at,
+    };
+    const sanitized: SyncNotification = {
+      type: "household_change",
+      householdId: input.householdId,
+      resource: "personal_task",
+      resourceId: "",
+      at: input.at,
+    };
+    const ownerPayload = JSON.stringify(full);
+    const householdPayload = JSON.stringify(full);
+    const sanitizedPayload = JSON.stringify(sanitized);
+    for (const client of this.clients) {
+      if (client.kind !== "member") continue;
+      if (client.householdId !== input.householdId) continue;
+      if (client.socket.readyState !== 1) continue;
+      if (input.visibility === "private") {
+        if (client.membershipId === input.ownerMembershipId) {
+          client.socket.send(ownerPayload);
+        } else if (input.previouslyHouseholdVisible) {
+          client.socket.send(sanitizedPayload);
+        }
+        continue;
+      }
+      client.socket.send(householdPayload);
     }
   }
 

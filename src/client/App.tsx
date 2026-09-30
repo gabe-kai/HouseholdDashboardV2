@@ -684,7 +684,8 @@ export function App() {
           notification.resource === "group" ||
           notification.resource === "school_calendar" ||
           notification.resource === "family_order" ||
-          notification.resource === "activity_reset";
+          notification.resource === "activity_reset" ||
+          notification.resource === "personal_task";
         refreshAuthoritative({ urgentSupporting: urgent });
       },
       (status) => {

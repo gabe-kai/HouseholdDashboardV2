@@ -28,9 +28,9 @@ describe("SyncHub realtime invalidation", () => {
     const localA = new FakeSocket();
     const localB = new FakeSocket();
     const foreign = new FakeSocket();
-    hub.add("hh-local", localA as never);
-    hub.add("hh-local", localB as never);
-    hub.add("hh-foreign", foreign as never);
+    hub.add("hh-local", "m-a", localA as never);
+    hub.add("hh-local", "m-b", localB as never);
+    hub.add("hh-foreign", "m-f", foreign as never);
 
     const note: SyncNotification = {
       type: "household_change",
@@ -55,7 +55,7 @@ describe("SyncHub realtime invalidation", () => {
     const displayA = new FakeSocket();
     const displayB = new FakeSocket();
     const member = new FakeSocket();
-    hub.add("hh-local", member as never);
+    hub.add("hh-local", "m-1", member as never);
     hub.addDisplay(
       { householdId: "hh-local", displayId: "d1", sessionId: "s1" },
       displayA as never,
@@ -85,4 +85,38 @@ describe("SyncHub realtime invalidation", () => {
     expect(displayB.readyState).toBe(3);
   });
 
+  it("keeps private personal-task IDs owner-only and sanitizes household withdrawal", () => {
+    const hub = new SyncHub();
+    hubs.push(hub);
+    const owner = new FakeSocket();
+    const peer = new FakeSocket();
+    hub.add("hh-local", "owner", owner as never);
+    hub.add("hh-local", "peer", peer as never);
+
+    hub.broadcastPersonalTask({
+      householdId: "hh-local",
+      ownerMembershipId: "owner",
+      visibility: "private",
+      taskId: "task-private",
+      at: "2026-09-29T12:00:00.000Z",
+    });
+    expect(owner.sent).toHaveLength(1);
+    expect(JSON.parse(owner.sent[0]!).resourceId).toBe("task-private");
+    expect(peer.sent).toHaveLength(0);
+
+    owner.sent = [];
+    peer.sent = [];
+    hub.broadcastPersonalTask({
+      householdId: "hh-local",
+      ownerMembershipId: "owner",
+      visibility: "private",
+      taskId: "task-was-household",
+      at: "2026-09-29T12:01:00.000Z",
+      previouslyHouseholdVisible: true,
+    });
+    expect(JSON.parse(owner.sent[0]!).resourceId).toBe("task-was-household");
+    expect(peer.sent).toHaveLength(1);
+    expect(JSON.parse(peer.sent[0]!).resourceId).toBe("");
+    expect(JSON.stringify(peer.sent[0]!)).not.toContain("task-was-household");
+  });
 });

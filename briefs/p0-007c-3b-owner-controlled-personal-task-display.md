@@ -90,10 +90,11 @@ Inspected clean `main` at **6510fb4** (PR **#22**) before drafting; migrations e
 
 ## Engineering readiness
 
-**Reviewed revision:** NOT REVIEWED  
-**Readiness:** NOT REVIEWED
-
-Engineering should inspect this exact r1 against the merged repository and return one consolidated readiness disposition before implementation.
+**Reviewed revision:** 1  
+**Readiness:** READY  
+**Review artifact:** `reports/P0-007C-3B-r1-engineering-readiness.md`  
+**Baseline inspected:** `6510fb4`  
+**Disposition:** READY for Architecture ACCEPT / PROCEED. No BLOCKER or QUESTION. Implementation must not start until Architecture responds.
 
 ## Revision history
 

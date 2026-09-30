@@ -1,7 +1,7 @@
 # BRIEF P0-007C-3B - Owner-Controlled Personal Work on the Wall
 
 **Revision:** 1  
-**Status:** READY
+**Status:** FIX REQUIRED
 
 `ACCEPTED` will mean Architecture has accepted this implementation against r1. Project Lead acceptance of the completed P0-007C experience remains separate.
 
@@ -96,9 +96,20 @@ Inspected clean `main` at **6510fb4** (PR **#22**) before drafting; migrations e
 **Baseline inspected:** `6510fb4`  
 **Disposition:** READY. No BLOCKER or QUESTION.
 
-**Architecture disposition:** ACCEPT / PROCEED. Engineering may begin implementing this exact r1. The IMPORTANT delivery notes are already represented in the behavioral contract and acceptance tests; they do not require a revision change.
+**Architecture readiness disposition:** ACCEPT / PROCEED. This authorized implementation of the exact r1; the IMPORTANT delivery notes were already covered by its contract and tests.
+
+## Architecture technical review
+
+**Disposition:** FIX REQUIRED against the same r1. This is an implementation correction; the brief contract does not change.
+
+**Finding:** `PersonalTasksBlock.setStatus` applies the task object returned by the status request using the `allTasks` array captured when the request started. If that response is delayed while a sharing update changes the same task to Private, the older status response can restore its prior Household visibility and promotion in the owner's client state after the private save has applied. This contradicts the live-withdrawal contract even though the server and display projection remain authoritative and private.
+
+**Required correction:** Fence task mutation responses against newer authoritative/sharing state, or merge only the status fields from the status response into the latest task by identity/version. Add a deterministic UI regression: hold the status response after server commit, save Household→Private, confirm the owner and wall remove the promoted item, release the older status response, and confirm it does not restore Household visibility or promotion. Preserve normal status and sharing behavior. Do not change the brief revision.
+
+**Evidence reviewed:** Build Report `reports/P0-007C-3B-r1-build-report.md` reports `validate:pr` and `validate:rc` PASS. Architecture inspected the branch source and named tests but did not rerun those gates. Physical 27-inch evaluation remains Project Lead evidence and is separate from this technical correction.
 
 ## Revision history
 
 - **r1:** Initial authoritative contract for owner-controlled personal-task display promotion after C-3A evaluation.
-- **r1 readiness:** Engineering READY against `6510fb4`; Architecture accepted readiness and authorized implementation without changing the contract.
+- **r1 readiness:** Engineering READY against `6510fb4`; Architecture accepted readiness and authorized implementation.
+- **r1 technical review:** FIX REQUIRED for stale status-response arbitration after a task-sharing downgrade; same-revision implementation correction and regression evidence are requested.

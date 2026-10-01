@@ -34,6 +34,24 @@ function statusLabel(status: string): string {
   return "Open";
 }
 
+/** Apply status/completion fields only — never overwrite sharing/promotion. */
+export function applyPersonalTaskStatusResult(
+  current: PersonalTask[],
+  taskId: string,
+  statusResult: Pick<PersonalTask, "status" | "completedAt" | "updatedAt">,
+): PersonalTask[] {
+  return current.map((task) =>
+    task.id === taskId
+      ? {
+          ...task,
+          status: statusResult.status,
+          completedAt: statusResult.completedAt,
+          updatedAt: statusResult.updatedAt,
+        }
+      : task,
+  );
+}
+
 type FocusMode = "auto" | "manual" | "collapsed";
 
 export function TodayView(props: {
@@ -45,7 +63,7 @@ export function TodayView(props: {
   canPersonalize: boolean;
   onOpenPersonalize: () => void;
   onStepChange: (occurrenceId: string, stepId: string, status: StepStatus) => void;
-  onTasksChanged: (tasks: PersonalTask[]) => void;
+  onTasksChanged: Dispatch<SetStateAction<PersonalTask[]>>;
   /** Session/member/date key — reset focus policy when it changes. */
   focusScopeKey: string;
   occurrencesLoaded: boolean;
@@ -226,7 +244,6 @@ export function TodayView(props: {
           showCompleted={showCompletedTasks}
           onToggleCompleted={() => setShowCompletedTasks((value) => !value)}
           onChanged={props.onTasksChanged}
-          allTasks={props.tasks}
         />
       </section>
     </section>
@@ -338,8 +355,7 @@ function PersonalTasksBlock(props: {
   completedTasks: PersonalTask[];
   showCompleted: boolean;
   onToggleCompleted: () => void;
-  allTasks: PersonalTask[];
-  onChanged: (tasks: PersonalTask[]) => void;
+  onChanged: Dispatch<SetStateAction<PersonalTask[]>>;
 }) {
   const [title, setTitle] = useState("");
   const [visibility, setVisibility] = useState<"private" | "household">("private");
@@ -354,7 +370,7 @@ function PersonalTasksBlock(props: {
       const promote =
         visibility === "household" ? showOnSharedDashboard : false;
       const result = await createPersonalTask(title, visibility, promote);
-      props.onChanged([result.task, ...props.allTasks]);
+      props.onChanged((current) => [result.task, ...current]);
       setTitle("");
       setShowOnSharedDashboard(false);
       setAdding(false);
@@ -367,8 +383,10 @@ function PersonalTasksBlock(props: {
     setError(null);
     try {
       const result = await setPersonalTaskStatus(task.id, status);
-      props.onChanged(
-        props.allTasks.map((current) => (current.id === task.id ? result.task : current)),
+      // Merge only status/completion fields so a delayed status response cannot
+      // restore stale visibility or promotion after a sharing downgrade.
+      props.onChanged((current) =>
+        applyPersonalTaskStatusResult(current, task.id, result.task),
       );
     } catch (caught) {
       setError(errorMessage(caught));
@@ -387,8 +405,8 @@ function PersonalTasksBlock(props: {
           next.visibility === "private" ? false : next.showOnSharedDashboard,
         expectedSharingVersion: task.sharingVersion,
       });
-      props.onChanged(
-        props.allTasks.map((current) => (current.id === task.id ? result.task : current)),
+      props.onChanged((current) =>
+        current.map((entry) => (entry.id === task.id ? result.task : entry)),
       );
     } catch (caught) {
       setError(errorMessage(caught));

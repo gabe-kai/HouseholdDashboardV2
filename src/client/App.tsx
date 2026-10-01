@@ -1180,10 +1180,15 @@ export function App() {
           focusScopeKey={`${session.member.id}:${householdDate || session.householdDate}`}
           occurrencesLoaded={occurrencesLoaded}
           onTasksChanged={(next) =>
-            setTasks((current) => [
-              ...current.filter((task) => task.ownerMembershipId !== session.member.id),
-              ...next,
-            ])
+            setTasks((current) => {
+              const ownerId = session.member.id;
+              const others = current.filter(
+                (task) => task.ownerMembershipId !== ownerId,
+              );
+              const own = current.filter((task) => task.ownerMembershipId === ownerId);
+              const updated = typeof next === "function" ? next(own) : next;
+              return [...others, ...updated];
+            })
           }
         />
       ) : null}

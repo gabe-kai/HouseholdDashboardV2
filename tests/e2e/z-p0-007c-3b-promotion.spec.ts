@@ -315,4 +315,145 @@ test.describe("P0-007C-3B personal wall promotion", () => {
     await wallACtx.close();
     await wallBCtx.close();
   });
+
+  test("FIX REQUIRED: held status response cannot restore Household after Private save", async ({
+    page,
+    browser,
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== "chromium",
+      "Phone Chromium held status / sharing race",
+    );
+    test.setTimeout(180_000);
+
+    const title = `Stale status ${Date.now().toString(36)}`;
+    await claimAvery(page.request);
+    await page.goto("/today");
+    await expectSignedInAs(page, /Avery/);
+
+    await page.getByRole("button", { name: "Add task" }).click();
+    await page.getByPlaceholder("Add a personal task").fill(title);
+    await page.getByLabel("Task visibility").selectOption("household");
+    await page.getByRole("checkbox", { name: /Show on shared dashboard/i }).check();
+    await page.getByRole("button", { name: "Save" }).click();
+    const row = page.locator(".activity-entry").filter({ hasText: title });
+    await expect(row.getByText(/Shared dashboard/i).first()).toBeVisible({
+      timeout: 15_000,
+    });
+
+    const managerCtx = await browser.newContext();
+    const wallCtx = await browser.newContext();
+    const wall = await wallCtx.newPage();
+    await enrollWall(managerCtx.request, wall, `Wall ${Date.now().toString(36)}`);
+    await wall.getByTestId("display-org-by-work").click();
+    await expect(
+      wall.getByTestId("display-promoted-personal").getByText(title),
+    ).toBeVisible({ timeout: 30_000 });
+
+    let releaseStatus!: () => void;
+    const statusGate = new Promise<void>((resolve) => {
+      releaseStatus = resolve;
+    });
+    let statusFetched = false;
+    const statusCommitted = new Promise<void>((resolve) => {
+      const check = () => {
+        if (statusFetched) resolve();
+        else setTimeout(check, 25);
+      };
+      check();
+    });
+
+    // Hold status response after server commit; also pause list GETs so a sync
+    // refresh cannot mask the delayed status-body race under test.
+    let releaseListReads!: () => void;
+    const listGate = new Promise<void>((resolve) => {
+      releaseListReads = resolve;
+    });
+    let holdListReads = false;
+
+    await page.route("**/api/v1/personal-tasks**", async (route) => {
+      const request = route.request();
+      const url = request.url();
+      if (request.method() === "GET" && holdListReads) {
+        await listGate;
+        try {
+          const response = await route.fetch();
+          await route.fulfill({ response });
+        } catch {
+          // Request may be disposed after unroute / test teardown.
+        }
+        return;
+      }
+      if (request.method() === "POST" && /\/personal-tasks\/[^/]+\/status/.test(url)) {
+        const response = await route.fetch();
+        statusFetched = true;
+        await statusGate;
+        await route.fulfill({ response });
+        return;
+      }
+      await route.continue();
+    });
+
+    holdListReads = true;
+    await row.getByRole("button", { name: "Done" }).click();
+    await statusCommitted;
+
+    // Still open in the client while the status body is held.
+    const sharingResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        /\/api\/v1\/personal-tasks\/[^/]+\/sharing/.test(response.url()),
+      { timeout: 15_000 },
+    );
+    await row.getByLabel("Visibility").selectOption("private");
+    const sharing = await sharingResponsePromise;
+    expect(sharing.ok(), await sharing.text()).toBeTruthy();
+
+    // Sharing returns authoritative completed+private; reveal completed list.
+    await expect(
+      page.getByRole("button", { name: /Show completed personal tasks/i }),
+    ).toBeVisible({ timeout: 10_000 });
+    await page.getByRole("button", { name: /Show completed personal tasks/i }).click();
+    const completedRow = page.locator(".activity-entry").filter({ hasText: title });
+    await expect(completedRow).toBeVisible({ timeout: 10_000 });
+    const completedMeta = completedRow.locator(".meta");
+    await expect(completedMeta).toContainText(/Private/);
+    await expect(completedMeta).not.toContainText(/Household|Shared dashboard/);
+
+    await wall.getByTestId("display-org-by-work").click();
+    await expect
+      .poll(
+        async () => {
+          const section = wall.getByTestId("display-promoted-personal");
+          if ((await section.count()) === 0) return true;
+          return (await section.getByText(title).count()) === 0;
+        },
+        { timeout: 40_000 },
+      )
+      .toBeTruthy();
+
+    releaseStatus();
+    await page.waitForTimeout(800);
+
+    await expect(completedMeta).toContainText(/Private/);
+    await expect(completedMeta).not.toContainText(/Household|Shared dashboard/);
+
+    await expect
+      .poll(
+        async () => {
+          const section = wall.getByTestId("display-promoted-personal");
+          if ((await section.count()) === 0) return true;
+          return (await section.getByText(title).count()) === 0;
+        },
+        { timeout: 10_000 },
+      )
+      .toBeTruthy();
+
+    holdListReads = false;
+    releaseListReads();
+    await page.waitForTimeout(200);
+    await page.unroute("**/api/v1/personal-tasks**");
+    await managerCtx.close();
+    await wallCtx.close();
+  });
 });

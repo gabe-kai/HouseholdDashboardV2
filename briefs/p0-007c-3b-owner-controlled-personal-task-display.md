@@ -1,7 +1,7 @@
 # BRIEF P0-007C-3B - Owner-Controlled Personal Work on the Wall
 
 **Revision:** 1  
-**Status:** FIX REQUIRED
+**Status:** ACCEPTED
 
 `ACCEPTED` will mean Architecture has accepted this implementation against r1. Project Lead acceptance of the completed P0-007C experience remains separate.
 
@@ -20,10 +20,10 @@ From their own personal tasks, a member can make a task household-visible and ch
 ## Project card
 
 **Card title:** Act at the shared display without losing trust  
-**Suggested column:** Up Next for the remaining C-3B work; In Progress when Engineering starts  
+**Suggested column:** Ready to Evaluate after Architecture acceptance
 **Player-facing goal:** Let each person choose which of their household-visible personal tasks appear on the shared wall.  
 **Done when:** An owner can promote and unpromote a personal task, the wall shows only intended open items in its summaries, and making a task private removes it from every display read.  
-**Tracking relationship:** Second and final brief under the existing P0-007C-3 card. C-3A's accepted execution slice remains ready for evaluation; completing this brief alone does not mark the full card Product-accepted. No external board is configured.
+**Tracking relationship:** Second and final brief under the existing P0-007C-3 card. C-3A and C-3B are technically accepted; the full card remains pending Project Lead evaluation and Product acceptance. No external board is configured.
 
 ## Current system
 
@@ -100,16 +100,18 @@ Inspected clean `main` at **6510fb4** (PR **#22**) before drafting; migrations e
 
 ## Architecture technical review
 
-**Disposition:** FIX REQUIRED against the same r1. This is an implementation correction; the brief contract does not change.
+**Disposition:** ACCEPTED against r1 at commit `57780ce` on `brief/p0-007c-3b-personal-work-wall-promotion`.
 
-**Finding:** `PersonalTasksBlock.setStatus` applies the task object returned by the status request using the `allTasks` array captured when the request started. If that response is delayed while a sharing update changes the same task to Private, the older status response can restore its prior Household visibility and promotion in the owner's client state after the private save has applied. This contradicts the live-withdrawal contract even though the server and display projection remain authoritative and private.
+**Prior FIX REQUIRED:** The first review found that a delayed status response could restore stale Household visibility/promotion in the owner's client after a Private save. Engineering closed this on the same revision.
 
-**Required correction:** Fence task mutation responses against newer authoritative/sharing state, or merge only the status fields from the status response into the latest task by identity/version. Add a deterministic UI regression: hold the status response after server commit, save Household→Private, confirm the owner and wall remove the promoted item, release the older status response, and confirm it does not restore Household visibility or promotion. Preserve normal status and sharing behavior. Do not change the brief revision.
+**Acceptance evidence:** `applyPersonalTaskStatusResult` merges only `status`, `completedAt`, and `updatedAt` into the latest owner task using a functional state update. Unit coverage confirms stale status data cannot restore sharing or promotion. The held-response browser test parks the status body after server commit, pauses list reads so synchronization cannot mask the race, saves Household→Private, verifies the private owner state and wall withdrawal, then releases the response and verifies the item remains private and absent from the wall. This closes the finding without changing r1.
 
-**Evidence reviewed:** Build Report `reports/P0-007C-3B-r1-build-report.md` reports `validate:pr` and `validate:rc` PASS. Architecture inspected the branch source and named tests but did not rerun those gates. Physical 27-inch evaluation remains Project Lead evidence and is separate from this technical correction.
+**Evidence reviewed:** Build Report `reports/P0-007C-3B-r1-build-report.md` maps AT1–8 to PASS and reports exact `validate:pr` and `validate:rc` PASS after the correction. Architecture inspected the corrected source and named unit/e2e coverage but did not rerun the gates. Physical 27-inch evaluation remains Project Lead evidence and is separate from technical acceptance.
+
+**Disposition:** Technical contract is satisfied. The report's note that commit metadata was unavailable reflects report time; the current accepted implementation commit is `57780ce`.
 
 ## Revision history
 
 - **r1:** Initial authoritative contract for owner-controlled personal-task display promotion after C-3A evaluation.
 - **r1 readiness:** Engineering READY against `6510fb4`; Architecture accepted readiness and authorized implementation.
-- **r1 technical review:** FIX REQUIRED for stale status-response arbitration after a task-sharing downgrade; same-revision implementation correction and regression evidence are requested.
+- **r1 technical review:** FIX REQUIRED for stale status-response arbitration; Engineering corrected the same revision and added unit/held-response browser evidence. Architecture accepted the implementation at `57780ce` on 2026-09-30.

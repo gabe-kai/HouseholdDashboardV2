@@ -19,7 +19,7 @@
 
 ## Current focus
 
-Integrated `main` matches `origin/main` at **6510fb4**, merging technically accepted **P0-007C-3A r1** via PR **#22** after AT11 socket-loss/missed-update recovery evidence. Reacceptance: `reports/P0-007C-3A-r1-architecture-reacceptance.md`. The Project Lead reports the existing 27-inch wall readable at approximately 10 and 16 feet but finds its resting views visually busy; this is partial evaluation, not full Product acceptance. **P0-007C-3B r1** implementation is on the brief branch at `432dfc0`; Architecture found one stale status-response race that can restore old sharing state in the owner's client after a privacy downgrade. Same-revision correction and regression evidence are pending.
+Integrated `main` remains at **6510fb4** (PR **#22**). **P0-007C-3B r1** is technically **ACCEPTED** on `brief/p0-007c-3b-personal-work-wall-promotion` at `57780ce`, after the stale status-response correction and held-response regression. Build Report records `validate:pr` and `validate:rc` passing. The Project Lead's 10/16-foot readability and density observations apply to the earlier C-3A view; physical evaluation of the changed C-3B display and full Product acceptance remain pending.
 
 The integrated baseline also includes accepted **P0-007C-1 r1** via PR **#20** at `ef39a89` and **P0-007C-2 r1** via PR **#21** at `739f7e3`. Old reports retain the SHAs of their inspected baselines.
 
@@ -41,7 +41,7 @@ The integrated baseline also includes accepted **P0-007C-1 r1** via PR **#20** a
 | P0-007C-1 - Actionable Today and Household Overview | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `ef39a89` via PR #20 | Product speed-of-understanding evaluation |
 | P0-007C-2 - Household Display and Read-only Dashboard | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `739f7e3` via PR #21 | Physical readability reported; full Product acceptance remains separate |
 | P0-007C-3A - Complete Assigned Work at the Shared Display | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `6510fb4` via PR #22 | Product evaluation remains separate; display density feedback recorded |
-| P0-007C-3B - Owner-Controlled Personal Work on the Wall | r1 | FIX REQUIRED | Engineering | `brief/p0-007c-3b-personal-work-wall-promotion` @ `432dfc0`; baseline `6510fb4` | Close stale status-response race and return for Architecture re-review |
+| P0-007C-3B - Owner-Controlled Personal Work on the Wall | r1 | ACCEPTED | Project Lead evaluation | `brief/p0-007c-3b-personal-work-wall-promotion` @ `57780ce`; baseline `6510fb4` | Evaluate the changed 27-inch wall; Project Lead owns merge |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -49,6 +49,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Recently completed
 
+- P0-007C-3B r1 adds owner-controlled wall promotion, privacy-safe withdrawal sync, and compact promoted-task summaries. Architecture accepted the implementation after the held-status response correction at `57780ce`; Engineering reports `validate:pr` / `validate:rc` passing. Main integration and Project Lead physical evaluation remain pending.
 - P0-007C-3A r1 established restricted shared-display execution with truthful device provenance; technically accepted after AT11 correction and merged via PR #22 at `6510fb4`. Project Lead physical readability and usability observations are recorded in `evaluations/p0-007c-3a-project-lead-evaluation-2026-09-29.md`; the complete C experience has not been Product-accepted.
 - P0-007C-2 r1 established the enrolled, revocable, privacy-filtered read-only Household Display; Architecture accepted it after AT6/AT9 and PR/RC evidence corrections, then it merged through PR #21 at `739f7e3`. The later Project Lead real-wall observation is recorded separately from technical acceptance.
 
@@ -68,15 +69,15 @@ This table is the short repository-side coordination index. An external project 
 
 ## Known blockers
 
-- P0-007C-3B r1 has one implementation correction pending: a delayed status response must not restore prior sharing state after a privacy downgrade. Wall density and responsibility-authoring friction remain Product feedback, not authorization to broaden C-3B.
+- No technical blocker remains for P0-007C-3B r1. Physical evaluation of promoted personal work on the 27-inch wall remains Project Lead evidence; prior density and responsibility-authoring feedback does not broaden this brief.
 
 ## Next Project Lead decision
 
-- After C-3B, evaluate the changed wall on the real screen and decide whether the full personal Today / Household / wall loop is useful enough for genuine household use. Separately decide which observed density or responsibility-authoring pressure, if any, deserves a later Product outcome.
+- Evaluate the changed C-3B wall on the real screen and decide whether the full personal Today / Household / wall loop is useful enough for genuine household use. Separately decide which observed density or responsibility-authoring pressure, if any, deserves a later Product outcome.
 
 ## Next likely handoff
 
-Engineering closes the stale status-response race and adds the deterministic regression described in **`briefs/p0-007c-3b-owner-controlled-personal-task-display.md` revision 1**, then returns the updated Build Report for Architecture re-review. The Project Lead continues to own Git commits/merge and Product evaluation.
+The Project Lead evaluates the completed C-3 experience, including promoted work on the physical wall, then decides on Product acceptance and any next Design outcome. The Project Lead continues to own Git merge and Product evaluation.
 
 ## Notes for all teams
 

@@ -82,14 +82,14 @@ The third approved Product outcome is intentionally decomposed into evidence-gat
   - **Status:** Technically ACCEPTED on r1 at `9369d4a` and merged via PR **#22** to `main` at **6510fb4**. Build Report and Architecture reacceptance record the AT11 real socket-close, mid-outage commit, reconnect and no-reload convergence evidence. The Project Lead reported 27-inch readability at approximately 10 and 16 feet, while finding the resting views visually busy; this does not settle the full C product outcome.
   - **Evidence target:** Normal UI execution of assigned routine/responsibility steps from the display; actor/owner truth; durable mutation replay; reset/revoke safety; manager/wall convergence; and selected local PR/RC/CI evidence. Do not include personal-task promotion in this first implementation slice.
 
-- [ ] **P0-007C-3B - Let owners choose personal work to show on the wall.** Add an owner-controlled display-promotion choice, distinct from Only me/Household visibility. Preserve private-task exclusion and keep unpromoted household-visible work detail-only. Refine display placement/interaction from C-3A use; no parental override or task-control authority is implied.
+- [x] **P0-007C-3B - Let owners choose personal work to show on the wall.** Add an owner-controlled display-promotion choice, distinct from Only me/Household visibility. Preserve private-task exclusion and keep unpromoted household-visible work detail-only. Refine display placement/interaction from C-3A use; no parental override or task-control authority is implied.
   - **Brief:** `P0-007C-3B r1 - Owner-Controlled Personal Work on the Wall` (`briefs/p0-007c-3b-owner-controlled-personal-task-display.md`).
-  - **Status:** FIX REQUIRED on r1: close stale status-response arbitration after a sharing downgrade, then return for Architecture re-review. The implementation is on `brief/p0-007c-3b-personal-work-wall-promotion` at `432dfc0`. Project card **Act at the shared display without losing trust** remains unfinished; technical and Product acceptance are separate.
-  - **Evidence target:** Owner-only sharing/promotion with stable completion-time meaning, default-off populated upgrade, private exclusion at API/event/client boundaries, compact open-task placement in both wall summaries, withdrawal without stale resurrection, C-3A regression, local PR/RC gates and a new physical density/readability judgment for the changed 27-inch view.
+  - **Status:** Technically ACCEPTED on r1 at `57780ce`; the same-revision held-status correction and regression close the Architecture finding. The Project Lead still owns merge and Product acceptance of card **Act at the shared display without losing trust**.
+  - **Evidence:** Owner-only sharing/promotion with stable completion-time meaning, default-off populated upgrade, private exclusion at API/event/client boundaries, compact open-task placement in both wall summaries, withdrawal without stale resurrection, C-3A regression, and local PR/RC gates. Physical density/readability of the changed wall remains Product evaluation.
 
 ### LIKELY NEXT
 
-- After C-3B implementation and real-family evaluation of all three P0-007C contexts, Product/Design should choose the next outcome from observed use. Wall density and responsibility-authoring friction are recorded feedback, not a pre-approved follow-on implementation slice.
+- After real-family evaluation of all three P0-007C contexts—including the technically accepted C-3B wall changes—Product/Design should choose the next outcome from observed use. Wall density and responsibility-authoring friction are recorded feedback, not a pre-approved follow-on implementation slice.
 
 ### LATER
 

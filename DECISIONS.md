@@ -911,7 +911,7 @@ Use only already-authorized data and retain per-kind management/own-execution ru
 
 **Alternatives considered:** Grouping by title merges different routines; counting live group members mistakes eligibility for stored work; a new materialized summary service duplicates correctness machinery; one enlarged management screen does not satisfy the separate wall-display outcome.
 
-**Related briefs:** P0-007C-1 r1; preserves D-032-D-040. P0-007C-2 defines the display read boundary, C-3A adds assigned-work execution, and C-3B is the remaining approved personal-work display slice.
+**Related briefs:** P0-007C-1 r1; preserves D-032-D-040. P0-007C-2 defines the display read boundary, C-3A adds assigned-work execution, and C-3B adds technically accepted owner-controlled personal-work promotion on its brief branch; integration and Product acceptance remain separate.
 
 ---
 
@@ -939,13 +939,13 @@ Cookie attributes and persistence follow the browser semantics in [MDN Set-Cooki
 
 ## D-044 - Display responses are privacy-filtered projections of the actual household day
 
-**Status:** Active; C-2 read projections are integrated at `739f7e3` and C-3A display execution at `6510fb4`. Personal-task promotion remains planned C-3B scope.
+**Status:** Active; C-2 read projections are integrated at `739f7e3`, C-3A display execution at `6510fb4`, and C-3B personal-task promotion is technically accepted on its brief branch at `57780ce`. Main integration and Product acceptance remain separate.
 
 **Decision:** Provide dedicated current-day dashboard, person and occurrence reads under the display principal, with an explicit response-field allowlist. Include only friendly identities/order, household date/timezone, authoritative time/generation and the work/status needed for By person/By work/detail. Do not expose account/profile/access secrets, audit data, raw plans or private personal work, including private IDs/counts/events. Per-kind member permissions remain unchanged; display household visibility is an explicitly separate read scope.
 
 Reuse the existing household-date materialization/resolution core behind separately authorized member and display readers. A display's read-only authority still permits normal system-owned materialization/reconciliation of today's unstarted snapshots so the wall works before a human opens Today. Reads cannot execute/lock work, advance turns, edit plans or generate arbitrary/history dates. Snapshot IDs, started survivors, composed responsibility ownership/work, applicability, Unassigned and reset generation/floor remain authoritative. No independent display scheduler or persisted universal WorkItem is introduced.
 
-Existing personal tasks are all unpromoted in C-2. Only household-visible tasks appear in permitted person detail; none contributes to resting-board rows/counts. C-3 will introduce explicit owner-controlled promotion independently of visibility. Private work never enters the display payload. This extends D-010 household-visible reads to the new restricted household device without changing task ownership or human access.
+Existing personal tasks were all unpromoted in C-2. C-3B now adds explicit owner-controlled promotion independently of visibility: only household-visible, promoted tasks appear in resting-board summaries; household-visible unpromoted tasks remain in permitted person detail. Private work never enters the display payload. This extends D-010 household-visible reads to the new restricted household device without changing task ownership or human access.
 
 **Reason:** Reusing member DTOs risks exposing private/profile information, and deriving a second schedule can disagree with real occurrences. Treating stored-only reads as the whole wall would show an empty new day until somebody else generated it. The composed projection avoids both problems while preserving the distinction between viewing and acting.
 
@@ -953,13 +953,13 @@ Existing personal tasks are all unpromoted in C-2. Only household-visible tasks 
 
 **Alternatives considered:** A manager session plus CSS hiding cannot enforce privacy; cloned schedule calculations drift; reading only previously generated rows makes an unattended display incomplete; broad generic work-schema migration is unnecessary.
 
-**Related briefs:** P0-007C-2 r1; preserves D-010/D-023/D-030/D-033-D-042, with C-3 promotion/execution separately briefed.
+**Related briefs:** P0-007C-2 r1; preserves D-010/D-023/D-030/D-033-D-042, with C-3A execution and C-3B promotion separately briefed and technically accepted.
 
 ---
 
 ## D-045 - Display recovery is authorization-aware and stale exposure is bounded
 
-**Status:** Active; C-2 authorization-aware display recovery is integrated at `739f7e3`, and C-3A's write path at `6510fb4` preserves its revocation, stale-data bounds and delayed-response fences. C-3B must preserve them for promoted personal work.
+**Status:** Active; C-2 authorization-aware display recovery is integrated at `739f7e3`, C-3A's write path at `6510fb4` preserves its revocation/stale-data boundary, and technically accepted C-3B at `57780ce` extends withdrawal-safe synchronization to promoted personal work.
 
 **Decision:** `/display` mounts a restricted shell with By person/By work and focused read-only detail, household day/date/time, saved family order and 90-second idle return. Use a six-person 27-inch 4K layout, validate native and scaled browser geometry, and require physical Product judgment at approximately ten and sixteen feet. Do not use the personal shell, universal admin navigation or a member outbox for the device.
 
@@ -973,7 +973,7 @@ Use no-store responses and no durable client cache of household payloads. A disc
 
 **Alternatives considered:** Permanent wall login backed by a human session, websocket-only freshness, unbounded stale local storage, and tests limited to viewport screenshots each fail a required authority/recovery or physical-readability boundary.
 
-**Related briefs:** P0-007C-2 r1; extends D-011/D-027/D-034/D-042. C-3A implemented narrowly scoped shared-device writes; C-3B must preserve this recovery boundary.
+**Related briefs:** P0-007C-2 r1; extends D-011/D-027/D-034/D-042. C-3A implements narrowly scoped shared-device writes; C-3B extends this recovery boundary for owner-controlled personal-task promotion.
 
 ---
 
@@ -1017,7 +1017,7 @@ On reconnect/reload/restart, validate the same active display session and author
 
 ## D-048 - Personal-task wall promotion is owner-controlled state distinct from visibility
 
-**Status:** Active for planned P0-007C-3B r1; not implemented at the inspected merged C-3A baseline `6510fb4`.
+**Status:** Active; technically implemented and accepted for P0-007C-3B r1 at `57780ce` on the brief branch, based on merged C-3A `6510fb4`. Main integration and Product acceptance remain separate.
 
 **Decision:** A personal task retains its owner and Only me/Household visibility, and gains a separate owner-chosen **Show on shared dashboard** state. Existing tasks and new tasks without an explicit opt-in are unpromoted. Only the owner may change either sharing dimension on their task; this does not grant another member, manager or display a task-edit capability. A private task cannot be promoted. Moving a promoted task to Private clears promotion in the same commit; returning to Household does not re-promote it automatically. Do not derive task-sharing authority from age or adult/child classification. Preserve room for a separately reviewed future parental-override policy without implementing one now.
 
@@ -1035,7 +1035,7 @@ Owner sharing mutations use household/session-derived scope, Origin/CSRF, confli
 
 ## D-049 - Promoted personal work uses a filtered display projection and withdrawal-safe sync
 
-**Status:** Active for planned P0-007C-3B r1; not implemented at the inspected merged C-3A baseline `6510fb4`.
+**Status:** Active; technically implemented and accepted for P0-007C-3B r1 at `57780ce` on the brief branch, based on merged C-3A `6510fb4`. Main integration and Product acceptance remain separate.
 
 **Decision:** The existing display-principal read model is the authority boundary for personal work. Only currently Household-visible, explicitly promoted, open tasks enter compact resting By person and By work summaries, labeled as undated personal work under their owner rather than included in routine/responsibility progress. Household-visible unpromoted tasks remain in permitted person detail; private task IDs, titles and counts never enter any display response, including focused detail or sync. A completed promoted task may remain inspectable in detail under the existing Household visibility rule but is quiet in resting summaries; reopening it restores summary presence only if still promoted.
 

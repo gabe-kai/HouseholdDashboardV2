@@ -85,6 +85,7 @@ export default defineConfig({
         "**/z-p0-007c-1-geometry.spec.ts",
         "**/z-p0-007c-2-geometry.spec.ts",
         "**/z-p0-007c-3a-geometry.spec.ts",
+        "**/z-p0-007c-3b-geometry.spec.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],
@@ -97,6 +98,7 @@ export default defineConfig({
       testMatch: [
         "**/z-p0-007c-2-geometry.spec.ts",
         "**/z-p0-007c-3a-geometry.spec.ts",
+        "**/z-p0-007c-3b-geometry.spec.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],

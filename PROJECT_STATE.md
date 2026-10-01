@@ -19,9 +19,9 @@
 
 ## Current focus
 
-Integrated `main` matches `origin/main` at **739f7e3**, merging technically accepted **P0-007C-2 r1** via PR **#21**. **P0-007C-3A r1 is technically accepted** on `brief/p0-007c-3a-shared-display-execution` at **9369d4a** after AT11 socket-loss/missed-update recovery evidence. Reacceptance: `reports/P0-007C-3A-r1-architecture-reacceptance.md`. Product evaluation, including physical wall readability, remains separate. Owner-controlled personal-task promotion is likely next as 3B after C-3A evaluation.
+Integrated `main` remains at **6510fb4** (PR **#22**). **P0-007C-3B r1** is technically **ACCEPTED** on `brief/p0-007c-3b-personal-work-wall-promotion` at `57780ce`, after the stale status-response correction and held-response regression. Build Report records `validate:pr` and `validate:rc` passing. The Project Lead's 10/16-foot readability and density observations apply to the earlier C-3A view; physical evaluation of the changed C-3B display and full Product acceptance remain pending.
 
-The integrated baseline includes technically accepted **P0-007C-1 r1** via PR **#20** at `ef39a89` and **P0-007C-2 r1** via PR **#21** at `739f7e3`. Technical integration does not assert Product acceptance; C-1/C-2 family evaluation remains separate. Old reports retain the SHAs of their inspected baselines.
+The integrated baseline also includes accepted **P0-007C-1 r1** via PR **#20** at `ef39a89` and **P0-007C-2 r1** via PR **#21** at `739f7e3`. Old reports retain the SHAs of their inspected baselines.
 
 ## Internal work status
 
@@ -39,8 +39,9 @@ The integrated baseline includes technically accepted **P0-007C-1 r1** via PR **
 | P0-007A - Household Responsibility Foundation | r1 | ACCEPTED | Completed foundation | Merged to `main` at `51322e0` via PR #15 | None for A; Design carries presentation feedback to C |
 | P0-007B - Assignment Patterns & Scheduled Work | r1 | ACCEPTED | Integrated foundation | Included in inspected `main` at `e8f59b4` | Product evaluation remains separate; C carries daily-presentation direction |
 | P0-007C-1 - Actionable Today and Household Overview | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `ef39a89` via PR #20 | Product speed-of-understanding evaluation |
-| P0-007C-2 - Household Display and Read-only Dashboard | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `739f7e3` via PR #21 | Physical readability AT17 and Product acceptance remain separate |
-| P0-007C-3A - Complete Assigned Work at the Shared Display | r1 | ACCEPTED | Project Lead evaluation | `brief/p0-007c-3a-shared-display-execution` @ `9369d4a` | Product evaluation; then proceed to C-3B planning |
+| P0-007C-2 - Household Display and Read-only Dashboard | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `739f7e3` via PR #21 | Physical readability reported; full Product acceptance remains separate |
+| P0-007C-3A - Complete Assigned Work at the Shared Display | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `6510fb4` via PR #22 | Product evaluation remains separate; display density feedback recorded |
+| P0-007C-3B - Owner-Controlled Personal Work on the Wall | r1 | ACCEPTED | Project Lead evaluation | `brief/p0-007c-3b-personal-work-wall-promotion` @ `57780ce`; baseline `6510fb4` | Evaluate the changed 27-inch wall; Project Lead owns merge |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -48,7 +49,9 @@ This table is the short repository-side coordination index. An external project 
 
 ## Recently completed
 
-- P0-007C-2 r1 establishes the enrolled, revocable, privacy-filtered read-only Household Display; Architecture accepted it after AT6/AT9 and PR/RC evidence corrections, then it merged through PR #21 at `739f7e3`. C-3 is the next approved slice; Product's real-wall AT17 remains separate.
+- P0-007C-3B r1 adds owner-controlled wall promotion, privacy-safe withdrawal sync, and compact promoted-task summaries. Architecture accepted the implementation after the held-status response correction at `57780ce`; Engineering reports `validate:pr` / `validate:rc` passing. Main integration and Project Lead physical evaluation remain pending.
+- P0-007C-3A r1 established restricted shared-display execution with truthful device provenance; technically accepted after AT11 correction and merged via PR #22 at `6510fb4`. Project Lead physical readability and usability observations are recorded in `evaluations/p0-007c-3a-project-lead-evaluation-2026-09-29.md`; the complete C experience has not been Product-accepted.
+- P0-007C-2 r1 established the enrolled, revocable, privacy-filtered read-only Household Display; Architecture accepted it after AT6/AT9 and PR/RC evidence corrections, then it merged through PR #21 at `739f7e3`. The later Project Lead real-wall observation is recorded separately from technical acceptance.
 
 - P0-001 r1 was implemented, technically accepted by Architecture, and merged to `main` through PR #1.
 - The P0-001 implementation provides a responsive Morning Routine evaluation build with immutable structural history, optimistic durable checklist intent, and household-scoped synchronization.
@@ -66,15 +69,15 @@ This table is the short repository-side coordination index. An external project 
 
 ## Known blockers
 
-- No technical blocker remains for P0-007C-3A r1. Physical wall evaluation AT12 remains separate Product evidence and does not block technical acceptance.
+- No technical blocker remains for P0-007C-3B r1. Physical evaluation of promoted personal work on the 27-inch wall remains Project Lead evidence; prior density and responsibility-authoring feedback does not broaden this brief.
 
 ## Next Project Lead decision
 
-- Evaluate assigned work on the shared display and its physical readability; decide whether the C-3A experience is useful enough to proceed to C-3B.
+- Evaluate the changed C-3B wall on the real screen and decide whether the full personal Today / Household / wall loop is useful enough for genuine household use. Separately decide which observed density or responsibility-authoring pressure, if any, deserves a later Product outcome.
 
 ## Next likely handoff
 
-Project Lead/Product evaluates P0-007C-3A on the shared display and records physical readability separately; do not infer either from automation alone. If accepted, Architecture can brief C-3B personal-task promotion under the approved direction.
+The Project Lead evaluates the completed C-3 experience, including promoted work on the physical wall, then decides on Product acceptance and any next Design outcome. The Project Lead continues to own Git merge and Product evaluation.
 
 ## Notes for all teams
 

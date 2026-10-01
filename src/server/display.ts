@@ -104,6 +104,11 @@ export type DisplayPersonSummary = {
     title: string;
     kind: "routine" | "responsibility";
   }>;
+  /** Open household-visible promoted personal tasks (undated; not progress). */
+  promotedPersonalTasks: Array<{
+    id: string;
+    title: string;
+  }>;
 };
 
 export type DisplayDashboard = {
@@ -113,6 +118,13 @@ export type DisplayDashboard = {
   activityGeneration: number;
   byPerson: DisplayPersonSummary[];
   byWork: HouseholdOverview;
+  /** Compact resting list of open promoted personal tasks across the household. */
+  promotedPersonalTasks: Array<{
+    id: string;
+    title: string;
+    ownerMembershipId: string;
+    ownerDisplayName: string;
+  }>;
 };
 
 export type DisplayPersonDetail = {
@@ -136,6 +148,7 @@ export type DisplayPersonDetail = {
     title: string;
     status: "open" | "completed";
     ownerMembershipId: string;
+    showOnSharedDashboard: boolean;
   }>;
 };
 
@@ -669,10 +682,19 @@ export class DisplayStore {
     const occurrences = this.materializeCurrentDayForHousehold(ctx.householdId);
     const people = this.listHouseholdPeople(ctx.householdId);
     const byWork = buildHouseholdOverview(occurrences);
+    const promotedRows = this.listPromotedOpenPersonalTasks(ctx.householdId);
+    const promotedByOwner = new Map<string, Array<{ id: string; title: string }>>();
+    for (const row of promotedRows) {
+      const list = promotedByOwner.get(row.ownerMembershipId) ?? [];
+      list.push({ id: row.id, title: row.title });
+      promotedByOwner.set(row.ownerMembershipId, list);
+    }
+
     const byPerson = people.map((person) => {
       const mine = occurrences.filter(
         (occurrence) => occurrence.accountableMemberId === person.id,
       );
+      const promotedPersonalTasks = promotedByOwner.get(person.id) ?? [];
       if (mine.length === 0) {
         return {
           membershipId: person.id,
@@ -683,6 +705,7 @@ export class DisplayStore {
           progress: null,
           progressLabel: null,
           unfinished: [],
+          promotedPersonalTasks,
         };
       }
       const flatSteps = mine.flatMap((occurrence) => occurrence.steps);
@@ -714,6 +737,7 @@ export class DisplayStore {
             title: occurrence.title,
             kind: occurrence.kind,
           })),
+        promotedPersonalTasks,
       };
     });
 
@@ -724,6 +748,7 @@ export class DisplayStore {
       activityGeneration: this.appStore.getActivityGeneration(ctx.householdId),
       byPerson,
       byWork,
+      promotedPersonalTasks: promotedRows,
     };
   }
 
@@ -757,7 +782,7 @@ export class DisplayStore {
     const householdVisibleTasks = (
       this.db
         .prepare(
-          `SELECT id, title, status, owner_membership_id
+          `SELECT id, title, status, owner_membership_id, show_on_shared_dashboard
            FROM personal_tasks
            WHERE household_id = ?
              AND owner_membership_id = ?
@@ -771,12 +796,14 @@ export class DisplayStore {
         title: string;
         status: "open" | "completed";
         owner_membership_id: string;
+        show_on_shared_dashboard: number;
       }>
     ).map((row) => ({
       id: row.id,
       title: row.title,
       status: row.status,
       ownerMembershipId: row.owner_membership_id,
+      showOnSharedDashboard: row.show_on_shared_dashboard === 1,
     }));
 
     return {
@@ -881,6 +908,38 @@ export class DisplayStore {
       )
       .get(taskId, householdId) as { ok: number } | undefined;
     return Boolean(row);
+  }
+
+  private listPromotedOpenPersonalTasks(householdId: string): Array<{
+    id: string;
+    title: string;
+    ownerMembershipId: string;
+    ownerDisplayName: string;
+  }> {
+    const people = this.listHouseholdPeople(householdId);
+    const nameById = new Map(people.map((p) => [p.id, p.displayName]));
+    const rows = this.db
+      .prepare(
+        `SELECT id, title, owner_membership_id
+         FROM personal_tasks
+         WHERE household_id = ?
+           AND visibility = 'household'
+           AND show_on_shared_dashboard = 1
+           AND status = 'open'
+         ORDER BY created_at ASC, id ASC`,
+      )
+      .all(householdId) as Array<{
+      id: string;
+      title: string;
+      owner_membership_id: string;
+    }>;
+    return rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      ownerMembershipId: row.owner_membership_id,
+      ownerDisplayName:
+        nameById.get(row.owner_membership_id) ?? "Household member",
+    }));
   }
 
   private requireDisplayManage(ctx: AuthContext): void {

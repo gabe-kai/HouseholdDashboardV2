@@ -70,7 +70,7 @@ Goal: prove that a real recurring household routine can be used quickly by six d
 
 - [x] **P0-007C-2 - See the family day from across the room.** A manager enrolls a distinct household-owned display that shows the privacy-filtered family day in By person/By work views, with focused read-only inspection.
   - **Brief:** `P0-007C-2 r1 - Household Display and Read-only Dashboard` (`briefs/p0-007c-2-household-display-read-only-dashboard.md`).
-  - **Status:** Technically ACCEPTED by Architecture; merged through PR **#21** at **739f7e3**. AT1–16 and PR/RC gates pass. Physical readability at 10 and 16 feet (AT17) remains Project Lead/Product evidence and does not block C-3 planning.
+  - **Status:** Technically ACCEPTED by Architecture; merged through PR **#21** at **739f7e3**. AT1–16 and PR/RC gates pass. Physical readability at 10 and 16 feet (AT17) was later reported by the Project Lead, separately from technical acceptance and the changed C-3B view.
   - **Evidence target:** Separate display identity and revocation, strict data/privacy boundary, truthful current-day projection, live recovery, and six-person 4K geometry. C-2 intentionally has no display checklist writes or personal-task promotion.
 
 ### CURRENT
@@ -79,18 +79,21 @@ The third approved Product outcome is intentionally decomposed into evidence-gat
 
 - [x] **P0-007C-3A - Complete assigned household work at the shared display.** Let a household member complete today's applicable, already-assigned routine and responsibility work on the enrolled display. Preserve the accountable owner and record the display as the action principal—not as a fake person. Make pending actions idempotent and recoverable across disconnection, reload/restart and reconnect; revocation remains authoritative. Keep C-2 privacy and read-only management boundaries.
   - **Brief:** `P0-007C-3A r1 - Complete Assigned Work at the Shared Display` (`briefs/p0-007c-3a-shared-display-execution.md`).
-  - **Status:** Technically ACCEPTED on r1 at `9369d4a`; Build Report and Architecture reacceptance record the AT11 real socket-close, mid-outage commit, reconnect and no-reload convergence evidence. Project card **Act at the shared display without losing trust** may move to **Ready to Evaluate**. Physical wall readability remains separate Product evidence; no deployment is required.
+  - **Status:** Technically ACCEPTED on r1 at `9369d4a` and merged via PR **#22** to `main` at **6510fb4**. Build Report and Architecture reacceptance record the AT11 real socket-close, mid-outage commit, reconnect and no-reload convergence evidence. The Project Lead reported 27-inch readability at approximately 10 and 16 feet, while finding the resting views visually busy; this does not settle the full C product outcome.
   - **Evidence target:** Normal UI execution of assigned routine/responsibility steps from the display; actor/owner truth; durable mutation replay; reset/revoke safety; manager/wall convergence; and selected local PR/RC/CI evidence. Do not include personal-task promotion in this first implementation slice.
+
+- [x] **P0-007C-3B - Let owners choose personal work to show on the wall.** Add an owner-controlled display-promotion choice, distinct from Only me/Household visibility. Preserve private-task exclusion and keep unpromoted household-visible work detail-only. Refine display placement/interaction from C-3A use; no parental override or task-control authority is implied.
+  - **Brief:** `P0-007C-3B r1 - Owner-Controlled Personal Work on the Wall` (`briefs/p0-007c-3b-owner-controlled-personal-task-display.md`).
+  - **Status:** Technically ACCEPTED on r1 at `57780ce`; the same-revision held-status correction and regression close the Architecture finding. The Project Lead still owns merge and Product acceptance of card **Act at the shared display without losing trust**.
+  - **Evidence:** Owner-only sharing/promotion with stable completion-time meaning, default-off populated upgrade, private exclusion at API/event/client boundaries, compact open-task placement in both wall summaries, withdrawal without stale resurrection, C-3A regression, and local PR/RC gates. Physical density/readability of the changed wall remains Product evaluation.
 
 ### LIKELY NEXT
 
-- [ ] **P0-007C-3B - Let owners choose personal work to show on the wall.** Add an owner-controlled display-promotion choice, distinct from Only me/Household visibility. Preserve private-task exclusion and keep unpromoted household-visible work detail-only. Refine display placement/interaction from C-3A use; no parental override or task-control authority is implied.
-  - **Status:** Approved direction in the same Product proposal; exact behavior may be refined from C-3A evaluation before briefing.
-  - **Evidence target:** Owner-only promotion, privacy at API/event/client boundaries, expected display projection, and no accidental promotion through visibility changes. Full C evaluation also includes physical 27-inch viewing at 10 and 16 feet.
+- After real-family evaluation of all three P0-007C contexts—including the technically accepted C-3B wall changes—Product/Design should choose the next outcome from observed use. Wall density and responsibility-authoring friction are recorded feedback, not a pre-approved follow-on implementation slice.
 
 ### LATER
 
-- After real-family evaluation of the completed P0-007C outcome, choose the next pressure: helpers, Cover/Claim, household exceptions/Skip Day, exact-time behavior, richer personal/school projects or notifications. None is pre-selected as the next implementation commitment.
+- Preserve potential pressures from real-family use: helpers, Cover/Claim, household exceptions/Skip Day, exact-time behavior, richer personal/school projects, notifications, multi-person/claimable cleanup and a natural twice-daily chore concept. None is pre-selected as the next implementation commitment.
 - Preserve owner-controlled visibility, separately authorized future parent overrides for minors, long-running projects/subtasks/milestones/due dates/daily targets and compact shared project summaries. Due dates or progress must never expose private work. Broader ambient display feeds follow a useful functional display, not before it.
 - Additional ordinary responsibilities (Cars, lawn care, medication, seasonal maintenance), richer personal work, and assignment refinement remain Product pressure tests; no domain-specific implementation is authorized in B.
 - Broader-release privacy, recovery, offline behavior, and operational confidence.

@@ -267,6 +267,8 @@ export type PersonalTask = {
   title: string;
   visibility: "private" | "household";
   status: "open" | "completed";
+  showOnSharedDashboard: boolean;
+  sharingVersion: number;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
@@ -848,10 +850,11 @@ export async function decideProposal(
 export async function createPersonalTask(
   title: string,
   visibility: "private" | "household",
+  showOnSharedDashboard = false,
 ) {
   return request<{ task: PersonalTask }>("/api/v1/personal-tasks", {
     method: "POST",
-    body: JSON.stringify({ title, visibility }),
+    body: JSON.stringify({ title, visibility, showOnSharedDashboard }),
   });
 }
 
@@ -868,6 +871,28 @@ export async function setPersonalTaskStatus(
     {
       method: "POST",
       body: JSON.stringify({ mutationId: newClientId(), status }),
+    },
+  );
+}
+
+export async function updatePersonalTaskSharing(
+  taskId: string,
+  input: {
+    visibility: "private" | "household";
+    showOnSharedDashboard: boolean;
+    expectedSharingVersion: number;
+  },
+) {
+  return request<{ task: PersonalTask }>(
+    `/api/v1/personal-tasks/${encodeURIComponent(taskId)}/sharing`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        mutationId: newClientId(),
+        visibility: input.visibility,
+        showOnSharedDashboard: input.showOnSharedDashboard,
+        expectedSharingVersion: input.expectedSharingVersion,
+      }),
     },
   );
 }

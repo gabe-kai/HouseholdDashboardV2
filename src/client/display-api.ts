@@ -40,6 +40,10 @@ export type DisplayPersonSummary = {
     title: string;
     kind: "routine" | "responsibility";
   }>;
+  promotedPersonalTasks: Array<{
+    id: string;
+    title: string;
+  }>;
 };
 
 export type DisplayDashboard = {
@@ -49,6 +53,12 @@ export type DisplayDashboard = {
   activityGeneration: number;
   byPerson: DisplayPersonSummary[];
   byWork: HouseholdOverview;
+  promotedPersonalTasks: Array<{
+    id: string;
+    title: string;
+    ownerMembershipId: string;
+    ownerDisplayName: string;
+  }>;
 };
 
 export type DisplayPersonDetail = {
@@ -72,6 +82,7 @@ export type DisplayPersonDetail = {
     title: string;
     status: "open" | "completed";
     ownerMembershipId: string;
+    showOnSharedDashboard: boolean;
   }>;
 };
 

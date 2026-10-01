@@ -14,6 +14,7 @@ import type { OccurrenceView, StepStatus } from "../shared/schemas";
 import {
   createPersonalTask,
   setPersonalTaskStatus,
+  updatePersonalTaskSharing,
   type PersonalTask,
 } from "./api";
 
@@ -33,6 +34,24 @@ function statusLabel(status: string): string {
   return "Open";
 }
 
+/** Apply status/completion fields only — never overwrite sharing/promotion. */
+export function applyPersonalTaskStatusResult(
+  current: PersonalTask[],
+  taskId: string,
+  statusResult: Pick<PersonalTask, "status" | "completedAt" | "updatedAt">,
+): PersonalTask[] {
+  return current.map((task) =>
+    task.id === taskId
+      ? {
+          ...task,
+          status: statusResult.status,
+          completedAt: statusResult.completedAt,
+          updatedAt: statusResult.updatedAt,
+        }
+      : task,
+  );
+}
+
 type FocusMode = "auto" | "manual" | "collapsed";
 
 export function TodayView(props: {
@@ -44,7 +63,7 @@ export function TodayView(props: {
   canPersonalize: boolean;
   onOpenPersonalize: () => void;
   onStepChange: (occurrenceId: string, stepId: string, status: StepStatus) => void;
-  onTasksChanged: (tasks: PersonalTask[]) => void;
+  onTasksChanged: Dispatch<SetStateAction<PersonalTask[]>>;
   /** Session/member/date key — reset focus policy when it changes. */
   focusScopeKey: string;
   occurrencesLoaded: boolean;
@@ -225,7 +244,6 @@ export function TodayView(props: {
           showCompleted={showCompletedTasks}
           onToggleCompleted={() => setShowCompletedTasks((value) => !value)}
           onChanged={props.onTasksChanged}
-          allTasks={props.tasks}
         />
       </section>
     </section>
@@ -337,11 +355,11 @@ function PersonalTasksBlock(props: {
   completedTasks: PersonalTask[];
   showCompleted: boolean;
   onToggleCompleted: () => void;
-  allTasks: PersonalTask[];
-  onChanged: (tasks: PersonalTask[]) => void;
+  onChanged: Dispatch<SetStateAction<PersonalTask[]>>;
 }) {
   const [title, setTitle] = useState("");
   const [visibility, setVisibility] = useState<"private" | "household">("private");
+  const [showOnSharedDashboard, setShowOnSharedDashboard] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
@@ -349,9 +367,12 @@ function PersonalTasksBlock(props: {
     event.preventDefault();
     setError(null);
     try {
-      const result = await createPersonalTask(title, visibility);
-      props.onChanged([result.task, ...props.allTasks]);
+      const promote =
+        visibility === "household" ? showOnSharedDashboard : false;
+      const result = await createPersonalTask(title, visibility, promote);
+      props.onChanged((current) => [result.task, ...current]);
       setTitle("");
+      setShowOnSharedDashboard(false);
       setAdding(false);
     } catch (caught) {
       setError(errorMessage(caught));
@@ -362,8 +383,30 @@ function PersonalTasksBlock(props: {
     setError(null);
     try {
       const result = await setPersonalTaskStatus(task.id, status);
-      props.onChanged(
-        props.allTasks.map((current) => (current.id === task.id ? result.task : current)),
+      // Merge only status/completion fields so a delayed status response cannot
+      // restore stale visibility or promotion after a sharing downgrade.
+      props.onChanged((current) =>
+        applyPersonalTaskStatusResult(current, task.id, result.task),
+      );
+    } catch (caught) {
+      setError(errorMessage(caught));
+    }
+  }
+
+  async function setSharing(
+    task: PersonalTask,
+    next: { visibility: "private" | "household"; showOnSharedDashboard: boolean },
+  ) {
+    setError(null);
+    try {
+      const result = await updatePersonalTaskSharing(task.id, {
+        visibility: next.visibility,
+        showOnSharedDashboard:
+          next.visibility === "private" ? false : next.showOnSharedDashboard,
+        expectedSharingVersion: task.sharingVersion,
+      });
+      props.onChanged((current) =>
+        current.map((entry) => (entry.id === task.id ? result.task : entry)),
       );
     } catch (caught) {
       setError(errorMessage(caught));
@@ -397,14 +440,26 @@ function PersonalTasksBlock(props: {
             <select
               aria-label="Task visibility"
               value={visibility}
-              onChange={(event) =>
-                setVisibility(event.target.value as "private" | "household")
-              }
+              onChange={(event) => {
+                const next = event.target.value as "private" | "household";
+                setVisibility(next);
+                if (next === "private") setShowOnSharedDashboard(false);
+              }}
             >
               <option value="private">Private</option>
               <option value="household">Household</option>
             </select>
           </label>
+          {visibility === "household" ? (
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={showOnSharedDashboard}
+                onChange={(event) => setShowOnSharedDashboard(event.target.checked)}
+              />
+              <span>Show on shared dashboard</span>
+            </label>
+          ) : null}
           <button type="submit" className="secondary">
             Save
           </button>
@@ -420,7 +475,7 @@ function PersonalTasksBlock(props: {
           </button>
         </form>
       ) : null}
-      <TaskList tasks={props.openTasks} onStatus={setStatus} />
+      <TaskList tasks={props.openTasks} onStatus={setStatus} onSharing={setSharing} />
       {props.completedTasks.length > 0 ? (
         <>
           <button
@@ -437,7 +492,11 @@ function PersonalTasksBlock(props: {
               <p className="meta">
                 Completed personal tasks are not dated to this household day.
               </p>
-              <TaskList tasks={props.completedTasks} onStatus={setStatus} />
+              <TaskList
+                tasks={props.completedTasks}
+                onStatus={setStatus}
+                onSharing={setSharing}
+              />
             </>
           ) : null}
         </>
@@ -450,6 +509,10 @@ function PersonalTasksBlock(props: {
 function TaskList(props: {
   tasks: PersonalTask[];
   onStatus: (task: PersonalTask, status: "open" | "completed") => void;
+  onSharing: (
+    task: PersonalTask,
+    next: { visibility: "private" | "household"; showOnSharedDashboard: boolean },
+  ) => void;
 }) {
   if (props.tasks.length === 0) return null;
   return (
@@ -460,18 +523,58 @@ function TaskList(props: {
             {task.title}
             <span className="meta">
               {" "}
-              · {task.visibility === "household" ? "Household" : "Private"} · {task.status}
+              · {task.visibility === "household" ? "Household" : "Private"}
+              {task.visibility === "household" && task.showOnSharedDashboard
+                ? " · Shared dashboard"
+                : ""}{" "}
+              · {task.status}
             </span>
           </span>
-          <button
-            type="button"
-            className="secondary"
-            onClick={() =>
-              props.onStatus(task, task.status === "completed" ? "open" : "completed")
-            }
-          >
-            {task.status === "completed" ? "Undo" : "Done"}
-          </button>
+          <div className="task-actions">
+            <label>
+              <span className="sr-only">Visibility</span>
+              <select
+                aria-label="Visibility"
+                value={task.visibility}
+                onChange={(event) => {
+                  const visibility = event.target.value as "private" | "household";
+                  props.onSharing(task, {
+                    visibility,
+                    showOnSharedDashboard:
+                      visibility === "private" ? false : task.showOnSharedDashboard,
+                  });
+                }}
+              >
+                <option value="private">Private</option>
+                <option value="household">Household</option>
+              </select>
+            </label>
+            {task.visibility === "household" ? (
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={task.showOnSharedDashboard}
+                  aria-label="Shared dashboard"
+                  onChange={(event) =>
+                    props.onSharing(task, {
+                      visibility: "household",
+                      showOnSharedDashboard: event.target.checked,
+                    })
+                  }
+                />
+                <span>Shared dashboard</span>
+              </label>
+            ) : null}
+            <button
+              type="button"
+              className="secondary"
+              onClick={() =>
+                props.onStatus(task, task.status === "completed" ? "open" : "completed")
+              }
+            >
+              {task.status === "completed" ? "Undo" : "Done"}
+            </button>
+          </div>
         </li>
       ))}
     </ul>

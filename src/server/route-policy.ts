@@ -584,6 +584,16 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     notes: "Owner-only status; idempotent mutationId",
   },
   {
+    method: "POST",
+    path: "/api/v1/personal-tasks/:taskId/sharing",
+    auth: "session",
+    principal: "member",
+    origin: "mutation_when_configured",
+    csrf: "required",
+    grant: null,
+    notes: "Owner-only visibility/promotion; replay + sharing_version conflict",
+  },
+  {
     method: "GET",
     path: "/api/v1/sync",
     auth: "session",

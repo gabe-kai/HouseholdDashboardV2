@@ -33,6 +33,7 @@ Describe observable outcomes rather than implementation tasks.
 - Personal changes affect only the intended member and future occurrences; shared changes continue to flow without cloning the entire routine.
 - Each person can create basic personal work, either private or household-visible.
 - Shared status, history, and household-local dates remain trustworthy across devices.
+- A new household can complete first-run setup in the hosted app, manage its members and access, and reset or restore the household without operator commands.
 
 ## Core workflows
 
@@ -45,6 +46,8 @@ What do users or operators need to accomplish repeatedly?
 5. A manager moves among their own Today view, household routine status, and pending approvals.
 6. Household members inspect past occurrences without later routine, permission, or membership changes rewriting them.
 7. A manager deletes accidental unused routines when safe, or ends a routine while preserving work already begun and its history.
+8. A first manager sets up an empty household, then adds people, changes their access, and removes former members through Household.
+9. During evaluation, a manager resets the household to first-run setup, optionally saves a backup, and can restore a saved backup in the app.
 
 ## Product behavior
 
@@ -131,18 +134,82 @@ Recorded by Architecture from the revised Design proposal supplied on 2026-09-24
 - **Evidence:** Use deterministic fictional friendly identities in local visuals, phone and desktop journeys, privacy/execution cross-device tests and representative 4K views. Real Product evaluation on the 27-inch display at approximately 10 and 16 feet is required for the display outcome; pixels alone cannot prove viewing-distance readability. Product separately checks that a child understands Today and a parent understands Household within seconds.
 - **Boundaries:** Keep Calm Household rather than another reskin. No weather, photos, news, meal menu, agenda/reminder feeds, custom themes, screensavers, brightness schedules, voice control or elaborate kiosk platform. Projects/homework authoring, parental privacy overrides, helpers/Cover/Claim/swaps, debt, Skip Day, retrospective completion and notifications remain deferred. Following completion/evaluation of C, choose the next slice from genuine family use rather than precommitting another feature sequence.
 
+### P0-008 - First-Run Setup and Household Member Management
+
+**Product proposal for Architecture, 2026-10-02; refined after a second experience review.** The Project Lead found demo people on the hosted site and no useful member-removal path. The current cleanup only removes untouched pending fixture people. This proposal makes initial setup and ordinary household administration usable by a nontechnical parent. Architecture owns implementation briefs and sequencing; this section records the intended experience.
+
+**Outcome:** Start with an empty production site, create a real household, and see its first useful day. Later, manage each person's access and participation from the app. During evaluation, reset to Welcome as often as needed, with backup optional and restore available in the app. Fresh installation, normal startup, and reset never insert sample people, work, or credentials.
+
+#### The first visit and guided setup
+
+Welcome says what the parent will accomplish: **Set up your household**. The site owner enters through secure one-time setup access supplied without terminal/database work; a public visitor cannot claim the installation. Interrupted setup and loss of the owner's setup access have an understandable recovery path.
+
+Use a short sequence with named steps and an honest progress indicator:
+
+| Step | What the parent does | Helpful defaults and exits |
+| --- | --- | --- |
+| Your account | Enter a friendly name, username, and password; become the first manager. | Explain password requirements before entry; support reveal, paste, and password managers. No email required. |
+| Your household | Name the household and confirm its timezone. | Suggest the browser's timezone for confirmation. Show a familiar place/time description. Extra preferences can wait. |
+| Your people | Add the household's people in a compact list, using name and Adult/Child. | The manager already appears once. **Add another person** keeps this step open; full name, birthday, email, groups, and sign-in setup can wait. |
+| School days | Set the school-year dates and usual school weekdays using the existing calendar. | **Not now** is a complete choice. Do not infer dates or silently treat an unconfigured school calendar as a configured one. |
+| First work | Choose **Create a routine** or **Create a responsibility**, with the option to create both. | Explain each with a short example, then guide name, people/owner, schedule, and steps. **Finish setup for now** saves the household without inventing work. |
+
+Only the first account and household basics are required to enter the app. **Save and finish later** is available after those steps; optional steps are easy to skip. Saved progress survives reload and sign-in on another device. Back and retry do not duplicate people or plans. Returning to setup shows what is already complete and edits those same records.
+
+The work guide uses the family just entered. A Routine gives each selected person their own checklist; a Responsibility has one accountable person per applicable day. Examples are explanations or explicitly chosen drafts, never automatically saved fixtures. Keep advanced scheduling secondary. Before saving, show actual names and the next applicable dates; repeating assignments include the next week. A parent can correct a choice directly from that review without restarting the form.
+
+Finish with a useful recap: show the work created, who will see it, and when it next happens. Offer **Go to Today** and a secondary **View household**. If the manager assigned everything to other people, their own Today explains that they have nothing assigned and links to Household; it must not show the children's work as theirs. A small, dismissible **Finish setup** checklist links to remaining choices and optional wall enrollment; it is also reachable from Household settings. Skipping an optional feature does not leave a permanent warning badge or force the walkthrough at every sign-in.
+
+#### People, roles, and access after setup
+
+**People is a useful directory.** Use compact rows in saved family order: friendly name, role, and sign-in status. **Add person** is visible. The detail screen groups **Profile** and **Sign-in & permissions**, with editing on demand. Adult/Child belongs in Profile; reserve the word **Role** for authority. Sign-in states use neutral language such as **Not set up**, **Invitation ready**, **Invitation expired**, **Active**, and **Access revoked**. A young child without a login is a valid household person, not an error to fix.
+
+**Keep role choices familiar.** Offer **Manager** and **Member**. A Manager administers the household and can do their own work; a Member can complete assigned work and create personal work. For members, show **Personal routine changes: Approval required / Can edit own additions** as a separate choice. New people start as Members with approval required, regardless of Adult/Child; the first manager is explicit. This replaces the earlier proposed "Limited member" label. Additional existing permissions belong in a secondary **Permissions** editor with plain-language descriptions. Show customized access accurately, and let a manager review what will change before saving. Existing households keep their actual permissions on upgrade.
+
+**Invitations should be easy to use.** **Set up sign-in** produces a person-specific invitation with **Copy link** and **Show QR code**, a readable expiry, and a cancel action. The recipient sees their name and household, chooses their own username/password, and lands on their own Today. They should not have to retype an enrollment token or create another person record. A manager can issue a new invitation if it expires or is lost; the previous invitation stops working. Do not imply that email was sent. Family members can receive help setting up on a shared device, with the resulting signed-in identity clearly visible.
+
+**Account maintenance is part of the everyday flow.** Members can change their own password. A manager can issue a password-reset link for an existing member without recreating the person, changing their role, or revealing a password. **Need help signing in?** explains this path; a locked-out sole manager uses the protected owner recovery route. Role changes take effect independently of invitations or password resets. **Revoke sign-in** ends existing access and outstanding access links promptly while retaining the person, assignments, and history; **Set up sign-in** can later restore access to that same person. Completing a password reset invalidates prior sessions. A pending invitation for another manager does not satisfy last-manager protection.
+
+**Removal is available even after years of use.** Put **Remove from household** in a clearly labeled secondary section of the person's detail. One confirmation names the person and summarizes affected groups, unstarted work, and upcoming assignments. It offers review of the actual next week and a repair path for work becoming Unassigned; ordinary history or references must not make removal impossible. The final active manager must establish another active manager before removing themselves, revoking their sign-in, or giving up essential management permissions.
+
+Removal immediately ends sign-in and eligibility for new/unstarted work, including through groups and future schedules. Used identities remain as former members in history; an unused pending person can be deleted completely. Started work keeps its accountable person and execution facts, with any unfinished work visible to the manager as needing attention. It cannot silently transfer to someone else or remain executable through a departed person's wall entry. Personal work leaves current summaries without becoming available to new owners or exposing private content. Removing a manager who originally enrolled a wall does not itself revoke that household-owned display; its authorship remains truthful. This flow does not add Cover/Claim or a portability system.
+
+#### Presentation and interaction quality
+
+- Continue Calm Household's warm light surfaces, restrained accent, readable typography, and consistent spacing. On desktop, use a comfortable form width with a quiet progress rail; on phones, one focused screen with compact step progress. Show compact people/work previews using the family's own entries. Decorative onboarding screens must not push the form below the fold.
+- Each step has one clear primary action, Back, and a visible optional exit. Keep controls comfortable for touch and usable above the phone keyboard. Avoid stacked modals, repeated confirmation of ordinary saves, oversized empty cards, and a grid of raw permission switches at first view.
+- Use **Username**, **Password**, **Invitation**, and **Sign-in** consistently. Keep policy and help beside the relevant control. Show validation beside the field, retain ordinary entered values after errors, and offer a clear retry. Success feedback is brief; saved results remain easy to find. Respect keyboard navigation, zoom, contrast, and reduced motion.
+
+#### Reset, backup, and restore
+
+- Household → Settings groups **Household details**, **Finish setup**, and **Backups** clearly. Place **Reset household** in a visible, secondary destructive-actions section. It clears accounts/access, people, household details, plans, personal work, activity/history, displays, and pending actions. Retain the separate meaning of **Clear activity history**, which keeps setup.
+- Use one deliberate reset confirmation with the household name, a concise description of what is cleared, and **Save a backup before resetting**, **off by default**. Confirm intent by typing **RESET**, then choose **Reset and start setup**. The app creates no pre-reset backup when the option is off. If a requested backup fails, do not reset silently; let the manager retry or explicitly choose to proceed without it.
+- Reset returns its initiator to protected Welcome with access to start again. Previous human/display sessions, invitations, password-reset links, and pending actions cannot revive the old household. A reload or lost response must let the manager recover the completed operation rather than accidentally resetting newly entered data again. Repeated resets work during incomplete setup and after years of use, without Railway or database commands.
+- **Backups** lists saved dates, household identity, and optional labels, with **Create backup**, **Restore**, and **Delete backup**. Saved backups survive resets until explicitly deleted; state this in the reset confirmation. Their contents and restore access remain protected. Authorized owner recovery exposes **Restore a backup** during Welcome, so resetting does not strand the only route to restore.
+- Selecting **Restore** shows the saved household/date and explains that it will replace current household data, including roles and work. Offer an optional backup of the current state, also off by default. Check that the backup can be restored before changing current data; handle supported backups across application updates. Show progress and a clear result. Restore changes household data, not the installed application version. Previously issued sessions, invitations, and display access remain invalid, including those inside the backup; provide a secure path to sign in or recover the restored manager account.
+- Backup/reset/restore failures must leave a usable recoverable state and explain the next action in ordinary language. The app must not show success for a partial operation. Architecture owns storage and recovery mechanics; the parent uses the app's controls.
+
+#### Transition and evaluation
+
+- The current hosted database already contains fictional evaluation records. Provide a one-time, safe transition for that installation. Reset is the shortest path when all its data is disposable. If real members have already been added, the transition must identify canonical fixture records by provenance, let a manager remove the sample-owned data together, and preserve real people and work. This is remediation of old hosted data, not a permanent sample-family concept in the product.
+- Automate the complete phone journey: empty hosted setup → quickly add a family → configure or skip school → create first work → review its actual next date/person → open Today/Household → complete an invited person's sign-in. Cover resuming on another device, retry without duplicates, future-only schedules, and assigning only children while the manager's Today is empty.
+- Automate role/permission changes without account replacement, expired invitations, self password change and manager-assisted reset, sign-in revocation/restoration, last-manager protection, and removal of both unused and historically active people. Check future assignment previews, started-work history, privacy, and denial of old access/pending commands. An old invitation must not restore a revoked permission or departed membership.
+- Automate repeated resets with and without backup, backup failure without unintended reset, restore from both Settings and protected Welcome, compatibility across supported updates, lost responses, and rejection of stale human/display actions. Use normal browser journeys plus hosted release evidence; fresh install/reset must contain no demo records. Live household destruction still requires the Project Lead's deliberate reset action.
+- Manual Product evaluation follows one uninterrupted session: set up a household, invite another person, change permissions, remove someone, save a backup, reset without another backup, and restore. Can a new parent do it without coaching, recognize the current account, and explain what happens next? Evaluate phone and desktop readability, touch comfort, visual calm, and the absence of dead ends. Manual observation does not substitute for automated functional coverage.
+- Architecture may stage delivery, but each brief needs an observable parent journey and the complete outcome must remain tracked. A working reset without an approachable setup/restore path is not completion of P0-008. Preserve privacy, history locks and display provenance. Email delivery, social login, multi-household switching, parental privacy overrides, arbitrary role creation, new chore semantics, and a template marketplace remain outside this outcome.
+
 ## Inputs, outputs, and interfaces
 
 This may include a UI, API, CLI, scheduled job, report, dataset, model interaction, integration, device, or game controls.
 
 - **Inputs:** Credentials, household enrollment claims, routine definitions, personal additions and ordering, approval decisions, checklist status intent, personal-task title and visibility.
 - **Outputs:** Member-specific Today content, household progress, pending decisions, future-routine previews, stable historical occurrences, and personal-task views filtered by visibility.
-- **Interfaces/channels:** Responsive mobile/desktop browser UI, same-origin JSON API, WebSocket change notifications, and narrow operator commands for initial bootstrap and backup/restore.
+- **Interfaces/channels:** Responsive mobile/desktop browser UI, same-origin JSON API, WebSocket change notifications, and an in-app first-run, member-management, backup/reset/restore experience. Existing operator commands are implementation/operations tools, not the intended household workflow.
 
 ## Success and failure
 
 - **Success:** Six distinct members can use one securely reachable household deployment; progressive authority is understandable; rapid checklist use remains immediate; changes remain member-scoped and prospective; and direct API bypass attempts are denied.
-- **Failure/recovery:** Pending checklist intent remains visible and retryable after transient connection loss. Rejected or invalid changes explain what happened without silently disappearing. Sessions expire or can be revoked, and deployment data has a documented backup/restore path. Account recovery beyond operator-assisted evaluation recovery remains future work.
+- **Failure/recovery:** Pending checklist intent remains visible and retryable after transient connection loss. Rejected or invalid changes explain what happened without silently disappearing. Sessions expire or can be revoked. P0-008 adds in-app backup/restore, protected owner setup recovery, self password change, and manager-assisted member password reset. Broader recovery without a manager or owner remains future work.
 
 ## Trust, safety, privacy, and accessibility
 
@@ -177,11 +244,11 @@ Examples include clarity, responsiveness, accuracy, reliability, explainability,
 
 These are deferrals, not rejected product ideas. The inventory below preserves their intended direction.
 
-For P0-007, A/B are accepted integrated foundations. CURRENT is C-1's actionable Today and summary-first Household. The approved C proposal's restricted Household Display and shared execution/personal promotion follow as C-2/C-3; they are not implementation scope in C-1. Generalized assignment variants and adjacent mechanics remain deferred.
+Earlier P0-007 scope statements below describe those briefs at the time they were written. P0-008 promotes first-run setup, household member administration, and reset/restore into the next proposed Product outcome; Architecture will determine the current implementation sequence.
 
 - Generalized chore rotation, eligibility, helper assignment, swaps, cover, claims, or chore debt.
 - Skip Days, retrospective completion, complete notifications, or calendar ingestion.
-- Multiple-household switching, household splitting/departure workflows, or a universal permission editor.
+- Multiple-household switching, household splitting, portability of personal work to another household, or a universal permission editor. P0-008 does include ordinary removal from this household.
 - Generic approvals/workflow, enterprise SSO, social sign-in combinations, or MFA policy administration.
 - Homework systems, projects, meal planning, pet inventory, or broad household-management expansion.
 - Full recurrence, due dates, reminders, or privacy matrices for personal tasks.
@@ -189,9 +256,9 @@ For P0-007, A/B are accepted integrated foundations. CURRENT is C-1's actionable
 ## Open product questions
 
 - What parent-approved language should replace technical obligation terms such as `as_needed`?
-- When personal removal is introduced, which shared items may be removable and how should that be communicated?
-- Which account-recovery experience is appropriate for adults and children after the first family evaluation?
-- What should the product retain, export, or delete when a person eventually leaves a household?
+- When personal removal of inherited routine steps is introduced, which shared items may be removable and how should that be communicated?
+- Beyond P0-008's manager-assisted password reset and protected owner recovery, which independent account-recovery options are needed after real family use?
+- What additional export or portability choices should be offered when a person leaves a household? P0-008 establishes immediate removal and history/privacy behavior, without designing portability.
 
 ## Deferred / Preserved Product Directions
 
@@ -224,11 +291,11 @@ P0-007 now promotes the ordinary-responsibility, bounded-pattern, scheduled-work
 - **Pet care:** Preparation such as thawing frozen food the previous day, feeding, litter, flea/tick medication, food/litter quantity tracking, and multi-day dependencies beyond one daily checkbox.
 - **Meals:** Meal scheduling/planning, recipes, family ratings, rankings, and preferences remain adjacent scope outside the current responsibility loop.
 - **Presence across households:** Alternating mom/dad homes, college, temporary absence, custom presence schedules, backup responsibility, and participation in more than one household context.
-- **Departure and portability:** Personal work should be able to follow a child leaving home or moving to college. Household-owned responsibilities stay with the originating household and may become unassigned; prior history remains trustworthy. General departure/archival is future work.
+- **Departure and portability:** P0-008 promotes ordinary member removal while preserving historical accountability. Taking personal work to another household when a child leaves home or moves to college remains future work.
 - **External calendar context:** School calendars, holidays, work schedules, and household calendar information may inform responsibilities without becoming the sole source of historical truth.
 - **Notifications:** Routine and due-time reminders, timer completion, and push notifications should follow observed household need rather than blanket alerting.
 - **Offline and installability:** Stronger offline-first behavior, offline first load, PWA/installability, and clearer retry visibility may extend the current durable-mutation foundation.
-- **Broader-release operations:** Production-quality recovery, account recovery, stronger backup/restore confidence, privacy hardening, operational monitoring, and deployment reliability beyond current family-evaluation evidence.
+- **Broader-release operations:** P0-008 promotes in-app backup/restore, protected owner setup recovery, self password change, and manager-assisted password reset. Independent account recovery beyond these paths, operational monitoring, and broader deployment reliability remain future work.
 - **Family privacy:** Children's identities, routines, personal tasks, homework, and completion history remain private family data. Intentional visibility must survive expansion; household membership does not imply every sibling sees all data.
 - **Experience and tone:** Calm, native-feeling, phone-first, neither corporate nor childish, useful as children grow, with subtle personality/customization and satisfying checklists. No gamification unless deliberately chosen later.
 - **Authoring conveniences:** Duplicate a routine as a starting point for a weekday/weekend variation, and restore an archived routine when a safe lifecycle is designed. These conveniences do not precede proving independent routine definitions.

@@ -141,6 +141,8 @@ P0-002 is the approved replacement described by D-006 and D-007. D-005 remains d
 
 **Status:** Active
 
+**P0-008 refinement (planned):** D-050 replaces the operator-only first-manager claim with protected browser setup/owner recovery. D-053 adds person-bound invitations, password maintenance and current-grant consumption. Existing password hashing/session controls remain. These are implementation commitments for A/C, not claims about code at `415d930`.
+
 **Decision:** P0-002 uses globally unique login names and passphrases without requiring email. Login names are trimmed, lowercased ASCII identifiers of 3–64 characters matching `[a-z0-9][a-z0-9._-]{2,63}`; household display names remain separate and Unicode-capable. Passphrases are 15–128 Unicode characters, normalized with NFC, screened against a local common-password blocklist, accepted without composition rules, and stored as Argon2id PHC hashes using at least 19 MiB memory, two iterations, and parallelism one. Authentication errors are generic and failed attempts are throttled.
 
 An authenticated browser receives a cryptographically random 256-bit opaque session token. Only its SHA-256 digest is stored server-side. Hosted cookies are host-only, `Secure`, `HttpOnly`, `SameSite=Strict`, and `Path=/`; mutations also require an allowed origin and per-session CSRF header. Sessions expire after seven idle days or 30 absolute days, rotate after authentication or privilege change, and are revoked on logout. A distinctly named non-secure cookie is permitted only in explicit local development/test profiles.
@@ -334,6 +336,8 @@ P0-002 direct personalizers may add and reorder only their own personal addition
 ## D-017 - Demo fixtures are opt-in and cleanup is provenance-safe
 
 **Status:** Active
+
+**P0-008 refinement (planned):** Normal startup/reset remains fixture-free. D-054 adds ordinary member departure independently of this limited command; D-055 adds an explicitly reviewed, one-time browser remediation of canonical sample records. This command's backup-first/reference-blocking rules remain unchanged. Canonical identity proves origin, not that later work is disposable.
 
 **Decision:** Normal development and bootstrap do not create fictional household members. Demo/test seeding is explicit and uses one canonical manifest of stable fixture IDs. Existing contamination is remediated only by an operator-invoked, backup-first command that matches manifest identity and removes a membership only after exhaustive durable-reference checks; names never establish provenance.
 
@@ -734,6 +738,8 @@ Summary completion follows existing obligation semantics; Not needed and open Op
 
 **Status:** Active
 
+**P0-008 refinement (planned):** This remains **Clear activity history**, with its existing scope, grant and environment gate. D-051 separately authorizes full **Reset household** and restore with an installation epoch outside replaced household data. Activity generation alone cannot protect a database restored to older IDs/generations. P0-008's full reset does not silently broaden this operation.
+
 **P0-007 refinement:** D-037 explicitly expands the confirmation and acknowledged reset scope to routines plus responsibilities. A legacy routine-only request cannot newly erase responsibility data. The common generation/floor and configuration-retention guarantees remain.
 
 **Decision:** P0-006C permits one explicit household-wide **Clear routine activity history** operation in secondary Data & testing UI, with a strong single confirmation. It removes all routine occurrence/step/report rows and their checklist replay payloads for that household, including today/future and started work. It preserves identity/access, profile/order, groups/dated sets, all routine configuration/lifecycle versions, personal layers/proposal audit, calendar editions, personal tasks, and non-execution command receipts. Existing backups/logs are not purged. This is the authorized evaluation exception to D-003/D-023/D-030 retention, not ordinary edit behavior or a general retention policy.
@@ -1017,7 +1023,7 @@ On reconnect/reload/restart, validate the same active display session and author
 
 ## D-048 - Personal-task wall promotion is owner-controlled state distinct from visibility
 
-**Status:** Active; technically implemented and accepted for P0-007C-3B r1 at `57780ce` on the brief branch, based on merged C-3A `6510fb4`. Main integration and Product acceptance remain separate.
+**Status:** Active; P0-007C-3B r1 was technically accepted at `57780ce` and integrated through PR #23 at `415d930`. Product acceptance remains separate.
 
 **Decision:** A personal task retains its owner and Only me/Household visibility, and gains a separate owner-chosen **Show on shared dashboard** state. Existing tasks and new tasks without an explicit opt-in are unpromoted. Only the owner may change either sharing dimension on their task; this does not grant another member, manager or display a task-edit capability. A private task cannot be promoted. Moving a promoted task to Private clears promotion in the same commit; returning to Household does not re-promote it automatically. Do not derive task-sharing authority from age or adult/child classification. Preserve room for a separately reviewed future parental-override policy without implementing one now.
 
@@ -1035,7 +1041,7 @@ Owner sharing mutations use household/session-derived scope, Origin/CSRF, confli
 
 ## D-049 - Promoted personal work uses a filtered display projection and withdrawal-safe sync
 
-**Status:** Active; technically implemented and accepted for P0-007C-3B r1 at `57780ce` on the brief branch, based on merged C-3A `6510fb4`. Main integration and Product acceptance remain separate.
+**Status:** Active; P0-007C-3B r1 was technically accepted at `57780ce` and integrated through PR #23 at `415d930`. Product acceptance remains separate.
 
 **Decision:** The existing display-principal read model is the authority boundary for personal work. Only currently Household-visible, explicitly promoted, open tasks enter compact resting By person and By work summaries, labeled as undated personal work under their owner rather than included in routine/responsibility progress. Household-visible unpromoted tasks remain in permitted person detail; private task IDs, titles and counts never enter any display response, including focused detail or sync. A completed promoted task may remain inspectable in detail under the existing Household visibility rule but is quiet in resting summaries; reopening it restores summary presence only if still promoted.
 
@@ -1048,3 +1054,135 @@ Task changes must invalidate every formerly authorized projection that could ret
 **Alternatives considered:** Sending full task events to the display and hiding fields in React risks leaks; invalidating only if the new state is visible leaves withdrawn content on screen; promoting all Household tasks undermines the separate owner choice.
 
 **Related briefs:** P0-007C-3B r1; extends D-044/D-045 and preserves D-043/D-046/D-047.
+
+---
+
+## D-050 - Installation ownership survives household setup and replacement
+
+**Status:** Active for planned P0-008A/B/C; not implemented at `415d930`.
+
+**Decision:** Introduce a narrowly authorized installation-owner recovery principal distinct from a human membership and a Household Display. The deployment owner provisions `INSTALLATION_OWNER_SECRET` through the hosting secret UI using at least 256 bits of password-manager-generated randomness. A protected `/owner` browser journey accepts that proof and issues one-use setup access; no public visitor wins ownership by reaching an empty site first. The setup recipient receives a short-lived invitation, not the deployment recovery secret. Lost access is replaced through the owner page or, if the root secret is lost, the host's secret-management UI. Normal setup/reset/recovery requires no terminal/database commands.
+
+Owner sessions and setup tickets are opaque, digest-backed, scoped and expiring. They authorize setup, operation recovery and approved backup/manager recovery surfaces only, not a fabricated manager identity or private-task browsing. Store control/session/operation metadata outside replaceable household data; never include the root secret in backups. Rotating the root secret invalidates prior owner authorizations. When it is missing, lifecycle entry fails closed while populated ordinary use remains available.
+
+Invitation links carry one-time material only in a fragment, exchange it with same-origin POST, remove it immediately, and persist only an HttpOnly scoped session. Do not use query-string tokens, logged request bodies, external QR generation or local-storage secrets. Rate limits, Origin checks, no-store, hosted Secure/HttpOnly/SameSite cookies and post-exchange CSRF remain explicit for each principal class. Setup requests recheck epoch/authority after asynchronous work. A consumed first-manager ticket cannot create a second manager.
+
+**Reason:** Full reset removes the household manager account; recovery cannot depend on that erased identity. A protected external ownership anchor is necessary for an internet-reachable empty installation. A browser owner exchange allows the parent-facing flow without a hosted shell.
+
+**Implications:** New principal/route-policy and fail-closed config; a small persistent installation control store separate from household snapshots; protected adoption/recovery for an already populated database. Existing passwords keep D-007's policy. Owner recovery is powerful deployment authority and must be described as such. It does not grant arbitrary family members owner access.
+
+**Alternatives considered:** First-visitor registration exposes the site to takeover; keeping a manager row through reset contradicts Product's reset scope; printing a fresh bootstrap claim in a console repeats the current usability problem; adding email/social identity requires an unapproved service.
+
+**Reference:** Token unpredictability, secure storage, single-use expiry and recovery invalidation follow [OWASP's recovery guidance](https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html); session segregation and renewal follow [OWASP session management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html). The exact lifetimes in the briefs are project decisions.
+
+**Related briefs:** P0-008A/B/C; refines the bootstrap/recovery boundary of D-007 and preserves D-043 principal separation.
+
+---
+
+## D-051 - Reset and restore replace data through a durable installation epoch
+
+**Status:** Active for planned P0-008A/B; not implemented at `415d930`.
+
+**Decision:** Keep durable installation ID, strictly increasing dataset epoch, active database reference, owner control and minimal lifecycle operation journal outside household snapshots. Adopt existing `DB_PATH` without reseeding/replacing it. Reset prepares an empty migrated database; restore prepares a verified migrated candidate. Serialize replacement with active requests/writers/materialization, make the candidate durable, atomically publish its reference/epoch/result in control state, and reopen runtime stores before resuming household traffic. Startup resolves interrupted operations deterministically. The exact storage/helper layout belongs to Engineering; fault/restart evidence must demonstrate an intact old or completed new dataset.
+
+Bind authorization, queued intent, read arbitration and operation replay to installation/epoch as well as current membership/display/activity generation. Revalidate inside the write boundary. A restore must never restore the installation epoch. Old sessions/links and pending commands cannot regain authority merely because a backup contains identical IDs/receipt payloads. New-generation reset/restore supersedes normal same-generation pending-omitted retention. Offline display stale exposure retains D-045's existing bound.
+
+Before destructive execution, provision a restricted, expiring continuation for the specific initiator/operation/source epoch. Its durable result lookup survives household-session erasure and lost responses; completed-command replay never affects newly entered data. Owner recovery can resume setup/result if the continuation is lost. No plaintext secret or erased household content is retained in operation receipts.
+
+Reset deletes the complete household data/access state and retains explicitly saved backups and installation control only. With backup off, do not create a pre-reset copy; promptly retire the former active image and WAL/SHM after committed activation, with restart-safe cleanup. The existing active file held until activation is a recovery boundary, not a saved backup. Report cleanup failures truthfully. D-034's scoped Clear activity history remains unchanged. More than one household in one database is rejected for these installation-level lifecycle operations.
+
+**Reason:** Deleting rows without a persistent incarnation boundary permits restored sessions/queued actions to cross into old IDs. Replacing a SQLite file while stores hold open connections risks serving different databases or losing recoverability. The small control store is required by repeatable reset, saved backups and lost-response recovery.
+
+**Implications:** Shared database lifecycle coordinator, explicit quiescence/reopen and durable result state; upgrade all operator tools to resolve the active image and prohibit restore bypass. Require before/after-activation faults, concurrent requests, real restart and disk/cleanup failure tests. No hidden pre-operation backups when the user opts out.
+
+**Alternatives considered:** Filesystem deletion alone, browser-only outbox clearing, household generation restored from snapshots, and automatically keeping a hidden backup each reset each violate an approved requirement.
+
+**Related briefs:** P0-008A/B; extends D-004/D-034/D-045/D-047 without changing ordinary edit/history locks.
+
+---
+
+## D-052 - Backups are managed immutable data snapshots, never authority snapshots
+
+**Status:** Active for planned P0-008B; not implemented at `415d930`.
+
+**Decision:** Maintain a protected server-side catalog outside reset data, with immutable SQLite backup images and identity/date/label/schema/digest metadata. Use the SQLite backup API and validate completion before advertising a saved snapshot. Reset/restore never deletes saved backups; explicit selected-backup deletion does. The save-current-state option is off by default for each reset/restore. Requested-backup failure blocks replacement until retry or a fresh explicit proceed-without choice.
+
+Restore validates a managed file, stages it, verifies integrity **and** foreign keys, migrates a copy using application-owned migrations, sanitizes all sessions/access claims and activates through D-051 with a new epoch. Restore data, IDs, password hashes, grants and historical display identities, but never old human/display bearer access or invitations/reset links. Restored displays require re-enrollment. Explain that saved credentials/roles return to their snapshot state; signin or protected owner recovery establishes fresh access. Backup does not downgrade application code.
+
+The initial compatibility promise covers verified through-017 backups and schemas released through P0-008. Unknown/newer/out-of-range/corrupt images are rejected before replacement. An owner may validate/register legacy regular files already in `BACKUP_DIR`; paths, symlinks, arbitrary URLs/uploads and supplied migration code are never trusted. Preserve source files during candidate migration. A targeted lifecycle/owner authority permits metadata and replacement, not browsing private task contents. No new raw download interface is introduced.
+
+**Reason:** Saved data is useful after reset only when reachable through surviving protected ownership. SQLite snapshots contain sensitive data and expired authority; reactivation must be an intentional recovery of household data, not a restoration of stolen/revoked tokens.
+
+**Implications:** B extends A rather than adding a second restore pipeline. Persistent control/catalog/data paths and unsupported-backup messages become deployment documentation; supported schema boundaries need executable fixtures. Off-host/provider disaster recovery remains separate from this in-app snapshot catalog.
+
+**Reference:** SQLite's [backup API](https://www.sqlite.org/backup.html) supports consistent live snapshots. [Integrity-check documentation](https://www.sqlite.org/pragma.html#pragma_integrity_check) separately calls for foreign-key checks; do not treat a `quick_check` result alone as complete restore admission.
+
+**Related briefs:** P0-008B; D-050/D-051.
+
+---
+
+## D-053 - Person permissions, access and managerial continuity are separate
+
+**Status:** Active for planned P0-008A (lifecycle grant) and P0-008C (member administration); not implemented at `415d930`.
+
+**Decision:** Keep D-006's user/membership/grant separation. Expose Manager/Member with a separate member personal-routine mode (Approval required or Can edit own additions), plus a secondary editor for the closed permission set. Adult/Child stays descriptive. New people default to Member + approval. Effective grants determine accurate role/customized labels; preserve legacy/custom grants and do not silently replace them. No arbitrary role definitions or age-based access.
+
+Add `household.lifecycle.manage` for basics/reset/backups/restore (A); `household.access.manage` for permission and credential-access administration; and `household.member.remove` for departure and narrowly scoped shared-work impact previews (C). Backfill each once to memberships already holding both enrollment and structure grants, retaining all other values. The Manager bundle includes them. Manager continuity requires at least one current, sign-in-enabled user whose nondeparted membership holds enrollment, structure, access.manage and lifecycle.manage. Pending invitations/people cannot satisfy this invariant; transactions removing any last essential authority fail, including concurrent manager changes. Before C adds access.manage, A's adoption/recovery uses the existing enrollment+structure authority plus its new lifecycle grant, without assuming C is installed.
+
+Permission edits are versioned, replay-bound and independent of invitation/password operations. An access claim references an existing membership and reads current grants at redemption; it never installs an old preset. Issuer authority, target eligibility, purpose, expiry and epoch are rechecked at commit. Revoke ends sign-in/links but not household participation. Restore sign-in uses the same nondeparted identity. Password maintenance never changes grants or reveals credentials to a manager; successful resets retire prior sessions/links. Role changes invalidate or rotate session authority promptly. Targeted member WS revocation and delayed-response/outbox protection accompany these changes.
+
+**Reason:** Today's claim stores/reapplies a grant preset, coupling account creation and permission changes. A friendly role label cannot safely replace current capabilities or imply pending invitations protect the last manager. Revoking login must not remove a child's household work.
+
+**Implications:** Authority/access versions distinct from profile edits and removal; link purposes and current-authority checks; closed permission previews; no manager/account impersonation on shared devices. Root-owner recovery remains a separate protected route, not a reason to permit ordinary last-manager loss.
+
+**Related briefs:** P0-008A/C; refines D-006/D-007/D-012/D-014/D-015; preserves D-010/D-048 privacy.
+
+---
+
+## D-054 - Departure immediately ends eligibility but preserves historical accountability
+
+**Status:** Active for planned P0-008C; not implemented at `415d930`.
+
+**Decision:** Model removal separately from access revocation. Store departure identity/time and household-local date; remove the person from current directory/order/pickers and deny sign-in, links and execution immediately. Used memberships become retained former-member identities. An unused pending membership can be physically deleted after reference checks and retirement of solely owned setup artifacts. Creation/profile/order receipts alone must not force a former-member tombstone; keep minimal non-content-bearing replay denial so old commands cannot resurrect a deleted profile. Execution/accountability or shared history remains protected and requires retained identity. Names never establish identity; removed IDs are not recycled.
+
+Overlay departure on every direct/group/future assignment source for today and later. This is an explicit immediate exception to D-018's ordinary next-day group updates; do not destroy dated group history or immutable plan content. Reconcile existing unstarted current/future work atomically with departure and receipt. Direct/group routines stop creating that person's occurrences; fixed/weekly departed owners and empty cycles become Unassigned, while nonempty cycles use the existing date-derived anchor/ring policy after filtering. Addition-owner Unassigned never falls back to a base owner. Preview the actual next week from the same resolver and version/date-bound consent.
+
+Started work and historical snapshots preserve owner, structure, execution and display provenance. Unfinished started work is visible to permitted management as needing attention, but neither departed human access nor shared-display actions may execute it. Removal/action races serialize; no reassignment or Cover/Claim is implied. Personal work leaves current views without ownership transfer or private-data disclosure; pending proposals become non-actionable. Existing household-owned displays survive their issuer's departure, while new claims still require an authorized issuer.
+
+**Reason:** Blocking removal on ordinary history makes member administration unusable. Cascading deletion or reassignment would corrupt accountability. Separate eligibility and retained evidence permits departure without erasing what happened.
+
+**Implications:** Exhaustive SQL/JSON reference and resolver inventory, last-manager checks, source-versioned impact preview, current-view withdrawal and targeted access invalidation. AuthContext resolved before asynchronous work is not enough: commit/replay and display status guards must recheck departure.
+
+**Related briefs:** P0-008C; extends D-012/D-018/D-023/D-032/D-036/D-038–D-040/D-043/D-049.
+
+---
+
+## D-055 - Hosted sample remediation is explicit, provenance-based and conservative about real work
+
+**Status:** Active for planned P0-008C; D-017's existing CLI behavior remains implemented and unchanged.
+
+**Decision:** Offer a conditional one-time browser remediation only when canonical fixture identities exist. The six IDs plus their original household establish sample origin. A claimed/renamed/used fixture may now represent a real person; retain ambiguous records by default and require explicit selection/confirmation before sample treatment. Ordinary member departure remains available independently of this utility.
+
+Apply selected removals together under D-054 and last-manager/version checks, with an optional B backup. Clean exclusively owned disposable sample data when durable references prove it safe; preserve identities/audit needed by history and any mixed/unproven real data. No private-task content or counts are exposed in management previews. The present manifest records people, not later shared work: fixture authorship, names, absence of a current real assignee or a Reed label never proves a plan/group/calendar is disposable. Retain such work with ordinary edit/repair paths rather than refusing the entire people removal. Do not alter the old operator cleanup's backup-first/reference-blocking semantics.
+
+**Reason:** The Railway installation may contain both evaluation people and genuine household work. Reset is simplest only after the Project Lead chooses that all data is disposable; broad name/creator-based cleanup cannot establish that fact.
+
+**Implications:** Isolated populated rehearsal, explicit UI inventory and selection, atomic batch/backup-failure/race evidence, same-name nonfixture and claimed-fixture tests. Never perform this remediation automatically at migration/startup or as Architecture planning work.
+
+**Related briefs:** P0-008C; preserves D-017, reuses D-052/D-054.
+
+---
+
+## D-056 - Setup is a resumable guide over the real household records
+
+**Status:** Active for planned P0-008A (required basics) and P0-008D (complete guide); not implemented at `415d930`.
+
+**Decision:** Persist versioned setup progress, explicit skip/dismissal choices and stable links to the same user, household, people, calendar and work records used by normal management. Only first account and confirmed household name/timezone are required. A provides those steps; D integrates Your people, School days and First work with Back, Save and finish later, optional exits and a recap. Existing households are not forced to recreate identity. Returning edits the saved records; examples never auto-save fixtures.
+
+Preview uses the existing recurrence/assignment/applicability resolver and never materializes or locks work. Show real names and next dates (next week for repeating assignments) and let users correct a choice without losing the rest. Manager Today shows only the manager's work; children-only assignments lead to a helpful Household link. Optional skips/dismissal do not cause permanent warnings. Restore includes saved progress but resets access under D-052; progress cannot resurrect later-deleted records.
+
+**Reason:** A parallel setup model or browser-only wizard would duplicate people/work on retries and disconnect the walkthrough from the usable product. A correct reset alone cannot fulfill the approved nontechnical first-day outcome.
+
+**Implications:** Narrow reuse of domain commands/editors, saved-state conflicts/IDs, phone/desktop accessibility and full ordinary-UI journey evidence. Post-activity timezone relocation is not introduced implicitly; initial confirmation precedes work. The full P0-008 Product checkpoint includes setup, invitation, permission change, removal, backup, reset and restore.
+
+**Related briefs:** P0-008A–D; preserves D-017/D-023/D-024/D-027–D-040.

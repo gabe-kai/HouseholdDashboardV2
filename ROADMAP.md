@@ -73,9 +73,9 @@ Goal: prove that a real recurring household routine can be used quickly by six d
   - **Status:** Technically ACCEPTED by Architecture; merged through PR **#21** at **739f7e3**. AT1–16 and PR/RC gates pass. Physical readability at 10 and 16 feet (AT17) was later reported by the Project Lead, separately from technical acceptance and the changed C-3B view.
   - **Evidence target:** Separate display identity and revocation, strict data/privacy boundary, truthful current-day projection, live recovery, and six-person 4K geometry. C-2 intentionally has no display checklist writes or personal-task promotion.
 
-### CURRENT
+### P0-007C TECHNICAL COMPLETION / EVALUATION FOLLOW-UP
 
-The third approved Product outcome is intentionally decomposed into evidence-gated briefs. Both contribute to the existing user-facing card **Act at the shared display without losing trust**; no new Planning/Design proposal is required.
+Both C-3 slices contribute to **Act at the shared display without losing trust**. They are integrated; remaining Product evaluation is not fabricated by the new P0-008 approval.
 
 - [x] **P0-007C-3A - Complete assigned household work at the shared display.** Let a household member complete today's applicable, already-assigned routine and responsibility work on the enrolled display. Preserve the accountable owner and record the display as the action principal—not as a fake person. Make pending actions idempotent and recoverable across disconnection, reload/restart and reconnect; revocation remains authoritative. Keep C-2 privacy and read-only management boundaries.
   - **Brief:** `P0-007C-3A r1 - Complete Assigned Work at the Shared Display` (`briefs/p0-007c-3a-shared-display-execution.md`).
@@ -84,19 +84,32 @@ The third approved Product outcome is intentionally decomposed into evidence-gat
 
 - [x] **P0-007C-3B - Let owners choose personal work to show on the wall.** Add an owner-controlled display-promotion choice, distinct from Only me/Household visibility. Preserve private-task exclusion and keep unpromoted household-visible work detail-only. Refine display placement/interaction from C-3A use; no parental override or task-control authority is implied.
   - **Brief:** `P0-007C-3B r1 - Owner-Controlled Personal Work on the Wall` (`briefs/p0-007c-3b-owner-controlled-personal-task-display.md`).
-  - **Status:** Technically ACCEPTED on r1 at `57780ce`; the same-revision held-status correction and regression close the Architecture finding. The Project Lead still owns merge and Product acceptance of card **Act at the shared display without losing trust**.
+  - **Status:** Technically ACCEPTED on r1 at `57780ce`, merged through PR #23 at `415d930`. The held-status correction closes the Architecture finding. Product acceptance of **Act at the shared display without losing trust** remains separately tracked.
   - **Evidence:** Owner-only sharing/promotion with stable completion-time meaning, default-off populated upgrade, private exclusion at API/event/client boundaries, compact open-task placement in both wall summaries, withdrawal without stale resurrection, C-3A regression, and local PR/RC gates. Physical density/readability of the changed wall remains Product evaluation.
+
+### CURRENT
+
+- [ ] **P0-008A — Create the first manager and start again safely.** Secure owner-supplied browser access, required Account/Household setup and repeated full reset return the evaluator to protected Welcome without terminal/database commands.
+  - **Brief:** `P0-008A r1` (`briefs/p0-008a-protected-first-run-reset.md`), **IN REVIEW**, Engineering readiness not yet performed.
+  - **Evidence:** Public takeover denial; no-fixture first run; populated adoption; reset without a new backup; lost-response/idempotency; old human/display/action fencing; true restart/failure recovery. Hosted evidence follows locally validated release candidates.
+  - **Card:** **Set up and manage my household without operator help** → Up Next. A is an observable first slice, not completion of the full Product outcome.
 
 ### LIKELY NEXT
 
-- After real-family evaluation of all three P0-007C contexts—including the technically accepted C-3B wall changes—Product/Design should choose the next outcome from observed use. Wall density and responsibility-authoring friction are recorded feedback, not a pre-approved follow-on implementation slice.
+The Project Lead explicitly requested evidence-gated briefs for the approved complete P0-008 journey. B–D are successor **DRAFT r1** contracts, not READY or permission to implement in parallel. Architecture refreshes each from accepted predecessor evidence before a fresh Engineering review. Stable intent is preserved now; implementation details and material new findings can revise later briefs.
+
+- [ ] **P0-008B — Save a household and restore it in the app.** Backups list/create/delete, off-by-default backup during reset/restore, and protected Welcome restore. Gate: A's replacement/epoch/recovery evidence. Brief: `briefs/p0-008b-household-backups-in-app-restore.md`.
+- [ ] **P0-008C — Manage access and remove a person without losing history.** Understandable roles/permissions, invitation links/QR, password help, revoke/restore access, last-manager protection, immediate departure eligibility and careful sample-data remediation. Gate: A/B's authority and backup lifecycle. Brief: `briefs/p0-008c-member-access-removal.md`.
+- [ ] **P0-008D — Reach the first useful family day without coaching.** Integrate all five setup steps, optional exits/cross-device resume, first-work review/recap and one complete setup→invite→permissions→remove→backup→reset→restore evaluation. Gate: accepted A–C. Brief: `briefs/p0-008d-guided-first-household-day.md`.
+
+The shared card reaches Ready to Evaluate after A–D technical acceptance; the Project Lead then judges the uninterrupted Product journey. No return to Design is needed simply to continue the approved sequence. Coverage/release checkpoints: `reports/P0-008-architecture-sequencing.md`.
 
 ### LATER
 
 - Preserve potential pressures from real-family use: helpers, Cover/Claim, household exceptions/Skip Day, exact-time behavior, richer personal/school projects, notifications, multi-person/claimable cleanup and a natural twice-daily chore concept. None is pre-selected as the next implementation commitment.
 - Preserve owner-controlled visibility, separately authorized future parent overrides for minors, long-running projects/subtasks/milestones/due dates/daily targets and compact shared project summaries. Due dates or progress must never expose private work. Broader ambient display feeds follow a useful functional display, not before it.
 - Additional ordinary responsibilities (Cars, lawn care, medication, seasonal maintenance), richer personal work, and assignment refinement remain Product pressure tests; no domain-specific implementation is authorized in B.
-- Broader-release privacy, recovery, offline behavior, and operational confidence.
+- Broader-release monitoring, independent account recovery beyond the P0-008 owner/manager paths, offline behavior, and operational confidence. In-app reset/backup/restore and ordinary member removal are now P0-008, not deferred work.
 - Detailed unscheduled product memory: [`PRODUCT.md` — Deferred / Preserved Product Directions](PRODUCT.md#deferred--preserved-product-directions). This inventory is not a sequence of implementation commitments.
 
 ## Milestone 1 - Core Value
@@ -112,7 +125,7 @@ The third approved Product outcome is intentionally decomposed into evidence-gat
 
 ## Milestone 3 - Reliability and Refinement
 
-- [ ] Harden hosting, automated backup/restore, account recovery, privacy, accessibility, and operational evidence beyond the P0-002 family-evaluation deployment.
+- [ ] After P0-008's browser-managed backup/restore and owner/manager recovery, consider scheduled/off-host backups, independent recovery, monitoring and broader operational evidence.
 - [ ] Refine offline behavior and notifications based on observed connectivity and reminder needs.
 
 ## Later / Parking Lot

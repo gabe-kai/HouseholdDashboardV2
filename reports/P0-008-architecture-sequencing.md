@@ -4,7 +4,7 @@
 **Role:** Architecture
 **Source:** Approved `PRODUCT.md`, P0-008 First-Run Setup and Household Member Management; Project Lead's handoff in this task.
 **Inspected baseline:** `member-management-first-run-setup` @ `4f07593`; local `main`/`origin/main` @ `415d930` (PR #23). Source/migrations match main; the committed branch difference is Product documentation only.
-**Disposition:** Release **P0-008A r1** for Engineering readiness; preserve B–D as gated r1 drafts. No implementation, live-data operation, deployment or Git mutation performed.
+**Disposition:** Engineering readiness for **P0-008A r1** is accepted; proceed with A implementation after the planning baseline is integrated. B–D remain gated r1 drafts. No implementation, live-data operation, deployment or Git mutation performed by Architecture.
 
 This report records reasoning, traceability and release preparation. The four brief files are the authoritative implementation contracts; this report is not a contract addendum.
 
@@ -82,7 +82,7 @@ These are a release plan, not commands to run now. Authoritative transition requ
 
 ## Handoff for Engineering
 
-> Acting as Engineering, review **P0-008A revision 1 — Protected First-Manager Setup and Repeatable Reset** in `briefs/p0-008a-protected-first-run-reset.md`. Read the current studio/role instructions, approved P0-008 in `PRODUCT.md`, D-050–D-056 and relevant existing contracts. Inspect the actual checkout: the planning baseline was `4f07593`, with code matching integrated `main` at `415d930` and migrations through 017. Return one consolidated readiness review covering owner entry/recovery, runtime database replacement and durable result recovery, populated adoption, epoch/old-client fencing, and local/hosted evidence selection. Record the reviewed revision and report; wait for Architecture ACCEPT / PROCEED before implementation. B–D are gated drafts and stay out of this work. Do not alter a live database or deploy. Suggest a commit message but do not commit.
+> Acting as Engineering, implement **P0-008A revision 1 — Protected First-Manager Setup and Repeatable Reset** in `briefs/p0-008a-protected-first-run-reset.md`. Architecture accepted the READY review. Start from integrated `main` after the committed planning baseline is merged, using branch `brief/p0-008a-protected-first-run-reset`. Implement A only. Keep B–D gated; preserve the live database during adoption. Do not deploy or perform live reset without Project Lead authorization. Follow the brief's full local PR/RC evidence and write a Build Report. Suggest a commit message but do not commit.
 
 Suggested implementation branch after the planning/readiness baseline is integrated: `brief/p0-008a-protected-first-run-reset`. Continue using the existing planning branch for this documentation; Architecture has not renamed or created a branch.
 

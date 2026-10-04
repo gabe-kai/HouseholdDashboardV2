@@ -19,9 +19,9 @@
 
 ## Current focus
 
-Inspected 2026-10-03: local `main` and `origin/main` are **415d930** (PR **#23**), integrating technically accepted **P0-007C-3B r1**. Current planning branch is `member-management-first-run-setup` at **9705e13**; its committed difference from main is P0-008 Product/Architecture docs and the four staged briefs (no application-code changes).
+Inspected 2026-10-04: local `main` and `origin/main` are **415d930** (PR **#23**), integrating technically accepted **P0-007C-3B r1**. Current planning branch is `member-management-first-run-setup` at **c5e6e6b**; its committed difference from main contains approved P0-008 Product/Architecture documents, four staged briefs, and A's readiness report (no application-code changes).
 
-Architecture has prepared four evidence-gated P0-008 briefs. **P0-008A r1 — Protected First-Manager Setup and Repeatable Reset** Engineering readiness is **READY** (`reports/P0-008A-r1-engineering-readiness.md`); implementation awaits Architecture **ACCEPT / PROCEED**. B (backups/restore), C (member access/removal) and D (complete guided first day) are **DRAFT**, gated on accepted predecessor evidence and a refreshed baseline. No P0-008 implementation or live Railway operation has occurred in this planning pass. The whole Product journey remains one card: **Set up and manage my household without operator help**.
+Architecture has prepared four evidence-gated P0-008 briefs. **P0-008A r1 — Protected First-Manager Setup and Repeatable Reset** has Engineering readiness **READY** and Architecture **ACCEPT / PROCEED** recorded in its brief. Implementation starts after this planning baseline is integrated; no P0-008 code or live Railway operation has occurred. B (backups/restore), C (member access/removal) and D (complete guided first day) remain **DRAFT**, gated on accepted predecessor evidence and refreshed baselines. The whole Product journey remains one card: **Set up and manage my household without operator help**.
 
 P0-007C's outstanding physical/Product judgments remain distinct from its technical acceptance and from approval to begin P0-008. Old reports retain their inspected SHAs.
 
@@ -44,7 +44,7 @@ P0-007C's outstanding physical/Product judgments remain distinct from its techni
 | P0-007C-2 - Household Display and Read-only Dashboard | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `739f7e3` via PR #21 | Physical readability reported; full Product acceptance remains separate |
 | P0-007C-3A - Complete Assigned Work at the Shared Display | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `6510fb4` via PR #22 | Product evaluation remains separate; display density feedback recorded |
 | P0-007C-3B - Owner-Controlled Personal Work on the Wall | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `415d930` via PR #23 | Product evaluation of the changed wall remains separate |
-| P0-008A - Protected First-Manager Setup and Repeatable Reset | r1 | READY | Architecture | Planning: `member-management-first-run-setup` | Architecture ACCEPT / PROCEED before implementation |
+| P0-008A - Protected First-Manager Setup and Repeatable Reset | r1 | READY | Engineering | Planning: `member-management-first-run-setup` | Integrate planning baseline; then implement on `brief/p0-008a-protected-first-run-reset` |
 | P0-008B - Household Backups and In-App Restore | r1 | DRAFT | Architecture | Successor draft | Accepted A evidence; baseline refresh and readiness release |
 | P0-008C - Understandable Member Access and Safe Removal | r1 | DRAFT | Architecture | Successor draft | Accepted A/B evidence; baseline refresh and readiness release |
 | P0-008D - Guided Setup to the First Useful Household Day | r1 | DRAFT | Architecture | Successor draft | Accepted A–C evidence; baseline refresh and readiness release |
@@ -80,11 +80,11 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next Project Lead decision
 
-- After Engineering readiness, Architecture releases A implementation. For an eventual hosted candidate, the Project Lead configures owner recovery through hosting settings and chooses whether all existing data is disposable (explicit reset) or real data must be retained (C's reviewed fixture remediation). That live choice is not inferred from prior resets or this planning request.
+- Integrate the committed planning baseline from `member-management-first-run-setup` into `main`; then Engineering starts P0-008A r1 on `brief/p0-008a-protected-first-run-reset`. For an eventual hosted candidate, the Project Lead configures owner recovery through hosting settings and chooses whether all existing data is disposable (explicit reset) or real data must be retained (C's reviewed fixture remediation). That live choice is not inferred from prior resets or this planning request.
 
 ## Next likely handoff
 
-Architecture responds to Engineering’s **READY** disposition for **P0-008A revision 1** (`reports/P0-008A-r1-engineering-readiness.md`) with ACCEPT / PROCEED (or a revised contract). Implementation must not start before that response. B–D stay gated. The Project Lead owns commits/PR/merge and later hosted/Product evaluation. Detailed coverage: `reports/P0-008-architecture-sequencing.md`.
+Engineering begins **P0-008A revision 1** (`briefs/p0-008a-protected-first-run-reset.md`) after the planning baseline is integrated. Architecture accepted Engineering's READY review; B–D stay gated. The Project Lead owns feature commits/PR/merge and later hosted/Product evaluation. Detailed coverage: `reports/P0-008-architecture-sequencing.md`.
 
 ## Notes for all teams
 

@@ -109,7 +109,9 @@ Inspected `member-management-first-run-setup` at `4f07593`; local `main` and `or
 **Review report:** `reports/P0-008A-r1-engineering-readiness.md`  
 **Inspected:** planning tip `9705e13` on `member-management-first-run-setup`; integrated code baseline `main`/`origin/main` @ `415d930` (migrations through 017). Working tree clean; docs/briefs only above that code baseline.
 
-**Disposition:** READY — no BLOCKER, no QUESTION. D-050/D-051/D-053/D-056 align with r1; Current-system claims match the repository. Highest delivery care is runtime DB replacement with real restart/fault evidence, installation-epoch fencing of sessions/outboxes, and owner-gated setup without reusing fixture managers. Implementation awaits Architecture **ACCEPT / PROCEED**. B–D remain gated.
+**Architecture disposition:** ACCEPT / PROCEED for implementation of A r1 after the planning baseline is integrated. Engineering identified no contract blocker or question. B–D remain gated; hosted destructive operations remain Project Lead actions.
+
+**Engineering disposition:** READY — no BLOCKER, no QUESTION. D-050/D-051/D-053/D-056 align with r1; Current-system claims match the repository. Highest delivery care is runtime DB replacement with real restart/fault evidence, installation-epoch fencing of sessions/outboxes, and owner-gated setup without reusing fixture managers. B–D remain gated.
 
 ## Revision history
 

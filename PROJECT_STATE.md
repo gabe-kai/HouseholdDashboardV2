@@ -19,9 +19,9 @@
 
 ## Current focus
 
-Inspected 2026-10-02: local `main` and `origin/main` are **415d930** (PR **#23**), integrating technically accepted **P0-007C-3B r1**. Current planning branch is `member-management-first-run-setup` at **4f07593**; its committed difference from main is the approved Product P0-008 direction in `PRODUCT.md`.
+Inspected 2026-10-03: local `main` and `origin/main` are **415d930** (PR **#23**), integrating technically accepted **P0-007C-3B r1**. Current planning branch is `member-management-first-run-setup` at **9705e13**; its committed difference from main is P0-008 Product/Architecture docs and the four staged briefs (no application-code changes).
 
-Architecture has prepared four evidence-gated P0-008 briefs. **P0-008A r1 — Protected First-Manager Setup and Repeatable Reset** is **IN REVIEW** for Engineering readiness. B (backups/restore), C (member access/removal) and D (complete guided first day) are **DRAFT**, gated on accepted predecessor evidence and a refreshed baseline. No P0-008 implementation or live Railway operation has occurred in this planning pass. The whole Product journey remains one card: **Set up and manage my household without operator help**.
+Architecture has prepared four evidence-gated P0-008 briefs. **P0-008A r1 — Protected First-Manager Setup and Repeatable Reset** Engineering readiness is **READY** (`reports/P0-008A-r1-engineering-readiness.md`); implementation awaits Architecture **ACCEPT / PROCEED**. B (backups/restore), C (member access/removal) and D (complete guided first day) are **DRAFT**, gated on accepted predecessor evidence and a refreshed baseline. No P0-008 implementation or live Railway operation has occurred in this planning pass. The whole Product journey remains one card: **Set up and manage my household without operator help**.
 
 P0-007C's outstanding physical/Product judgments remain distinct from its technical acceptance and from approval to begin P0-008. Old reports retain their inspected SHAs.
 
@@ -44,7 +44,7 @@ P0-007C's outstanding physical/Product judgments remain distinct from its techni
 | P0-007C-2 - Household Display and Read-only Dashboard | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `739f7e3` via PR #21 | Physical readability reported; full Product acceptance remains separate |
 | P0-007C-3A - Complete Assigned Work at the Shared Display | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `6510fb4` via PR #22 | Product evaluation remains separate; display density feedback recorded |
 | P0-007C-3B - Owner-Controlled Personal Work on the Wall | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `415d930` via PR #23 | Product evaluation of the changed wall remains separate |
-| P0-008A - Protected First-Manager Setup and Repeatable Reset | r1 | IN REVIEW | Engineering readiness | Planning: `member-management-first-run-setup` | Consolidated readiness against exact A r1 |
+| P0-008A - Protected First-Manager Setup and Repeatable Reset | r1 | READY | Architecture | Planning: `member-management-first-run-setup` | Architecture ACCEPT / PROCEED before implementation |
 | P0-008B - Household Backups and In-App Restore | r1 | DRAFT | Architecture | Successor draft | Accepted A evidence; baseline refresh and readiness release |
 | P0-008C - Understandable Member Access and Safe Removal | r1 | DRAFT | Architecture | Successor draft | Accepted A/B evidence; baseline refresh and readiness release |
 | P0-008D - Guided Setup to the First Useful Household Day | r1 | DRAFT | Architecture | Successor draft | Accepted A–C evidence; baseline refresh and readiness release |
@@ -84,7 +84,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Engineering reviews **P0-008A revision 1** in `briefs/p0-008a-protected-first-run-reset.md` and returns one consolidated READY / QUESTION / BLOCKER / ESCALATE disposition. Implementation awaits Architecture ACCEPT / PROCEED. B–D stay gated. The Project Lead owns commits/PR/merge and later hosted/Product evaluation. Detailed coverage and handoff: `reports/P0-008-architecture-sequencing.md`.
+Architecture responds to Engineering’s **READY** disposition for **P0-008A revision 1** (`reports/P0-008A-r1-engineering-readiness.md`) with ACCEPT / PROCEED (or a revised contract). Implementation must not start before that response. B–D stay gated. The Project Lead owns commits/PR/merge and later hosted/Product evaluation. Detailed coverage: `reports/P0-008-architecture-sequencing.md`.
 
 ## Notes for all teams
 

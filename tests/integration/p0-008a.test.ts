@@ -3,8 +3,19 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { householdDateFromInstant } from "../../src/domain/time.js";
+import {
+  rejectedDisplayOutboxNotices,
+  retireDisplayOutboxItems,
+  type DisplayOutboxItem,
+} from "../../src/client/display-outbox.js";
+import {
+  retireOutboxItemsForEpoch,
+  type OutboxItem,
+} from "../../src/client/outbox.js";
 import { buildApp, type BuildAppOptions } from "../../src/server/app.js";
 import { loadConfig } from "../../src/server/config.js";
+import { sha256Hex } from "../../src/server/crypto.js";
 import { migrate } from "../../src/server/db.js";
 import {
   createHttpHarness,
@@ -298,6 +309,44 @@ async function reopenHarness(
     },
   };
   return trackHarness(next);
+}
+
+function memberTokenFromCookie(cookie: string): string {
+  const eq = cookie.indexOf("=");
+  return cookie.slice(eq + 1);
+}
+
+function sessionFromManagerCookie(harness: HttpHarness, cookie: string) {
+  return harness.store.getSessionByTokenDigest(
+    sha256Hex(memberTokenFromCookie(cookie)),
+    harness.runtime.epoch,
+  );
+}
+
+function requiredStep(text: string) {
+  return {
+    logicalItemId: randomUUID(),
+    text,
+    obligation: "required" as const,
+  };
+}
+
+async function displaySessionFromCookie(harness: HttpHarness, displayCookie: string) {
+  const res = await harness.app.inject({
+    method: "GET",
+    url: "/api/v1/display/session",
+    headers: { cookie: displayCookie },
+  });
+  expect(res.statusCode).toBe(200);
+  return (
+    res.json() as {
+      session: {
+        csrfToken: string;
+        householdDate: string;
+        activityGeneration: number;
+      };
+    }
+  ).session;
 }
 
 async function enrollDisplay(
@@ -1230,9 +1279,11 @@ describe("P0-008A AT9 atomic replacement faults", () => {
 });
 
 describe("P0-008A AT10 old clients", () => {
-  it("AT10 old member/display sessions and stale-epoch mutations are rejected after reset", async () => {
+  it("AT10 queued taps, held reads, and config writes cannot repopulate a new epoch after reset/restart", async () => {
     const controlPath = controlPathForTest();
     const backupDir = backupDirForTest();
+    const loginName = `reuse.${Date.now().toString(36)}`;
+    const householdName = "Reuse Household";
     let harness = trackHarness(
       await createHttpHarness({
         AUTO_SEED: "0",
@@ -1241,51 +1292,111 @@ describe("P0-008A AT10 old clients", () => {
         BACKUP_DIR: backupDir,
       }),
     );
-    const manager = await setupManagerHousehold(
-      harness,
-      `oldcli.${Date.now().toString(36)}`,
-      "Old Clients HH",
-    );
+    const manager = await setupManagerHousehold(harness, loginName, householdName);
     const display = await enrollDisplay(harness, manager);
+    const displaySession = await displaySessionFromCookie(harness, display.displayCookie);
+    const ctx = sessionFromManagerCookie(harness, manager.cookie)!;
+    const today = householdDateFromInstant(new Date(), ctx.timezone);
+    const sourceEpoch = harness.runtime.epoch;
 
-    const memberSessionBefore = await harness.app.inject({
-      method: "GET",
-      url: "/api/v1/auth/session",
-      headers: { cookie: manager.cookie },
+    harness.store.createResponsibility(ctx, {
+      mutationId: randomUUID(),
+      title: "AT10 Reset Cats",
+      daypart: "anytime",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      accountableMemberId: ctx.membershipId,
+      steps: [requiredStep("Feed")],
     });
-    expect(memberSessionBefore.statusCode).toBe(200);
-    const displaySessionBefore = await harness.app.inject({
+    const occurrence = harness.store
+      .materializeForDate(ctx, today)
+      .find((o) => o.title === "AT10 Reset Cats")!;
+    const stepId = occurrence.steps[0]!.id;
+    const intendedStructure = {
+      revisionId: occurrence.revisionId,
+      accountableMemberId: ctx.membershipId,
+      stepLogicalIds: occurrence.steps
+        .map((s) => s.logicalItemId)
+        .filter((id): id is string => Boolean(id)),
+    };
+    const displayDetailRes = await harness.app.inject({
       method: "GET",
-      url: "/api/v1/display/session",
+      url: `/api/v1/display/occurrences/${occurrence.id}`,
       headers: { cookie: display.displayCookie },
     });
-    expect(displaySessionBefore.statusCode).toBe(200);
+    expect(displayDetailRes.statusCode).toBe(200);
+    const displayDetail = (
+      displayDetailRes.json() as {
+        occurrence: { householdDate: string; steps: Array<{ id: string }> };
+      }
+    ).occurrence;
 
-    const reset = await reauthAndReset(harness, manager, 1);
-    expect(reset.statusCode).toBe(200);
+    const memberMutationId = randomUUID();
+    const displayMutationId = randomUUID();
+    const configMutationId = randomUUID();
+    const performedAt = new Date().toISOString();
+    const memberTapPayload = {
+      mutationId: memberMutationId,
+      status: "completed" as const,
+      performedAt,
+      activityGeneration: ctx.activityGeneration,
+      kind: "responsibility" as const,
+      intendedStructure,
+    };
+    const displayTapPayload = {
+      mutationId: displayMutationId,
+      status: "completed" as const,
+      performedAt,
+      activityGeneration: displaySession.activityGeneration,
+      kind: "responsibility" as const,
+      householdDate: displayDetail.householdDate,
+      intendedStructure,
+    };
 
-    harness = await reopenHarness(harness, {
-      INSTALLATION_CONTROL_PATH: controlPath,
-      BACKUP_DIR: backupDir,
+    const memberDelayed = harness.app.inject({
+      method: "POST",
+      url: `/api/v1/occurrences/${occurrence.id}/steps/${stepId}/status`,
+      headers: {
+        origin: harness.origin,
+        cookie: manager.cookie,
+        "x-csrf-token": manager.csrf,
+        "content-type": "application/json",
+        "x-mutation-delay-ms": "120",
+      },
+      payload: memberTapPayload,
     });
-
-    await setupManagerHousehold(harness, `newcli.${Date.now().toString(36)}`, "New Epoch HH");
-
-    const oldMember = await harness.app.inject({
-      method: "GET",
-      url: "/api/v1/auth/session",
-      headers: { cookie: manager.cookie },
+    const displayDelayed = harness.app.inject({
+      method: "POST",
+      url: `/api/v1/display/occurrences/${occurrence.id}/steps/${displayDetail.steps[0]!.id}/status`,
+      headers: {
+        origin: harness.origin,
+        cookie: display.displayCookie,
+        "x-csrf-token": displaySession.csrfToken,
+        "content-type": "application/json",
+        "x-mutation-delay-ms": "120",
+      },
+      payload: displayTapPayload,
     });
-    expect(oldMember.statusCode).toBe(401);
-
-    const oldDisplay = await harness.app.inject({
-      method: "GET",
-      url: "/api/v1/display/session",
-      headers: { cookie: display.displayCookie },
+    let releaseResetHold: (() => void) | undefined;
+    const resetHold = new Promise<void>((resolve) => {
+      releaseResetHold = resolve;
     });
-    expect(oldDisplay.statusCode).toBe(401);
+    harness.runtime.faultHooks.beforeActivate = async () => {
+      await resetHold;
+    };
 
-    const staleMutation = await harness.app.inject({
+    const reauth = await harness.app.inject({
+      method: "POST",
+      url: "/api/v1/auth/reauthenticate",
+      headers: {
+        origin: harness.origin,
+        cookie: manager.cookie,
+        "x-csrf-token": manager.csrf,
+        "content-type": "application/json",
+      },
+      payload: { passphrase: PASSPHRASE },
+    });
+    expect(reauth.statusCode).toBe(200);
+    const resetPromise = harness.app.inject({
       method: "POST",
       url: "/api/v1/household/reset",
       headers: {
@@ -1297,17 +1408,231 @@ describe("P0-008A AT10 old clients", () => {
       payload: {
         mutationId: randomUUID(),
         confirmationText: "RESET",
-        expectedEpoch: 1,
+        expectedEpoch: sourceEpoch,
       },
     });
-    expect(staleMutation.statusCode).toBe(401);
+    await new Promise((r) => setTimeout(r, 150));
+    const configWrite = harness.app.inject({
+      method: "POST",
+      url: "/api/v1/personal-tasks",
+      headers: {
+        origin: harness.origin,
+        cookie: manager.cookie,
+        "x-csrf-token": manager.csrf,
+        "content-type": "application/json",
+      },
+      payload: {
+        mutationId: configMutationId,
+        title: "Queued during reset",
+        visibility: "private",
+      },
+    });
+    let metaResolvedDuringReset = false;
+    const heldRead = harness.app
+      .inject({ method: "GET", url: "/api/v1/meta" })
+      .then((res) => {
+        metaResolvedDuringReset = true;
+        return res;
+      });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(metaResolvedDuringReset).toBe(false);
+    releaseResetHold?.();
+    const reset = await resetPromise;
+    expect(reset.statusCode).toBe(200);
+    harness.runtime.faultHooks.beforeActivate = undefined;
 
-    // Ordinary authenticated household reads also reject the retired session.
-    const people = await harness.app.inject({
+    harness = await reopenHarness(harness, {
+      INSTALLATION_CONTROL_PATH: controlPath,
+      BACKUP_DIR: backupDir,
+    });
+    expect(harness.runtime.epoch).toBe(sourceEpoch + 1);
+
+    const newManager = await setupManagerHousehold(harness, loginName, householdName);
+    expect(newManager.membershipId).not.toBe(manager.membershipId);
+
+    const heldResult = await heldRead;
+    expect(heldResult.statusCode).toBe(200);
+    expect((heldResult.json() as { installationEpoch: number }).installationEpoch).toBe(
+      sourceEpoch + 1,
+    );
+    const memberDelayedResult = await memberDelayed;
+    const displayDelayedResult = await displayDelayed;
+    const configWriteResult = await configWrite;
+    expect(displayDelayedResult.statusCode).toBe(401);
+    expect([401, 500]).toContain(configWriteResult.statusCode);
+    expect([200, 401]).toContain(memberDelayedResult.statusCode);
+
+    const reportCount = (
+      harness.runtime.db
+        .prepare(
+          `SELECT COUNT(*) AS c FROM step_reports
+           WHERE mutation_id IN (?, ?)`,
+        )
+        .get(memberMutationId, displayMutationId) as { c: number }
+    ).c;
+    expect(reportCount).toBe(0);
+    const taskCount = (
+      harness.runtime.db
+        .prepare(`SELECT COUNT(*) AS c FROM personal_tasks WHERE title = ?`)
+        .get("Queued during reset") as { c: number }
+    ).c;
+    expect(taskCount).toBe(0);
+
+    const staleMemberReplay = await harness.app.inject({
+      method: "POST",
+      url: `/api/v1/occurrences/${occurrence.id}/steps/${stepId}/status`,
+      headers: {
+        origin: harness.origin,
+        cookie: manager.cookie,
+        "x-csrf-token": manager.csrf,
+        "content-type": "application/json",
+      },
+      payload: memberTapPayload,
+    });
+    expect(staleMemberReplay.statusCode).toBe(401);
+    const staleDisplayReplay = await harness.app.inject({
+      method: "POST",
+      url: `/api/v1/display/occurrences/${occurrence.id}/steps/${displayDetail.steps[0]!.id}/status`,
+      headers: {
+        origin: harness.origin,
+        cookie: display.displayCookie,
+        "x-csrf-token": displaySession.csrfToken,
+        "content-type": "application/json",
+      },
+      payload: displayTapPayload,
+    });
+    expect(staleDisplayReplay.statusCode).toBe(401);
+
+    const oldMemberSession = await harness.app.inject({
       method: "GET",
-      url: "/api/v1/people",
+      url: "/api/v1/auth/session",
       headers: { cookie: manager.cookie },
     });
-    expect(people.statusCode).toBe(401);
+    expect(oldMemberSession.statusCode).toBe(401);
+    const oldDisplaySession = await harness.app.inject({
+      method: "GET",
+      url: "/api/v1/display/session",
+      headers: { cookie: display.displayCookie },
+    });
+    expect(oldDisplaySession.statusCode).toBe(401);
+
+    const staleReset = await harness.app.inject({
+      method: "POST",
+      url: "/api/v1/household/reset",
+      headers: {
+        origin: harness.origin,
+        cookie: manager.cookie,
+        "x-csrf-token": manager.csrf,
+        "content-type": "application/json",
+      },
+      payload: {
+        mutationId: randomUUID(),
+        confirmationText: "RESET",
+        expectedEpoch: sourceEpoch,
+      },
+    });
+    expect(staleReset.statusCode).toBe(401);
+
+    const memberOutbox: OutboxItem[] = [
+      {
+        mutationId: memberMutationId,
+        occurrenceId: occurrence.id,
+        stepId,
+        status: "completed",
+        performedAt,
+        state: "pending",
+        installationEpoch: sourceEpoch,
+      },
+    ];
+    const retiredMember = retireOutboxItemsForEpoch(memberOutbox, harness.runtime.epoch);
+    expect(retiredMember[0]?.state).toBe("rejected");
+    expect(retiredMember[0]?.errorMessage).toMatch(/reset/i);
+
+    const displayOutbox: DisplayOutboxItem[] = [
+      {
+        mutationId: displayMutationId,
+        occurrenceId: occurrence.id,
+        stepId: displayDetail.steps[0]!.id,
+        status: "completed",
+        performedAt,
+        activityGeneration: displaySession.activityGeneration,
+        installationEpoch: sourceEpoch,
+        kind: "responsibility",
+        intendedStructure,
+        displaySessionId: randomUUID(),
+        displayId: randomUUID(),
+        householdId: ctx.householdId,
+        householdDate: displayDetail.householdDate,
+        state: "pending",
+      },
+    ];
+    const retiredDisplay = retireDisplayOutboxItems(displayOutbox, {
+      activityGeneration: displaySession.activityGeneration,
+      householdDate: displayDetail.householdDate,
+      installationEpoch: harness.runtime.epoch,
+    });
+    expect(retiredDisplay[0]?.state).toBe("rejected");
+    expect(rejectedDisplayOutboxNotices(retiredDisplay)[0]?.message).toMatch(/reset/i);
+
+    const newCtx = sessionFromManagerCookie(harness, newManager.cookie)!;
+    const retryToday = householdDateFromInstant(new Date(), newCtx.timezone);
+    harness.store.createResponsibility(newCtx, {
+      mutationId: randomUUID(),
+      title: "AT10 Same Epoch Retry",
+      daypart: "anytime",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      accountableMemberId: newCtx.membershipId,
+      steps: [requiredStep("Retry step")],
+    });
+    const retryOcc = harness.store
+      .materializeForDate(newCtx, retryToday)
+      .find((o) => o.title === "AT10 Same Epoch Retry")!;
+    const retryStepId = retryOcc.steps[0]!.id;
+    const retryMutationId = randomUUID();
+    const retryPayload = {
+      mutationId: retryMutationId,
+      status: "completed" as const,
+      performedAt: new Date().toISOString(),
+      activityGeneration: newCtx.activityGeneration,
+      kind: "responsibility" as const,
+      intendedStructure: {
+        revisionId: retryOcc.revisionId,
+        accountableMemberId: newCtx.membershipId,
+        stepLogicalIds: retryOcc.steps
+          .map((s) => s.logicalItemId)
+          .filter((id): id is string => Boolean(id)),
+      },
+    };
+    const firstRetry = await harness.app.inject({
+      method: "POST",
+      url: `/api/v1/occurrences/${retryOcc.id}/steps/${retryStepId}/status`,
+      headers: {
+        origin: harness.origin,
+        cookie: newManager.cookie,
+        "x-csrf-token": newManager.csrf,
+        "content-type": "application/json",
+      },
+      payload: retryPayload,
+    });
+    expect(firstRetry.statusCode).toBe(200);
+    const secondRetry = await harness.app.inject({
+      method: "POST",
+      url: `/api/v1/occurrences/${retryOcc.id}/steps/${retryStepId}/status`,
+      headers: {
+        origin: harness.origin,
+        cookie: newManager.cookie,
+        "x-csrf-token": newManager.csrf,
+        "content-type": "application/json",
+      },
+      payload: retryPayload,
+    });
+    expect(secondRetry.statusCode).toBe(200);
+    expect(
+      (
+        harness.runtime.db
+          .prepare(`SELECT COUNT(*) AS c FROM step_reports WHERE mutation_id = ?`)
+          .get(retryMutationId) as { c: number }
+      ).c,
+    ).toBe(1);
   });
 });

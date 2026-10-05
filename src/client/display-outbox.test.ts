@@ -69,6 +69,37 @@ describe("retireDisplayOutboxItems", () => {
     });
   });
 
+  it("rejects pending commands from a prior installation epoch with reset explanation", () => {
+    const items = [
+      pendingItem({
+        mutationId: "m-old-epoch",
+        householdDate: "2026-09-26",
+        installationEpoch: 1,
+      }),
+      pendingItem({
+        mutationId: "m-current-epoch",
+        householdDate: "2026-09-26",
+        installationEpoch: 2,
+      }),
+    ];
+    const next = retireDisplayOutboxItems(items, {
+      activityGeneration: 0,
+      householdDate: "2026-09-26",
+      installationEpoch: 2,
+    });
+    expect(next[0]).toMatchObject({
+      state: "rejected",
+      errorMessage: expect.stringMatching(/household was reset/i),
+    });
+    expect(next[1]?.state).toBe("pending");
+    expect(rejectedDisplayOutboxNotices(next)).toEqual([
+      {
+        mutationId: "m-old-epoch",
+        message: expect.stringMatching(/household was reset/i),
+      },
+    ]);
+  });
+
   it("does not replay already-rejected items or mutate matching pending ones", () => {
     const items = [
       pendingItem({

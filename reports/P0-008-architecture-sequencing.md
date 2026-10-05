@@ -4,7 +4,7 @@
 **Role:** Architecture
 **Source:** Approved `PRODUCT.md`, P0-008 First-Run Setup and Household Member Management; Project Lead's handoff in this task.
 **Inspected baseline:** `member-management-first-run-setup` @ `4f07593`; local `main`/`origin/main` @ `415d930` (PR #23). Source/migrations match main; the committed branch difference is Product documentation only.
-**Disposition:** Engineering readiness for **P0-008A r1** is accepted; proceed with A implementation after the planning baseline is integrated. B–D remain gated r1 drafts. No implementation, live-data operation, deployment or Git mutation performed by Architecture.
+**Disposition:** P0-008A r1 implementation is committed at `3448d7d` and under Architecture review. First review returned **FIX REQUIRED** against the unchanged contract; B–D remain gated r1 drafts. No live-data operation, deployment or Git mutation performed by Architecture.
 
 This report records reasoning, traceability and release preparation. The four brief files are the authoritative implementation contracts; this report is not a contract addendum.
 
@@ -24,7 +24,7 @@ The actual populated Railway database, secrets and deployed SHA were not inspect
 
 | Slice / authoritative file | Parent checkpoint | Release to Engineering |
 | --- | --- | --- |
-| **P0-008A r1** — `briefs/p0-008a-protected-first-run-reset.md` | Create first manager/household through protected browser access; reset repeatedly and recover Welcome after interruption | IN REVIEW now; readiness required before implementation |
+| **P0-008A r1** — `briefs/p0-008a-protected-first-run-reset.md` | Create first manager/household through protected browser access; reset repeatedly and recover Welcome after interruption | Implemented at `3448d7d`; FIX REQUIRED pending Architecture re-review |
 | **P0-008B r1** — `briefs/p0-008b-household-backups-in-app-restore.md` | Save a backup, reset with backup off, restore from protected Welcome or Settings | DRAFT until A's active-data/epoch/recovery boundary is accepted and inspected |
 | **P0-008C r1** — `briefs/p0-008c-member-access-removal.md` | Invite, edit permissions, maintain/revoke/restore sign-in, remove a used member, and clean selected sample people without losing real work | DRAFT until A/B accepted; refresh membership/backup baseline |
 | **P0-008D r1** — `briefs/p0-008d-guided-first-household-day.md` | Complete the named setup steps and the uninterrupted setup→management→backup→reset→restore journey | DRAFT until A–C accepted; integrate their real records and flows |
@@ -82,7 +82,7 @@ These are a release plan, not commands to run now. Authoritative transition requ
 
 ## Handoff for Engineering
 
-> Acting as Engineering, implement **P0-008A revision 1 — Protected First-Manager Setup and Repeatable Reset** in `briefs/p0-008a-protected-first-run-reset.md`. Architecture accepted the READY review. Start from integrated `main` after the committed planning baseline is merged, using branch `brief/p0-008a-protected-first-run-reset`. Implement A only. Keep B–D gated; preserve the live database during adoption. Do not deploy or perform live reset without Project Lead authorization. Follow the brief's full local PR/RC evidence and write a Build Report. Suggest a commit message but do not commit.
+> Acting as Engineering, close the findings in `reports/P0-008A-r1-architecture-review.md` against **P0-008A revision 1 — Protected First-Manager Setup and Repeatable Reset** on `brief/p0-008a-protected-first-run-reset`. The brief contract has not changed; no new readiness review is needed. Preserve existing data during adoption. Add recovery/concurrency evidence and close the named partial acceptance tests, update the Build Report including its commit metadata, and return for Architecture re-review. Keep B–D gated. Do not deploy or perform a live reset without Project Lead authorization. Suggest a commit message but do not commit.
 
 Suggested implementation branch after the planning/readiness baseline is integrated: `brief/p0-008a-protected-first-run-reset`. Continue using the existing planning branch for this documentation; Architecture has not renamed or created a branch.
 

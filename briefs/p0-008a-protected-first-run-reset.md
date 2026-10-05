@@ -1,9 +1,9 @@
 # BRIEF P0-008A - Protected First-Manager Setup and Repeatable Reset
 
 **Revision:** 1
-**Status:** IMPLEMENTED
+**Status:** FIX REQUIRED
 
-Engineering implemented r1 after Architecture ACCEPT / PROCEED. Build Report: `reports/P0-008A-r1-build-report.md`. Technical acceptance and Project Lead acceptance remain separate.
+Engineering implemented r1 after Architecture ACCEPT / PROCEED. Architecture has returned FIX REQUIRED against this same revision; see `reports/P0-008A-r1-architecture-review.md`. The contract has not changed, so a new readiness review is not required. Technical acceptance and Project Lead acceptance remain separate.
 
 ## Why
 
@@ -112,6 +112,8 @@ Inspected `member-management-first-run-setup` at `4f07593`; local `main` and `or
 **Architecture disposition:** ACCEPT / PROCEED for implementation of A r1 after the planning baseline is integrated. Engineering identified no contract blocker or question. B–D remain gated; hosted destructive operations remain Project Lead actions.
 
 **Engineering disposition:** READY — no BLOCKER, no QUESTION. D-050/D-051/D-053/D-056 align with r1; Current-system claims match the repository. Highest delivery care is runtime DB replacement with real restart/fault evidence, installation-epoch fencing of sessions/outboxes, and owner-gated setup without reusing fixture managers. B–D remain gated.
+
+**Architecture technical acceptance:** FIX REQUIRED against r1. Required evidence and observed recovery/concurrency gaps are recorded in `reports/P0-008A-r1-architecture-review.md`. No behavior contract changed; return directly to Engineering on this branch.
 
 ## Revision history
 

@@ -90,9 +90,9 @@ Both C-3 slices contribute to **Act at the shared display without losing trust**
 ### CURRENT
 
 - [ ] **P0-008A — Create the first manager and start again safely.** Secure owner-supplied browser access, required Account/Household setup and repeated full reset return the evaluator to protected Welcome without terminal/database commands.
-  - **Brief:** `P0-008A r1` (`briefs/p0-008a-protected-first-run-reset.md`), **READY** after Engineering readiness and Architecture ACCEPT / PROCEED.
+  - **Brief:** `P0-008A r1` (`briefs/p0-008a-protected-first-run-reset.md`), implementation committed at `3448d7d`; **FIX REQUIRED** against the same revision.
   - **Evidence:** Public takeover denial; no-fixture first run; populated adoption; reset without a new backup; lost-response/idempotency; old human/display/action fencing; true restart/failure recovery. Hosted evidence follows locally validated release candidates.
-  - **Card:** **Set up and manage my household without operator help** → Up Next. Engineering begins after the planning baseline is integrated. A is an observable first slice, not completion of the full Product outcome.
+  - **Card:** **Set up and manage my household without operator help** → In Progress until A passes technical acceptance. A is an observable first slice, not completion of the full Product outcome.
 
 ### LIKELY NEXT
 

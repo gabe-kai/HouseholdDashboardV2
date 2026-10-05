@@ -1,6 +1,7 @@
 import { useRef, useState, type FormEvent } from "react";
 import {
   clearRoutineActivity,
+  fetchLifecycleRecovery,
   householdReset,
   reauthenticatePassphrase,
 } from "./api";
@@ -87,11 +88,26 @@ export function HouseholdSettingsView(props: {
     setError(null);
     try {
       await reauthenticatePassphrase(resetPassphrase);
-      const result = await householdReset({
-        mutationId: newClientId(),
-        confirmationText: "RESET",
-        expectedEpoch: props.installationEpoch,
-      });
+      let result: Awaited<ReturnType<typeof householdReset>>;
+      try {
+        result = await householdReset({
+          mutationId: newClientId(),
+          confirmationText: "RESET",
+          expectedEpoch: props.installationEpoch,
+        });
+      } catch (resetErr) {
+        // Lost/interrupted response: continuation cookie can still recover the commit.
+        const recovered = await fetchLifecycleRecovery().catch(() => null);
+        if (!recovered || recovered.status !== "completed" || !recovered.result) {
+          throw resetErr;
+        }
+        result = recovered.result;
+      }
+      try {
+        sessionStorage.setItem("hd.lifecycle.lastResetOp", result.operationId);
+      } catch {
+        /* ignore quota / private mode */
+      }
       closeResetDialog();
       props.onSuccessToast(
         result.cleanupFailures.length > 0

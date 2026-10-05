@@ -19,9 +19,9 @@
 
 ## Current focus
 
-Inspected 2026-10-04: integrated local `main` / `origin/main` remain **415d930** (PR **#23**), through migration 017. P0-008A implementation is committed on `brief/p0-008a-protected-first-run-reset` at **3448d7d**, based on planning tip `ece0127`; Architecture has returned FIX REQUIRED against r1. No live Railway operation or deployment occurred.
+Inspected 2026-10-04: integrated local `main` / `origin/main` remain **415d930** (PR **#23**), through migration 017. P0-008A implementation tip on `brief/p0-008a-protected-first-run-reset` was **3448d7d** (Architecture review) plus FIX REQUIRED closure in the working tree / pending correction commit; planning tip `ece0127`. No live Railway operation or deployment occurred.
 
-**P0-008A r1** was implemented at **3448d7d** with passing local PR/RC gates, but is **FIX REQUIRED** pending the findings in `reports/P0-008A-r1-architecture-review.md`. No live Railway setup/reset was performed. B (backups/restore), C (member access/removal) and D (complete guided first day) remain **DRAFT**, gated on accepted predecessor evidence and refreshed baselines. The whole Product journey remains one card: **Set up and manage my household without operator help**.
+**P0-008A r1** FIX REQUIRED findings are closed in the updated Build Report (`reports/P0-008A-r1-build-report.md`); awaiting Architecture re-review. B–D remain **DRAFT** and gated. The whole Product journey remains one card: **Set up and manage my household without operator help**.
 
 P0-007C's outstanding physical/Product judgments remain distinct from its technical acceptance and from approval to begin P0-008. Old reports retain their inspected SHAs.
 
@@ -44,7 +44,7 @@ P0-007C's outstanding physical/Product judgments remain distinct from its techni
 | P0-007C-2 - Household Display and Read-only Dashboard | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `739f7e3` via PR #21 | Physical readability reported; full Product acceptance remains separate |
 | P0-007C-3A - Complete Assigned Work at the Shared Display | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `6510fb4` via PR #22 | Product evaluation remains separate; display density feedback recorded |
 | P0-007C-3B - Owner-Controlled Personal Work on the Wall | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `415d930` via PR #23 | Product evaluation of the changed wall remains separate |
-| P0-008A - Protected First-Manager Setup and Repeatable Reset | r1 | FIX REQUIRED | Engineering | `brief/p0-008a-protected-first-run-reset` @ `3448d7d` | Close findings in `reports/P0-008A-r1-architecture-review.md`; same revision |
+| P0-008A - Protected First-Manager Setup and Repeatable Reset | r1 | IMPLEMENTED | Architecture | `brief/p0-008a-protected-first-run-reset` | Architecture re-review after FIX REQUIRED closure |
 | P0-008B - Household Backups and In-App Restore | r1 | DRAFT | Architecture | Successor draft | Accepted A evidence; baseline refresh and readiness release |
 | P0-008C - Understandable Member Access and Safe Removal | r1 | DRAFT | Architecture | Successor draft | Accepted A/B evidence; baseline refresh and readiness release |
 | P0-008D - Guided Setup to the First Useful Household Day | r1 | DRAFT | Architecture | Successor draft | Accepted A–C evidence; baseline refresh and readiness release |
@@ -80,11 +80,11 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next Project Lead decision
 
-- Engineering closes P0-008A r1 findings on the existing brief branch and returns the updated Build Report for re-review. After Architecture accepts it, the Project Lead can integrate the implementation and choose the hosted release path. The Railway data choice (explicit reset if disposable, or C's reviewed fixture remediation if real data must remain) is made from inspected deployment facts, not inferred here.
+- Architecture re-reviews P0-008A r1 after FIX REQUIRED closure (`reports/P0-008A-r1-build-report.md`). After acceptance, the Project Lead can commit/PR/merge and choose the hosted release path. Live reset remains Project Lead–authorized only.
 
 ## Next likely handoff
 
-Engineering addresses Architecture's **FIX REQUIRED** findings for **P0-008A revision 1** (`reports/P0-008A-r1-architecture-review.md`) on the existing implementation branch; no new readiness cycle is needed because the contract is unchanged. B–D remain gated. The Project Lead owns commits/PR/merge and later hosted/Product evaluation. Detailed coverage: `reports/P0-008-architecture-sequencing.md`.
+Architecture technical re-review of **P0-008A revision 1**. B–D remain gated. The Project Lead owns Git integration and later hosted/Product evaluation. Detailed coverage: `reports/P0-008-architecture-sequencing.md`.
 
 ## Notes for all teams
 

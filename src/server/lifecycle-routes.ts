@@ -400,11 +400,34 @@ export function registerLifecycleRoutes(app: FastifyInstance, deps: LifecycleRou
     deps.getStore().revokeAllSessionsAndClaims();
     deps.sync.closeAll();
 
-    const replacement = await deps.runtime.replaceWithEmptyDatabase({
-      operationId,
-      sourceEpoch,
-    });
-    deps.syncRuntimeRefs();
+    let replacement: { resultEpoch: number; cleanupFailures: string[] };
+    try {
+      replacement = await deps.runtime.replaceWithEmptyDatabase({
+        operationId,
+        sourceEpoch,
+      });
+    } catch (err) {
+      // Activation may already have swapped runtime; reconcile so a pending op
+      // becomes a recoverable completed/failed result without a second wipe.
+      deps.syncRuntimeRefs();
+      deps.runtime.reconcilePendingOperations();
+      const recovered = deps.runtime.control.getLifecycleOperation(operationId);
+      if (recovered?.status === "completed" && recovered.responseJson) {
+        reply.header("Cache-Control", "no-store");
+        deps.clearSessionCookie(reply);
+        return JSON.parse(recovered.responseJson) as Record<string, unknown>;
+      }
+      if (!recovered || recovered.status === "pending") {
+        deps.runtime.control.failLifecycleOperation(
+          operationId,
+          JSON.stringify({
+            code: "FAILED",
+            message: err instanceof Error ? err.message : "Reset failed",
+          }),
+        );
+      }
+      throw err;
+    }
 
     const response = {
       operationId,
@@ -424,37 +447,16 @@ export function registerLifecycleRoutes(app: FastifyInstance, deps: LifecycleRou
     return response;
   });
 
-  app.get("/api/v1/lifecycle/operations/:id", async (request, reply) => {
-    const { id } = request.params as { id: string };
-    // Authorize before existence to keep principal denial deterministic (401/403).
-    const owner = ownerSessionFromRequest(request, deps.config, deps.runtime.control);
-    const contRaw = request.cookies[deps.config.recoveryContinuationCookieName];
-    const cont =
-      contRaw && deps.runtime.control.getRecoveryContinuation(contRaw);
-    const member = deps.trySession(request);
-    const allowed =
-      owner ||
-      (cont &&
-        cont.operationId === id &&
-        member &&
-        member.membershipId === cont.initiatorRef);
-    if (!allowed) {
-      if (request.cookies[deps.config.cookieName] || contRaw) {
-        return reply
-          .code(403)
-          .send(deps.errorBody("FORBIDDEN", "Operation status is restricted", request.id));
-      }
-      return reply
-        .code(401)
-        .send(deps.errorBody("UNAUTHORIZED", "Authentication required", request.id));
-    }
-    const operation = deps.runtime.control.getLifecycleOperation(id);
-    if (!operation) {
-      return reply
-        .code(404)
-        .send(deps.errorBody("NOT_FOUND", "Operation not found", request.id));
-    }
-    reply.header("Cache-Control", "no-store");
+  function operationStatusBody(operation: {
+    id: string;
+    kind: string;
+    status: string;
+    sourceEpoch: number;
+    resultEpoch: number | null;
+    createdAt: string;
+    completedAt: string | null;
+    responseJson: string | null;
+  }) {
     return {
       id: operation.id,
       kind: operation.kind,
@@ -465,6 +467,59 @@ export function registerLifecycleRoutes(app: FastifyInstance, deps: LifecycleRou
       completedAt: operation.completedAt,
       result: operation.responseJson ? JSON.parse(operation.responseJson) : null,
     };
+  }
+
+  app.get("/api/v1/lifecycle/recovery", async (request, reply) => {
+    const contRaw = request.cookies[deps.config.recoveryContinuationCookieName];
+    if (!contRaw) {
+      return reply
+        .code(401)
+        .send(deps.errorBody("UNAUTHORIZED", "Recovery continuation required", request.id));
+    }
+    const cont = deps.runtime.control.getRecoveryContinuation(contRaw);
+    if (!cont) {
+      return reply
+        .code(401)
+        .send(deps.errorBody("UNAUTHORIZED", "Recovery continuation is invalid or expired", request.id));
+    }
+    deps.runtime.reconcilePendingOperations();
+    const operation = deps.runtime.control.getLifecycleOperation(cont.operationId);
+    if (!operation) {
+      return reply
+        .code(404)
+        .send(deps.errorBody("NOT_FOUND", "Operation not found", request.id));
+    }
+    reply.header("Cache-Control", "no-store");
+    return operationStatusBody(operation);
+  });
+
+  app.get("/api/v1/lifecycle/operations/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    // Continuation alone recovers this one operation after member sessions are revoked.
+    const owner = ownerSessionFromRequest(request, deps.config, deps.runtime.control);
+    const contRaw = request.cookies[deps.config.recoveryContinuationCookieName];
+    const cont =
+      contRaw && deps.runtime.control.getRecoveryContinuation(contRaw);
+    const allowed = owner || (cont && cont.operationId === id);
+    if (!allowed) {
+      if (request.cookies[deps.config.cookieName] || contRaw) {
+        return reply
+          .code(403)
+          .send(deps.errorBody("FORBIDDEN", "Operation status is restricted", request.id));
+      }
+      return reply
+        .code(401)
+        .send(deps.errorBody("UNAUTHORIZED", "Authentication required", request.id));
+    }
+    deps.runtime.reconcilePendingOperations();
+    const operation = deps.runtime.control.getLifecycleOperation(id);
+    if (!operation) {
+      return reply
+        .code(404)
+        .send(deps.errorBody("NOT_FOUND", "Operation not found", request.id));
+    }
+    reply.header("Cache-Control", "no-store");
+    return operationStatusBody(operation);
   });
 
   app.post("/api/v1/owner/recover-manager-password", async (request, reply) => {

@@ -10,9 +10,11 @@ import { defineConfig, devices } from "@playwright/test";
 const chromiumPort = Number(process.env.E2E_CHROMIUM_PORT ?? 8790);
 const chromium008aPort = Number(process.env.E2E_CHROMIUM_008A_PORT ?? 8792);
 const webkitPort = Number(process.env.E2E_WEBKIT_PORT ?? 8791);
+const webkit008aPort = Number(process.env.E2E_WEBKIT_008A_PORT ?? 8793);
 const chromiumURL = `http://127.0.0.1:${chromiumPort}`;
 const chromium008aURL = `http://127.0.0.1:${chromium008aPort}`;
 const webkitURL = `http://127.0.0.1:${webkitPort}`;
+const webkit008aURL = `http://127.0.0.1:${webkit008aPort}`;
 
 const E2E_008A_OWNER_SECRET =
   "e2e-installation-owner-secret-with-enough-entropy-0123456789ab";
@@ -97,6 +99,24 @@ export default defineConfig({
       stderr: "pipe",
       env: serverEnv(webkitPort, "runtime/e2e-webkit.sqlite", webkitURL),
     },
+    {
+      command: `npx tsx tests/e2e/start-server.ts`,
+      url: `${webkit008aURL}/api/v1/health`,
+      reuseExistingServer: false,
+      timeout: 180_000,
+      stdout: "pipe",
+      stderr: "pipe",
+      env: {
+        ...serverEnv(
+          webkit008aPort,
+          "runtime/e2e-webkit-008a.sqlite",
+          webkit008aURL,
+        ),
+        AUTO_SEED: "0",
+        INSTALLATION_OWNER_SECRET: E2E_008A_OWNER_SECRET,
+        INSTALLATION_CONTROL_PATH: "runtime/e2e-webkit-008a-control.sqlite",
+      },
+    },
   ],
   projects: [
     {
@@ -107,7 +127,17 @@ export default defineConfig({
     {
       name: "chromium-008a",
       testMatch: ["**/z-p0-008a-*.spec.ts"],
+      testIgnore: ["**/z-p0-008a-desktop-setup.spec.ts"],
       use: { ...devices["Pixel 7"], baseURL: chromium008aURL },
+    },
+    {
+      name: "chromium-008a-desktop",
+      testMatch: ["**/z-p0-008a-desktop-setup.spec.ts"],
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1280, height: 800 },
+        baseURL: chromium008aURL,
+      },
     },
     {
       name: "chromium-desktop",
@@ -146,6 +176,11 @@ export default defineConfig({
       name: "webkit",
       testIgnore: ["**/z-p0-008a-*.spec.ts"],
       use: { ...devices["iPhone 13"], baseURL: webkitURL },
+    },
+    {
+      name: "webkit-008a",
+      testMatch: ["**/z-p0-008a-setup-reset.spec.ts", "**/z-p0-008a-geometry.spec.ts"],
+      use: { ...devices["iPhone 13"], baseURL: webkit008aURL },
     },
   ],
 });

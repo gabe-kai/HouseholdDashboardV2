@@ -1,102 +1,112 @@
 # Build Report - BRIEF P0-008A r1
 
 **Brief revision implemented:** 1  
-**Engineering status:** IMPLEMENTED; awaiting Architecture technical acceptance  
-**Branch:** `brief/p0-008a-protected-first-run-reset` (from planning tip `ece0127`; `origin/main` was still `415d930` at start of implementation)  
-**Commits:** none yet (Coordinator/user owns Git; implementation is working-tree only at report time)  
-**Pull request:** N/A (not opened by this Build Report)
+**Engineering status:** IMPLEMENTED (FIX REQUIRED closed); awaiting Architecture re-review  
+**Branch:** `brief/p0-008a-protected-first-run-reset`  
+**Baseline:** planning tip `ece0127`; `main` / `origin/main` inspected at `415d930` when A began  
+**Commits on branch (implementation + review):**
+- `3448d7d` — feat(P0-008A): protected first-manager setup and repeatable reset  
+- `9133936` — P0-008A: record r1 Architecture FIX REQUIRED findings  
+- *(pending)* correction commit for Architecture FIX REQUIRED items 1–8 (working tree; not committed by Engineering)  
+**Pull request:** N/A (not opened by this Build Report)  
+**Architecture review addressed:** `reports/P0-008A-r1-architecture-review.md`
 
-## What changed
+## What changed (initial + FIX REQUIRED)
 
-- Migration **018** adds `household.lifecycle.manage` backfill (enroll+structure), `setup_progress`, and `installation_epoch` / password-confirmation columns on sessions.
-- Installation **control SQLite** (`INSTALLATION_CONTROL_PATH`) outside household snapshots: installation id, dataset epoch, active DB path, owner/setup sessions, invitations, lifecycle journal, recovery continuations.
-- **Lifecycle runtime** adopts existing `DB_PATH`, serializes empty-DB replacement (prepare → activate control pointer → reopen stores → retire old files+WAL/SHM), refuses multi-household reset, supports fault hooks for tests.
-- **Owner / setup / reset HTTP**: `/owner` secret exchange, setup invitation, fragment exchange, account+household basics, reauthenticate, household reset with continuation cookie, manager password recovery / establish-manager; meta exposes `ownerConfigured`, `installationEpoch`, `setupRequired`.
-- **Client:** `OwnerApp`, Welcome setup wizard, Settings **Reset household** (scope + RESET + password; no new backup), member/display outbox `installationEpoch` fencing.
-- Operator scripts resolve active DB via control; bootstrap bound when owner secret configured; restore refuses bypass when control exists.
-- PB-56–58, route-policy owner principal routes, CI `e2e-phone-008a` / `chromium-008a`, tip migration counts → **18**, ops guide in `docs/ops-deploy.md`.
+- Migration **018** adds `household.lifecycle.manage` backfill, `setup_progress`, and `installation_epoch` / password-confirmation on sessions.
+- Installation **control SQLite** outside household snapshots: installation id, dataset epoch, active DB path, owner/setup sessions, invitations, lifecycle journal, recovery continuations.
+- **Lifecycle runtime barrier:** ordinary `/api/v1` requests take a shared barrier; replacement takes exclusive. Durable activate → reopen + `onRuntimeSwapped` (app `store`/`db` refs) before later faults. Startup/`reconcilePendingOperations` finishes pending ops after restart and cleans orphan epoch files.
+- **Continuation-only recovery:** `GET /api/v1/lifecycle/operations/:id` and `GET /api/v1/lifecycle/recovery` authorize via recovery-continuation cookie **without** a member session (owner also allowed). Client recovers lost reset responses and boot-time Welcome.
+- **First-manager race:** uniqueness rechecked inside the write transaction after passphrase hash await.
+- Owner / Welcome / reset UI, outbox epoch fencing, PB-56–58, tip counts → **18**, ops guide unchanged in intent.
+- CI: `chromium-008a`, `chromium-008a-desktop`, `webkit-008a` (RC); plain Chromium/WebKit ignore A specs.
 
 ## Files changed (high level)
 
 - `db/migrations/018_household_lifecycle.sql`
-- `src/server/installation-control.ts`, `lifecycle-runtime.ts`, `lifecycle-routes.ts`
-- `src/server/app.ts`, `config.ts`, `store.ts`, `display.ts`, `sync-hub.ts`, `route-policy.ts`, scripts
-- `src/shared/schemas.ts`, `grants.ts`
-- `src/client/OwnerApp.tsx`, `WelcomeSetup.tsx`, `App.tsx`, `main.tsx`, `HouseholdSettings.tsx`, `api.ts`, outboxes, `styles.css`
-- `tests/integration/p0-008a.test.ts`, `tests/e2e/z-p0-008a-*.spec.ts`, tip-count bumps, `playwright.config.ts`, `package.json`, `.github/workflows/validate-pr.yml`
-- `.env.example`, `docs/ops-deploy.md`, `docs/protected-behaviors.md`, `ARCHITECTURE.md`
+- `src/server/installation-control.ts`, `lifecycle-runtime.ts`, `lifecycle-routes.ts`, `app.ts`, `store.ts`, `route-policy.ts`, …
+- `src/client/OwnerApp.tsx`, `WelcomeSetup.tsx`, `App.tsx`, `HouseholdSettings.tsx`, `api.ts`, outboxes
+- `tests/helpers/p017-fixture.ts`, `tests/integration/p0-008a.test.ts`, `tests/e2e/z-p0-008a-*.spec.ts`, `playwright.config.ts`, `package.json`
+- Docs: `.env.example`, `docs/ops-deploy.md`, `docs/protected-behaviors.md`, `ARCHITECTURE.md`, `PROJECT_STATE.md`
 
 ## Behavior delivered
 
-Deployment owners configure `INSTALLATION_OWNER_SECRET` and durable control/DB/backup paths, issue a one-use setup invitation from `/owner`, and parents complete Account → Household in the browser without shell bootstrap. Full **Reset household** replaces data with an empty migrated DB (no new backup), advances installation epoch, fences old sessions/outboxes, and recovers from lost responses via continuation or `/owner`. Populated adoption does not wipe; multi-household DBs refuse lifecycle reset. B–D remain unimplemented.
+Deployment owners configure `INSTALLATION_OWNER_SECRET` and durable paths, issue a one-use setup invitation from `/owner`, and parents complete Account → Household without shell bootstrap. Full **Reset household** replaces data with an empty migrated DB (no new backup), advances installation epoch, fences old clients, and recovers a lost response via continuation cookie or `/owner`. Runtime replacement stays coherent under concurrent ordinary traffic and after restart. B–D remain unimplemented.
 
 ## Acceptance test mapping (AT1–12)
 
 | AT | Evidence | Result |
 | --- | --- | --- |
-| 1 Through-017 adoption | `p0-008a.test.ts` adoption + multi-household refuse; tip counts → 18 | PASS (local); full p016-style populated-through-017 fixture **PARTIAL** (smoke + refuse; richer fixture deferred) |
-| 2 Hosted owner gate | integration AT2; hosted profile forbids test bootstrap when owner configured | PASS |
-| 3 First account race | integration AT3 invitation consume + single manager | PASS |
-| 4 Required basics journey | Chromium-008a e2e setup→Today | PASS (phone Chromium); WebKit **NOT RUN** in this report’s e2e shard |
-| 5 Interrupted setup | resume via setup_progress + sign-in path | PARTIAL (server progress + client resume wiring; dedicated mid-setup restart e2e not separate) |
-| 6 Owner recovery | routes for recover-manager-password / establish-manager | PARTIAL (HTTP present; dedicated e2e matrix thin) |
-| 7 Reset without backup | integration AT7 + Chromium e2e reset once then re-setup | PASS |
-| 8 Lost response/idempotency | integration AT8 stale session/epoch cannot wipe newer data; continuation cookie issued | PASS (partial; hold-response browser case not fully automated) |
-| 9 Atomic replacement/faults | integration AT9 beforeActivate fault | PASS (partial; not every inject point + process restart) |
-| 10 Old clients | outbox epoch retire unit tests + session epoch reject | PARTIAL (unit/session; full multi-context hold matrix lighter than C-2) |
-| 11 Runtime/operations | scripts resolve active path; restore refuses control bypass; ops guide | PASS (local) |
-| 12 Selection and release | `e2e-phone-008a` in aggregate; `validate:pr` / `validate:rc` | see Verification |
+| 1 Through-017 adoption | `tests/helpers/p017-fixture.ts` + AT1 populated upgrade/idempotent migrate + backup byte check; multi-household refuse | PASS |
+| 2 Hosted owner gate | Missing secret, wrong secret → 429, origin, bootstrap deny, mixed principals, invite replay/replace | PASS |
+| 3 First account race | Two invitations/sessions `Promise.all` → one 200 + one 409; one manager | PASS |
+| 4 Required basics journey | `chromium-008a`, `chromium-008a-desktop`, `webkit-008a` e2e Account→Household→Today | PASS (gates) |
+| 5 Interrupted setup | E2E AT5: restart after account save; resume via other-context login; finish household | PASS |
+| 6 Owner recovery | Secret rotation; sole-manager password recovery; establish-manager retains household data | PASS |
+| 7 Reset without backup | Integration two resets + seeded backup hash unchanged + no new BACKUP_DIR files; e2e two resets | PASS |
+| 8 Lost response/idempotency | Continuation-only ops/recovery; wrong id 403; stale replay cannot wipe newer data; e2e welcome reload | PASS |
+| 9 Atomic replacement/faults | beforePrepare / beforeActivate / afterActivate / afterReopen / beforeCleanup + app reopen reconcile; concurrent meta barrier | PASS |
+| 10 Old clients | Old member/display sessions + stale-epoch mutation → 401 after reset/rebuild; outbox epoch unit tests | PASS |
+| 11 Runtime/operations | Active-path scripts; restore refuses control bypass; ops guide | PASS (local) |
+| 12 Selection and release | PR/RC selection includes A Chromium (+ desktop); WebKit-008a in full e2e/RC | see Verification |
+
+## Architecture FIX REQUIRED closure
+
+| # | Finding | Closure |
+| --- | --- | --- |
+| 1 | Runtime coherent during reset / restart recovery | Shared+exclusive barrier; activate→reopen+ref swap before later faults; `reconcilePendingOperations` on startup and status reads |
+| 2 | Continuation independently recovers operation | Continuation alone authorizes ops/:id and `/lifecycle/recovery`; client lost-response + boot recovery |
+| 3 | Populated through-017 fixture | `p017-fixture` + AT1 identity/grant/data/backup proofs |
+| 4 | Real first-account race | Concurrent dual setup accounts |
+| 5 | Owner gate and recovery matrix | Named AT2/AT6 cases above |
+| 6 | Browser journeys + restart | WebKit-008a + desktop-008a; AT5 restart e2e; AT7 two resets |
+| 7 | Old-client matrix | AT10 integration after reset/rebuild |
+| 8 | Build Report commit metadata | This report pins `3448d7d` / `9133936` and notes pending correction commit |
 
 ## Deployment-owner configuration guide (no terminal)
 
-See **`docs/ops-deploy.md` → Installation owner setup (P0-008A)** for secret generation, `INSTALLATION_OWNER_SECRET`, `INSTALLATION_CONTROL_PATH`, `DB_PATH`, `BACKUP_DIR`, volume layout, active-path note after reset, and the first-run/reset release checklist. Hosted candidate SHA / restart evidence: **NOT RUN** (Project Lead release checkpoint). Live reset not performed.
+See **`docs/ops-deploy.md` → Installation owner setup (P0-008A)**. Hosted candidate SHA / restart evidence: **NOT RUN** (Project Lead release checkpoint). Live reset not performed.
 
 ## Verification performed
 
-- `npm run build:server` / `npm run build` — PASS  
-- `vitest` full suite via `npm test` — PASS (42 files / 267 tests)  
-- `vitest` `tests/integration/p0-008a.test.ts` — PASS (7)  
-- Chromium-008a e2e `P0-008A` — PASS; logs `validate-008a-e2e4.log`, included in PR gate  
-- Exact `npm run validate:pr` — **PASS** (exit 0); log `validate-pr-008a-5.log` (97 Chromium e2e + Vite deep-link)  
-- Exact `npm run validate:rc` — **PASS** (exit 0); log `validate-rc-008a-1.log` (149 e2e incl. WebKit phone suite + Vite; 008A specs ignored on WebKit project by design, Chromium-008a covers A)  
+- `npm run typecheck` — PASS (during FIX REQUIRED)  
+- `vitest` `tests/integration/p0-008a.test.ts` — PASS (20)  
+- `vitest` denial-matrix regression — PASS  
+- Focused Chromium-008a + desktop-008a e2e — PASS (6); log `validate-008a-e2e-fix5.log`  
+- Exact `npm run validate:pr` — **PASS** (exit 0); log `validate-pr-008a-fix4.log` (280 vitest + 101 Chromium e2e + Vite)  
+- Exact `npm run validate:rc` — **PASS** (exit 0); log `validate-rc-008a-fix.log` (includes `webkit-008a`)  
 - Hosted Railway setup/reset/restart — **NOT RUN**  
 - Live database mutation / deploy — **NOT RUN** (not authorized)
 
 ## Deviations from brief revision
 
-- Through-017 **populated** upgrade fixture is lighter than C-3B’s through-016 helper; AT1 covers migration+control adoption and multi-household refuse rather than a full Reed/display locked-history clone.
-- Some AT5/6/8/9/10 browser depth is PARTIAL; core contracts are covered by integration + one Chromium journey.
-- Household rename UI omitted (no dedicated name-read API beyond setup completion).
-- WebKit phone journey for A is selected only under `validate:rc` (PR gate uses Chromium-008a).
+- Household rename UI still omitted (no dedicated post-setup name-read API beyond setup completion).
+- AT10 proves server rejection of stale member/display sessions and stale-epoch mutations after reset/rebuild; it does not replay the full C-2 multi-context held-read browser matrix.
 
 ## Discoveries for Architecture
 
-- Tip migration counts and CI must include **018** / `e2e-phone-008a`.
-- Playwright starts a dedicated 008A webServer (owner secret, `AUTO_SEED=0`, isolated control path). Default Chromium/WebKit projects **ignore** `z-p0-008a-*.spec.ts` so they cannot hit the seeded servers.
-- HTTP harness and e2e servers must use **per-instance** `INSTALLATION_CONTROL_PATH`; a shared default control file pins later processes to the first writer's active DB (bootstrap CONFLICT / wrong reopen).
-- Fresh e2e start must wipe control + epoch sidecars with the household DB; deleting only `DB_PATH` leaves a prior reset's active epoch database.
-- After setup completion, client must keep the “setup complete” step mounted until navigation; clearing `setupRequired` immediately left `/welcome` as Unavailable.
-- Invite exchange must distinguish “no fragment” from “exchanged”; otherwise `/welcome` incorrectly opened the account form without a setup cookie.
-- Lifecycle operation status authorizes before 404 so principal denial stays 401/403.
+- Exclusive replacement must not also hold the shared request barrier (deadlock on `/household/reset`).
+- After durable activation, reopen + app ref swap must precede `afterActivate`/`afterReopen` faults so a live process never serves old handles against the new control pointer.
+- Continuation must not require a still-valid member session; reset revokes those sessions before replacement.
 
 ## Known limitations
 
 - B backup catalog / in-app restore not present; A honestly states no new backup on reset.
 - C/D member admin and guided first day not present.
 - Hosted production evidence remains a Project Lead checkpoint.
-- Physical Product evaluation of the A journey is separate.
 
 ## Suggested follow-up
 
-- Architecture technical acceptance of this Build Report.
-- Project Lead: integrate planning baseline + this branch; configure owner secret on a disposable candidate before any live reset.
+- Architecture re-review / technical acceptance of this updated Build Report.
+- Project Lead owns commit of the FIX REQUIRED correction, PR/merge, and any hosted evaluation.
 - B readiness after A acceptance.
 
 ## Suggested commit message
 
 ```
-feat(P0-008A): protected first-manager setup and repeatable reset
+fix(P0-008A): lifecycle barrier, continuation recovery, acceptance gaps
 
-Add installation control/epoch, owner-gated Welcome setup, full household
-reset without a new backup, and outbox epoch fencing with C-3B CI selection.
+Quiesce writers during reset, swap runtime refs on activate, reconcile
+pending ops after restart, authorize continuation-only operation recovery,
+and close AT1–10 evidence called out in Architecture FIX REQUIRED.
 ```

@@ -124,26 +124,32 @@ export type BuildAppOptions = {
   onRoute?: (routeOptions: { method: string | string[]; url?: string }) => void;
   /** Override claim rate limit (auth claim + display claim). Tests may lower this under APP_PROFILE=test. */
   claimRateLimit?: { max: number; timeWindow: string | number };
+  faultHooks?: import("./lifecycle-runtime.js").LifecycleFaultHooks;
 };
 
 export async function buildApp(
   config: AppConfig,
   options?: BuildAppOptions,
 ) {
-  const runtime = createLifecycleRuntime(config);
-  let store: AppStore = runtime.store;
-  let displayStore: DisplayStore = runtime.displayStore;
-  let db = runtime.db;
-  if (config.autoSeed) store.seed(config.householdTimezone);
-  const sync = new SyncHub();
-  const getInstallationEpoch = () => runtime.epoch;
+  let store!: AppStore;
+  let displayStore!: DisplayStore;
+  let db!: import("better-sqlite3").Database;
   function syncRuntimeRefs(): void {
     store = runtime.store;
     displayStore = runtime.displayStore;
     db = runtime.db;
   }
+  const runtime = createLifecycleRuntime(config, {
+    faultHooks: options?.faultHooks,
+    onRuntimeSwapped: syncRuntimeRefs,
+  });
+  syncRuntimeRefs();
+  if (config.autoSeed) store.seed(config.householdTimezone);
+  const sync = new SyncHub();
+  const getInstallationEpoch = () => runtime.epoch;
   const requestSessions = new WeakMap<object, AuthContext>();
   const requestDisplays = new WeakMap<object, DisplayContext>();
+  const lifecycleSharedHeld = new WeakMap<object, boolean>();
 
   const app = Fastify({
     logger: {
@@ -174,6 +180,30 @@ export async function buildApp(
     global: true,
     max: config.profile === "test" ? 10_000 : 120,
     timeWindow: "1 minute",
+  });
+
+  // Quiesce ordinary API work while a household replacement holds the exclusive barrier.
+  // Reset itself takes the exclusive lock and must not also hold shared (deadlock).
+  app.addHook("onRequest", async (request, reply) => {
+    const pathOnly = request.url.split("?")[0] ?? request.url;
+    if (!pathOnly.startsWith("/api/v1/")) return;
+    if (pathOnly === "/api/v1/health") return;
+    if (pathOnly === "/api/v1/household/reset") return;
+    await runtime.acquireShared();
+    lifecycleSharedHeld.set(request, true);
+    const release = () => {
+      if (!lifecycleSharedHeld.get(request)) return;
+      runtime.releaseShared();
+      lifecycleSharedHeld.delete(request);
+    };
+    // Aborted connections may skip onResponse; always release the shared hold.
+    reply.raw.once("close", release);
+  });
+  app.addHook("onResponse", async (request) => {
+    if (lifecycleSharedHeld.get(request)) {
+      runtime.releaseShared();
+      lifecycleSharedHeld.delete(request);
+    }
   });
 
   function sessionFromRequest(request: FastifyRequest): AuthContext | null {
@@ -1783,7 +1813,11 @@ export async function buildApp(
   app.addHook("onClose", async () => {
     sync.close();
     runtime.control.close();
-    db.close();
+    try {
+      runtime.db.close();
+    } catch {
+      /* already closed */
+    }
   });
 
   return { app, store, db, sync, config, runtime };

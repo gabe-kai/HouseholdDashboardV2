@@ -23,6 +23,7 @@ import {
   createProposal,
   decideProposal,
   fetchPeople,
+  fetchLifecycleRecovery,
   fetchMeta,
   fetchPersonalTasks,
   fetchPreview,
@@ -392,6 +393,21 @@ export function App() {
       : parsePath(window.location.pathname, window.location.search);
     const gated = gateLocation(raw, session);
     applyLocation(gated, "replace");
+    // Login (and claim) must resume unfinished required basics without a full reload.
+    void (async () => {
+      try {
+        const latestMeta = meta ?? (await fetchMeta());
+        if (latestMeta) setMeta(latestMeta);
+        if (latestMeta?.setupRequired) {
+          setSetupChecking(true);
+          const step = await resolveSetupStep(session);
+          setSetupResumeStep(step);
+          setSetupChecking(false);
+        }
+      } catch {
+        setSetupChecking(false);
+      }
+    })();
     void retireMismatchedMemberOutbox(session.member.id, session.installationEpoch).then(
       (retired) => {
         if (identityRef.current !== session.member.id) return;
@@ -676,6 +692,18 @@ export function App() {
         setSetupChecking(false);
       } else if (!activeSession && exchange.ok && exchange.exchanged) {
         setSetupResumeStep("account");
+      } else if (!activeSession && metaValue?.setupRequired && metaValue.ownerConfigured) {
+        // Continuation cookie alone can recover a completed reset after a lost response.
+        const recovered = await fetchLifecycleRecovery().catch(() => null);
+        if (recovered?.status === "completed") {
+          try {
+            const nextMeta = await fetchMeta();
+            setMeta(nextMeta);
+            installationEpochRef.current = nextMeta.installationEpoch;
+          } catch {
+            /* keep prior meta */
+          }
+        }
       }
       setRestoring(false);
     })();
@@ -953,23 +981,21 @@ export function App() {
     );
   }
 
-  const protectedSetup =
-    Boolean(meta?.setupRequired && meta.ownerConfigured) ||
-    isWelcomePath() ||
-    setupResumeStep === "account";
+  // Welcome owns invite exchange; other routes keep Sign in so an incomplete
+  // first manager can resume required basics on another device (AT5).
+  if (!session && setupResumeStep === "account") {
+    return (
+      <WelcomeSetupFlow
+        meta={meta}
+        session={null}
+        initialStep="account"
+        onSession={establishSession}
+        onSetupFinished={() => setSetupResumeStep("done")}
+      />
+    );
+  }
 
-  if (!session && protectedSetup) {
-    if (setupResumeStep === "account") {
-      return (
-        <WelcomeSetupFlow
-          meta={meta}
-          session={null}
-          initialStep="account"
-          onSession={establishSession}
-          onSetupFinished={() => setSetupResumeStep("done")}
-        />
-      );
-    }
+  if (!session && isWelcomePath()) {
     return (
       <ProtectedWelcomeGate
         meta={meta}
@@ -1797,7 +1823,7 @@ export function App() {
             setSession(null);
             clearUiCaches();
             rememberCsrfToken("");
-            setSetupResumeStep("account");
+            setSetupResumeStep(null);
             window.location.assign("/welcome");
           }}
           onSuccessToast={(message) => showToast(message)}

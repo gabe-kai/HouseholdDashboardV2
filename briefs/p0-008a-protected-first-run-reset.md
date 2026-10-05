@@ -1,9 +1,9 @@
 # BRIEF P0-008A - Protected First-Manager Setup and Repeatable Reset
 
 **Revision:** 1
-**Status:** FIX REQUIRED
+**Status:** IMPLEMENTED
 
-Engineering implemented r1 after Architecture ACCEPT / PROCEED. Architecture has returned FIX REQUIRED against this same revision; see `reports/P0-008A-r1-architecture-review.md`. The contract has not changed, so a new readiness review is not required. Technical acceptance and Project Lead acceptance remain separate.
+Engineering closed Architecture FIX REQUIRED on this same revision (see `reports/P0-008A-r1-architecture-review.md` and updated `reports/P0-008A-r1-build-report.md`). The contract is unchanged. Technical acceptance and Project Lead acceptance remain separate.
 
 ## Why
 

@@ -837,12 +837,23 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
   {
     method: "GET",
     path: "/api/v1/lifecycle/operations/:id",
-    auth: "session",
-    principal: "member",
+    auth: "public",
+    principal: "public",
     origin: "none",
     csrf: "n/a",
     grant: null,
-    notes: "Redacted lifecycle operation status (member continuation or owner)",
+    notes:
+      "Redacted lifecycle operation status; authorized by recovery continuation or owner session",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/lifecycle/recovery",
+    auth: "public",
+    principal: "public",
+    origin: "none",
+    csrf: "n/a",
+    grant: null,
+    notes: "Resolve the operation bound to the recovery-continuation cookie",
   },
   {
     method: "POST",

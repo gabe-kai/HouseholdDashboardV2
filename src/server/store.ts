@@ -844,13 +844,6 @@ export class AppStore {
     defaultTimezone: string;
     installationEpoch: number;
   }): Promise<{ token: string; csrfSecret: string; context: AuthContext }> {
-    if (this.hasActiveLifecycleManager()) {
-      fail("CONFLICT", "A manager account already exists for this installation");
-    }
-    if (this.countHouseholds() > 1) {
-      fail("CONFLICT", "Multiple households are not supported for setup");
-    }
-
     const loginName = normalizedLogin(input.loginName);
     if (!LOGIN_RE.test(loginName)) fail("VALIDATION", "Invalid login name");
     const policy = this.validatePassphrasePolicy(input.passphrase);
@@ -864,12 +857,20 @@ export class AppStore {
     const phc = await hashPassphrase(input.passphrase);
     const userId = randomUUID();
     const membershipId = randomUUID();
-    const householdId =
-      (this.db.prepare(`SELECT id FROM households ORDER BY id LIMIT 1`).get() as
-        | { id: string }
-        | undefined)?.id ?? randomUUID();
     const createdAt = nowUtcIso();
+    // Re-check manager/household uniqueness inside the write transaction so concurrent
+    // first-account submissions cannot both succeed after the pre-hash await.
     const tx = this.db.transaction(() => {
+      if (this.hasActiveLifecycleManager()) {
+        fail("CONFLICT", "A manager account already exists for this installation");
+      }
+      if (this.countHouseholds() > 1) {
+        fail("CONFLICT", "Multiple households are not supported for setup");
+      }
+      const householdId =
+        (this.db.prepare(`SELECT id FROM households ORDER BY id LIMIT 1`).get() as
+          | { id: string }
+          | undefined)?.id ?? randomUUID();
       const householdExists = this.db
         .prepare(`SELECT 1 FROM households WHERE id = ?`)
         .get(householdId) as { 1: number } | undefined;
@@ -878,6 +879,10 @@ export class AppStore {
           .prepare(`INSERT INTO households (id, name, timezone) VALUES (?, ?, ?)`)
           .run(householdId, "Household", input.defaultTimezone);
       }
+      const loginTaken = this.db
+        .prepare(`SELECT id FROM users WHERE login_name = ?`)
+        .get(loginName) as { id: string } | undefined;
+      if (loginTaken) fail("CONFLICT", "Login name is already in use");
       this.db
         .prepare(`INSERT INTO users (id, login_name, created_at, disabled) VALUES (?, ?, ?, 0)`)
         .run(userId, loginName, createdAt);

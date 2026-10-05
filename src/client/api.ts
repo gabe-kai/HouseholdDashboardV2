@@ -522,15 +522,24 @@ export async function householdReset(body: {
   });
 }
 
+export type LifecycleOperationStatus = {
+  id: string;
+  kind: string;
+  status: string;
+  sourceEpoch: number;
+  resultEpoch: number | null;
+  result: HouseholdResetResult | null;
+};
+
 export async function fetchLifecycleOperation(operationId: string) {
-  return request<{
-    id: string;
-    kind: string;
-    status: string;
-    sourceEpoch: number;
-    resultEpoch: number | null;
-    result: HouseholdResetResult | null;
-  }>(`/api/v1/lifecycle/operations/${encodeURIComponent(operationId)}`);
+  return request<LifecycleOperationStatus>(
+    `/api/v1/lifecycle/operations/${encodeURIComponent(operationId)}`,
+  );
+}
+
+/** Uses the HttpOnly recovery-continuation cookie; no member session required. */
+export async function fetchLifecycleRecovery() {
+  return request<LifecycleOperationStatus>("/api/v1/lifecycle/recovery");
 }
 
 export async function login(loginName: string, passphrase: string) {

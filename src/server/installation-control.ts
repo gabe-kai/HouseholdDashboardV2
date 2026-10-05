@@ -493,6 +493,19 @@ export class InstallationControl {
     return row ?? null;
   }
 
+  listPendingOperations(): LifecycleOperationRow[] {
+    return this.db
+      .prepare(
+        `SELECT id, kind, status, source_epoch AS sourceEpoch, result_epoch AS resultEpoch,
+                initiator_kind AS initiatorKind, initiator_ref AS initiatorRef,
+                payload_digest AS payloadDigest, response_json AS responseJson,
+                created_at AS createdAt, completed_at AS completedAt
+         FROM lifecycle_operations WHERE status = 'pending'
+         ORDER BY created_at ASC`,
+      )
+      .all() as LifecycleOperationRow[];
+  }
+
   findCompletedOperationByPayload(
     kind: string,
     payloadDigest: string,

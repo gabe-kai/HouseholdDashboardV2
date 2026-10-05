@@ -26,7 +26,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright install chromium webkit && playwright test && npm run test:e2e:vite",
-    "test:e2e:chromium": "playwright install chromium && playwright test --project=chromium --project=chromium-008a --project=chromium-desktop --project=chromium-display && npm run test:e2e:vite",
+    "test:e2e:chromium": "playwright install chromium && playwright test --project=chromium --project=chromium-008a --project=chromium-008a-desktop --project=chromium-desktop --project=chromium-display && npm run test:e2e:vite",
     "test:e2e:chromium:phone": "playwright test --project=chromium",
     "test:e2e:chromium:phone:pre007": "playwright test --project=chromium --grep-invert \"P0-007\"",
     "test:e2e:chromium:phone:007a": "playwright test --project=chromium --grep \"P0-007A\"",

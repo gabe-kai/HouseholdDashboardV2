@@ -47,3 +47,19 @@ Architecture inspected code, tests and the committed Build Report. `validate:pr`
 ## Handoff
 
 Engineering closes the eight items above against **P0-008A r1** on the existing branch, updates the Build Report and returns for Architecture re-review. Do not merge or deploy while FIX REQUIRED. No product contract change or new readiness review is requested. Suggest a commit message but do not commit.
+
+## Re-review after Engineering correction commit
+
+**Date:** 2026-10-05
+**Disposition:** FIX REQUIRED (r1 unchanged)
+**Implementation tip:** `a27221b` — `fix(P0-008A): lifecycle barrier, continuation recovery, acceptance gaps`
+
+Architecture inspected the committed correction and updated code/tests. The shared request barrier, exclusive replacement, immediate runtime-reference swap after durable activation, startup/status reconciliation, and continuation-only operation lookup are present. The report names evidence for the populated through-017 fixture, concurrent first-account race, owner recovery cases, desktop/WebKit setup, repeated resets, and fault/restart paths. Findings 1–6 are closed.
+
+Two items remain before acceptance:
+
+7. **AT10 remains partial.** The named AT10 integration test proves old member/display sessions and a stale-epoch mutation are rejected after reset/rebuild. The Build Report explicitly says it does not replay the full C-2 multi-context held-read browser matrix. This does not meet brief AT10, which requires queued human and display actions, held reads and an async auth/config write across reset/restart, a new household with reused names, and release/reconnect of old contexts. Evidence must show no stale command, receipt replay, delayed response, snapshot or socket affects/repopulates the new epoch; retired work is visibly explained; normal same-epoch offline retry still works. Add the missing deterministic journey/evidence or identify equivalent existing tests that establish each required assertion.
+
+8. **Build Report metadata remains stale.** Its Commits section still calls the correction pending/working-tree-only and omits committed tip `a27221b`; the closure table likewise says metadata is pending. Correct the report to pin the actual correction commit and remove instructions that the Project Lead still needs to commit it.
+
+No new Engineering readiness round is needed. No behavior contract changed. Hosted evidence remains a release checkpoint; no live database/deployment action was performed. Return to Engineering on the existing branch and r1, then Architecture will re-review these two items together.

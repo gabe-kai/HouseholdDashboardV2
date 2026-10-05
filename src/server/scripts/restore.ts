@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { loadConfig } from "../config.js";
-import { resolveDbPath } from "../db.js";
+import { resolveInstallationControlPath } from "../installation-control.js";
+import { resolveActiveHouseholdDbPath } from "../lifecycle-runtime.js";
 
 const backupArgument = process.argv[2];
 if (!backupArgument) {
@@ -15,7 +16,13 @@ if (!fs.existsSync(backupPath)) {
 }
 
 const config = loadConfig();
-const dbPath = resolveDbPath(config.dbPath);
+const controlPath = resolveInstallationControlPath(config.installationControlPath);
+if (fs.existsSync(controlPath)) {
+  throw new Error(
+    "Restore cannot bypass installation control; use lifecycle restore (P0-008B) or remove control state under operator supervision",
+  );
+}
+const dbPath = resolveActiveHouseholdDbPath(config);
 if (path.resolve(dbPath) === backupPath) {
   throw new Error("Backup and destination paths must differ");
 }

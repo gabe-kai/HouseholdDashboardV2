@@ -69,14 +69,29 @@ export type HttpHarness = {
   config: AppConfig;
   dbPath: string;
   origin: string;
+  runtime: Awaited<ReturnType<typeof buildApp>>["runtime"];
   close: () => Promise<void>;
 };
+
+function rmSqliteArtifacts(filePath: string): void {
+  for (const target of [filePath, `${filePath}-wal`, `${filePath}-shm`]) {
+    try {
+      fs.rmSync(target, { force: true });
+    } catch {
+      /* ignore */
+    }
+  }
+}
 
 export async function createHttpHarness(
   overrides: Record<string, string | undefined> = {},
   buildOptions?: BuildAppOptions,
 ): Promise<HttpHarness> {
   const dbPath = tempDbPath("hd-http");
+  // Each harness needs its own control store so ensureAdopt cannot pin later
+  // tests to an earlier harness's active household database path.
+  const controlPath =
+    overrides.INSTALLATION_CONTROL_PATH ?? tempDbPath("hd-control");
   const port = String(8797 + Math.floor(Math.random() * 1000));
   const origin = overrides.PUBLIC_ORIGIN ?? `http://127.0.0.1:${port}`;
   const config = loadConfig({
@@ -90,6 +105,7 @@ export async function createHttpHarness(
     PUBLIC_ORIGIN: origin,
     NODE_ENV: "test",
     ...overrides,
+    INSTALLATION_CONTROL_PATH: controlPath,
   });
   const built = await buildApp(config, buildOptions);
   return {
@@ -99,13 +115,13 @@ export async function createHttpHarness(
     config: built.config,
     dbPath,
     origin: config.publicOrigin!,
+    runtime: built.runtime,
     close: async () => {
+      const activeDbPath = built.runtime.activeDbPath;
       await built.app.close();
-      try {
-        fs.rmSync(dbPath, { force: true });
-      } catch {
-        /* ignore */
-      }
+      rmSqliteArtifacts(dbPath);
+      if (activeDbPath !== dbPath) rmSqliteArtifacts(activeDbPath);
+      rmSqliteArtifacts(controlPath);
     },
   };
 }

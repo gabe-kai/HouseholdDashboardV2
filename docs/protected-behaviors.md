@@ -90,6 +90,9 @@ invalidation/reconciliation semantics.
 | PB-53 | Display pending recovery: session-keyed minimal outbox; 60s stale queue bound; revoke/replace/reset/day fences; no durable household payload cache |
 | PB-54 | Personal-task wall promotion: owner-only visibility/promotion distinct from Private/Household; private clears promotion; completedAt preserved across sharing edits; no display personal-task writes |
 | PB-55 | Promoted personal sync privacy: private task IDs never fan out to nonowners or display WS; household→private / unpromote / completion withdraws display resting content via sanitized invalidation |
+| PB-56 | Installation owner gate: missing/wrong secret, Origin, throttle; bootstrap bound when owner configured | `tests/integration/p0-008a.test.ts` | Developer |
+| PB-57 | Protected setup creates a new manager (no fixture reuse) with lifecycle grant + persisted progress | `tests/integration/p0-008a.test.ts` | Developer |
+| PB-58 | Full reset advances installation epoch; sessions fence; operator scripts resolve active DB | `tests/integration/p0-008a.test.ts` | Developer |
 
 ### Environment-specific (not counted as automated acceptance)
 
@@ -146,6 +149,9 @@ Duplicate, late, and missed events must be safe.
 | POST `/personal-tasks/:id/status` | task status | `personal_task` (owner-only if private) | personal-tasks | display `tasks` if household before/after | same `mutationId` idempotent | fetch personal-tasks / display dashboard |
 | POST `/personal-tasks/:id/sharing` | visibility + show on shared dashboard | `personal_task` (owner-only if resulting private) | personal-tasks | display `tasks` if household before/after | same `mutationId` + digest; `expectedSharingVersion` conflict | fetch personal-tasks / display dashboard |
 | POST `/test/bootstrap-claim` | claim | *(none)* | — | — | test-only | n/a |
+| POST `/owner/session`, `/setup/exchange` | owner/setup entry; Origin + throttling; digest-backed cookies | *(none)* | — | — | owner secret never stored plaintext | n/a |
+| POST `/household/reset` | full DB replacement + installation epoch advance; recovery continuation | `activity_reset` / WS close | all household views | epoch-fenced outboxes (follow-up client) | mutationId replay; password reauth ≤5m; RESET confirm | protected Welcome |
+| GET `/meta` | exposes `ownerConfigured`, `installationEpoch`, `setupRequired` without secrets | *(none)* | — | — | read | n/a |
 
 WebSocket `GET /api/v1/sync` delivers invalidations only. Connect also sends a synthetic
 `routine`/`connected` notice. Recovery: reconnect, `visibilitychange`, and online handlers

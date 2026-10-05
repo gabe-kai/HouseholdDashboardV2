@@ -1,9 +1,9 @@
 # BRIEF P0-008A - Protected First-Manager Setup and Repeatable Reset
 
 **Revision:** 1
-**Status:** READY
+**Status:** IMPLEMENTED
 
-Engineering readiness against this revision is **READY**. Implementation follows Architecture ACCEPT / PROCEED. Technical acceptance and Project Lead acceptance are separate.
+Engineering implemented r1 after Architecture ACCEPT / PROCEED. Build Report: `reports/P0-008A-r1-build-report.md`. Technical acceptance and Project Lead acceptance remain separate.
 
 ## Why
 

@@ -190,18 +190,38 @@ export class SyncHub {
     }
   }
 
-  close(): void {
+  closeAllMembers(): void {
+    for (const client of [...this.clients]) {
+      if (client.kind !== "member") continue;
+      try {
+        if (client.socket.readyState === 1) {
+          client.socket.close(4401, "installation_reset");
+        }
+      } catch {
+        /* ignore */
+      }
+      this.clients.delete(client);
+    }
+  }
+
+  closeAll(): void {
     if (this.pingTimer) {
       clearInterval(this.pingTimer);
       this.pingTimer = null;
     }
-    for (const client of this.clients) {
+    for (const client of [...this.clients]) {
       try {
-        client.socket.close();
+        if (client.socket.readyState === 1) {
+          client.socket.close(4401, "installation_reset");
+        }
       } catch {
-        // Ignore already-closed sockets.
+        /* ignore */
       }
     }
     this.clients.clear();
+  }
+
+  close(): void {
+    this.closeAll();
   }
 }

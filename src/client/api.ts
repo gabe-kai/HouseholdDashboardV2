@@ -54,7 +54,37 @@ export type SessionInfo = {
   householdTimezone: string;
   householdDate: string;
   activityGeneration: number;
+  installationEpoch: number;
 };
+
+export type MetaInfo = {
+  evaluationMode: boolean;
+  banner: string;
+  profile: string;
+  allowEvaluationHistoryClear: boolean;
+  ownerConfigured: boolean;
+  installationEpoch: number;
+  setupRequired: boolean;
+};
+
+export type SetupProgress = {
+  householdId: string;
+  accountCompletedAt: string | null;
+  householdCompletedAt: string | null;
+  setupRequired: boolean;
+};
+
+export type HouseholdResetResult = {
+  operationId: string;
+  sourceEpoch: number;
+  resultEpoch: number;
+  installationEpoch: number;
+  cleanupFailures: string[];
+  setupRequired: boolean;
+};
+
+/** Owner session CSRF — in memory only; never persisted. */
+let ownerCsrfToken = "";
 
 export type RoutineStep = {
   text: string;
@@ -366,13 +396,141 @@ function retainSessionToken(session: SessionInfo): SessionInfo {
   return session;
 }
 
+async function ownerRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const method = (init.method ?? "GET").toUpperCase();
+  const mutating = !["GET", "HEAD", "OPTIONS"].includes(method);
+  const headers = new Headers(init.headers);
+  if (init.body !== undefined) headers.set("Content-Type", "application/json");
+  if (mutating) headers.set("x-csrf-token", ownerCsrfToken);
+  const res = await fetch(path, {
+    ...init,
+    headers,
+    credentials: "include",
+  });
+  return parseJson<T>(res);
+}
+
 export async function fetchMeta() {
+  return request<MetaInfo>("/api/v1/meta");
+}
+
+export async function ownerCreateSession(secret: string) {
+  const data = await ownerRequest<{ csrfToken: string }>("/api/v1/owner/session", {
+    method: "POST",
+    body: JSON.stringify({ secret }),
+  });
+  ownerCsrfToken = data.csrfToken;
+  return data;
+}
+
+export async function fetchOwnerSession(): Promise<{ active: true; csrfToken: string } | null> {
+  const res = await fetch("/api/v1/owner/session", { credentials: "include" });
+  if (res.status === 401) {
+    ownerCsrfToken = "";
+    return null;
+  }
+  const data = await parseJson<{ active: true; csrfToken: string }>(res);
+  ownerCsrfToken = data.csrfToken;
+  return data;
+}
+
+export async function ownerLogout(): Promise<void> {
+  try {
+    await ownerRequest<{ ok: true }>("/api/v1/owner/logout", { method: "POST" });
+  } finally {
+    ownerCsrfToken = "";
+  }
+}
+
+export async function ownerIssueSetupInvitation() {
+  return ownerRequest<{ invitationToken: string; expiresAt: string }>(
+    "/api/v1/owner/setup-invitation",
+    { method: "POST", body: JSON.stringify({}) },
+  );
+}
+
+export async function ownerRecoverManagerPassword(body: {
+  loginName: string;
+  newPassphrase: string;
+}) {
+  return ownerRequest<{ ok: true; membershipId: string }>(
+    "/api/v1/owner/recover-manager-password",
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+export async function ownerEstablishManager(body: {
+  loginName: string;
+  passphrase: string;
+  displayName: string;
+}) {
+  return retainSessionToken(
+    await ownerRequest<SessionInfo>("/api/v1/owner/establish-manager", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+export async function setupExchangeInvitation(invitationToken: string) {
+  return request<{ ok: true; csrfToken: string }>("/api/v1/setup/exchange", {
+    method: "POST",
+    body: JSON.stringify({ invitationToken }),
+  });
+}
+
+export async function setupCreateAccount(body: {
+  displayName: string;
+  loginName: string;
+  passphrase: string;
+  mutationId?: string;
+}) {
+  return retainSessionToken(
+    await request<SessionInfo>("/api/v1/setup/account", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+export async function setupCompleteHousehold(body: { name: string; timezone: string }) {
+  return request<{ householdId: string; name: string; timezone: string }>(
+    "/api/v1/setup/household",
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+export async function fetchSetupProgress() {
+  return request<SetupProgress>("/api/v1/setup/progress");
+}
+
+export async function reauthenticatePassphrase(passphrase: string) {
+  return request<{ ok: true; confirmedAt: string }>("/api/v1/auth/reauthenticate", {
+    method: "POST",
+    body: JSON.stringify({ passphrase }),
+  });
+}
+
+export async function householdReset(body: {
+  mutationId: string;
+  confirmationText: "RESET";
+  expectedEpoch: number;
+}) {
+  return request<HouseholdResetResult>("/api/v1/household/reset", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function fetchLifecycleOperation(operationId: string) {
   return request<{
-    evaluationMode: boolean;
-    banner: string;
-    profile: string;
-    allowEvaluationHistoryClear: boolean;
-  }>("/api/v1/meta");
+    id: string;
+    kind: string;
+    status: string;
+    sourceEpoch: number;
+    resultEpoch: number | null;
+    result: HouseholdResetResult | null;
+  }>(`/api/v1/lifecycle/operations/${encodeURIComponent(operationId)}`);
 }
 
 export async function login(loginName: string, passphrase: string) {

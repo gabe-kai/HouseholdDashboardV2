@@ -20,6 +20,9 @@ async function main() {
   process.env.APP_PROFILE = "test";
   process.env.AUTO_SEED = "1";
   process.env.DB_PATH = dbPath;
+  process.env.INSTALLATION_CONTROL_PATH =
+    process.env.INSTALLATION_CONTROL_PATH ??
+    path.resolve(root, "runtime/e2e-vite-api-control.sqlite");
   process.env.BACKUP_DIR = path.resolve(root, "runtime/backups");
   process.env.HOUSEHOLD_TIMEZONE = process.env.HOUSEHOLD_TIMEZONE ?? "America/New_York";
   process.env.HOST = process.env.HOST ?? "127.0.0.1";

@@ -452,8 +452,9 @@ export class DisplayStore {
    */
   claimDisplayCode(
     code: string,
-    options?: { existingDisplayId?: string | null },
+    options?: { existingDisplayId?: string | null; installationEpoch?: number },
   ): DisplayClaimResult {
+    const installationEpoch = options?.installationEpoch ?? 1;
     const normalized = normalizeDisplayCode(code);
     if (!/^[A-Z2-7]{16}$/.test(normalized)) {
       fail("UNAUTHORIZED", "Invalid or expired setup code");
@@ -549,8 +550,8 @@ export class DisplayStore {
         .prepare(
           `INSERT INTO display_sessions
            (id, display_id, token_digest, csrf_secret, created_at, last_seen_at,
-            absolute_expires_at, revoked_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, NULL)`,
+            absolute_expires_at, revoked_at, installation_epoch)
+           VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
         )
         .run(
           sessionId,
@@ -560,6 +561,7 @@ export class DisplayStore {
           isoAt(now),
           isoAt(now),
           absoluteExpiresAt,
+          installationEpoch,
         );
 
       result = {
@@ -581,12 +583,15 @@ export class DisplayStore {
     return result;
   }
 
-  getDisplaySessionByTokenDigest(digest: string): DisplayContext | null {
+  getDisplaySessionByTokenDigest(
+    digest: string,
+    expectedInstallationEpoch?: number,
+  ): DisplayContext | null {
     const row = this.db
       .prepare(
         `SELECT s.id AS session_id, s.display_id, s.csrf_secret, s.created_at, s.last_seen_at,
-                s.absolute_expires_at, d.household_id, d.label, d.revoked_at AS display_revoked_at,
-                h.timezone
+                s.absolute_expires_at, s.installation_epoch, d.household_id, d.label,
+                d.revoked_at AS display_revoked_at, h.timezone
          FROM display_sessions s
          JOIN household_displays d ON d.id = s.display_id
          JOIN households h ON h.id = d.household_id
@@ -600,6 +605,7 @@ export class DisplayStore {
           created_at: string;
           last_seen_at: string;
           absolute_expires_at: string;
+          installation_epoch: number;
           household_id: string;
           label: string;
           display_revoked_at: string | null;
@@ -607,6 +613,12 @@ export class DisplayStore {
         }
       | undefined;
     if (!row || row.display_revoked_at) return null;
+    if (
+      expectedInstallationEpoch !== undefined &&
+      row.installation_epoch !== expectedInstallationEpoch
+    ) {
+      return null;
+    }
     if (!row.csrf_secret) return null;
 
     const now = new Date();

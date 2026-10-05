@@ -1,10 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { loadConfig } from "../config.js";
-import { openDatabase, resolveDbPath } from "../db.js";
+import { openDatabase } from "../db.js";
+import { resolveActiveHouseholdDbPath } from "../lifecycle-runtime.js";
 
 const config = loadConfig();
-const dbPath = resolveDbPath(config.dbPath);
+const dbPath = resolveActiveHouseholdDbPath(config);
 if (!fs.existsSync(dbPath)) {
   throw new Error("Database file does not exist");
 }

@@ -18,6 +18,8 @@ export type OutboxItem = {
   occurrenceSnapshot?: OccurrenceView;
   /** Household activity generation when the command was enqueued. */
   activityGeneration?: number;
+  /** Installation dataset epoch when the command was enqueued. */
+  installationEpoch?: number;
   /** Closed work kind; missing legacy entries normalize to routine. */
   kind?: WorkKind;
   /** Responsibility first-action structural intent (revision + owner + steps). */
@@ -115,6 +117,51 @@ export async function patchOutboxItem(
   let next: OutboxItem[] = [];
   await update<OutboxItem[]>(keyForMembership(membershipId), (current) => {
     next = (current ?? []).map((i) => (i.mutationId === mutationId ? { ...i, ...patch } : i));
+    return next;
+  });
+  return next;
+}
+
+const EPOCH_RETIRE_MESSAGE =
+  "The household was reset; this checklist change was not saved.";
+const LEGACY_EPOCH_RETIRE_MESSAGE =
+  "This change was saved before reset protection and was not applied.";
+
+/**
+ * Mark pending/retrying commands from another installation epoch as rejected
+ * with an explanation. Never silently drop or replay them after reset.
+ */
+export function retireOutboxItemsForEpoch(
+  items: OutboxItem[],
+  installationEpoch: number,
+): OutboxItem[] {
+  return items.map((item) => {
+    if (item.state === "rejected") return item;
+    if (item.installationEpoch == null) {
+      return {
+        ...item,
+        state: "rejected" as const,
+        errorMessage: LEGACY_EPOCH_RETIRE_MESSAGE,
+      };
+    }
+    if (item.installationEpoch !== installationEpoch) {
+      return {
+        ...item,
+        state: "rejected" as const,
+        errorMessage: EPOCH_RETIRE_MESSAGE,
+      };
+    }
+    return item;
+  });
+}
+
+export async function retireMismatchedMemberOutbox(
+  membershipId: string,
+  installationEpoch: number,
+): Promise<OutboxItem[]> {
+  let next: OutboxItem[] = [];
+  await update<OutboxItem[]>(keyForMembership(membershipId), (current) => {
+    next = retireOutboxItemsForEpoch(current ?? [], installationEpoch);
     return next;
   });
   return next;

@@ -15,6 +15,7 @@ function pendingItem(
     status: "completed",
     performedAt: "2026-09-26T12:00:00.000Z",
     activityGeneration: 0,
+    installationEpoch: 1,
     kind: "responsibility",
     intendedStructure: {
       revisionId: "rev-1",
@@ -38,6 +39,7 @@ describe("retireDisplayOutboxItems", () => {
     const next = retireDisplayOutboxItems(items, {
       activityGeneration: 0,
       householdDate: "2026-09-26",
+      installationEpoch: 1,
     });
     expect(next).toHaveLength(2);
     expect(next[0]).toMatchObject({
@@ -59,6 +61,7 @@ describe("retireDisplayOutboxItems", () => {
     const next = retireDisplayOutboxItems(items, {
       activityGeneration: 2,
       householdDate: "2026-09-26",
+      installationEpoch: 1,
     });
     expect(next[0]).toMatchObject({
       state: "rejected",
@@ -83,6 +86,7 @@ describe("retireDisplayOutboxItems", () => {
     const next = retireDisplayOutboxItems(items, {
       activityGeneration: 3,
       householdDate: "2026-09-26",
+      installationEpoch: 1,
     });
     expect(next[0]?.errorMessage).toBe("Already explained");
     expect(next[1]?.state).toBe("pending");

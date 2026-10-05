@@ -36,7 +36,11 @@ function bumpListenGeneration(): number {
 async function listenFresh(): Promise<Listening> {
   process.env.NODE_ENV = "production";
   process.env.APP_PROFILE = "test";
-  process.env.AUTO_SEED = "1";
+  process.env.AUTO_SEED = process.env.AUTO_SEED ?? "1";
+  const controlPathEnv = process.env.INSTALLATION_CONTROL_PATH;
+  if (controlPathEnv && !path.isAbsolute(controlPathEnv)) {
+    process.env.INSTALLATION_CONTROL_PATH = path.resolve(root, controlPathEnv);
+  }
   process.env.DB_PATH = dbPath;
   process.env.BACKUP_DIR = path.resolve(root, "runtime/backups");
   process.env.HOUSEHOLD_TIMEZONE =
@@ -83,12 +87,33 @@ async function rebindHttpServer(): Promise<void> {
   }
 }
 
+function rmSqliteFamily(filePath: string): void {
+  for (const target of [filePath, `${filePath}-wal`, `${filePath}-shm`]) {
+    if (fs.existsSync(target)) fs.rmSync(target, { force: true });
+  }
+}
+
 async function main() {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-  if (!preserveDb && fs.existsSync(dbPath)) fs.rmSync(dbPath);
   if (!preserveDb) {
+    rmSqliteFamily(dbPath);
+    // Lifecycle reset may leave epoch sidecars; wipe the DB stem family.
+    const dir = path.dirname(dbPath);
+    const stem = path.basename(dbPath, path.extname(dbPath));
+    for (const entry of fs.readdirSync(dir)) {
+      if (entry === stem || entry.startsWith(`${stem}.`)) {
+        rmSqliteFamily(path.join(dir, entry));
+      }
+    }
+    const controlPathEnv = process.env.INSTALLATION_CONTROL_PATH;
+    if (controlPathEnv) {
+      const controlAbs = path.isAbsolute(controlPathEnv)
+        ? controlPathEnv
+        : path.resolve(root, controlPathEnv);
+      rmSqliteFamily(controlAbs);
+    }
     for (const side of [restartFlagPath, generationPath]) {
-      if (fs.existsSync(side)) fs.rmSync(side);
+      if (fs.existsSync(side)) fs.rmSync(side, { force: true });
     }
   }
   if (fs.existsSync(restartFlagPath)) fs.rmSync(restartFlagPath);

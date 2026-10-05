@@ -29,6 +29,13 @@ export type AppConfig = {
   autoSeed: boolean;
   /** Evaluation-only clear of routine activity history. Default on in development/test; off in hosted unless ALLOW_EVALUATION_HISTORY_CLEAR=1. */
   allowEvaluationHistoryClear: boolean;
+  /** When set, browser owner/setup/reset lifecycle is available; when null, ordinary use continues without setup/reset. */
+  installationOwnerSecret: string | null;
+  /** Durable installation control SQLite (outside household snapshots). */
+  installationControlPath: string;
+  ownerCookieName: string;
+  setupCookieName: string;
+  recoveryContinuationCookieName: string;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -89,5 +96,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     displayAbsoluteDays: 365,
     autoSeed: profile !== "hosted" && (env.AUTO_SEED === "1" || env.AUTO_SEED === "true"),
     allowEvaluationHistoryClear,
+    installationOwnerSecret: env.INSTALLATION_OWNER_SECRET?.trim() || null,
+    installationControlPath:
+      env.INSTALLATION_CONTROL_PATH?.trim() ?? "runtime/installation-control.sqlite",
+    ownerCookieName: hosted ? "__Host-hd_owner" : "hd_dev_owner",
+    setupCookieName: hosted ? "__Host-hd_setup" : "hd_dev_setup",
+    recoveryContinuationCookieName: hosted
+      ? "__Host-hd_lifecycle_cont"
+      : "hd_dev_lifecycle_cont",
   };
 }

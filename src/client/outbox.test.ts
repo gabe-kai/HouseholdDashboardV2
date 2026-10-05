@@ -4,6 +4,7 @@ import {
   normalizeOccurrenceKind,
   outboxStorageKey,
   previousOccurrencesFromOutbox,
+  retireOutboxItemsForEpoch,
   type OutboxItem,
 } from "./outbox.js";
 import type { OccurrenceView } from "../shared/schemas.js";
@@ -91,6 +92,34 @@ describe("previousOccurrencesFromOutbox", () => {
       },
     ];
     expect(previousOccurrencesFromOutbox(items)).toEqual([]);
+  });
+});
+
+describe("retireOutboxItemsForEpoch", () => {
+  it("rejects legacy and mismatched epoch pending items with explanations", () => {
+    const items: OutboxItem[] = [
+      {
+        mutationId: "legacy",
+        occurrenceId: "occ-1",
+        stepId: "s1",
+        status: "completed",
+        performedAt: "2026-09-17T12:00:00.000Z",
+        state: "pending",
+      },
+      {
+        mutationId: "old-epoch",
+        occurrenceId: "occ-2",
+        stepId: "s2",
+        status: "completed",
+        performedAt: "2026-09-17T12:00:00.000Z",
+        state: "pending",
+        installationEpoch: 1,
+      },
+    ];
+    const next = retireOutboxItemsForEpoch(items, 2);
+    expect(next[0]?.state).toBe("rejected");
+    expect(next[1]?.state).toBe("rejected");
+    expect(next[1]?.errorMessage).toMatch(/reset/i);
   });
 });
 

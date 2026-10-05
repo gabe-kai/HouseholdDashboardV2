@@ -1,8 +1,10 @@
 import { loadConfig } from "../config.js";
-import { migrate, openDatabase, resolveDbPath } from "../db.js";
+import { migrate, openDatabase } from "../db.js";
+import { resolveActiveHouseholdDbPath } from "../lifecycle-runtime.js";
 
 const config = loadConfig();
-const db = openDatabase(resolveDbPath(config.dbPath));
+const dbPath = resolveActiveHouseholdDbPath(config);
+const db = openDatabase(dbPath);
 migrate(db);
 db.close();
-console.log(`Migrations applied to ${resolveDbPath(config.dbPath)}`);
+console.log(`Migrations applied to ${dbPath}`);

@@ -35,6 +35,7 @@ import {
   retireMismatchedDisplayOutbox,
   type DisplayOutboxItem,
 } from "./display-outbox";
+import { fetchMeta } from "./api";
 import { newClientId } from "./id";
 
 const DEFAULT_IDLE_MS = 90_000;
@@ -245,6 +246,7 @@ export function DisplayApp() {
   const sessionIdRef = useRef<string | null>(null);
   const sessionRef = useRef<DisplaySessionInfo | null>(null);
   const outboxRef = useRef<DisplayOutboxItem[]>([]);
+  const installationEpochRef = useRef(1);
   const flushInFlightRef = useRef(false);
   const flushAgainRef = useRef(false);
   const occurrenceDetailRef = useRef<DisplayOccurrenceDetail | null>(null);
@@ -360,6 +362,26 @@ export function DisplayApp() {
 
       for (const item of items) {
         if (sessionIdRef.current !== sessionId || item.state === "rejected") continue;
+        const epoch = installationEpochRef.current;
+        if (item.installationEpoch != null && item.installationEpoch !== epoch) {
+          items = await patchDisplayOutboxItem(sessionId, item.mutationId, {
+            state: "rejected",
+            errorMessage: "The household was reset; this display change was not saved.",
+          });
+          outboxRef.current = items;
+          setOutbox(items);
+          continue;
+        }
+        if (item.installationEpoch == null) {
+          items = await patchDisplayOutboxItem(sessionId, item.mutationId, {
+            state: "rejected",
+            errorMessage:
+              "This display change was saved before reset protection and was not applied.",
+          });
+          outboxRef.current = items;
+          setOutbox(items);
+          continue;
+        }
         items = await patchDisplayOutboxItem(sessionId, item.mutationId, {
           state: "retrying",
         });
@@ -469,6 +491,7 @@ export function DisplayApp() {
         const retired = await retireMismatchedDisplayOutbox(sessionId, {
           activityGeneration: next.activityGeneration,
           householdDate: next.householdDate,
+          installationEpoch: installationEpochRef.current,
         });
         if (sessionIdRef.current === sessionId) {
           outboxRef.current = retired;
@@ -575,6 +598,12 @@ export function DisplayApp() {
       }
       accessLostRef.current = false;
       rememberSessionSecrets(nextSession);
+      try {
+        const meta = await fetchMeta();
+        installationEpochRef.current = meta.installationEpoch;
+      } catch {
+        installationEpochRef.current = 1;
+      }
       markAuthorized();
       setSession(nextSession);
       setAuthPhase("authenticated");
@@ -930,6 +959,7 @@ export function DisplayApp() {
       status,
       performedAt: new Date().toISOString(),
       activityGeneration: currentSession.activityGeneration,
+      installationEpoch: installationEpochRef.current,
       kind: occurrence.kind,
       householdDate: occurrence.householdDate,
       intendedStructure,

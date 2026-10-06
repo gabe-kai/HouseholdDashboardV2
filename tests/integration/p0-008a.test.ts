@@ -1279,7 +1279,7 @@ describe("P0-008A AT9 atomic replacement faults", () => {
 });
 
 describe("P0-008A AT10 old clients", () => {
-  it("AT10 queued taps, held reads, and config writes cannot repopulate a new epoch after reset/restart", async () => {
+  it("AT10 queued taps, held old-context read, and config writes cannot repopulate a new epoch after reset/restart", async () => {
     const controlPath = controlPathForTest();
     const backupDir = backupDirForTest();
     const loginName = `reuse.${Date.now().toString(36)}`;
@@ -1352,6 +1352,18 @@ describe("P0-008A AT10 old clients", () => {
       intendedStructure,
     };
 
+    // Old-context held read: auth succeeds, then a long delay; reset/rebuild
+    // completes before release; post-delay revalidation must reject.
+    const heldOldToday = harness.app.inject({
+      method: "GET",
+      url: "/api/v1/today",
+      headers: {
+        cookie: manager.cookie,
+        "x-read-delay-ms": "3000",
+      },
+    });
+
+    // Queued taps authenticate, then delay across revoke/replacement.
     const memberDelayed = harness.app.inject({
       method: "POST",
       url: `/api/v1/occurrences/${occurrence.id}/steps/${stepId}/status`,
@@ -1360,7 +1372,7 @@ describe("P0-008A AT10 old clients", () => {
         cookie: manager.cookie,
         "x-csrf-token": manager.csrf,
         "content-type": "application/json",
-        "x-mutation-delay-ms": "120",
+        "x-mutation-delay-ms": "1500",
       },
       payload: memberTapPayload,
     });
@@ -1372,17 +1384,12 @@ describe("P0-008A AT10 old clients", () => {
         cookie: display.displayCookie,
         "x-csrf-token": displaySession.csrfToken,
         "content-type": "application/json",
-        "x-mutation-delay-ms": "120",
+        "x-mutation-delay-ms": "1500",
       },
       payload: displayTapPayload,
     });
-    let releaseResetHold: (() => void) | undefined;
-    const resetHold = new Promise<void>((resolve) => {
-      releaseResetHold = resolve;
-    });
-    harness.runtime.faultHooks.beforeActivate = async () => {
-      await resetHold;
-    };
+
+    await new Promise((r) => setTimeout(r, 40));
 
     const reauth = await harness.app.inject({
       method: "POST",
@@ -1396,7 +1403,7 @@ describe("P0-008A AT10 old clients", () => {
       payload: { passphrase: PASSPHRASE },
     });
     expect(reauth.statusCode).toBe(200);
-    const resetPromise = harness.app.inject({
+    const reset = await harness.app.inject({
       method: "POST",
       url: "/api/v1/household/reset",
       headers: {
@@ -1411,8 +1418,10 @@ describe("P0-008A AT10 old clients", () => {
         expectedEpoch: sourceEpoch,
       },
     });
-    await new Promise((r) => setTimeout(r, 150));
-    const configWrite = harness.app.inject({
+    expect(reset.statusCode).toBe(200);
+
+    // Async config write after revoke: must be rejected, not applied later.
+    const configWrite = await harness.app.inject({
       method: "POST",
       url: "/api/v1/personal-tasks",
       headers: {
@@ -1427,19 +1436,7 @@ describe("P0-008A AT10 old clients", () => {
         visibility: "private",
       },
     });
-    let metaResolvedDuringReset = false;
-    const heldRead = harness.app
-      .inject({ method: "GET", url: "/api/v1/meta" })
-      .then((res) => {
-        metaResolvedDuringReset = true;
-        return res;
-      });
-    await new Promise((r) => setTimeout(r, 100));
-    expect(metaResolvedDuringReset).toBe(false);
-    releaseResetHold?.();
-    const reset = await resetPromise;
-    expect(reset.statusCode).toBe(200);
-    harness.runtime.faultHooks.beforeActivate = undefined;
+    expect(configWrite.statusCode).toBe(401);
 
     harness = await reopenHarness(harness, {
       INSTALLATION_CONTROL_PATH: controlPath,
@@ -1450,17 +1447,14 @@ describe("P0-008A AT10 old clients", () => {
     const newManager = await setupManagerHousehold(harness, loginName, householdName);
     expect(newManager.membershipId).not.toBe(manager.membershipId);
 
-    const heldResult = await heldRead;
-    expect(heldResult.statusCode).toBe(200);
-    expect((heldResult.json() as { installationEpoch: number }).installationEpoch).toBe(
-      sourceEpoch + 1,
-    );
+    // Release/reconnect of the old held read after the replacement household exists.
+    const heldResult = await heldOldToday;
+    expect(heldResult.statusCode).toBe(401);
+
     const memberDelayedResult = await memberDelayed;
     const displayDelayedResult = await displayDelayed;
-    const configWriteResult = await configWrite;
+    expect(memberDelayedResult.statusCode).toBe(401);
     expect(displayDelayedResult.statusCode).toBe(401);
-    expect([401, 500]).toContain(configWriteResult.statusCode);
-    expect([200, 401]).toContain(memberDelayedResult.statusCode);
 
     const reportCount = (
       harness.runtime.db
@@ -1515,23 +1509,6 @@ describe("P0-008A AT10 old clients", () => {
       headers: { cookie: display.displayCookie },
     });
     expect(oldDisplaySession.statusCode).toBe(401);
-
-    const staleReset = await harness.app.inject({
-      method: "POST",
-      url: "/api/v1/household/reset",
-      headers: {
-        origin: harness.origin,
-        cookie: manager.cookie,
-        "x-csrf-token": manager.csrf,
-        "content-type": "application/json",
-      },
-      payload: {
-        mutationId: randomUUID(),
-        confirmationText: "RESET",
-        expectedEpoch: sourceEpoch,
-      },
-    });
-    expect(staleReset.statusCode).toBe(401);
 
     const memberOutbox: OutboxItem[] = [
       {

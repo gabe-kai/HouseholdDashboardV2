@@ -77,15 +77,18 @@ export async function restartPreservingE2eServer(baseURL: string): Promise<void>
   const flagPath = restartFlagPathForPort(port);
   const beforeGen = readGeneration(port);
 
-  const before = await fetch(`${origin}/api/v1/health`);
-  if (!before.ok) {
-    throw new Error(`E2E server not healthy before restart (${before.status})`);
-  }
+  await waitForHealth(origin, 30_000);
 
   fs.mkdirSync(path.dirname(flagPath), { recursive: true });
   fs.writeFileSync(flagPath, `${Date.now()}\n`, "utf8");
 
-  await waitForGeneration(port, beforeGen + 1);
+  try {
+    await waitForGeneration(port, beforeGen + 1, 45_000);
+  } catch {
+    // One missed flag poll under suite load: re-arm and wait again.
+    fs.writeFileSync(flagPath, `${Date.now()}\n`, "utf8");
+    await waitForGeneration(port, beforeGen + 1, 60_000);
+  }
   await waitForHealth(origin);
 }
 

@@ -608,12 +608,21 @@ export function App() {
         const code = (caught as { code?: string }).code;
         const message = errorMessage(caught);
         if (code === "UNAUTHORIZED") {
-          items = await patchOutboxItem(membershipId, item.mutationId, {
-            state: "pending",
-            errorMessage: "Sign in again to sync this change.",
-          });
+          // Household reset (and other revoke paths) must explain retired pending work.
+          for (const pending of items.filter((entry) => entry.state !== "rejected")) {
+            items = await patchOutboxItem(membershipId, pending.mutationId, {
+              state: "rejected",
+              errorMessage: "The household was reset; this checklist change was not saved.",
+            });
+          }
           outboxRef.current = items;
           setOutbox(items);
+          setInstallationResetBanner(true);
+          try {
+            sessionStorage.setItem("hd-installation-reset-notice", "1");
+          } catch {
+            /* ignore */
+          }
           expireSession();
           return;
         }
@@ -1296,7 +1305,11 @@ export function App() {
       ) : null}
 
       {installationResetBanner ? (
-        <div className="status-notice activity-reset-banner" role="status">
+        <div
+          className="status-notice activity-reset-banner"
+          role="status"
+          data-testid="installation-reset-banner"
+        >
           <p>
             Pending checklist changes from before a household reset were not applied.
           </p>
@@ -1943,6 +1956,18 @@ function AuthScreen(props: {
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [resetNotice, setResetNotice] = useState(false);
+
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem("hd-installation-reset-notice") === "1") {
+        setResetNotice(true);
+        sessionStorage.removeItem("hd-installation-reset-notice");
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -1966,6 +1991,24 @@ function AuthScreen(props: {
       {props.evaluationBanner ? (
         <div className="eval-banner" role="status">
           {props.evaluationBanner}
+        </div>
+      ) : null}
+      {resetNotice ? (
+        <div
+          className="status-notice activity-reset-banner"
+          role="status"
+          data-testid="installation-reset-banner"
+        >
+          <p>
+            Pending checklist changes from before a household reset were not applied.
+          </p>
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => setResetNotice(false)}
+          >
+            Dismiss
+          </button>
         </div>
       ) : null}
       <section className="panel auth-panel">

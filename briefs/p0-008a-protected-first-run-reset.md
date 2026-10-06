@@ -1,9 +1,9 @@
 # BRIEF P0-008A - Protected First-Manager Setup and Repeatable Reset
 
 **Revision:** 1
-**Status:** FIX REQUIRED
+**Status:** ACCEPTED
 
-Engineering has closed most Architecture findings on this same revision. The Architecture re-review still requires the full AT10 old-client journey and accurate Build Report commit metadata; see `reports/P0-008A-r1-architecture-review.md`. The contract is unchanged. Technical acceptance and Project Lead acceptance remain separate.
+Architecture technically accepts r1 against the committed implementation through `bab13b0` plus the reviewed, uncommitted AT10 closure and Build Report updates. The contract is unchanged. This is not Project Lead/Product acceptance or authorization to deploy; see `reports/P0-008A-r1-architecture-review.md`.
 
 ## Why
 
@@ -113,7 +113,7 @@ Inspected `member-management-first-run-setup` at `4f07593`; local `main` and `or
 
 **Engineering disposition:** READY — no BLOCKER, no QUESTION. D-050/D-051/D-053/D-056 align with r1; Current-system claims match the repository. Highest delivery care is runtime DB replacement with real restart/fault evidence, installation-epoch fencing of sessions/outboxes, and owner-gated setup without reusing fixture managers. B–D remain gated.
 
-**Architecture technical acceptance:** FIX REQUIRED against r1. Runtime/recovery corrections are present, but AT10 remains partial against its explicit cross-context contract, and Build Report commit metadata is stale after the correction commit. See the re-review in `reports/P0-008A-r1-architecture-review.md`. No behavior contract changed; return directly to Engineering on this branch.
+**Architecture technical acceptance:** ACCEPTED for r1 against committed tip `bab13b0` plus the reviewed working-tree closure. AT10 now has reset-specific member/display live-client, pending-outbox, blanking/retirement, restart/reconnect, and exact stale-request rejection evidence. The Build Report pins committed tip `bab13b0` and identifies this closure as uncommitted. Engineering-reported `validate:pr` and `validate:rc` pass; Architecture inspected the evidence and did not rerun the gates. No hosted/live-database action was performed. Project Lead/Product acceptance remains separate.
 
 ## Revision history
 

@@ -209,9 +209,21 @@ export class SyncHub {
       clearInterval(this.pingTimer);
       this.pingTimer = null;
     }
+    const at = new Date().toISOString();
     for (const client of [...this.clients]) {
       try {
         if (client.socket.readyState === 1) {
+          if (client.kind === "display") {
+            // Tell walls to retire pending work and blank before the socket drops.
+            client.socket.send(
+              JSON.stringify({
+                type: "display_invalidate",
+                householdId: client.householdId,
+                reason: "reset",
+                at,
+              } satisfies DisplaySyncEvent),
+            );
+          }
           client.socket.close(4401, "installation_reset");
         }
       } catch {

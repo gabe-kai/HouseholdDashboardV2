@@ -1178,8 +1178,18 @@ export async function buildApp(
   app.get("/api/v1/today", async (request, reply) => {
     const session = requireSession(request, reply);
     if (!session) return;
+    const delayMs = Number(request.headers["x-read-delay-ms"] ?? 0);
+    if (config.profile !== "hosted" && delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, Math.min(delayMs, 10_000)));
+      // Re-check after the hold so a reset that revoked the session cannot
+      // release a stale household snapshot into a replacement epoch.
+      requestSessions.delete(request);
+      if (!requireSession(request, reply)) return;
+    }
+    const liveSession = requireSession(request, reply);
+    if (!liveSession) return;
     const query = request.query as { date?: string };
-    let date = store.householdDateNow(session);
+    let date = store.householdDateNow(liveSession);
     if (query.date) {
       const parsed = HouseholdDateSchema.safeParse(query.date);
       if (!parsed.success) {
@@ -1191,9 +1201,9 @@ export async function buildApp(
     }
     return {
       householdDate: date,
-      householdTimezone: session.timezone,
-      activityGeneration: store.getActivityGeneration(session.householdId),
-      occurrences: store.materializeForDate(session, date),
+      householdTimezone: liveSession.timezone,
+      activityGeneration: store.getActivityGeneration(liveSession.householdId),
+      occurrences: store.materializeForDate(liveSession, date),
     };
   });
 
@@ -1335,16 +1345,22 @@ export async function buildApp(
       const delayMs = Number(request.headers["x-mutation-delay-ms"] ?? 0);
       if (config.profile !== "hosted" && delayMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, Math.min(delayMs, 10_000)));
+        // Auth was checked before the hold; drop per-request cache and revalidate
+        // so revoked/reset sessions cannot commit into a replacement database.
+        requestSessions.delete(request);
+        if (!requireSession(request, reply)) return;
       }
 
+      const liveSession = requireSession(request, reply);
+      if (!liveSession) return;
       const result = store.setStepStatus(
-        session,
+        liveSession,
         params.occurrenceId,
         params.stepId,
         parsed.data,
       );
       broadcast(
-        session,
+        liveSession,
         "occurrence",
         params.occurrenceId,
         result.occurrence.version,
@@ -1666,10 +1682,14 @@ export async function buildApp(
       const delayMs = Number(request.headers["x-mutation-delay-ms"] ?? 0);
       if (config.profile !== "hosted" && delayMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, Math.min(delayMs, 10_000)));
+        requestDisplays.delete(request);
+        if (!requireDisplay(request, reply)) return;
       }
 
+      const liveDisplay = requireDisplay(request, reply);
+      if (!liveDisplay) return;
       const result = displayStore.setDisplayStepStatus(
-        display,
+        liveDisplay,
         params.occurrenceId,
         params.stepId,
         parsed.data,
@@ -1677,12 +1697,12 @@ export async function buildApp(
       // Converge human Today/Household and other displays.
       sync.broadcast({
         type: "household_change",
-        householdId: display.householdId,
+        householdId: liveDisplay.householdId,
         resource: "occurrence",
         resourceId: params.occurrenceId,
         at: nowUtcIso(),
       });
-      displayInvalidate(display.householdId, "work");
+      displayInvalidate(liveDisplay.householdId, "work");
       return result;
     },
   );

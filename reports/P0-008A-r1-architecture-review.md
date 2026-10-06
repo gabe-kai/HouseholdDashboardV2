@@ -63,3 +63,29 @@ Two items remain before acceptance:
 8. **Build Report metadata remains stale.** Its Commits section still calls the correction pending/working-tree-only and omits committed tip `a27221b`; the closure table likewise says metadata is pending. Correct the report to pin the actual correction commit and remove instructions that the Project Lead still needs to commit it.
 
 No new Engineering readiness round is needed. No behavior contract changed. Hosted evidence remains a release checkpoint; no live database/deployment action was performed. Return to Engineering on the existing branch and r1, then Architecture will re-review these two items together.
+
+## Re-review of findings 7–8 after AT10 closure pass
+
+**Date:** 2026-10-05
+**Disposition:** FIX REQUIRED (r1 unchanged)
+**Inspected tip:** `bab13b0` — `test(P0-008A): close AT10 old-client matrix; pin a27221b in build report`
+
+The new AT10 integration evidence is useful and proves reset-barrier behavior, post-restart epoch fencing, stale member/display request rejection, and same-epoch mutation idempotency. However, the acceptance contract remains only partially demonstrated:
+
+7. **AT10 is not yet closed.** The test’s `GET /api/v1/meta` request begins while reset holds the exclusive barrier and later returns the new epoch; it is not a response held from an old context and released after the new household is established. Delayed writes are allowed to return `[200, 401]` / `[401, 500]`, so the test does not establish the intended authoritative outcome for every in-flight operation. Outbox notices are asserted by creating local outbox arrays and calling retirement helpers directly; this does not show pending items persisted by a live member/display client being retired and explained in the UI. The test has no display socket or old browser contexts to reconnect. Existing C-2/3A WebSocket tests establish their own sync behavior, but do not demonstrate reset-epoch blanking/revocation, old-client release/reconnect, and no stale response resurrection across this reset. Close with deterministic client/server evidence for those required assertions, or map existing reset-specific tests that do.
+
+8. **Build Report metadata is still inaccurate.** The repository is committed at `bab13b0`, but the Commits list stops at `aebad90`, labels the correction as working-tree-only, and reports `aebad90` as the branch tip. Pin `bab13b0` and update the status/commit wording to reflect the committed files. The report's substantive AT10 mapping should also distinguish proven integration/unit assertions from still-missing browser/socket assertions instead of marking the full AT PASS.
+
+Other prior findings remain closed. Engineering's reported PR/RC gates are recorded but were not rerun by Architecture. No deploy or live database operation was performed. Return to Engineering on the same branch/revision for these two remaining items; then Architecture will re-review.
+
+## Final re-review of findings 7–8
+
+**Date:** 2026-10-05
+**Disposition:** ACCEPTED (r1 unchanged)
+**Reviewed baseline:** committed tip `bab13b0` plus the current uncommitted closure delta
+
+Finding 7 is closed by the added AT10 evidence. The integration test now holds a previously authenticated `/api/v1/today` read and delayed member/display writes through reset revocation, then requires exact 401 outcomes, verifies zero new-epoch reports/tasks, and proves same-epoch idempotent retry. The dedicated `chromium-008a` multi-context e2e creates real pending member and display outbox items, observes display reset blanking and visible retirement notices, restarts the server, checks that the old member context remains signed out and the wall does not regain the old dashboard, then verifies same-epoch offline retry in the replacement household. The HTTP delay hooks revalidate credentials after the hold; display sockets receive reset invalidation before close. This is sufficient for A's reset-specific old-client contract. The broader multi-wall C-2 matrix remains separate and is not represented as rerun here.
+
+Finding 8 is closed in the updated Build Report: committed tip `bab13b0` is pinned, the current closure delta is explicitly identified as uncommitted, and AT10's evidence boundary is stated without claiming the broader C-2 matrix.
+
+Architecture accepts P0-008A r1 against this reviewed working tree. Engineering reports exact PR/RC passes; Architecture inspected the tests and report but did not rerun them. No hosted deployment or live database operation was performed. Project Lead should commit the reviewed closure before PR/merge. Product evaluation and hosted release evidence remain separate.

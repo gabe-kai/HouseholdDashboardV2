@@ -146,7 +146,7 @@ describe("P0-007B assignment patterns and scheduled work (server)", () => {
     ).toBe(1);
     expect(
       (db.prepare("SELECT COUNT(*) AS c FROM schema_migrations").get() as { c: number }).c,
-    ).toBe(17);
+    ).toBe(18);
 
     const catsPlan = db
       .prepare(
@@ -172,7 +172,7 @@ describe("P0-007B assignment patterns and scheduled work (server)", () => {
     migrate(db);
     expect(
       (db.prepare("SELECT COUNT(*) AS c FROM schema_migrations").get() as { c: number }).c,
-    ).toBe(17);
+    ).toBe(18);
 
     db.close();
     const restarted = openDatabase(dbPath);

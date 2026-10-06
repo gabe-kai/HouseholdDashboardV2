@@ -141,7 +141,7 @@ describe("P0-007C-3B AT1 populated through-016 upgrade", () => {
     ).toBe(1);
     expect(
       (db.prepare("SELECT COUNT(*) AS c FROM schema_migrations").get() as { c: number }).c,
-    ).toBe(17);
+    ).toBe(18);
 
     const promotedCount = (
       db
@@ -185,7 +185,7 @@ describe("P0-007C-3B AT1 populated through-016 upgrade", () => {
     expect(
       (restored.prepare("SELECT COUNT(*) AS c FROM schema_migrations").get() as { c: number })
         .c,
-    ).toBe(17);
+    ).toBe(18);
     restored.close();
   });
 });

@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { DisplayApp } from "./DisplayApp";
+import { OwnerApp } from "./OwnerApp";
 import "./styles.css";
 
 if (import.meta.env.DEV) {
@@ -10,6 +11,7 @@ if (import.meta.env.DEV) {
 }
 
 const pathname = window.location.pathname;
+const isOwnerPath = pathname === "/owner" || pathname.startsWith("/owner/");
 const isDisplayPath =
   pathname === "/display" || pathname.startsWith("/display/");
 
@@ -37,6 +39,15 @@ async function probeDisplaySession(): Promise<boolean> {
 }
 
 void (async () => {
+  if (isOwnerPath) {
+    createRoot(rootEl).render(
+      <StrictMode>
+        <OwnerApp />
+      </StrictMode>,
+    );
+    return;
+  }
+
   const displaySessionActive = await probeDisplaySession();
   // Active display session always mounts DisplayApp (path-traps to /display).
   // Without a display session, only /display* mounts DisplayApp.

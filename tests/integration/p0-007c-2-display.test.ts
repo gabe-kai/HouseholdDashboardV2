@@ -180,7 +180,7 @@ describe("P0-007C-2 through-014 upgrade (AT1)", () => {
     ).toBe(1);
     expect(
       (db.prepare("SELECT COUNT(*) AS c FROM schema_migrations").get() as { c: number }).c,
-    ).toBe(17);
+    ).toBe(18);
 
     const morganGrants = (
       db
@@ -230,7 +230,7 @@ describe("P0-007C-2 through-014 upgrade (AT1)", () => {
     migrate(db);
     expect(
       (db.prepare("SELECT COUNT(*) AS c FROM schema_migrations").get() as { c: number }).c,
-    ).toBe(17);
+    ).toBe(18);
 
     const displayId = randomUUID();
     db.prepare(

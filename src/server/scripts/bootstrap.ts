@@ -1,9 +1,15 @@
 import { loadConfig } from "../config.js";
-import { migrate, openDatabase, resolveDbPath } from "../db.js";
+import { migrate, openDatabase } from "../db.js";
+import { resolveActiveHouseholdDbPath } from "../lifecycle-runtime.js";
 import { AppStore } from "../store.js";
 
 const config = loadConfig();
-const db = openDatabase(resolveDbPath(config.dbPath));
+if (config.installationOwnerSecret) {
+  throw new Error(
+    "Bootstrap claims are disabled when INSTALLATION_OWNER_SECRET is configured",
+  );
+}
+const db = openDatabase(resolveActiveHouseholdDbPath(config));
 
 try {
   migrate(db);

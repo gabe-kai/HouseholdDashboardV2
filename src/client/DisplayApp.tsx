@@ -35,6 +35,7 @@ import {
   retireMismatchedDisplayOutbox,
   type DisplayOutboxItem,
 } from "./display-outbox";
+import { fetchMeta } from "./api";
 import { newClientId } from "./id";
 
 const DEFAULT_IDLE_MS = 90_000;
@@ -245,6 +246,7 @@ export function DisplayApp() {
   const sessionIdRef = useRef<string | null>(null);
   const sessionRef = useRef<DisplaySessionInfo | null>(null);
   const outboxRef = useRef<DisplayOutboxItem[]>([]);
+  const installationEpochRef = useRef(1);
   const flushInFlightRef = useRef(false);
   const flushAgainRef = useRef(false);
   const occurrenceDetailRef = useRef<DisplayOccurrenceDetail | null>(null);
@@ -289,6 +291,62 @@ export function DisplayApp() {
     setAuthPhase("setup");
     void retireSessionOutbox(retiringSessionId);
   }
+
+  /** Installation reset: explain retired pending work, then blank the wall. */
+  const handleInstallationReset = useEffectEvent(async () => {
+    // Fence immediately so reconnect/poll paths cannot clear retirement notices.
+    accessLostRef.current = true;
+    const sessionId = sessionIdRef.current;
+    const before = outboxRef.current;
+    let nextEpoch = installationEpochRef.current + 1;
+    try {
+      const meta = await fetchMeta();
+      nextEpoch = meta.installationEpoch;
+    } catch {
+      /* meta may fail while control is mid-swap; still fence local pending. */
+    }
+    installationEpochRef.current = nextEpoch;
+    if (sessionId) {
+      const retired = await retireMismatchedDisplayOutbox(sessionId, {
+        activityGeneration: sessionRef.current?.activityGeneration ?? 0,
+        householdDate:
+          householdDateRef.current ?? sessionRef.current?.householdDate ?? "",
+        installationEpoch: nextEpoch,
+      });
+      outboxRef.current = retired;
+      setOutbox(retired);
+      const newlyRejected = rejectedDisplayOutboxNotices(retired).filter((notice) =>
+        before.some(
+          (item) =>
+            item.mutationId === notice.mutationId && item.state !== "rejected",
+        ),
+      );
+      if (newlyRejected.length > 0) {
+        setRetiredNotices((current) => {
+          const seen = new Set(current.map((n) => n.mutationId));
+          return [
+            ...current,
+            ...newlyRejected.filter((n) => !seen.has(n.mutationId)),
+          ];
+        });
+      }
+    }
+    lastAuthorizedAtRef.current = null;
+    householdDateRef.current = null;
+    rememberSessionSecrets(null);
+    setDashboard(null);
+    setPersonDetail(null);
+    setOccurrenceDetail(null);
+    setDetail(null);
+    setSession(null);
+    setPendingCue(null);
+    setSavedFlashByStep({});
+    setStale(false);
+    setBlankReason(
+      "The household was reset. Pending display changes were not saved. Enter a new setup code when ready.",
+    );
+    setAuthPhase("blank");
+  });
 
   function markAuthorized() {
     lastAuthorizedAtRef.current = performance.now();
@@ -360,6 +418,26 @@ export function DisplayApp() {
 
       for (const item of items) {
         if (sessionIdRef.current !== sessionId || item.state === "rejected") continue;
+        const epoch = installationEpochRef.current;
+        if (item.installationEpoch != null && item.installationEpoch !== epoch) {
+          items = await patchDisplayOutboxItem(sessionId, item.mutationId, {
+            state: "rejected",
+            errorMessage: "The household was reset; this display change was not saved.",
+          });
+          outboxRef.current = items;
+          setOutbox(items);
+          continue;
+        }
+        if (item.installationEpoch == null) {
+          items = await patchDisplayOutboxItem(sessionId, item.mutationId, {
+            state: "rejected",
+            errorMessage:
+              "This display change was saved before reset protection and was not applied.",
+          });
+          outboxRef.current = items;
+          setOutbox(items);
+          continue;
+        }
         items = await patchDisplayOutboxItem(sessionId, item.mutationId, {
           state: "retrying",
         });
@@ -469,6 +547,7 @@ export function DisplayApp() {
         const retired = await retireMismatchedDisplayOutbox(sessionId, {
           activityGeneration: next.activityGeneration,
           householdDate: next.householdDate,
+          installationEpoch: installationEpochRef.current,
         });
         if (sessionIdRef.current === sessionId) {
           outboxRef.current = retired;
@@ -575,6 +654,12 @@ export function DisplayApp() {
       }
       accessLostRef.current = false;
       rememberSessionSecrets(nextSession);
+      try {
+        const meta = await fetchMeta();
+        installationEpochRef.current = meta.installationEpoch;
+      } catch {
+        installationEpochRef.current = 1;
+      }
       markAuthorized();
       setSession(nextSession);
       setAuthPhase("authenticated");
@@ -653,7 +738,7 @@ export function DisplayApp() {
         return;
       }
       if (msg.reason === "reset") {
-        void refreshDashboard({ quiet: true }).then(() => flushDisplayOutbox());
+        void handleInstallationReset();
         return;
       }
       scheduleRefresh();
@@ -930,6 +1015,7 @@ export function DisplayApp() {
       status,
       performedAt: new Date().toISOString(),
       activityGeneration: currentSession.activityGeneration,
+      installationEpoch: installationEpochRef.current,
       kind: occurrence.kind,
       householdDate: occurrence.householdDate,
       intendedStructure,
@@ -1007,9 +1093,40 @@ export function DisplayApp() {
       ) : null}
 
       {authPhase === "blank" ? (
-        <p className="display-status" role="status">
-          {blankReason ?? "Waiting for display access…"}
-        </p>
+        <section className="display-blank" data-testid="display-blank">
+          <p className="display-status" role="status">
+            {blankReason ?? "Waiting for display access…"}
+          </p>
+          {retiredNotices.length > 0 ? (
+            <div
+              className="display-retired-notices"
+              role="status"
+              data-testid="display-retired-notices"
+            >
+              {retiredNotices.map((notice) => (
+                <p
+                  key={notice.mutationId}
+                  className="display-retired-notice"
+                  data-testid="display-retired-notice"
+                >
+                  {notice.message}
+                </p>
+              ))}
+            </div>
+          ) : null}
+          <button
+            type="button"
+            className="display-setup-submit"
+            data-testid="display-blank-continue"
+            onClick={() => {
+              setRetiredNotices([]);
+              setBlankReason(null);
+              setAuthPhase("setup");
+            }}
+          >
+            Continue to setup
+          </button>
+        </section>
       ) : null}
 
       {authPhase === "setup" ? (

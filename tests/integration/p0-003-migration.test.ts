@@ -80,7 +80,7 @@ describe("P0-003 migration semantics", () => {
           .prepare("SELECT COUNT(*) as c FROM schema_migrations")
           .get() as { c: number }
       ).c,
-    ).toBe(17);
+    ).toBe(18);
     expect(
       (
         db

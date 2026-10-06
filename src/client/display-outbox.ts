@@ -13,6 +13,7 @@ export type DisplayOutboxItem = {
   status: StepStatus;
   performedAt: string;
   activityGeneration?: number;
+  installationEpoch?: number;
   kind?: WorkKind;
   householdDate: string;
   intendedStructure: IntendedStructure;
@@ -115,12 +116,34 @@ export async function replaceDesiredStateForStep(
  * day/generation as rejected with an explanation. Never silently drop them,
  * and never replay them under the new day/generation.
  */
+const DISPLAY_EPOCH_RETIRE_MESSAGE =
+  "The household was reset; this display change was not saved.";
+const DISPLAY_LEGACY_EPOCH_RETIRE_MESSAGE =
+  "This display change was saved before reset protection and was not applied.";
+
 export function retireDisplayOutboxItems(
   items: DisplayOutboxItem[],
-  opts: { activityGeneration: number; householdDate: string },
+  opts: {
+    activityGeneration: number;
+    householdDate: string;
+    installationEpoch: number;
+  },
 ): DisplayOutboxItem[] {
   return items.map((item) => {
     if (item.state === "rejected") return item;
+    if (
+      item.installationEpoch == null ||
+      item.installationEpoch !== opts.installationEpoch
+    ) {
+      return {
+        ...item,
+        state: "rejected" as const,
+        errorMessage:
+          item.installationEpoch == null
+            ? DISPLAY_LEGACY_EPOCH_RETIRE_MESSAGE
+            : DISPLAY_EPOCH_RETIRE_MESSAGE,
+      };
+    }
     if (item.householdDate !== opts.householdDate) {
       return {
         ...item,
@@ -146,7 +169,7 @@ export function retireDisplayOutboxItems(
 
 export async function retireMismatchedDisplayOutbox(
   sessionId: string,
-  opts: { activityGeneration: number; householdDate: string },
+  opts: { activityGeneration: number; householdDate: string; installationEpoch: number },
 ): Promise<DisplayOutboxItem[]> {
   let next: DisplayOutboxItem[] = [];
   await update<DisplayOutboxItem[]>(keyForSession(sessionId), (current) => {

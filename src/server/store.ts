@@ -126,6 +126,8 @@ export type AuthContext = {
   grants: Grant[];
   timezone: string;
   csrfSecret: string;
+  installationEpoch: number;
+  passwordConfirmedAt: string | null;
 };
 
 type StoreErrorCode =
@@ -392,6 +394,15 @@ const CLAIM_MS = 24 * 60 * 60 * 1_000;
 const LOGIN_WINDOW_MS = 15 * 60 * 1_000;
 const LOGIN_BLOCK_MS = 60 * 1_000;
 
+function isValidIanaTimezone(timezone: string): boolean {
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: timezone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function fail(code: StoreErrorCode, message: string, extra?: Record<string, unknown>): never {
   throw Object.assign(new Error(message), { code, ...extra });
 }
@@ -529,7 +540,16 @@ export class AppStore {
     return id;
   }
 
-  issueBootstrapClaim(timezone = "UTC"): { token: string; expiresAt: string } {
+  issueBootstrapClaim(
+    timezone = "UTC",
+    options?: { blockedWhenOwnerConfigured?: boolean },
+  ): { token: string; expiresAt: string } {
+    if (options?.blockedWhenOwnerConfigured) {
+      fail(
+        "FORBIDDEN",
+        "Bootstrap claims are unavailable when installation owner setup is configured",
+      );
+    }
     const activeManager = this.db
       .prepare(
         `SELECT 1
@@ -573,11 +593,20 @@ export class AppStore {
     });
   }
 
-  getSessionByTokenDigest(digest: string): AuthContext | null {
+  countHouseholds(): number {
+    const row = this.db.prepare(`SELECT COUNT(*) AS c FROM households`).get() as { c: number };
+    return row.c;
+  }
+
+  getSessionByTokenDigest(
+    digest: string,
+    expectedInstallationEpoch?: number,
+  ): AuthContext | null {
     const row = this.db
       .prepare(
         `SELECT s.id session_id, s.user_id, s.membership_id, s.csrf_secret,
                 s.created_at, s.last_seen_at, s.absolute_expires_at,
+                s.installation_epoch, s.password_confirmed_at,
                 hm.household_id, hm.display_name, h.timezone
          FROM auth_sessions s
          JOIN users u ON u.id = s.user_id AND u.disabled = 0
@@ -595,12 +624,20 @@ export class AppStore {
           created_at: string;
           last_seen_at: string;
           absolute_expires_at: string;
+          installation_epoch: number;
+          password_confirmed_at: string | null;
           household_id: string;
           display_name: string;
           timezone: string;
         }
       | undefined;
     if (!row) return null;
+    if (
+      expectedInstallationEpoch !== undefined &&
+      row.installation_epoch !== expectedInstallationEpoch
+    ) {
+      return null;
+    }
 
     const now = new Date();
     const idleExpired = now.getTime() - new Date(row.last_seen_at).getTime() > IDLE_MS;
@@ -621,6 +658,7 @@ export class AppStore {
   createSession(
     userId: string,
     membershipId: string,
+    installationEpoch = 1,
   ): { token: string; csrfSecret: string; context: AuthContext } {
     const row = this.db
       .prepare(
@@ -643,8 +681,9 @@ export class AppStore {
       .prepare(
         `INSERT INTO auth_sessions
          (id, user_id, membership_id, token_digest, csrf_secret, created_at,
-          last_seen_at, absolute_expires_at, revoked_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+          last_seen_at, absolute_expires_at, revoked_at, installation_epoch,
+          password_confirmed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL)`,
       )
       .run(
         sessionId,
@@ -655,22 +694,270 @@ export class AppStore {
         isoAt(now),
         isoAt(now),
         isoAt(new Date(now.getTime() + ABSOLUTE_MS)),
+        installationEpoch,
       );
 
     return {
       token,
       csrfSecret,
-      context: {
-        sessionId,
-        userId,
-        membershipId,
-        householdId: row.household_id,
-        displayName: row.display_name,
-        grants: this.grantsForMembership(membershipId),
+      context: this.authContextFromRow({
+        session_id: sessionId,
+        user_id: userId,
+        membership_id: membershipId,
+        household_id: row.household_id,
+        display_name: row.display_name,
         timezone: row.timezone,
-        csrfSecret,
-      },
+        csrf_secret: csrfSecret,
+        installation_epoch: installationEpoch,
+        password_confirmed_at: null,
+      }),
     };
+  }
+
+  async confirmPasswordForSession(sessionId: string, passphrase: string): Promise<void> {
+    const row = this.db
+      .prepare(
+        `SELECT u.id AS user_id, c.passphrase_phc
+         FROM auth_sessions s
+         JOIN users u ON u.id = s.user_id
+         JOIN user_credentials c ON c.user_id = u.id
+         WHERE s.id = ? AND s.revoked_at IS NULL`,
+      )
+      .get(sessionId) as { user_id: string; passphrase_phc: string } | undefined;
+    if (!row) fail("UNAUTHORIZED", "Authentication required");
+    const valid = await verifyPassphrase(row.passphrase_phc, passphrase);
+    if (!valid) fail("UNAUTHORIZED", "Invalid login or passphrase");
+    this.db
+      .prepare(`UPDATE auth_sessions SET password_confirmed_at = ? WHERE id = ?`)
+      .run(nowUtcIso(), sessionId);
+  }
+
+  passwordConfirmedRecently(sessionId: string, withinMs = 5 * 60 * 1000): boolean {
+    const row = this.db
+      .prepare(`SELECT password_confirmed_at FROM auth_sessions WHERE id = ?`)
+      .get(sessionId) as { password_confirmed_at: string | null } | undefined;
+    if (!row?.password_confirmed_at) return false;
+    return Date.now() - new Date(row.password_confirmed_at).getTime() <= withinMs;
+  }
+
+  revokeAllSessionsAndClaims(): void {
+    const now = nowUtcIso();
+    this.db.prepare(`UPDATE auth_sessions SET revoked_at = COALESCE(revoked_at, ?)`).run(now);
+    this.db
+      .prepare(`UPDATE display_sessions SET revoked_at = COALESCE(revoked_at, ?)`)
+      .run(now);
+    this.db
+      .prepare(`UPDATE enrollment_claims SET consumed_at = COALESCE(consumed_at, ?)`)
+      .run(now);
+    this.db
+      .prepare(
+        `UPDATE display_enrollment_claims SET revoked_at = COALESCE(revoked_at, ?)
+         WHERE consumed_at IS NULL`,
+      )
+      .run(now);
+  }
+
+  getSetupProgress(householdId: string): {
+    accountCompletedAt: string | null;
+    householdCompletedAt: string | null;
+    membershipId: string | null;
+    userId: string | null;
+  } | null {
+    const row = this.db
+      .prepare(
+        `SELECT account_completed_at, household_completed_at, membership_id, user_id
+         FROM setup_progress WHERE household_id = ?`,
+      )
+      .get(householdId) as
+      | {
+          account_completed_at: string | null;
+          household_completed_at: string | null;
+          membership_id: string | null;
+          user_id: string | null;
+        }
+      | undefined;
+    if (!row) return null;
+    return {
+      accountCompletedAt: row.account_completed_at,
+      householdCompletedAt: row.household_completed_at,
+      membershipId: row.membership_id,
+      userId: row.user_id,
+    };
+  }
+
+  getSetupProgressForMembership(membershipId: string): {
+    householdId: string;
+    accountCompletedAt: string | null;
+    householdCompletedAt: string | null;
+  } | null {
+    const row = this.db
+      .prepare(
+        `SELECT household_id, account_completed_at, household_completed_at
+         FROM setup_progress WHERE membership_id = ?`,
+      )
+      .get(membershipId) as
+      | {
+          household_id: string;
+          account_completed_at: string | null;
+          household_completed_at: string | null;
+        }
+      | undefined;
+    if (!row) return null;
+    return {
+      householdId: row.household_id,
+      accountCompletedAt: row.account_completed_at,
+      householdCompletedAt: row.household_completed_at,
+    };
+  }
+
+  hasActiveLifecycleManager(): boolean {
+    const row = this.db
+      .prepare(
+        `SELECT 1 AS ok
+         FROM household_memberships hm
+         JOIN membership_grants mg ON mg.membership_id = hm.id
+         JOIN users u ON u.id = hm.user_id AND u.disabled = 0
+         WHERE hm.status = 'active'
+           AND mg.grant_name = 'household.lifecycle.manage'
+         LIMIT 1`,
+      )
+      .get() as { ok: number } | undefined;
+    return Boolean(row?.ok);
+  }
+
+  setupRequired(): boolean {
+    if (this.countHouseholds() === 0) return true;
+    const row = this.db
+      .prepare(
+        `SELECT household_completed_at FROM setup_progress
+         ORDER BY updated_at DESC LIMIT 1`,
+      )
+      .get() as { household_completed_at: string | null } | undefined;
+    if (!row) return !this.hasActiveLifecycleManager();
+    return !row.household_completed_at;
+  }
+
+  async createFirstManagerForSetup(input: {
+    loginName: string;
+    passphrase: string;
+    displayName: string;
+    defaultTimezone: string;
+    installationEpoch: number;
+  }): Promise<{ token: string; csrfSecret: string; context: AuthContext }> {
+    const loginName = normalizedLogin(input.loginName);
+    if (!LOGIN_RE.test(loginName)) fail("VALIDATION", "Invalid login name");
+    const policy = this.validatePassphrasePolicy(input.passphrase);
+    if (!policy.ok) fail("VALIDATION", policy.message ?? "Invalid passphrase");
+
+    const existingUser = this.db
+      .prepare(`SELECT id FROM users WHERE login_name = ?`)
+      .get(loginName) as { id: string } | undefined;
+    if (existingUser) fail("CONFLICT", "Login name is already in use");
+
+    const phc = await hashPassphrase(input.passphrase);
+    const userId = randomUUID();
+    const membershipId = randomUUID();
+    const createdAt = nowUtcIso();
+    // Re-check manager/household uniqueness inside the write transaction so concurrent
+    // first-account submissions cannot both succeed after the pre-hash await.
+    const tx = this.db.transaction(() => {
+      if (this.hasActiveLifecycleManager()) {
+        fail("CONFLICT", "A manager account already exists for this installation");
+      }
+      if (this.countHouseholds() > 1) {
+        fail("CONFLICT", "Multiple households are not supported for setup");
+      }
+      const householdId =
+        (this.db.prepare(`SELECT id FROM households ORDER BY id LIMIT 1`).get() as
+          | { id: string }
+          | undefined)?.id ?? randomUUID();
+      const householdExists = this.db
+        .prepare(`SELECT 1 FROM households WHERE id = ?`)
+        .get(householdId) as { 1: number } | undefined;
+      if (!householdExists) {
+        this.db
+          .prepare(`INSERT INTO households (id, name, timezone) VALUES (?, ?, ?)`)
+          .run(householdId, "Household", input.defaultTimezone);
+      }
+      const loginTaken = this.db
+        .prepare(`SELECT id FROM users WHERE login_name = ?`)
+        .get(loginName) as { id: string } | undefined;
+      if (loginTaken) fail("CONFLICT", "Login name is already in use");
+      this.db
+        .prepare(`INSERT INTO users (id, login_name, created_at, disabled) VALUES (?, ?, ?, 0)`)
+        .run(userId, loginName, createdAt);
+      this.db
+        .prepare(
+          `INSERT INTO user_credentials (user_id, passphrase_phc, updated_at) VALUES (?, ?, ?)`,
+        )
+        .run(userId, phc, createdAt);
+      this.db
+        .prepare(
+          `INSERT INTO household_memberships
+           (id, household_id, user_id, display_name, status, created_at, sort_order)
+           VALUES (?, ?, ?, ?, 'active', ?, 0)`,
+        )
+        .run(membershipId, householdId, userId, input.displayName.trim(), createdAt);
+      this.db
+        .prepare(
+          `INSERT INTO members (id, household_id, display_name, capabilities_json)
+           VALUES (?, ?, ?, ?)`,
+        )
+        .run(
+          membershipId,
+          householdId,
+          input.displayName.trim(),
+          legacyCapabilities([...GRANT_PRESETS.manager]),
+        );
+      for (const grant of GRANT_PRESETS.manager) {
+        this.db
+          .prepare(`INSERT INTO membership_grants (membership_id, grant_name) VALUES (?, ?)`)
+          .run(membershipId, grant);
+      }
+      this.db
+        .prepare(
+          `INSERT INTO setup_progress
+           (household_id, account_completed_at, household_completed_at, membership_id, user_id, updated_at)
+           VALUES (?, ?, NULL, ?, ?, ?)
+           ON CONFLICT(household_id) DO UPDATE SET
+             account_completed_at = excluded.account_completed_at,
+             membership_id = excluded.membership_id,
+             user_id = excluded.user_id,
+             updated_at = excluded.updated_at`,
+        )
+        .run(householdId, createdAt, membershipId, userId, createdAt);
+    });
+    tx();
+    return this.createSession(userId, membershipId, input.installationEpoch);
+  }
+
+  completeSetupHousehold(
+    ctx: AuthContext,
+    input: { name: string; timezone: string },
+  ): { householdId: string; name: string; timezone: string } {
+    this.requireGrant(ctx, "household.lifecycle.manage");
+    if (!isValidIanaTimezone(input.timezone)) {
+      fail("VALIDATION", "Timezone must be a valid IANA name");
+    }
+    const progress = this.getSetupProgress(ctx.householdId);
+    if (!progress?.accountCompletedAt) {
+      fail("CONFLICT", "Complete your account before naming the household");
+    }
+    const updatedAt = nowUtcIso();
+    const tx = this.db.transaction(() => {
+      this.db
+        .prepare(`UPDATE households SET name = ?, timezone = ? WHERE id = ?`)
+        .run(input.name.trim(), input.timezone.trim(), ctx.householdId);
+      this.db
+        .prepare(
+          `UPDATE setup_progress
+           SET household_completed_at = ?, updated_at = ?
+           WHERE household_id = ?`,
+        )
+        .run(updatedAt, updatedAt, ctx.householdId);
+    });
+    tx();
+    return { householdId: ctx.householdId, name: input.name.trim(), timezone: input.timezone.trim() };
   }
 
   revokeSession(sessionId: string): void {
@@ -691,6 +978,7 @@ export class AppStore {
     loginName: string,
     passphrase: string,
     now = new Date(),
+    installationEpoch = 1,
   ): Promise<
     | { token: string; csrfSecret: string; context: AuthContext }
     | { error: "auth" | "throttled"; retryAfterSec?: number }
@@ -734,15 +1022,18 @@ export class AppStore {
     }
 
     this.db.prepare("DELETE FROM login_throttle WHERE key = ?").run(key);
-    return this.createSession(user.id, memberships[0].id);
+    return this.createSession(user.id, memberships[0].id, installationEpoch);
   }
 
-  async claim(input: {
-    claimToken: string;
-    loginName: string;
-    passphrase: string;
-    displayName: string;
-  }): Promise<{ token: string; csrfSecret: string; context: AuthContext }> {
+  async claim(
+    input: {
+      claimToken: string;
+      loginName: string;
+      passphrase: string;
+      displayName: string;
+    },
+    installationEpoch = 1,
+  ): Promise<{ token: string; csrfSecret: string; context: AuthContext }> {
     const loginName = normalizedLogin(input.loginName);
     if (!LOGIN_RE.test(loginName)) fail("VALIDATION", "Invalid login name");
     const policy = this.validatePassphrasePolicy(input.passphrase);
@@ -869,7 +1160,61 @@ export class AppStore {
         .run(createdAt, membershipId, claim.id);
     });
     tx();
-    return this.createSession(userId, membershipId);
+    return this.createSession(userId, membershipId, installationEpoch);
+  }
+
+  async resetSoleManagerPassword(input: {
+    loginName: string;
+    newPassphrase: string;
+  }): Promise<{ membershipId: string; userId: string }> {
+    const managers = this.db
+      .prepare(
+        `SELECT hm.id, hm.user_id, u.login_name
+         FROM household_memberships hm
+         JOIN membership_grants mg ON mg.membership_id = hm.id
+         JOIN users u ON u.id = hm.user_id AND u.disabled = 0
+         WHERE hm.status = 'active' AND mg.grant_name = 'household.lifecycle.manage'`,
+      )
+      .all() as Array<{ id: string; user_id: string; login_name: string }>;
+    if (managers.length !== 1) {
+      fail("CONFLICT", "Expected exactly one active lifecycle manager");
+    }
+    const manager = managers[0];
+    if (normalizedLogin(input.loginName) !== manager.login_name) {
+      fail("VALIDATION", "Login name does not match the sole manager");
+    }
+    const policy = this.validatePassphrasePolicy(input.newPassphrase);
+    if (!policy.ok) fail("VALIDATION", policy.message ?? "Invalid passphrase");
+    const phc = await hashPassphrase(input.newPassphrase);
+    const now = nowUtcIso();
+    this.db
+      .prepare(`UPDATE user_credentials SET passphrase_phc = ?, updated_at = ? WHERE user_id = ?`)
+      .run(phc, now, manager.user_id);
+    this.revokeUserSessions(manager.user_id);
+    return { membershipId: manager.id, userId: manager.user_id };
+  }
+
+  async establishManagerForRetainedHousehold(input: {
+    loginName: string;
+    passphrase: string;
+    displayName: string;
+    installationEpoch: number;
+  }): Promise<{ token: string; csrfSecret: string; context: AuthContext }> {
+    if (this.hasActiveLifecycleManager()) {
+      fail("CONFLICT", "An active lifecycle manager already exists");
+    }
+    if (this.countHouseholds() !== 1) {
+      fail("CONFLICT", "Retained-data recovery requires a single household");
+    }
+    return this.createFirstManagerForSetup({
+      ...input,
+      defaultTimezone:
+        (
+          this.db.prepare(`SELECT timezone FROM households LIMIT 1`).get() as
+            | { timezone: string }
+            | undefined
+        )?.timezone ?? "UTC",
+    });
   }
 
   issueEnrollmentClaim(
@@ -5266,6 +5611,8 @@ export class AppStore {
     display_name: string;
     timezone: string;
     csrf_secret: string;
+    installation_epoch: number;
+    password_confirmed_at: string | null;
   }): AuthContext {
     return {
       sessionId: row.session_id,
@@ -5276,6 +5623,8 @@ export class AppStore {
       grants: this.grantsForMembership(row.membership_id),
       timezone: row.timezone,
       csrfSecret: row.csrf_secret,
+      installationEpoch: row.installation_epoch,
+      passwordConfirmedAt: row.password_confirmed_at,
     };
   }
 

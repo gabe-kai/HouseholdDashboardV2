@@ -23,6 +23,7 @@ export const GrantSchema = z.enum([
   "household.member.enroll",
   "household.display.manage",
   "household.structure.manage",
+  "household.lifecycle.manage",
   "household.schedule.manage",
   "household.activity.clear",
   "routine.shared.manage",
@@ -740,5 +741,35 @@ export const DisplayConfigCommandSchema = z.object({
 
 export const ClaimDisplaySchema = z.object({
   code: z.string().min(1).max(64),
+});
+
+export const OwnerSecretSchema = z.object({
+  secret: z.string().min(1).max(512),
+});
+
+export const SetupInvitationExchangeSchema = z.object({
+  invitationToken: z.string().min(1).max(256),
+});
+
+export const SetupAccountSchema = z.object({
+  loginName: z.string().trim().min(3).max(64),
+  passphrase: z.string().min(1).max(256),
+  displayName: z.string().trim().min(1).max(80),
+});
+
+export const SetupHouseholdSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  timezone: z.string().trim().min(1).max(80),
+});
+
+export const PasswordReauthenticateSchema = z.object({
+  passphrase: z.string().min(1).max(256),
+});
+
+export const HouseholdResetSchema = z.object({
+  mutationId: UuidSchema,
+  confirmationText: z.string(),
+  /** Client-observed installation epoch; rejects stale reset after a newer replacement. */
+  expectedEpoch: z.number().int().positive(),
 });
 

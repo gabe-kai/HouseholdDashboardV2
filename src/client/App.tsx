@@ -23,6 +23,7 @@ import {
   createProposal,
   decideProposal,
   fetchPeople,
+  fetchLifecycleRecovery,
   fetchMeta,
   fetchPersonalTasks,
   fetchPreview,
@@ -40,8 +41,16 @@ import {
   type Proposal,
   type Routine,
   type RoutinePreview,
+  type MetaInfo,
   type SessionInfo,
 } from "./api";
+import {
+  ProtectedWelcomeGate,
+  WelcomeSetupFlow,
+  exchangeInviteFromLocation,
+  isWelcomePath,
+  resolveSetupStep,
+} from "./WelcomeSetup";
 import { HistoryView } from "./History";
 import { HouseholdDisplaysView } from "./HouseholdDisplays";
 import { HouseholdOverview } from "./HouseholdOverview";
@@ -60,6 +69,7 @@ import {
   previousOccurrencesFromOutbox,
   readOutbox,
   removeOutboxItem,
+  retireMismatchedMemberOutbox,
   writeOutbox,
   type OutboxItem,
 } from "./outbox";
@@ -134,7 +144,12 @@ function gateLocation(location: AppLocation, session: SessionInfo): AppLocation 
   ) {
     return { name: "unavailable", attemptedPath: pathFor(location) };
   }
-  if (location.name === "household-settings" && !canClearActivity) {
+  const canManageLifecycle = session.grants.includes("household.lifecycle.manage");
+  if (
+    location.name === "household-settings" &&
+    !canClearActivity &&
+    !canManageLifecycle
+  ) {
     return { name: "unavailable", attemptedPath: pathFor(location) };
   }
   if (location.name === "household-displays" && !canManageDisplays) {
@@ -165,6 +180,7 @@ const HOUSEHOLD_MENU_ITEMS: Array<{
     canManageShared: boolean;
     canViewActivity: boolean;
     canClearActivity: boolean;
+    canManageLifecycle: boolean;
     canManageDisplays: boolean;
   }) => boolean;
 }> = [
@@ -208,7 +224,7 @@ const HOUSEHOLD_MENU_ITEMS: Array<{
     id: "settings",
     label: "Settings",
     description: "Data & testing",
-    visible: (caps) => caps.canClearActivity,
+    visible: (caps) => caps.canClearActivity || caps.canManageLifecycle,
   },
 ];
 
@@ -233,11 +249,13 @@ function errorMessage(error: unknown): string {
 }
 
 export function App() {
-  const [meta, setMeta] = useState<{
-    evaluationMode: boolean;
-    banner: string;
-    allowEvaluationHistoryClear: boolean;
-  } | null>(null);
+  const [meta, setMeta] = useState<MetaInfo | null>(null);
+  const [inviteExchangeError, setInviteExchangeError] = useState<string | null>(null);
+  const [inviteExchanging, setInviteExchanging] = useState(false);
+  const [setupResumeStep, setSetupResumeStep] = useState<
+    "account" | "household" | "done" | null
+  >(null);
+  const [setupChecking, setSetupChecking] = useState(false);
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [restoring, setRestoring] = useState(true);
   const [location, setLocation] = useState<AppLocation>(() =>
@@ -257,6 +275,7 @@ export function App() {
   const [occurrencesLoaded, setOccurrencesLoaded] = useState(false);
   const [knownActivityGeneration, setKnownActivityGeneration] = useState(0);
   const [activityResetBanner, setActivityResetBanner] = useState(false);
+  const [installationResetBanner, setInstallationResetBanner] = useState(false);
   const [historyRefreshToken, setHistoryRefreshToken] = useState(0);
   const [online, setOnline] = useState(navigator.onLine);
   const [connection, setConnection] = useState<"connected" | "reconnecting" | "offline">(
@@ -272,6 +291,7 @@ export function App() {
   const occurrencesRef = useRef<OccurrenceView[]>([]);
   const outboxRef = useRef<OutboxItem[]>([]);
   const activityGenerationRef = useRef(0);
+  const installationEpochRef = useRef(1);
   const refreshGenerationRef = useRef(0);
   const supportingGenerationRef = useRef(0);
   const locationRef = useRef(location);
@@ -309,6 +329,8 @@ export function App() {
     setKnownActivityGeneration(0);
     activityGenerationRef.current = 0;
     setActivityResetBanner(false);
+    setInstallationResetBanner(false);
+    installationEpochRef.current = 1;
     setPreview(null);
     setPreviewReturn(null);
     setError(null);
@@ -348,14 +370,20 @@ export function App() {
     return true;
   }
 
+  function normalizeSession(next: SessionInfo): SessionInfo {
+    return { ...next, installationEpoch: next.installationEpoch ?? 1 };
+  }
+
   function establishSession(next: SessionInfo) {
-    if (identityRef.current !== next.member.id) clearUiCaches();
-    identityRef.current = next.member.id;
-    rememberCsrfToken(next.csrfToken);
-    setSession(next);
-    setHouseholdDate(next.householdDate);
-    activityGenerationRef.current = next.activityGeneration;
-    setKnownActivityGeneration(next.activityGeneration);
+    const session = normalizeSession(next);
+    if (identityRef.current !== session.member.id) clearUiCaches();
+    identityRef.current = session.member.id;
+    rememberCsrfToken(session.csrfToken);
+    setSession(session);
+    setHouseholdDate(session.householdDate);
+    activityGenerationRef.current = session.activityGeneration;
+    setKnownActivityGeneration(session.activityGeneration);
+    installationEpochRef.current = session.installationEpoch;
     resetLocalOverlays();
     clearToast();
 
@@ -363,8 +391,36 @@ export function App() {
     const raw = intended
       ? parseHref(intended)
       : parsePath(window.location.pathname, window.location.search);
-    const gated = gateLocation(raw, next);
+    const gated = gateLocation(raw, session);
     applyLocation(gated, "replace");
+    // Login (and claim) must resume unfinished required basics without a full reload.
+    void (async () => {
+      try {
+        const latestMeta = meta ?? (await fetchMeta());
+        if (latestMeta) setMeta(latestMeta);
+        if (latestMeta?.setupRequired) {
+          setSetupChecking(true);
+          const step = await resolveSetupStep(session);
+          setSetupResumeStep(step);
+          setSetupChecking(false);
+        }
+      } catch {
+        setSetupChecking(false);
+      }
+    })();
+    void retireMismatchedMemberOutbox(session.member.id, session.installationEpoch).then(
+      (retired) => {
+        if (identityRef.current !== session.member.id) return;
+        const hadRetired = retired.some(
+          (item, index) =>
+            item.state === "rejected" &&
+            (outboxRef.current[index]?.state ?? item.state) !== "rejected",
+        );
+        outboxRef.current = retired;
+        setOutbox(retired);
+        if (hadRetired) setInstallationResetBanner(true);
+      },
+    );
   }
 
   function expireSession() {
@@ -498,6 +554,28 @@ export function App() {
     setOutbox(items);
     for (const item of items) {
       if (identityRef.current !== membershipId || item.state === "rejected") continue;
+      const epoch = installationEpochRef.current;
+      if (item.installationEpoch != null && item.installationEpoch !== epoch) {
+        items = await patchOutboxItem(membershipId, item.mutationId, {
+          state: "rejected",
+          errorMessage: "The household was reset; this checklist change was not saved.",
+        });
+        outboxRef.current = items;
+        setOutbox(items);
+        setInstallationResetBanner(true);
+        continue;
+      }
+      if (item.installationEpoch == null) {
+        items = await patchOutboxItem(membershipId, item.mutationId, {
+          state: "rejected",
+          errorMessage:
+            "This change was saved before reset protection and was not applied.",
+        });
+        outboxRef.current = items;
+        setOutbox(items);
+        setInstallationResetBanner(true);
+        continue;
+      }
       items = await patchOutboxItem(membershipId, item.mutationId, {
         state: "retrying",
       });
@@ -530,12 +608,21 @@ export function App() {
         const code = (caught as { code?: string }).code;
         const message = errorMessage(caught);
         if (code === "UNAUTHORIZED") {
-          items = await patchOutboxItem(membershipId, item.mutationId, {
-            state: "pending",
-            errorMessage: "Sign in again to sync this change.",
-          });
+          // Household reset (and other revoke paths) must explain retired pending work.
+          for (const pending of items.filter((entry) => entry.state !== "rejected")) {
+            items = await patchOutboxItem(membershipId, pending.mutationId, {
+              state: "rejected",
+              errorMessage: "The household was reset; this checklist change was not saved.",
+            });
+          }
           outboxRef.current = items;
           setOutbox(items);
+          setInstallationResetBanner(true);
+          try {
+            sessionStorage.setItem("hd-installation-reset-notice", "1");
+          } catch {
+            /* ignore */
+          }
           expireSession();
           return;
         }
@@ -583,13 +670,52 @@ export function App() {
     const params = new URLSearchParams(window.location.search);
     const delay = Number(params.get("mutationDelayMs") ?? 0);
     if (Number.isFinite(delay) && delay > 0) setMutationDelayMs(delay);
-    void Promise.allSettled([fetchMeta(), fetchSession()]).then(([metaResult, sessionResult]) => {
-      if (metaResult.status === "fulfilled") setMeta(metaResult.value);
+    void (async () => {
+      setInviteExchanging(true);
+      const exchange = await exchangeInviteFromLocation();
+      setInviteExchangeError(exchange.error ?? null);
+      setInviteExchanging(false);
+      if (exchange.ok && exchange.exchanged) {
+        setSetupResumeStep("account");
+      }
+
+      const [metaResult, sessionResult] = await Promise.allSettled([
+        fetchMeta(),
+        fetchSession(),
+      ]);
+      let metaValue: MetaInfo | null = null;
+      if (metaResult.status === "fulfilled") {
+        metaValue = metaResult.value;
+        setMeta(metaValue);
+        installationEpochRef.current = metaValue.installationEpoch;
+      }
+      let activeSession: SessionInfo | null = null;
       if (sessionResult.status === "fulfilled" && sessionResult.value) {
-        establishSession(sessionResult.value);
+        activeSession = normalizeSession(sessionResult.value);
+        establishSession(activeSession);
+      }
+      if (activeSession && metaValue?.setupRequired) {
+        setSetupChecking(true);
+        const step = await resolveSetupStep(activeSession);
+        setSetupResumeStep(step);
+        setSetupChecking(false);
+      } else if (!activeSession && exchange.ok && exchange.exchanged) {
+        setSetupResumeStep("account");
+      } else if (!activeSession && metaValue?.setupRequired && metaValue.ownerConfigured) {
+        // Continuation cookie alone can recover a completed reset after a lost response.
+        const recovered = await fetchLifecycleRecovery().catch(() => null);
+        if (recovered?.status === "completed") {
+          try {
+            const nextMeta = await fetchMeta();
+            setMeta(nextMeta);
+            installationEpochRef.current = nextMeta.installationEpoch;
+          } catch {
+            /* keep prior meta */
+          }
+        }
       }
       setRestoring(false);
-    });
+    })();
   }, []);
 
   useEffect(() => {
@@ -767,6 +893,7 @@ export function App() {
       performedAt: new Date().toISOString(),
       state: "pending",
       activityGeneration: activityGenerationRef.current,
+      installationEpoch: installationEpochRef.current,
       occurrenceSnapshot:
         normalized && isLockingStepStatus(status)
           ? (JSON.parse(JSON.stringify(normalized)) as OccurrenceView)
@@ -855,11 +982,35 @@ export function App() {
     rememberIntendedPath(window.location.pathname, window.location.search);
   }, [restoring, session]);
 
-  if (restoring) {
+  if (restoring || setupChecking) {
     return (
       <main className="app-shell">
         <p role="status">Restoring your session…</p>
       </main>
+    );
+  }
+
+  // Welcome owns invite exchange; other routes keep Sign in so an incomplete
+  // first manager can resume required basics on another device (AT5).
+  if (!session && setupResumeStep === "account") {
+    return (
+      <WelcomeSetupFlow
+        meta={meta}
+        session={null}
+        initialStep="account"
+        onSession={establishSession}
+        onSetupFinished={() => setSetupResumeStep("done")}
+      />
+    );
+  }
+
+  if (!session && isWelcomePath()) {
+    return (
+      <ProtectedWelcomeGate
+        meta={meta}
+        exchangeError={inviteExchangeError}
+        exchanging={inviteExchanging}
+      />
     );
   }
 
@@ -868,6 +1019,41 @@ export function App() {
       <AuthScreen
         evaluationBanner={meta?.evaluationMode ? meta.banner : null}
         onAuthenticated={establishSession}
+      />
+    );
+  }
+
+  if (
+    session &&
+    setupResumeStep &&
+    (meta?.setupRequired || setupResumeStep === "done") &&
+    (setupResumeStep === "account" ||
+      setupResumeStep === "household" ||
+      setupResumeStep === "done")
+  ) {
+    return (
+      <WelcomeSetupFlow
+        meta={meta}
+        session={session}
+        initialStep={
+          setupResumeStep === "household"
+            ? "household"
+            : setupResumeStep === "done"
+              ? "done"
+              : "account"
+        }
+        onSession={establishSession}
+        onSetupFinished={async () => {
+          setSetupResumeStep("done");
+          try {
+            const nextMeta = await fetchMeta();
+            setMeta(nextMeta);
+          } catch {
+            setMeta((current) =>
+              current ? { ...current, setupRequired: false } : current,
+            );
+          }
+        }}
       />
     );
   }
@@ -883,6 +1069,7 @@ export function App() {
   const canClearActivity =
     Boolean(meta?.allowEvaluationHistoryClear) &&
     hasGrant(activeSession, "household.activity.clear");
+  const canManageLifecycle = hasGrant(activeSession, "household.lifecycle.manage");
   const canManageDisplays = hasGrant(activeSession, "household.display.manage");
   const manager = canManageShared || canEnroll || canDecide || canManageStructure;
   const canDirect = hasGrant(activeSession, "routine.personalize.direct");
@@ -938,6 +1125,7 @@ export function App() {
     canManageShared,
     canViewActivity: manager,
     canClearActivity,
+    canManageLifecycle,
     canManageDisplays,
   };
   const visibleHouseholdItems = HOUSEHOLD_MENU_ITEMS.filter((item) =>
@@ -973,7 +1161,8 @@ export function App() {
       gatedLocation.name === "household-history-occurrence") &&
     canManageShared;
   const showingSettings =
-    gatedLocation.name === "household-settings" && canClearActivity;
+    gatedLocation.name === "household-settings" &&
+    (canClearActivity || canManageLifecycle);
   const showingDisplays =
     gatedLocation.name === "household-displays" && canManageDisplays;
   const showingUnavailable =
@@ -982,7 +1171,9 @@ export function App() {
       location.name === "plan-routine" ||
       location.name === "plan-responsibility") &&
       !canManageShared) ||
-    (gatedLocation.name === "household-settings" && !canClearActivity) ||
+    (gatedLocation.name === "household-settings" &&
+      !canClearActivity &&
+      !canManageLifecycle) ||
     (gatedLocation.name === "household-displays" && !canManageDisplays) ||
     ((gatedLocation.name === "household-history" ||
       gatedLocation.name === "household-history-occurrence") &&
@@ -1107,6 +1298,25 @@ export function App() {
             type="button"
             className="text-button"
             onClick={() => setActivityResetBanner(false)}
+          >
+            Dismiss
+          </button>
+        </div>
+      ) : null}
+
+      {installationResetBanner ? (
+        <div
+          className="status-notice activity-reset-banner"
+          role="status"
+          data-testid="installation-reset-banner"
+        >
+          <p>
+            Pending checklist changes from before a household reset were not applied.
+          </p>
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => setInstallationResetBanner(false)}
           >
             Dismiss
           </button>
@@ -1612,11 +1822,22 @@ export function App() {
       {!showingUnavailable && showingSettings ? (
         <HouseholdSettingsView
           expectedGeneration={knownActivityGeneration}
+          installationEpoch={activeSession.installationEpoch}
+          householdTimezone={activeSession.householdTimezone}
           canClearActivity={canClearActivity}
+          canManageLifecycle={canManageLifecycle}
           onBack={() => requestNavigate({ name: "household" })}
           onCleared={(generation) => {
             void noteActivityGeneration(session.member.id, generation);
             setHistoryRefreshToken((n) => n + 1);
+          }}
+          onResetComplete={() => {
+            identityRef.current = null;
+            setSession(null);
+            clearUiCaches();
+            rememberCsrfToken("");
+            setSetupResumeStep(null);
+            window.location.assign("/welcome");
           }}
           onSuccessToast={(message) => showToast(message)}
         />
@@ -1735,6 +1956,18 @@ function AuthScreen(props: {
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [resetNotice, setResetNotice] = useState(false);
+
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem("hd-installation-reset-notice") === "1") {
+        setResetNotice(true);
+        sessionStorage.removeItem("hd-installation-reset-notice");
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -1758,6 +1991,24 @@ function AuthScreen(props: {
       {props.evaluationBanner ? (
         <div className="eval-banner" role="status">
           {props.evaluationBanner}
+        </div>
+      ) : null}
+      {resetNotice ? (
+        <div
+          className="status-notice activity-reset-banner"
+          role="status"
+          data-testid="installation-reset-banner"
+        >
+          <p>
+            Pending checklist changes from before a household reset were not applied.
+          </p>
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => setResetNotice(false)}
+          >
+            Dismiss
+          </button>
         </div>
       ) : null}
       <section className="panel auth-panel">

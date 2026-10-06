@@ -1362,6 +1362,8 @@ describe("P0-007C-2 AT13 persistence and expiry", () => {
       PORT: String(8899 + Math.floor(Math.random() * 100)),
       PUBLIC_ORIGIN: origin,
       NODE_ENV: "test",
+      // Preserve the same control store so active-path/epoch match the session.
+      INSTALLATION_CONTROL_PATH: first.config.installationControlPath,
     });
     const rebuilt = await buildApp(config);
     harnesses.push({
@@ -1371,6 +1373,7 @@ describe("P0-007C-2 AT13 persistence and expiry", () => {
       config: rebuilt.config,
       dbPath,
       origin,
+      runtime: rebuilt.runtime,
       close: async () => {
         await rebuilt.app.close();
         try {
@@ -1520,6 +1523,7 @@ describe("P0-007C-2 AT13 persistence and expiry", () => {
     const code = (issue.json() as { code: string }).code;
     const dbPath = seeded.dbPath;
     const backupDir = seeded.config.backupDir;
+    const controlPath = seeded.config.installationControlPath;
     await seeded.app.close();
 
     const hostedOrigin = "https://example.test";
@@ -1533,6 +1537,7 @@ describe("P0-007C-2 AT13 persistence and expiry", () => {
       PORT: String(8899 + Math.floor(Math.random() * 100)),
       PUBLIC_ORIGIN: hostedOrigin,
       NODE_ENV: "production",
+      INSTALLATION_CONTROL_PATH: controlPath,
     });
     expect(hostedConfig.displayCookieName).toBe("__Host-hd_display");
     expect(hostedConfig.cookieSecure).toBe(true);
@@ -1544,6 +1549,7 @@ describe("P0-007C-2 AT13 persistence and expiry", () => {
       config: hosted.config,
       dbPath,
       origin: hostedOrigin,
+      runtime: hosted.runtime,
       close: async () => {
         await hosted.app.close();
         try {

@@ -1938,3 +1938,67 @@ textarea {
   justify-self: start;
 }
 
+.owner-shell,
+.welcome-shell {
+  max-width: 36rem;
+  margin-inline: auto;
+}
+
+.owner-panel,
+.welcome-panel {
+  margin-top: var(--space-6);
+}
+
+.owner-invite-card {
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.form-warning {
+  margin: 0;
+  color: var(--warning, #8a5a00);
+}
+
+.owner-recovery {
+  margin-top: var(--space-5);
+}
+
+.password-field {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.password-field input {
+  flex: 1;
+}
+
+.settings-section {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.reset-scope-list {
+  margin: var(--space-3) 0;
+  padding-left: 1.25rem;
+}
+
+.checkbox-label {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+
+.button-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+

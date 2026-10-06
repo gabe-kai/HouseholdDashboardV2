@@ -50,9 +50,11 @@ import {
 import type { AppConfig } from "./config.js";
 import { digestEquals, sha256Hex } from "./crypto.js";
 import { DisplayStore, type DisplayContext } from "./display.js";
-import { migrate, openDatabase, resolveDbPath } from "./db.js";
+import { registerLifecycleRoutes } from "./lifecycle-routes.js";
+import { createLifecycleRuntime } from "./lifecycle-runtime.js";
+import { ownerSecretDigestFromEnv } from "./installation-control.js";
 import { originMatchesConfig } from "./origin.js";
-import { AppStore, type AuthContext } from "./store.js";
+import type { AppStore, AuthContext } from "./store.js";
 import { SyncHub } from "./sync-hub.js";
 
 const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -63,16 +65,27 @@ const CSRF_EXEMPT = new Set([
   "/api/v1/meta",
   "/api/v1/test/bootstrap-claim",
   "/api/v1/display/claim",
+  "/api/v1/owner/session",
+  "/api/v1/setup/exchange",
+  "/api/v1/setup/account",
 ]);
 /** CSRF-exempt auth entry points still require an allowed Origin. */
 const AUTH_ORIGIN_REQUIRED = new Set([
   "/api/v1/auth/login",
   "/api/v1/auth/claim",
   "/api/v1/display/claim",
+  "/api/v1/owner/session",
+  "/api/v1/setup/exchange",
 ]);
 /** Display-principal writes: Origin + display-session CSRF (never member CSRF). */
 const DISPLAY_CSRF_ROUTES = new Set([
   "/api/v1/display/occurrences/:occurrenceId/steps/:stepId/status",
+]);
+const OWNER_CSRF_ROUTES = new Set([
+  "/api/v1/owner/logout",
+  "/api/v1/owner/setup-invitation",
+  "/api/v1/owner/recover-manager-password",
+  "/api/v1/owner/establish-manager",
 ]);
 
 function errorBody(
@@ -111,20 +124,32 @@ export type BuildAppOptions = {
   onRoute?: (routeOptions: { method: string | string[]; url?: string }) => void;
   /** Override claim rate limit (auth claim + display claim). Tests may lower this under APP_PROFILE=test. */
   claimRateLimit?: { max: number; timeWindow: string | number };
+  faultHooks?: import("./lifecycle-runtime.js").LifecycleFaultHooks;
 };
 
 export async function buildApp(
   config: AppConfig,
   options?: BuildAppOptions,
 ) {
-  const db = openDatabase(resolveDbPath(config.dbPath));
-  migrate(db);
-  const store = new AppStore(db);
+  let store!: AppStore;
+  let displayStore!: DisplayStore;
+  let db!: import("better-sqlite3").Database;
+  function syncRuntimeRefs(): void {
+    store = runtime.store;
+    displayStore = runtime.displayStore;
+    db = runtime.db;
+  }
+  const runtime = createLifecycleRuntime(config, {
+    faultHooks: options?.faultHooks,
+    onRuntimeSwapped: syncRuntimeRefs,
+  });
+  syncRuntimeRefs();
   if (config.autoSeed) store.seed(config.householdTimezone);
-  const displayStore = new DisplayStore(db, store);
   const sync = new SyncHub();
+  const getInstallationEpoch = () => runtime.epoch;
   const requestSessions = new WeakMap<object, AuthContext>();
   const requestDisplays = new WeakMap<object, DisplayContext>();
+  const lifecycleSharedHeld = new WeakMap<object, boolean>();
 
   const app = Fastify({
     logger: {
@@ -157,14 +182,45 @@ export async function buildApp(
     timeWindow: "1 minute",
   });
 
+  // Quiesce ordinary API work while a household replacement holds the exclusive barrier.
+  // Reset itself takes the exclusive lock and must not also hold shared (deadlock).
+  app.addHook("onRequest", async (request, reply) => {
+    const pathOnly = request.url.split("?")[0] ?? request.url;
+    if (!pathOnly.startsWith("/api/v1/")) return;
+    if (pathOnly === "/api/v1/health") return;
+    if (pathOnly === "/api/v1/household/reset") return;
+    await runtime.acquireShared();
+    lifecycleSharedHeld.set(request, true);
+    const release = () => {
+      if (!lifecycleSharedHeld.get(request)) return;
+      runtime.releaseShared();
+      lifecycleSharedHeld.delete(request);
+    };
+    // Aborted connections may skip onResponse; always release the shared hold.
+    reply.raw.once("close", release);
+  });
+  app.addHook("onResponse", async (request) => {
+    if (lifecycleSharedHeld.get(request)) {
+      runtime.releaseShared();
+      lifecycleSharedHeld.delete(request);
+    }
+  });
+
   function sessionFromRequest(request: FastifyRequest): AuthContext | null {
     const cached = requestSessions.get(request);
     if (cached) return cached;
     const rawToken = request.cookies[config.cookieName];
     if (!rawToken) return null;
-    const session = store.getSessionByTokenDigest(sha256Hex(rawToken));
+    const session = store.getSessionByTokenDigest(
+      sha256Hex(rawToken),
+      getInstallationEpoch(),
+    );
     if (session) requestSessions.set(request, session);
     return session;
+  }
+
+  function trySession(request: FastifyRequest): AuthContext | null {
+    return sessionFromRequest(request);
   }
 
   function requireSession(
@@ -210,7 +266,10 @@ export async function buildApp(
     if (cached) return cached;
     const rawToken = request.cookies[config.displayCookieName];
     if (!rawToken) return null;
-    const session = displayStore.getDisplaySessionByTokenDigest(sha256Hex(rawToken));
+    const session = displayStore.getDisplaySessionByTokenDigest(
+      sha256Hex(rawToken),
+      getInstallationEpoch(),
+    );
     if (session) requestDisplays.set(request, session);
     return session;
   }
@@ -280,6 +339,7 @@ export async function buildApp(
       householdTimezone: session.timezone,
       householdDate: store.householdDateNow(session),
       activityGeneration: store.getActivityGeneration(session.householdId),
+      installationEpoch: session.installationEpoch,
     };
   }
 
@@ -383,6 +443,37 @@ export async function buildApp(
 
     if (CSRF_EXEMPT.has(routePath)) return;
 
+    if (OWNER_CSRF_ROUTES.has(routePath)) {
+      if (config.publicOrigin && !originAllowed(request)) {
+        return reply
+          .code(403)
+          .send(errorBody("ORIGIN", "Request origin is not allowed", request.id));
+      }
+      const ownerDigest = config.installationOwnerSecret
+        ? ownerSecretDigestFromEnv(config.installationOwnerSecret)
+        : null;
+      const rawOwner = request.cookies[config.ownerCookieName];
+      const ownerSession =
+        rawOwner && ownerDigest
+          ? runtime.control.getOwnerSessionByToken(rawOwner, ownerDigest)
+          : null;
+      if (!ownerSession) {
+        return reply
+          .code(401)
+          .send(errorBody("UNAUTHORIZED", "Owner authentication required", request.id));
+      }
+      const token = request.headers["x-csrf-token"];
+      const tokenMatches =
+        typeof token === "string" &&
+        digestEquals(sha256Hex(token), sha256Hex(ownerSession.csrfSecret));
+      if (!tokenMatches) {
+        return reply
+          .code(403)
+          .send(errorBody("CSRF", "CSRF token is invalid", request.id));
+      }
+      return;
+    }
+
     if (DISPLAY_CSRF_ROUTES.has(routePath)) {
       if (config.publicOrigin && !originAllowed(request)) {
         return reply
@@ -444,6 +535,9 @@ export async function buildApp(
         : "LOCAL DEVELOPMENT — authentication is enabled; seeded accounts must still be claimed.",
     profile: config.profile,
     allowEvaluationHistoryClear: config.allowEvaluationHistoryClear,
+    ownerConfigured: Boolean(config.installationOwnerSecret),
+    installationEpoch: getInstallationEpoch(),
+    setupRequired: store.setupRequired(),
   }));
 
   const authRateLimit =
@@ -465,7 +559,12 @@ export async function buildApp(
           .code(400)
           .send(errorBody("VALIDATION", "Invalid login payload", request.id));
       }
-      const result = await store.login(parsed.data.loginName, parsed.data.passphrase);
+      const result = await store.login(
+        parsed.data.loginName,
+        parsed.data.passphrase,
+        new Date(),
+        getInstallationEpoch(),
+      );
       if ("error" in result) {
         if (result.error === "throttled") {
           const retryAfter = result.retryAfterSec ?? 60;
@@ -493,7 +592,7 @@ export async function buildApp(
           .code(400)
           .send(errorBody("VALIDATION", "Invalid claim payload", request.id));
       }
-      const result = await store.claim(parsed.data);
+      const result = await store.claim(parsed.data, getInstallationEpoch());
       setSessionCookie(reply, result.token);
       broadcast(result.context, "membership", result.context.membershipId);
       return sessionBody(result.context, result.csrfSecret);
@@ -1079,8 +1178,18 @@ export async function buildApp(
   app.get("/api/v1/today", async (request, reply) => {
     const session = requireSession(request, reply);
     if (!session) return;
+    const delayMs = Number(request.headers["x-read-delay-ms"] ?? 0);
+    if (config.profile !== "hosted" && delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, Math.min(delayMs, 10_000)));
+      // Re-check after the hold so a reset that revoked the session cannot
+      // release a stale household snapshot into a replacement epoch.
+      requestSessions.delete(request);
+      if (!requireSession(request, reply)) return;
+    }
+    const liveSession = requireSession(request, reply);
+    if (!liveSession) return;
     const query = request.query as { date?: string };
-    let date = store.householdDateNow(session);
+    let date = store.householdDateNow(liveSession);
     if (query.date) {
       const parsed = HouseholdDateSchema.safeParse(query.date);
       if (!parsed.success) {
@@ -1092,9 +1201,9 @@ export async function buildApp(
     }
     return {
       householdDate: date,
-      householdTimezone: session.timezone,
-      activityGeneration: store.getActivityGeneration(session.householdId),
-      occurrences: store.materializeForDate(session, date),
+      householdTimezone: liveSession.timezone,
+      activityGeneration: store.getActivityGeneration(liveSession.householdId),
+      occurrences: store.materializeForDate(liveSession, date),
     };
   });
 
@@ -1236,16 +1345,22 @@ export async function buildApp(
       const delayMs = Number(request.headers["x-mutation-delay-ms"] ?? 0);
       if (config.profile !== "hosted" && delayMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, Math.min(delayMs, 10_000)));
+        // Auth was checked before the hold; drop per-request cache and revalidate
+        // so revoked/reset sessions cannot commit into a replacement database.
+        requestSessions.delete(request);
+        if (!requireSession(request, reply)) return;
       }
 
+      const liveSession = requireSession(request, reply);
+      if (!liveSession) return;
       const result = store.setStepStatus(
-        session,
+        liveSession,
         params.occurrenceId,
         params.stepId,
         parsed.data,
       );
       broadcast(
-        session,
+        liveSession,
         "occurrence",
         params.occurrenceId,
         result.occurrence.version,
@@ -1478,6 +1593,7 @@ export async function buildApp(
       }
       const existing = displayFromRequest(request);
       const result = displayStore.claimDisplayCode(parsed.data.code, {
+        installationEpoch: getInstallationEpoch(),
         existingDisplayId: existing?.displayId ?? null,
       });
       if (existing && existing.displayId === result.context.displayId) {
@@ -1566,10 +1682,14 @@ export async function buildApp(
       const delayMs = Number(request.headers["x-mutation-delay-ms"] ?? 0);
       if (config.profile !== "hosted" && delayMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, Math.min(delayMs, 10_000)));
+        requestDisplays.delete(request);
+        if (!requireDisplay(request, reply)) return;
       }
 
+      const liveDisplay = requireDisplay(request, reply);
+      if (!liveDisplay) return;
       const result = displayStore.setDisplayStepStatus(
-        display,
+        liveDisplay,
         params.occurrenceId,
         params.stepId,
         parsed.data,
@@ -1577,12 +1697,12 @@ export async function buildApp(
       // Converge human Today/Household and other displays.
       sync.broadcast({
         type: "household_change",
-        householdId: display.householdId,
+        householdId: liveDisplay.householdId,
         resource: "occurrence",
         resourceId: params.occurrenceId,
         at: nowUtcIso(),
       });
-      displayInvalidate(display.householdId, "work");
+      displayInvalidate(liveDisplay.householdId, "work");
       return result;
     },
   );
@@ -1608,6 +1728,7 @@ export async function buildApp(
     const revalidate = setInterval(() => {
       const still = displayStore.getDisplaySessionByTokenDigest(
         sha256Hex(request.cookies[config.displayCookieName] ?? ""),
+        getInstallationEpoch(),
       );
       if (!still || still.sessionId !== display.sessionId) {
         try {
@@ -1660,10 +1781,28 @@ export async function buildApp(
     );
   });
 
+  registerLifecycleRoutes(app, {
+    config,
+    runtime,
+    sync,
+    syncRuntimeRefs,
+    originAllowed,
+    errorBody,
+    sessionBody,
+    setSessionCookie,
+    clearSessionCookie,
+    requireSession,
+    trySession,
+    getInstallationEpoch,
+    getStore: () => store,
+  });
+
   if (config.profile === "development" || config.profile === "test") {
     app.post("/api/v1/test/bootstrap-claim", async (request, reply) => {
       try {
-        const issued = store.issueBootstrapClaim(config.householdTimezone);
+        const issued = store.issueBootstrapClaim(config.householdTimezone, {
+          blockedWhenOwnerConfigured: Boolean(config.installationOwnerSecret),
+        });
         return { token: issued.token, expiresAt: issued.expiresAt };
       } catch (err) {
         return sendStoreError(reply, request.id, err);
@@ -1693,10 +1832,15 @@ export async function buildApp(
 
   app.addHook("onClose", async () => {
     sync.close();
-    db.close();
+    runtime.control.close();
+    try {
+      runtime.db.close();
+    } catch {
+      /* already closed */
+    }
   });
 
-  return { app, store, db, sync, config };
+  return { app, store, db, sync, config, runtime };
 }
 
 function sendStoreError(

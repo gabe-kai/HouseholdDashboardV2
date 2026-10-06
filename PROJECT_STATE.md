@@ -21,7 +21,7 @@
 
 Inspected 2026-10-05: local `main` / `origin/main` are **405c5db** (PR **#24**), through migration 018. P0-008A r1 is technically accepted and integrated. No live Railway reset/restore or hosted Product evaluation is claimed.
 
-**P0-008B r2** is **READY** for Architecture disposition (Engineering readiness against merged A at `405c5db`; report `reports/P0-008B-r2-engineering-readiness.md`). It is not yet authorized for implementation. C/D remain successor drafts gated on accepted predecessor evidence. The whole Product journey remains one card: **Set up and manage my household without operator help**.
+**P0-008B r2** is **ACCEPTED / PROCEED** by Architecture against merged A at `405c5db` (Engineering readiness: READY; report `reports/P0-008B-r2-engineering-readiness.md`). Engineering may implement on `brief/p0-008b-household-backups-in-app-restore`. C/D remain successor drafts gated on accepted predecessor evidence. The whole Product journey remains one card: **Set up and manage my household without operator help**.
 
 P0-007C's outstanding physical/Product judgments remain distinct from its technical acceptance and from approval to begin P0-008. Old reports retain their inspected SHAs.
 
@@ -45,7 +45,7 @@ P0-007C's outstanding physical/Product judgments remain distinct from its techni
 | P0-007C-3A - Complete Assigned Work at the Shared Display | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `6510fb4` via PR #22 | Product evaluation remains separate; display density feedback recorded |
 | P0-007C-3B - Owner-Controlled Personal Work on the Wall | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `415d930` via PR #23 | Product evaluation of the changed wall remains separate |
 | P0-008A - Protected First-Manager Setup and Repeatable Reset | r1 | ACCEPTED | Integrated foundation | Merged to `main` at `405c5db` via PR #24 | Hosted/Product evaluation remains separate |
-| P0-008B - Household Backups and In-App Restore | r2 | READY | Architecture disposition | Planning writeback on `backups-and-restore`; implementation branch pending | Architecture ACCEPT / PROCEED before coding |
+| P0-008B - Household Backups and In-App Restore | r2 | ACCEPTED | Engineering | `brief/p0-008b-household-backups-in-app-restore` | Begin implementation; Build Report and technical acceptance |
 | P0-008C - Understandable Member Access and Safe Removal | r1 | DRAFT | Architecture | Successor draft | Accepted A/B evidence; baseline refresh and readiness release |
 | P0-008D - Guided Setup to the First Useful Household Day | r1 | DRAFT | Architecture | Successor draft | Accepted A–C evidence; baseline refresh and readiness release |
 
@@ -84,7 +84,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Architecture responds to Engineering’s **READY** review of **P0-008B revision 2** (`reports/P0-008B-r2-engineering-readiness.md`) with ACCEPT / PROCEED or a contract revision. C/D remain gated. The Project Lead owns Git integration and later hosted/Product evaluation. Detailed coverage: `reports/P0-008-architecture-sequencing.md`.
+Engineering implements **P0-008B revision 2** on `brief/p0-008b-household-backups-in-app-restore`; Architecture technical acceptance follows the Build Report. C/D remain gated. The Project Lead owns Git integration and later hosted/Product evaluation. Detailed coverage: `reports/P0-008-architecture-sequencing.md`.
 
 ## Notes for all teams
 

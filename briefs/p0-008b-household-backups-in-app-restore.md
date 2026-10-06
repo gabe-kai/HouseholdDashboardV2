@@ -1,7 +1,7 @@
 # BRIEF P0-008B - Household Backups and In-App Restore
 
 **Revision:** 2
-**Status:** READY — Engineering readiness READY; awaiting Architecture ACCEPT / PROCEED
+**Status:** ACCEPTED — Architecture ACCEPT / PROCEED; implementation authorized on the brief branch
 
 Architecture inspected accepted A on merged `main` at `405c5db` (PR #24). This revision replaces the unreleased r1 draft. Engineering must review r2 against the repository before implementation; A's readiness does not carry forward. Product acceptance is separate.
 
@@ -90,9 +90,10 @@ Inspected merged `main` / `origin/main` at `405c5db` (PR #24), with migrations t
 ## Engineering readiness
 
 **Reviewed revision:** 2
-**Readiness:** READY — consolidated Engineering review against merged A at `405c5db` (planning tip `e34a846`); report `reports/P0-008B-r2-engineering-readiness.md`. No BLOCKER/QUESTION. Await Architecture ACCEPT / PROCEED before implementation.
+**Readiness:** READY — consolidated Engineering review against merged A at `405c5db` (planning tip `e34a846`); report `reports/P0-008B-r2-engineering-readiness.md`. No BLOCKER/QUESTION.
+**Architecture disposition:** ACCEPT / PROCEED. Implementation may begin on `brief/p0-008b-household-backups-in-app-restore` against integrated A. C/D remain out of scope.
 
 ## Revision history
 
 - **r1:** Initial unreleased successor draft preserving optional backup and in-app restore.
-- **r2:** Refreshed against merged/accepted A; made the control-store upgrade, serialized backup-before-switch boundary and typed restore recovery explicit, with focused compatibility/concurrency acceptance evidence. Released for Engineering readiness review; Engineering recorded READY (`reports/P0-008B-r2-engineering-readiness.md`).
+- **r2:** Refreshed against merged/accepted A; made the control-store upgrade, serialized backup-before-switch boundary and typed restore recovery explicit, with focused compatibility/concurrency acceptance evidence. Engineering recorded READY (`reports/P0-008B-r2-engineering-readiness.md`); Architecture ACCEPT / PROCEED authorizes implementation.

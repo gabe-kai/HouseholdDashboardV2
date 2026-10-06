@@ -89,16 +89,16 @@ Both C-3 slices contribute to **Act at the shared display without losing trust**
 
 ### CURRENT
 
-- [ ] **P0-008A — Create the first manager and start again safely.** Secure owner-supplied browser access, required Account/Household setup and repeated full reset return the evaluator to protected Welcome without terminal/database commands.
-  - **Brief:** `P0-008A r1` (`briefs/p0-008a-protected-first-run-reset.md`), Architecture accepted against committed tip `bab13b0` plus the reviewed uncommitted AT10 closure. Project Lead commit/PR integration and hosted/Product evaluation remain pending.
-  - **Evidence:** Public takeover denial; no-fixture first run; populated adoption; reset without a new backup; lost-response/idempotency; old human/display/action fencing; true restart/failure recovery. Hosted evidence follows locally validated release candidates.
-  - **Card:** **Set up and manage my household without operator help** → In Progress until A passes technical acceptance. A is an observable first slice, not completion of the full Product outcome.
+- [x] **P0-008A — Create the first manager and start again safely.** Owner-protected setup and repeatable full reset without a new backup are technically accepted and merged via PR #24 at `405c5db` (`briefs/p0-008a-protected-first-run-reset.md`); hosted/Product evaluation remains separate.
+- [ ] **P0-008B — Save a household and restore it in the app.** Protected backup list/create/delete, an off-by-default backup choice during reset/restore, and recovery through Settings or protected Welcome.
+  - **Brief:** `P0-008B r2` (`briefs/p0-008b-household-backups-in-app-restore.md`), IN REVIEW for Engineering readiness against merged A. This is not authorization to implement before Architecture disposition.
+  - **Evidence target:** Populated control-store adoption; exact optional-backup semantics; staged compatibility and credential sanitation; typed interrupted-operation recovery; same-epoch/old-client fencing; local PR/RC gates. Hosted reset/restore/restart is a later authorized release check.
+  - **Card:** **Set up and manage my household without operator help** remains In Progress across A–D; B is the current technical slice, not completion of the Product outcome.
 
 ### LIKELY NEXT
 
-The Project Lead explicitly requested evidence-gated briefs for the approved complete P0-008 journey. B–D are successor **DRAFT r1** contracts, not READY or permission to implement in parallel. Architecture refreshes each from accepted predecessor evidence before a fresh Engineering review. Stable intent is preserved now; implementation details and material new findings can revise later briefs.
+The Project Lead requested evidence-gated briefs for the approved complete P0-008 journey. C–D remain successor **DRAFT r1** contracts, not READY or permission to implement in parallel. Architecture refreshes each from accepted predecessor evidence before a fresh Engineering review. Stable intent is preserved now; implementation details and material new findings can revise later briefs.
 
-- [ ] **P0-008B — Save a household and restore it in the app.** Backups list/create/delete, off-by-default backup during reset/restore, and protected Welcome restore. Gate: A's replacement/epoch/recovery evidence. Brief: `briefs/p0-008b-household-backups-in-app-restore.md`.
 - [ ] **P0-008C — Manage access and remove a person without losing history.** Understandable roles/permissions, invitation links/QR, password help, revoke/restore access, last-manager protection, immediate departure eligibility and careful sample-data remediation. Gate: A/B's authority and backup lifecycle. Brief: `briefs/p0-008c-member-access-removal.md`.
 - [ ] **P0-008D — Reach the first useful family day without coaching.** Integrate all five setup steps, optional exits/cross-device resume, first-work review/recap and one complete setup→invite→permissions→remove→backup→reset→restore evaluation. Gate: accepted A–C. Brief: `briefs/p0-008d-guided-first-household-day.md`.
 

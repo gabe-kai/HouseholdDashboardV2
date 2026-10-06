@@ -1059,7 +1059,7 @@ Task changes must invalidate every formerly authorized projection that could ret
 
 ## D-050 - Installation ownership survives household setup and replacement
 
-**Status:** Active for planned P0-008A/B/C; not implemented at `415d930`.
+**Status:** Active. P0-008A's owner/setup boundary is implemented and merged at `405c5db`; B/C extensions remain planned.
 
 **Decision:** Introduce a narrowly authorized installation-owner recovery principal distinct from a human membership and a Household Display. The deployment owner provisions `INSTALLATION_OWNER_SECRET` through the hosting secret UI using at least 256 bits of password-manager-generated randomness. A protected `/owner` browser journey accepts that proof and issues one-use setup access; no public visitor wins ownership by reaching an empty site first. The setup recipient receives a short-lived invitation, not the deployment recovery secret. Lost access is replaced through the owner page or, if the root secret is lost, the host's secret-management UI. Normal setup/reset/recovery requires no terminal/database commands.
 
@@ -1081,9 +1081,9 @@ Invitation links carry one-time material only in a fragment, exchange it with sa
 
 ## D-051 - Reset and restore replace data through a durable installation epoch
 
-**Status:** Active for planned P0-008A/B; not implemented at `415d930`.
+**Status:** Active. P0-008A's reset/epoch boundary is implemented and merged at `405c5db`; B's backup/restore and typed recovery extension remains planned.
 
-**Decision:** Keep durable installation ID, strictly increasing dataset epoch, active database reference, owner control and minimal lifecycle operation journal outside household snapshots. Adopt existing `DB_PATH` without reseeding/replacing it. Reset prepares an empty migrated database; restore prepares a verified migrated candidate. Serialize replacement with active requests/writers/materialization, make the candidate durable, atomically publish its reference/epoch/result in control state, and reopen runtime stores before resuming household traffic. Startup resolves interrupted operations deterministically. The exact storage/helper layout belongs to Engineering; fault/restart evidence must demonstrate an intact old or completed new dataset.
+**Decision:** Keep durable installation ID, strictly increasing dataset epoch, active database reference, owner control and minimal lifecycle operation journal outside household snapshots. Adopt existing `DB_PATH` without reseeding/replacing it. Reset prepares an empty migrated database; restore prepares a verified migrated candidate. Serialize replacement with active requests/writers/materialization, make the candidate durable, publish its reference/epoch atomically in control state, and reopen runtime stores before resuming household traffic. Commit the operation result with activation or reconstruct it truthfully from a durable typed journal after interruption. Startup resolves interrupted operations deterministically. The exact storage/helper layout belongs to Engineering; fault/restart evidence must demonstrate an intact old or completed new dataset.
 
 Bind authorization, queued intent, read arbitration and operation replay to installation/epoch as well as current membership/display/activity generation. Revalidate inside the write boundary. A restore must never restore the installation epoch. Old sessions/links and pending commands cannot regain authority merely because a backup contains identical IDs/receipt payloads. New-generation reset/restore supersedes normal same-generation pending-omitted retention. Offline display stale exposure retains D-045's existing bound.
 
@@ -1103,7 +1103,7 @@ Reset deletes the complete household data/access state and retains explicitly sa
 
 ## D-052 - Backups are managed immutable data snapshots, never authority snapshots
 
-**Status:** Active for planned P0-008B; not implemented at `415d930`.
+**Status:** Active for P0-008B r2; backup catalog and in-app restore are not implemented at `405c5db`.
 
 **Decision:** Maintain a protected server-side catalog outside reset data, with immutable SQLite backup images and identity/date/label/schema/digest metadata. Use the SQLite backup API and validate completion before advertising a saved snapshot. Reset/restore never deletes saved backups; explicit selected-backup deletion does. The save-current-state option is off by default for each reset/restore. Requested-backup failure blocks replacement until retry or a fresh explicit proceed-without choice.
 
@@ -1123,7 +1123,7 @@ The initial compatibility promise covers verified through-017 backups and schema
 
 ## D-053 - Person permissions, access and managerial continuity are separate
 
-**Status:** Active for planned P0-008A (lifecycle grant) and P0-008C (member administration); not implemented at `415d930`.
+**Status:** Active. P0-008A's lifecycle grant is implemented and merged at `405c5db`; C's member administration remains planned.
 
 **Decision:** Keep D-006's user/membership/grant separation. Expose Manager/Member with a separate member personal-routine mode (Approval required or Can edit own additions), plus a secondary editor for the closed permission set. Adult/Child stays descriptive. New people default to Member + approval. Effective grants determine accurate role/customized labels; preserve legacy/custom grants and do not silently replace them. No arbitrary role definitions or age-based access.
 

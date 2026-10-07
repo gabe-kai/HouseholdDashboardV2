@@ -5,6 +5,14 @@ import type { AppConfig } from "./config.js";
 import { migrate, openDatabase, resolveDbPath } from "./db.js";
 import { DisplayStore } from "./display.js";
 import {
+  createCatalogBackup,
+  deleteCatalogBackup,
+  stageRestoreCandidate,
+  toPublicMeta,
+  verifyCatalogBackupFile,
+  type BackupPublicMeta,
+} from "./backup-catalog.js";
+import {
   InstallationControl,
   relativeDbPathFromConfig,
   resolveActiveDbAbsolutePath,
@@ -20,6 +28,9 @@ export type LifecycleFaultHooks = {
   beforeCleanup?: () => void | Promise<void>;
   /** After durable activation + reopen/ref swap, before cleanup/response. */
   afterReopen?: () => void | Promise<void>;
+  beforeBackup?: () => void | Promise<void>;
+  afterBackup?: () => void | Promise<void>;
+  beforeScrub?: () => void | Promise<void>;
 };
 
 export type LifecycleRuntime = {
@@ -33,16 +44,42 @@ export type LifecycleRuntime = {
   activeDbRelativePath: string;
   installationId: string;
   faultHooks: LifecycleFaultHooks;
+  /** Backup id pinned by an in-flight restore (blocks delete). */
+  pinnedRestoreBackupId: string | null;
   /** Wait while an exclusive replacement holds the barrier. */
   acquireShared(): Promise<void>;
   releaseShared(): void;
   withExclusive<T>(fn: () => Promise<T>): Promise<T>;
+  createBackup(input: {
+    label?: string | null;
+  }): Promise<BackupPublicMeta>;
+  registerLegacyBackup(input: {
+    legacySourceAbs: string;
+    label?: string | null;
+  }): Promise<BackupPublicMeta>;
+  deleteBackup(backupId: string): Promise<void>;
   replaceWithEmptyDatabase(input: {
     operationId: string;
     sourceEpoch: number;
+    saveBackupBefore?: boolean;
+    backupLabel?: string | null;
   }): Promise<{
     resultEpoch: number;
     cleanupFailures: string[];
+    preOperationBackup: BackupPublicMeta | null;
+  }>;
+  replaceWithRestoredDatabase(input: {
+    operationId: string;
+    sourceEpoch: number;
+    backupId: string;
+    expectedDigest: string;
+    saveBackupBefore?: boolean;
+    backupLabel?: string | null;
+  }): Promise<{
+    resultEpoch: number;
+    cleanupFailures: string[];
+    preOperationBackup: BackupPublicMeta | null;
+    restoredBackup: BackupPublicMeta;
   }>;
   reopenFromControlState(): void;
   /** Complete/fail interrupted ops and finish deferred cleanup after restart. */
@@ -76,17 +113,72 @@ function envFaultHooks(): LifecycleFaultHooks {
       throw new Error("fault:beforeCleanup");
     };
   }
+  if (process.env.LIFECYCLE_FAULT_BEFORE_BACKUP === "1") {
+    hooks.beforeBackup = () => {
+      throw new Error("fault:beforeBackup");
+    };
+  }
+  if (process.env.LIFECYCLE_FAULT_BEFORE_SCRUB === "1") {
+    hooks.beforeScrub = () => {
+      throw new Error("fault:beforeScrub");
+    };
+  }
   return hooks;
 }
 
 function recoveredResetResponse(op: LifecycleOperationRow, resultEpoch: number) {
   return {
     operationId: op.id,
+    kind: "household_reset",
     sourceEpoch: op.sourceEpoch,
     resultEpoch,
     installationEpoch: resultEpoch,
     cleanupFailures: [] as string[],
     setupRequired: true,
+    preOperationBackup: null,
+    recovered: true,
+  };
+}
+
+function recoveredRestoreResponse(op: LifecycleOperationRow, resultEpoch: number) {
+  let restoredBackup: unknown = null;
+  let preOperationBackup: unknown = null;
+  try {
+    const partial = op.responseJson ? (JSON.parse(op.responseJson) as Record<string, unknown>) : {};
+    restoredBackup = partial.restoredBackup ?? null;
+    preOperationBackup = partial.preOperationBackup ?? null;
+  } catch {
+    /* ignore */
+  }
+  return {
+    operationId: op.id,
+    kind: "household_restore",
+    sourceEpoch: op.sourceEpoch,
+    resultEpoch,
+    installationEpoch: resultEpoch,
+    cleanupFailures: [] as string[],
+    setupRequired: false,
+    signInRequired: true,
+    restoredBackup,
+    preOperationBackup,
+    recovered: true,
+  };
+}
+
+function recoveredBackupResponse(op: LifecycleOperationRow) {
+  let backup: unknown = null;
+  try {
+    const partial = op.responseJson ? (JSON.parse(op.responseJson) as Record<string, unknown>) : {};
+    backup = partial.backup ?? null;
+  } catch {
+    /* ignore */
+  }
+  return {
+    operationId: op.id,
+    kind: "household_backup",
+    sourceEpoch: op.sourceEpoch,
+    resultEpoch: op.sourceEpoch,
+    backup,
     recovered: true,
   };
 }
@@ -113,6 +205,8 @@ export function createLifecycleRuntime(
 
   let sharedHolders = 0;
   let exclusiveHeld = false;
+  /** Serializes catalog create/delete with reset/restore without quiescing ordinary reads. */
+  let catalogHeld = false;
   const waiters: Array<() => void> = [];
   const faultHooks = { ...envFaultHooks(), ...options?.faultHooks };
   const onRuntimeSwapped = options?.onRuntimeSwapped;
@@ -133,6 +227,78 @@ export function createLifecycleRuntime(
     });
   }
 
+  async function withCatalogLock<T>(fn: () => Promise<T>): Promise<T> {
+    await waitUntil(() => !exclusiveHeld && !catalogHeld);
+    catalogHeld = true;
+    try {
+      return await fn();
+    } finally {
+      catalogHeld = false;
+      notifyWaiters();
+    }
+  }
+
+  async function optionalPreBackup(input: {
+    saveBackupBefore?: boolean;
+    backupLabel?: string | null;
+  }): Promise<BackupPublicMeta | null> {
+    if (!input.saveBackupBefore) return null;
+    await faultHooks.beforeBackup?.();
+    const meta = await createCatalogBackup({
+      control,
+      backupDir: config.backupDir,
+      activeDbPath: runtime.activeDbPath,
+      liveDb: runtime.db,
+      label: input.backupLabel ?? null,
+      source: "app",
+    });
+    await faultHooks.afterBackup?.();
+    return meta;
+  }
+
+  function candidatePaths(nextEpoch: number): { relative: string; abs: string } {
+    const dir = path.posix.dirname(runtime.activeDbRelativePath);
+    const base = path.basename(
+      runtime.activeDbRelativePath,
+      path.extname(runtime.activeDbRelativePath),
+    );
+    const relative = `${dir}/${base}.epoch-${nextEpoch}.sqlite`;
+    return { relative, abs: resolveActiveDbAbsolutePath(relative) };
+  }
+
+  async function activateAndCleanup(input: {
+    nextEpoch: number;
+    candidateRelative: string;
+    oldDbPath: string;
+  }): Promise<{ resultEpoch: number; cleanupFailures: string[] }> {
+    await faultHooks.beforeActivate?.();
+    control.activateCandidate(input.nextEpoch, input.candidateRelative);
+
+    // Durable activation committed: swap runtime handles before any later fault
+    // so the process never serves stale store/db against the new control pointer.
+    runtime.reopenFromControlState();
+    await faultHooks.afterActivate?.();
+    await faultHooks.afterReopen?.();
+
+    const cleanupFailures: string[] = [];
+    await faultHooks.beforeCleanup?.();
+    for (const target of [
+      input.oldDbPath,
+      `${input.oldDbPath}-wal`,
+      `${input.oldDbPath}-shm`,
+    ]) {
+      try {
+        if (fs.existsSync(target)) fs.rmSync(target, { force: true });
+      } catch (err) {
+        cleanupFailures.push(
+          `${target}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
+    return { resultEpoch: input.nextEpoch, cleanupFailures };
+  }
+
   const runtime: LifecycleRuntime = {
     config,
     control,
@@ -144,6 +310,7 @@ export function createLifecycleRuntime(
     activeDbRelativePath,
     installationId: state.installationId,
     faultHooks,
+    pinnedRestoreBackupId: null,
     async acquireShared(): Promise<void> {
       await waitUntil(() => !exclusiveHeld);
       sharedHolders += 1;
@@ -153,16 +320,57 @@ export function createLifecycleRuntime(
       notifyWaiters();
     },
     async withExclusive<T>(fn: () => Promise<T>): Promise<T> {
-      await waitUntil(() => !exclusiveHeld && sharedHolders === 0);
+      await waitUntil(() => !exclusiveHeld && !catalogHeld && sharedHolders === 0);
       exclusiveHeld = true;
       try {
         // Drain any shared holders that slipped in before the flag flipped.
-        await waitUntil(() => sharedHolders === 0);
+        await waitUntil(() => sharedHolders === 0 && !catalogHeld);
         return await fn();
       } finally {
         exclusiveHeld = false;
         notifyWaiters();
       }
+    },
+    async createBackup(input) {
+      return withCatalogLock(async () => {
+        await faultHooks.beforeBackup?.();
+        const meta = await createCatalogBackup({
+          control,
+          backupDir: config.backupDir,
+          activeDbPath: runtime.activeDbPath,
+          liveDb: runtime.db,
+          label: input.label ?? null,
+          source: "app",
+        });
+        await faultHooks.afterBackup?.();
+        return meta;
+      });
+    },
+    async registerLegacyBackup(input) {
+      return withCatalogLock(async () => {
+        await faultHooks.beforeBackup?.();
+        const meta = await createCatalogBackup({
+          control,
+          backupDir: config.backupDir,
+          activeDbPath: runtime.activeDbPath,
+          liveDb: runtime.db,
+          label: input.label ?? null,
+          source: "legacy_register",
+          legacySourceAbs: input.legacySourceAbs,
+        });
+        await faultHooks.afterBackup?.();
+        return meta;
+      });
+    },
+    async deleteBackup(backupId) {
+      return withCatalogLock(async () => {
+        deleteCatalogBackup({
+          control,
+          backupDir: config.backupDir,
+          backupId,
+          pinnedBackupId: runtime.pinnedRestoreBackupId,
+        });
+      });
     },
     reopenFromControlState(): void {
       const next = control.getState();
@@ -186,7 +394,23 @@ export function createLifecycleRuntime(
       const resolved: LifecycleOperationRow[] = [];
       for (const op of control.listPendingOperations()) {
         if (op.sourceEpoch < current.datasetEpoch) {
-          const response = recoveredResetResponse(op, current.datasetEpoch);
+          let response: Record<string, unknown>;
+          if (op.kind === "household_restore") {
+            response = recoveredRestoreResponse(op, current.datasetEpoch);
+          } else if (op.kind === "household_backup") {
+            // Backup alone does not advance epoch; if epoch moved, it was superseded.
+            control.failLifecycleOperation(
+              op.id,
+              JSON.stringify({
+                code: "FAILED",
+                message: "Backup interrupted by a later household replacement",
+              }),
+            );
+            resolved.push(control.getLifecycleOperation(op.id)!);
+            continue;
+          } else {
+            response = recoveredResetResponse(op, current.datasetEpoch);
+          }
           control.completeLifecycleOperation(
             op.id,
             current.datasetEpoch,
@@ -194,6 +418,23 @@ export function createLifecycleRuntime(
           );
           resolved.push(control.getLifecycleOperation(op.id)!);
         } else if (op.sourceEpoch === current.datasetEpoch) {
+          if (op.kind === "household_backup" && op.responseJson) {
+            // Backup may have written a partial success marker before crash.
+            try {
+              const partial = JSON.parse(op.responseJson) as { backup?: BackupPublicMeta };
+              if (partial.backup?.id && control.getBackup(partial.backup.id)) {
+                control.completeLifecycleOperation(
+                  op.id,
+                  current.datasetEpoch,
+                  JSON.stringify(recoveredBackupResponse(op)),
+                );
+                resolved.push(control.getLifecycleOperation(op.id)!);
+                continue;
+              }
+            } catch {
+              /* fall through to fail */
+            }
+          }
           control.failLifecycleOperation(
             op.id,
             JSON.stringify({
@@ -204,6 +445,7 @@ export function createLifecycleRuntime(
           resolved.push(control.getLifecycleOperation(op.id)!);
         }
       }
+      runtime.pinnedRestoreBackupId = null;
       cleanupOrphanEpochFiles(runtime.activeDbRelativePath, runtime.activeDbPath);
       return resolved;
     },
@@ -222,49 +464,93 @@ export function createLifecycleRuntime(
           );
         }
 
+        const preOperationBackup = await optionalPreBackup({
+          saveBackupBefore: input.saveBackupBefore,
+          backupLabel: input.backupLabel,
+        });
+
         const oldDbPath = runtime.activeDbPath;
         const nextEpoch = current.datasetEpoch + 1;
-        const dir = path.posix.dirname(runtime.activeDbRelativePath);
-        const base = path.basename(
-          runtime.activeDbRelativePath,
-          path.extname(runtime.activeDbRelativePath),
-        );
-        const candidateRelative = `${dir}/${base}.epoch-${nextEpoch}.sqlite`;
-        const candidateAbs = resolveActiveDbAbsolutePath(candidateRelative);
+        const candidate = candidatePaths(nextEpoch);
 
-        await runtime.faultHooks.beforePrepare?.();
-        fs.mkdirSync(path.dirname(candidateAbs), { recursive: true });
-        if (fs.existsSync(candidateAbs)) {
-          fs.rmSync(candidateAbs, { force: true });
-          fs.rmSync(`${candidateAbs}-wal`, { force: true });
-          fs.rmSync(`${candidateAbs}-shm`, { force: true });
+        await faultHooks.beforePrepare?.();
+        fs.mkdirSync(path.dirname(candidate.abs), { recursive: true });
+        if (fs.existsSync(candidate.abs)) {
+          fs.rmSync(candidate.abs, { force: true });
+          fs.rmSync(`${candidate.abs}-wal`, { force: true });
+          fs.rmSync(`${candidate.abs}-shm`, { force: true });
         }
-        const prepared = openDatabase(candidateAbs);
+        const prepared = openDatabase(candidate.abs);
         migrate(prepared);
         prepared.close();
 
-        await runtime.faultHooks.beforeActivate?.();
-        control.activateCandidate(nextEpoch, candidateRelative);
-
-        // Durable activation committed: swap runtime handles before any later fault
-        // so the process never serves stale store/db against the new control pointer.
-        runtime.reopenFromControlState();
-        await runtime.faultHooks.afterActivate?.();
-        await runtime.faultHooks.afterReopen?.();
-
-        const cleanupFailures: string[] = [];
-        await runtime.faultHooks.beforeCleanup?.();
-        for (const target of [oldDbPath, `${oldDbPath}-wal`, `${oldDbPath}-shm`]) {
-          try {
-            if (fs.existsSync(target)) fs.rmSync(target, { force: true });
-          } catch (err) {
-            cleanupFailures.push(
-              `${target}: ${err instanceof Error ? err.message : String(err)}`,
-            );
-          }
+        const activated = await activateAndCleanup({
+          nextEpoch,
+          candidateRelative: candidate.relative,
+          oldDbPath,
+        });
+        return { ...activated, preOperationBackup };
+      });
+    },
+    async replaceWithRestoredDatabase(input) {
+      return runtime.withExclusive(async () => {
+        const current = control.getState();
+        if (current.datasetEpoch !== input.sourceEpoch) {
+          throw Object.assign(new Error("Installation epoch conflict"), {
+            code: "CONFLICT",
+          });
+        }
+        if (runtime.store.countHouseholds() > 1) {
+          throw Object.assign(
+            new Error("Multiple households are not supported for lifecycle restore"),
+            { code: "CONFLICT" },
+          );
         }
 
-        return { resultEpoch: nextEpoch, cleanupFailures };
+        const row = control.getBackup(input.backupId);
+        if (!row) {
+          throw Object.assign(new Error("Backup not found"), { code: "NOT_FOUND" });
+        }
+        if (row.contentDigest !== input.expectedDigest) {
+          throw Object.assign(new Error("Backup digest mismatch"), { code: "CONFLICT" });
+        }
+        const verified = verifyCatalogBackupFile(config.backupDir, row);
+        if ("error" in verified) {
+          throw Object.assign(new Error(verified.error.message), {
+            code: verified.error.code,
+          });
+        }
+        const restoredBackup = toPublicMeta(row);
+        runtime.pinnedRestoreBackupId = row.id;
+
+        try {
+          const preOperationBackup = await optionalPreBackup({
+            saveBackupBefore: input.saveBackupBefore,
+            backupLabel: input.backupLabel,
+          });
+
+          const oldDbPath = runtime.activeDbPath;
+          const nextEpoch = current.datasetEpoch + 1;
+          const candidate = candidatePaths(nextEpoch);
+
+          await faultHooks.beforePrepare?.();
+          await stageRestoreCandidate({
+            sourceAbs: verified.absPath,
+            candidateAbs: candidate.abs,
+          });
+          await faultHooks.beforeScrub?.();
+          // Scrub already applied inside stageRestoreCandidate; revoke control setup tickets.
+          control.revokeSetupAuthorityForRestore();
+
+          const activated = await activateAndCleanup({
+            nextEpoch,
+            candidateRelative: candidate.relative,
+            oldDbPath,
+          });
+          return { ...activated, preOperationBackup, restoredBackup };
+        } finally {
+          runtime.pinnedRestoreBackupId = null;
+        }
       });
     },
   };

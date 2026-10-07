@@ -86,7 +86,10 @@ const OWNER_CSRF_ROUTES = new Set([
   "/api/v1/owner/setup-invitation",
   "/api/v1/owner/recover-manager-password",
   "/api/v1/owner/establish-manager",
+  "/api/v1/owner/backups/register",
 ]);
+/** Mutations that accept either owner CSRF or member session CSRF. */
+const DUAL_OWNER_OR_MEMBER_CSRF_ROUTES = new Set(["/api/v1/household/restore"]);
 
 function errorBody(
   code: string,
@@ -188,7 +191,17 @@ export async function buildApp(
     const pathOnly = request.url.split("?")[0] ?? request.url;
     if (!pathOnly.startsWith("/api/v1/")) return;
     if (pathOnly === "/api/v1/health") return;
-    if (pathOnly === "/api/v1/household/reset") return;
+    // Exclusive lifecycle mutations take withExclusive themselves; shared would deadlock.
+    const method = request.method.toUpperCase();
+    if (
+      pathOnly === "/api/v1/household/reset" ||
+      pathOnly === "/api/v1/household/restore" ||
+      (method === "POST" && pathOnly === "/api/v1/household/backups") ||
+      (method === "DELETE" && /^\/api\/v1\/household\/backups\/[^/]+$/.test(pathOnly)) ||
+      pathOnly === "/api/v1/owner/backups/register"
+    ) {
+      return;
+    }
     await runtime.acquireShared();
     lifecycleSharedHeld.set(request, true);
     const release = () => {
@@ -317,7 +330,7 @@ export async function buildApp(
 
   function displayInvalidate(
     householdId: string,
-    reason: "work" | "people" | "reset" | "schedule" | "tasks",
+    reason: "work" | "people" | "reset" | "restore" | "schedule" | "tasks",
   ): void {
     sync.broadcastDisplay(householdId, {
       type: "display_invalidate",
@@ -443,7 +456,7 @@ export async function buildApp(
 
     if (CSRF_EXEMPT.has(routePath)) return;
 
-    if (OWNER_CSRF_ROUTES.has(routePath)) {
+    if (OWNER_CSRF_ROUTES.has(routePath) || DUAL_OWNER_OR_MEMBER_CSRF_ROUTES.has(routePath)) {
       if (config.publicOrigin && !originAllowed(request)) {
         return reply
           .code(403)
@@ -457,21 +470,24 @@ export async function buildApp(
         rawOwner && ownerDigest
           ? runtime.control.getOwnerSessionByToken(rawOwner, ownerDigest)
           : null;
-      if (!ownerSession) {
+      if (ownerSession) {
+        const token = request.headers["x-csrf-token"];
+        const tokenMatches =
+          typeof token === "string" &&
+          digestEquals(sha256Hex(token), sha256Hex(ownerSession.csrfSecret));
+        if (!tokenMatches) {
+          return reply
+            .code(403)
+            .send(errorBody("CSRF", "CSRF token is invalid", request.id));
+        }
+        return;
+      }
+      if (OWNER_CSRF_ROUTES.has(routePath)) {
         return reply
           .code(401)
           .send(errorBody("UNAUTHORIZED", "Owner authentication required", request.id));
       }
-      const token = request.headers["x-csrf-token"];
-      const tokenMatches =
-        typeof token === "string" &&
-        digestEquals(sha256Hex(token), sha256Hex(ownerSession.csrfSecret));
-      if (!tokenMatches) {
-        return reply
-          .code(403)
-          .send(errorBody("CSRF", "CSRF token is invalid", request.id));
-      }
-      return;
+      // Dual route: fall through to member session CSRF.
     }
 
     if (DISPLAY_CSRF_ROUTES.has(routePath)) {

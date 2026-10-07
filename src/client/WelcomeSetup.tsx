@@ -1,9 +1,16 @@
 import { useEffect, useState, type FormEvent } from "react";
 import {
+  fetchOwnerSession,
   fetchSetupProgress,
+  householdRestore,
+  listHouseholdBackups,
+  ownerCreateSession,
+  previewHouseholdBackup,
   setupCompleteHousehold,
   setupCreateAccount,
   setupExchangeInvitation,
+  type HouseholdBackupMeta,
+  type HouseholdBackupPreview,
   type MetaInfo,
   type SessionInfo,
 } from "./api";
@@ -40,6 +47,80 @@ export function ProtectedWelcomeGate(props: {
   exchangeError: string | null;
   exchanging: boolean;
 }) {
+  const [ownerSecret, setOwnerSecret] = useState("");
+  const [ownerReady, setOwnerReady] = useState(false);
+  const [backups, setBackups] = useState<HouseholdBackupMeta[]>([]);
+  const [preview, setPreview] = useState<HouseholdBackupPreview | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [restoreDone, setRestoreDone] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!props.meta?.ownerConfigured) return;
+    void fetchOwnerSession()
+      .then((session) => {
+        if (!session) return;
+        setOwnerReady(true);
+        return listHouseholdBackups().then((result) => setBackups(result.backups));
+      })
+      .catch(() => {
+        /* public welcome must not leak catalog without owner proof */
+      });
+  }, [props.meta?.ownerConfigured]);
+
+  async function submitOwner(event: FormEvent) {
+    event.preventDefault();
+    if (!props.meta?.ownerConfigured || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await ownerCreateSession(ownerSecret);
+      setOwnerSecret("");
+      setOwnerReady(true);
+      const result = await listHouseholdBackups();
+      setBackups(result.backups);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function chooseRestore(backup: HouseholdBackupMeta) {
+    setBusy(true);
+    setError(null);
+    try {
+      setPreview(await previewHouseholdBackup(backup.id));
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmRestore(event: FormEvent) {
+    event.preventDefault();
+    if (!preview || busy || props.meta?.installationEpoch == null) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await householdRestore({
+        mutationId: newClientId(),
+        backupId: preview.id,
+        expectedDigest: preview.contentDigest,
+        expectedEpoch: props.meta.installationEpoch,
+        confirmationText: "RESTORE",
+        saveBackupBeforeRestore: false,
+      });
+      setRestoreDone(result.restoredBackup.householdName);
+      setPreview(null);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <main className="app-shell welcome-shell">
       <section className="panel welcome-panel" data-testid="protected-welcome">
@@ -59,6 +140,94 @@ export function ProtectedWelcomeGate(props: {
         {props.exchangeError ? (
           <p role="alert" className="form-error">
             {props.exchangeError}
+          </p>
+        ) : null}
+
+        {restoreDone ? (
+          <div data-testid="welcome-restore-done">
+            <p>
+              Restored “{restoreDone}”. Sign in with a manager password from that snapshot, or use
+              owner recovery if the password is unknown.
+            </p>
+            <a className="primary button-link" href="/today">
+              Sign in
+            </a>
+          </div>
+        ) : null}
+
+        {!restoreDone && props.meta?.ownerConfigured ? (
+          <div className="welcome-restore" data-testid="welcome-restore">
+            <h2>Restore a saved household</h2>
+            {!ownerReady ? (
+              <form onSubmit={submitOwner} className="stack-form">
+                <p className="meta">
+                  Owner authorization is required to see saved backups after reset. Public Welcome
+                  does not list backups.
+                </p>
+                <label>
+                  Installation owner secret
+                  <input
+                    type="password"
+                    value={ownerSecret}
+                    onChange={(event) => setOwnerSecret(event.target.value)}
+                    autoComplete="off"
+                    required
+                    data-testid="welcome-owner-secret"
+                  />
+                </label>
+                <button type="submit" disabled={busy} data-testid="welcome-owner-unlock">
+                  {busy ? "Checking…" : "Unlock restore"}
+                </button>
+              </form>
+            ) : (
+              <>
+                {backups.length === 0 ? (
+                  <p className="meta">No saved backups are available on this installation.</p>
+                ) : (
+                  <ul className="backup-list" data-testid="welcome-backup-list">
+                    {backups.map((backup) => (
+                      <li key={backup.id}>
+                        <strong>{backup.householdName}</strong>
+                        {backup.label ? ` — ${backup.label}` : ""}
+                        <div className="meta">{new Date(backup.createdAt).toLocaleString()}</div>
+                        <button
+                          type="button"
+                          className="secondary"
+                          disabled={busy}
+                          onClick={() => void chooseRestore(backup)}
+                          data-testid={`welcome-restore-${backup.id}`}
+                        >
+                          Restore…
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+            {preview ? (
+              <form onSubmit={confirmRestore} className="stack-form" data-testid="welcome-restore-confirm">
+                <p>
+                  Restore “{preview.householdName}” from {new Date(preview.createdAt).toLocaleString()}?
+                  People, credentials, work, and setup progress return to that snapshot. All current
+                  sessions and wall enrollments are retired.
+                </p>
+                <div className="button-row">
+                  <button type="button" className="secondary" disabled={busy} onClick={() => setPreview(null)}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="danger" disabled={busy} data-testid="welcome-restore-submit">
+                    {busy ? "Restoring…" : "Restore household"}
+                  </button>
+                </div>
+              </form>
+            ) : null}
+          </div>
+        ) : null}
+
+        {error ? (
+          <p role="alert" className="form-error">
+            {error}
           </p>
         ) : null}
         <p className="meta">

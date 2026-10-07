@@ -37,6 +37,17 @@ Normal local development uses `AUTO_SEED=0` (see `.env.example`). Explicit `npm 
 - Do not put passphrases, session tokens, enrollment tokens, or private task titles in logs.
 - Keep a single Node process (in-memory sync fan-out is not multi-replica).
 
+## Household backups and in-app restore (P0-008B)
+
+Supported restore sources are **registered server-managed backups** under `BACKUP_DIR` (catalog files `catalog-<uuid>.sqlite`) plus owner-validated legacy `household-*.sqlite` operator files already in that directory. Compatibility covers through-017 household schemas and every schema in the P0-008 series (current tip through `018_household_lifecycle.sql`). Newer-than-app, corrupt, multi-household, and path-traversal candidates are rejected before active data changes.
+
+Persistence layout:
+- `INSTALLATION_CONTROL_PATH` — installation id, epoch, active DB pointer, owner/setup authority, lifecycle journal, **backup catalog** (control migration `001_household_backup_catalog.sql`)
+- Active household image(s) under the configured DB directory (`*.epoch-N.sqlite` candidates during replacement)
+- `BACKUP_DIR` — immutable cataloged snapshots (never inside the replaceable household image)
+
+In-app Settings → Backups creates/lists/deletes/restores. Reset and restore each offer **Save a backup…** off by default. Protected Welcome can restore after owner authorization when no household account remains. `npm run db:restore` still refuses when installation control exists and is not a bypass for epoch/credential sanitation.
+
 ## Installation owner setup (P0-008A)
 
 No-terminal deployment-owner configuration for protected first-manager setup and repeatable reset:

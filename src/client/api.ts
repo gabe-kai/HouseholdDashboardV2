@@ -74,13 +74,48 @@ export type SetupProgress = {
   setupRequired: boolean;
 };
 
+export type HouseholdBackupMeta = {
+  id: string;
+  householdId: string;
+  householdName: string;
+  createdAt: string;
+  label: string | null;
+  schemaManifest: string[];
+  formatVersion: number;
+  byteSize: number;
+  contentDigest: string;
+  source: "app" | "legacy_register";
+};
+
+export type HouseholdBackupPreview = HouseholdBackupMeta & {
+  currentHouseholdId: string | null;
+  currentHouseholdName: string | null;
+  replacesCurrent: boolean;
+  notes: string[];
+};
+
 export type HouseholdResetResult = {
   operationId: string;
+  kind?: string;
   sourceEpoch: number;
   resultEpoch: number;
   installationEpoch: number;
   cleanupFailures: string[];
   setupRequired: boolean;
+  preOperationBackup?: HouseholdBackupMeta | null;
+};
+
+export type HouseholdRestoreResult = {
+  operationId: string;
+  kind: "household_restore";
+  sourceEpoch: number;
+  resultEpoch: number;
+  installationEpoch: number;
+  cleanupFailures: string[];
+  setupRequired: boolean;
+  signInRequired: boolean;
+  restoredBackup: HouseholdBackupMeta;
+  preOperationBackup: HouseholdBackupMeta | null;
 };
 
 /** Owner session CSRF — in memory only; never persisted. */
@@ -515,8 +550,96 @@ export async function householdReset(body: {
   mutationId: string;
   confirmationText: "RESET";
   expectedEpoch: number;
+  saveBackupBeforeReset?: boolean;
+  backupLabel?: string | null;
 }) {
   return request<HouseholdResetResult>("/api/v1/household/reset", {
+    method: "POST",
+    body: JSON.stringify({
+      saveBackupBeforeReset: false,
+      ...body,
+    }),
+  });
+}
+
+export async function listHouseholdBackups() {
+  return request<{ backups: HouseholdBackupMeta[] }>("/api/v1/household/backups");
+}
+
+export async function createHouseholdBackup(body: {
+  mutationId: string;
+  label?: string | null;
+}) {
+  return request<{
+    operationId: string;
+    kind: string;
+    sourceEpoch: number;
+    resultEpoch: number;
+    backup: HouseholdBackupMeta;
+  }>("/api/v1/household/backups", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteHouseholdBackup(id: string, mutationId: string) {
+  return request<{ ok: true; id: string }>(
+    `/api/v1/household/backups/${encodeURIComponent(id)}`,
+    {
+      method: "DELETE",
+      body: JSON.stringify({ mutationId, confirmationText: "DELETE" }),
+    },
+  );
+}
+
+export async function previewHouseholdBackup(id: string) {
+  return request<HouseholdBackupPreview>(
+    `/api/v1/household/backups/${encodeURIComponent(id)}/preview`,
+  );
+}
+
+export async function householdRestore(body: {
+  mutationId: string;
+  backupId: string;
+  expectedDigest: string;
+  expectedEpoch: number;
+  confirmationText: "RESTORE";
+  saveBackupBeforeRestore?: boolean;
+  backupLabel?: string | null;
+}) {
+  const payload = {
+    saveBackupBeforeRestore: false,
+    ...body,
+  };
+  // Welcome restore uses an owner session; Settings restore uses a member session.
+  if (ownerCsrfToken && !csrfToken) {
+    return ownerRequest<HouseholdRestoreResult>("/api/v1/household/restore", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+  return request<HouseholdRestoreResult>("/api/v1/household/restore", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function scanOwnerLegacyBackups() {
+  return request<{
+    files: Array<{
+      fileName: string;
+      byteSize: number;
+      mtimeUtc: string;
+      alreadyRegistered: boolean;
+    }>;
+  }>("/api/v1/owner/backups/scan");
+}
+
+export async function registerOwnerLegacyBackup(body: {
+  fileName: string;
+  label?: string | null;
+}) {
+  return ownerRequest<{ backup: HouseholdBackupMeta }>("/api/v1/owner/backups/register", {
     method: "POST",
     body: JSON.stringify(body),
   });
@@ -528,7 +651,7 @@ export type LifecycleOperationStatus = {
   status: string;
   sourceEpoch: number;
   resultEpoch: number | null;
-  result: HouseholdResetResult | null;
+  result: HouseholdResetResult | HouseholdRestoreResult | null;
 };
 
 export async function fetchLifecycleOperation(operationId: string) {

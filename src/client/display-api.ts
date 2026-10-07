@@ -126,7 +126,7 @@ export type SetDisplayStepStatusBody = {
 export type DisplayInvalidateMessage = {
   type: "display_invalidate";
   householdId: string;
-  reason: "work" | "people" | "reset" | "schedule" | "tasks" | "access_lost";
+  reason: "work" | "people" | "reset" | "restore" | "schedule" | "tasks" | "access_lost";
   at: string;
 };
 

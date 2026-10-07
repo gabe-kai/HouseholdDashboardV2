@@ -1,7 +1,7 @@
 # BRIEF P0-008B - Household Backups and In-App Restore
 
 **Revision:** 2
-**Status:** ACCEPTED — Architecture ACCEPT / PROCEED; implementation authorized on the brief branch
+**Status:** IMPLEMENTED — awaiting Architecture technical acceptance (`reports/P0-008B-r2-build-report.md`)
 
 Architecture inspected accepted A on merged `main` at `405c5db` (PR #24). This revision replaces the unreleased r1 draft. Engineering must review r2 against the repository before implementation; A's readiness does not carry forward. Product acceptance is separate.
 

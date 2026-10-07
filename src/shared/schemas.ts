@@ -771,5 +771,33 @@ export const HouseholdResetSchema = z.object({
   confirmationText: z.string(),
   /** Client-observed installation epoch; rejects stale reset after a newer replacement. */
   expectedEpoch: z.number().int().positive(),
+  /** Optional save-current-state before reset; default off for every new operation. */
+  saveBackupBeforeReset: z.boolean().default(false),
+  backupLabel: z.string().trim().max(80).nullable().optional(),
+});
+
+export const HouseholdBackupCreateSchema = z.object({
+  mutationId: UuidSchema,
+  label: z.string().trim().max(80).optional().nullable(),
+});
+
+export const HouseholdBackupDeleteSchema = z.object({
+  mutationId: UuidSchema,
+  confirmationText: z.literal("DELETE"),
+});
+
+export const HouseholdRestoreSchema = z.object({
+  mutationId: UuidSchema,
+  backupId: UuidSchema,
+  expectedDigest: z.string().regex(/^[a-f0-9]{64}$/i),
+  expectedEpoch: z.number().int().positive(),
+  confirmationText: z.literal("RESTORE"),
+  saveBackupBeforeRestore: z.boolean().optional().default(false),
+  backupLabel: z.string().trim().max(80).optional().nullable(),
+});
+
+export const OwnerLegacyBackupRegisterSchema = z.object({
+  fileName: z.string().trim().min(1).max(240),
+  label: z.string().trim().max(80).optional().nullable(),
 });
 

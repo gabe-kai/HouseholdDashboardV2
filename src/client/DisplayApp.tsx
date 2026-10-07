@@ -737,7 +737,7 @@ export function DisplayApp() {
         clearHouseholdState("Display access was revoked.");
         return;
       }
-      if (msg.reason === "reset") {
+      if (msg.reason === "reset" || msg.reason === "restore") {
         void handleInstallationReset();
         return;
       }

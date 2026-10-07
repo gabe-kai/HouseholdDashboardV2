@@ -21,7 +21,7 @@ type Client = MemberClient | DisplayClient;
 export type DisplaySyncEvent = {
   type: "display_invalidate";
   householdId: string;
-  reason: "work" | "people" | "reset" | "schedule" | "tasks" | "access_lost";
+  reason: "work" | "people" | "reset" | "restore" | "schedule" | "tasks" | "access_lost";
   at: string;
 };
 
@@ -204,12 +204,14 @@ export class SyncHub {
     }
   }
 
-  closeAll(): void {
+  closeAll(reason: "reset" | "restore" = "reset"): void {
     if (this.pingTimer) {
       clearInterval(this.pingTimer);
       this.pingTimer = null;
     }
     const at = new Date().toISOString();
+    const closeCodeReason =
+      reason === "restore" ? "installation_restore" : "installation_reset";
     for (const client of [...this.clients]) {
       try {
         if (client.socket.readyState === 1) {
@@ -219,12 +221,12 @@ export class SyncHub {
               JSON.stringify({
                 type: "display_invalidate",
                 householdId: client.householdId,
-                reason: "reset",
+                reason,
                 at,
               } satisfies DisplaySyncEvent),
             );
           }
-          client.socket.close(4401, "installation_reset");
+          client.socket.close(4401, closeCodeReason);
         }
       } catch {
         /* ignore */

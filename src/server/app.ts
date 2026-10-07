@@ -475,19 +475,27 @@ export async function buildApp(
         const tokenMatches =
           typeof token === "string" &&
           digestEquals(sha256Hex(token), sha256Hex(ownerSession.csrfSecret));
-        if (!tokenMatches) {
+        if (tokenMatches) {
+          return;
+        }
+        // Dual restore: Settings may still hold an owner cookie from invite while
+        // submitting with the member CSRF. Fall through when a member cookie exists.
+        if (
+          DUAL_OWNER_OR_MEMBER_CSRF_ROUTES.has(routePath) &&
+          request.cookies[config.cookieName]
+        ) {
+          // continue to member session CSRF below
+        } else {
           return reply
             .code(403)
             .send(errorBody("CSRF", "CSRF token is invalid", request.id));
         }
-        return;
-      }
-      if (OWNER_CSRF_ROUTES.has(routePath)) {
+      } else if (OWNER_CSRF_ROUTES.has(routePath)) {
         return reply
           .code(401)
           .send(errorBody("UNAUTHORIZED", "Owner authentication required", request.id));
       }
-      // Dual route: fall through to member session CSRF.
+      // Dual route without usable owner CSRF: fall through to member session CSRF.
     }
 
     if (DISPLAY_CSRF_ROUTES.has(routePath)) {

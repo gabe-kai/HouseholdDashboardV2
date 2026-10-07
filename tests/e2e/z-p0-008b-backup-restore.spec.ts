@@ -61,6 +61,7 @@ test.describe("P0-008B backups and restore", () => {
     page,
     baseURL,
   }) => {
+    test.setTimeout(240_000);
     const inviteLink = await ownerIssueInvite(page);
     await page.goto(inviteLink);
     const loginName = `mgrb.${Date.now().toString(36)}`;
@@ -102,20 +103,120 @@ test.describe("P0-008B backups and restore", () => {
 
     await restartPreservingE2eServer(baseURL!);
 
-    await page.goto("/welcome");
-    await page.getByTestId("welcome-owner-secret").fill(OWNER_SECRET);
-    await page.getByTestId("welcome-owner-unlock").click();
-    await expect(page.getByTestId("welcome-backup-list")).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByTestId("welcome-backup-list")).toContainText("Backup Household");
-    await page.getByRole("button", { name: /Restore/i }).first().click();
-    await expect(page.getByTestId("welcome-restore-confirm")).toBeVisible();
-    await page.getByTestId("welcome-restore-submit").click();
-    await expect(page.getByTestId("welcome-restore-done")).toBeVisible({ timeout: 60_000 });
+    // Soft-rebind can leave WebKit on a half-dead document ("Restoring your session…").
+    // Continue on a fresh page after the server generation advances.
+    await page.context().clearCookies();
+    const afterRestart = await page.context().newPage();
+    try {
+      await expect
+        .poll(
+          async () => {
+            const res = await afterRestart.request.get("/api/v1/health");
+            if (!res.ok()) return false;
+            const nav = await afterRestart.goto("/welcome", {
+              waitUntil: "domcontentloaded",
+            });
+            if (nav && nav.status() >= 500) return false;
+            try {
+              await afterRestart
+                .getByTestId("welcome-owner-secret")
+                .waitFor({ state: "visible", timeout: 8_000 });
+              return true;
+            } catch {
+              return false;
+            }
+          },
+          { timeout: 120_000, intervals: [1_000, 2_000] },
+        )
+        .toBe(true);
+      await afterRestart.getByTestId("welcome-owner-secret").fill(OWNER_SECRET);
+      await afterRestart.getByTestId("welcome-owner-unlock").click();
+      await expect(afterRestart.getByTestId("welcome-backup-list")).toBeVisible({
+        timeout: 20_000,
+      });
+      await expect(afterRestart.getByTestId("welcome-backup-list")).toContainText(
+        "Backup Household",
+      );
+      await afterRestart.getByRole("button", { name: /Restore/i }).first().click();
+      await expect(afterRestart.getByTestId("welcome-restore-confirm")).toBeVisible();
+      await afterRestart.getByTestId("welcome-restore-submit").click();
+      await expect(afterRestart.getByTestId("welcome-restore-done")).toBeVisible({
+        timeout: 60_000,
+      });
 
-    await page.getByTestId("welcome-restore-done").getByRole("link", { name: "Sign in" }).click();
-    await page.getByLabel("Login name").fill(loginName);
+      await afterRestart
+        .getByTestId("welcome-restore-done")
+        .getByRole("link", { name: "Sign in" })
+        .click();
+      await afterRestart.getByLabel("Login name").fill(loginName);
+      await afterRestart.getByLabel("Passphrase").fill(MANAGER_PASS);
+      await afterRestart.getByRole("button", { name: "Sign in" }).click();
+      await expectSignedInAs(afterRestart, "Backup Manager");
+    } finally {
+      await afterRestart.close();
+    }
+  });
+
+  test("AT4: Settings restore replaces a different current household", async ({ page }) => {
+    test.setTimeout(180_000);
+    const originalLogin = `orig.${Date.now().toString(36)}`;
+    const inviteLink = await ownerIssueInvite(page);
+    await page.goto(inviteLink);
+    await completeAccountForm(page, originalLogin, "Original Manager");
+    await completeHouseholdForm(page, "Original Household");
+    await page.getByTestId("setup-go-today").click();
+    await expectSignedInAs(page, "Original Manager");
+
+    await page.goto("/household/settings");
+    await expect(page.getByTestId("backups-section")).toBeVisible();
+    await page.getByTestId("backup-label").fill("Keep me");
+    await page.getByTestId("backup-passphrase").fill(MANAGER_PASS);
+    await page.getByTestId("backup-create").click();
+    await expect(page.getByTestId("backup-list")).toContainText("Original Household", {
+      timeout: 30_000,
+    });
+
+    await page.getByRole("button", { name: /Reset household/i }).click();
+    await expect(page.getByTestId("reset-household-dialog")).toBeVisible();
+    await expect(page.getByTestId("reset-save-backup")).not.toBeChecked();
+    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByTestId("reset-confirm-text").fill("RESET");
+    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByTestId("reset-passphrase").fill(MANAGER_PASS);
+    await Promise.all([
+      page.waitForURL(/\/welcome/, { timeout: 60_000 }),
+      page.getByTestId("reset-submit").click(),
+    ]);
+    await expect(page.getByTestId("protected-welcome")).toBeVisible({ timeout: 30_000 });
+
+    const replacementLogin = `repl.${Date.now().toString(36)}`;
+    const nextInvite = await ownerIssueInvite(page);
+    await page.goto(nextInvite);
+    await completeAccountForm(page, replacementLogin, "Replacement Manager");
+    await completeHouseholdForm(page, "Replacement Household");
+    await page.getByTestId("setup-go-today").click();
+    await expectSignedInAs(page, "Replacement Manager");
+
+    await page.goto("/household/settings");
+    await expect(page.getByTestId("backup-list")).toContainText("Original Household");
+    await page.getByRole("button", { name: /^Restore/i }).first().click();
+    await expect(page.getByTestId("backup-restore-dialog")).toBeVisible();
+    await expect(page.getByTestId("backup-restore-dialog")).toContainText("Replacement Household");
+    await expect(page.getByTestId("backup-restore-dialog")).toContainText("Original Household");
+    await expect(page.getByTestId("restore-save-backup")).not.toBeChecked();
+    await page.getByTestId("restore-passphrase").fill(MANAGER_PASS);
+    // Phone bottom nav can intercept pointer events on the dialog submit control.
+    await page.locator('[data-testid="backup-restore-dialog"] form').evaluate((form) => {
+      (form as HTMLFormElement).requestSubmit();
+    });
+
+    await expect(page.getByLabel("Login name")).toBeVisible({ timeout: 90_000 });
+    await page.getByLabel("Login name").fill(originalLogin);
     await page.getByLabel("Passphrase").fill(MANAGER_PASS);
     await page.getByRole("button", { name: "Sign in" }).click();
-    await expectSignedInAs(page, "Backup Manager");
+    await expectSignedInAs(page, "Original Manager");
+    await page.goto("/household/settings");
+    await expect(page.getByTestId("backup-list")).toContainText("Original Household");
+    await expect(page.getByTestId("backup-list")).not.toContainText("Replacement Household");
   });
 });

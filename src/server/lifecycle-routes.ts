@@ -101,6 +101,27 @@ function setContinuationCookie(reply: FastifyReply, config: AppConfig, token: st
   });
 }
 
+function reusablePreOperationBackup(
+  control: InstallationControl,
+  kind: string,
+  payloadDigest: string,
+  sourceEpoch: number,
+): import("./backup-catalog.js").BackupPublicMeta | null {
+  const failed = control.findFailedOperationByPayload(kind, payloadDigest, sourceEpoch);
+  if (!failed?.responseJson) return null;
+  try {
+    const body = JSON.parse(failed.responseJson) as {
+      preOperationBackup?: { id?: string } | null;
+    };
+    const id = body.preOperationBackup?.id;
+    if (!id) return null;
+    const row = control.getBackup(id);
+    return row ? toPublicMeta(row) : null;
+  } catch {
+    return null;
+  }
+}
+
 function ownerSessionFromRequest(
   request: FastifyRequest,
   config: AppConfig,
@@ -379,11 +400,19 @@ export function registerLifecycleRoutes(app: FastifyInstance, deps: LifecycleRou
     request: FastifyRequest,
     reply: FastifyReply,
   ): { kind: "member"; session: AuthContext } | { kind: "owner" } | null {
-    const owner = ownerSessionFromRequest(request, deps.config, deps.runtime.control);
-    if (owner) return { kind: "owner" };
+    // Prefer an active lifecycle manager when both cookies exist (Settings restore
+    // after owner-issued invite). Owner-only Welcome recovery has no member cookie.
     const session = deps.trySession(request);
     if (session?.grants.includes("household.lifecycle.manage")) {
       return { kind: "member", session };
+    }
+    const owner = ownerSessionFromRequest(request, deps.config, deps.runtime.control);
+    if (owner) return { kind: "owner" };
+    if (session) {
+      void reply
+        .code(403)
+        .send(deps.errorBody("FORBIDDEN", "Required authority is missing", request.id));
+      return null;
     }
     if (request.cookies[deps.config.recoveryContinuationCookieName]) {
       void reply
@@ -395,12 +424,6 @@ export function registerLifecycleRoutes(app: FastifyInstance, deps: LifecycleRou
             request.id,
           ),
         );
-      return null;
-    }
-    if (session) {
-      void reply
-        .code(403)
-        .send(deps.errorBody("FORBIDDEN", "Required authority is missing", request.id));
       return null;
     }
     void reply
@@ -658,6 +681,12 @@ export function registerLifecycleRoutes(app: FastifyInstance, deps: LifecycleRou
       reply.header("Cache-Control", "no-store");
       return JSON.parse(prior.responseJson) as Record<string, unknown>;
     }
+    const reusePreOperationBackup = reusablePreOperationBackup(
+      deps.runtime.control,
+      "household_restore",
+      payloadDigest,
+      sourceEpoch,
+    );
 
     const initiatorKind = access.kind === "owner" ? "owner" : "member";
     const initiatorRef =
@@ -678,20 +707,16 @@ export function registerLifecycleRoutes(app: FastifyInstance, deps: LifecycleRou
     });
     setContinuationCookie(reply, deps.config, continuation);
 
-    if (access.kind === "member") {
-      deps.getStore().revokeAllSessionsAndClaims();
-    } else {
-      // Owner restore: still retire household bearer access before swap.
-      deps.getStore().revokeAllSessionsAndClaims();
-    }
-    deps.sync.closeAll("restore");
-
     let replacement: {
       resultEpoch: number;
       cleanupFailures: string[];
       preOperationBackup: import("./backup-catalog.js").BackupPublicMeta | null;
       restoredBackup: import("./backup-catalog.js").BackupPublicMeta;
     };
+    // Revoke before exclusive drain so in-flight shared holders revalidate as 401 (AT10).
+    deps.getStore().revokeAllSessionsAndClaims();
+    deps.sync.closeAll("restore");
+
     try {
       replacement = await deps.runtime.replaceWithRestoredDatabase({
         operationId,
@@ -700,6 +725,7 @@ export function registerLifecycleRoutes(app: FastifyInstance, deps: LifecycleRou
         expectedDigest: parsed.data.expectedDigest,
         saveBackupBefore: parsed.data.saveBackupBeforeRestore,
         backupLabel: parsed.data.backupLabel ?? null,
+        reusePreOperationBackup,
       });
     } catch (err) {
       deps.syncRuntimeRefs();
@@ -711,11 +737,22 @@ export function registerLifecycleRoutes(app: FastifyInstance, deps: LifecycleRou
         return JSON.parse(recovered.responseJson) as Record<string, unknown>;
       }
       if (!recovered || recovered.status === "pending") {
+        let progress: Record<string, unknown> = {};
+        try {
+          progress = recovered?.responseJson
+            ? (JSON.parse(recovered.responseJson) as Record<string, unknown>)
+            : {};
+        } catch {
+          progress = {};
+        }
         deps.runtime.control.failLifecycleOperation(
           operationId,
           JSON.stringify({
             code: "FAILED",
             message: err instanceof Error ? err.message : "Restore failed",
+            restoredBackup: progress.restoredBackup ?? null,
+            preOperationBackup: progress.preOperationBackup ?? null,
+            activeDataUnchanged: true,
           }),
         );
       }
@@ -738,6 +775,21 @@ export function registerLifecycleRoutes(app: FastifyInstance, deps: LifecycleRou
             code,
             err instanceof Error ? err.message : "Restore failed",
             request.id,
+            {
+              preOperationBackup:
+                recovered?.responseJson &&
+                (() => {
+                  try {
+                    return (
+                      JSON.parse(recovered.responseJson) as {
+                        preOperationBackup?: unknown;
+                      }
+                    ).preOperationBackup;
+                  } catch {
+                    return null;
+                  }
+                })(),
+            },
           ),
         );
     }
@@ -814,6 +866,12 @@ export function registerLifecycleRoutes(app: FastifyInstance, deps: LifecycleRou
       reply.header("Cache-Control", "no-store");
       return JSON.parse(prior.responseJson) as Record<string, unknown>;
     }
+    const reusePreOperationBackup = reusablePreOperationBackup(
+      deps.runtime.control,
+      "household_reset",
+      payloadDigest,
+      sourceEpoch,
+    );
 
     const operationId = randomUUID();
     deps.runtime.control.beginLifecycleOperation({
@@ -831,20 +889,22 @@ export function registerLifecycleRoutes(app: FastifyInstance, deps: LifecycleRou
     });
     setContinuationCookie(reply, deps.config, continuation);
 
-    deps.getStore().revokeAllSessionsAndClaims();
-    deps.sync.closeAll("reset");
-
     let replacement: {
       resultEpoch: number;
       cleanupFailures: string[];
       preOperationBackup: import("./backup-catalog.js").BackupPublicMeta | null;
     };
+    // Revoke before exclusive drain so in-flight shared holders revalidate as 401 (AT10).
+    deps.getStore().revokeAllSessionsAndClaims();
+    deps.sync.closeAll("reset");
+
     try {
       replacement = await deps.runtime.replaceWithEmptyDatabase({
         operationId,
         sourceEpoch,
         saveBackupBefore: parsed.data.saveBackupBeforeReset,
         backupLabel: parsed.data.backupLabel ?? null,
+        reusePreOperationBackup,
       });
     } catch (err) {
       // Activation may already have swapped runtime; reconcile so a pending op
@@ -859,14 +919,22 @@ export function registerLifecycleRoutes(app: FastifyInstance, deps: LifecycleRou
       }
       // Backup may have succeeded before a later fault — surface that truthfully.
       if (recovered?.status === "pending" || !recovered) {
-        const saved = deps.runtime.control.listBackups()[0] ?? null;
+        let preOperationBackup: unknown = null;
+        try {
+          const progress = recovered?.responseJson
+            ? (JSON.parse(recovered.responseJson) as { preOperationBackup?: unknown })
+            : {};
+          preOperationBackup = progress.preOperationBackup ?? null;
+        } catch {
+          /* ignore */
+        }
         deps.runtime.control.failLifecycleOperation(
           operationId,
           JSON.stringify({
             code: "FAILED",
             message: err instanceof Error ? err.message : "Reset failed",
-            preOperationBackup: saved ? toPublicMeta(saved) : null,
-            activeDataUnchanged: recovered?.status !== "completed",
+            preOperationBackup,
+            activeDataUnchanged: true,
           }),
         );
       }

@@ -535,6 +535,20 @@ export class InstallationControl {
       .run(resultEpoch, responseJson, nowIso(), id);
   }
 
+  /**
+   * Persist typed progress on a still-pending operation so crash recovery after
+   * activation can reconstruct restore/backup metadata without fabricating nulls.
+   */
+  recordLifecycleOperationProgress(id: string, responseJson: string): void {
+    this.db
+      .prepare(
+        `UPDATE lifecycle_operations
+         SET response_json = ?
+         WHERE id = ? AND status = 'pending'`,
+      )
+      .run(responseJson, id);
+  }
+
   failLifecycleOperation(id: string, responseJson: string): void {
     this.db
       .prepare(
@@ -584,6 +598,26 @@ export class InstallationControl {
                 created_at AS createdAt, completed_at AS completedAt
          FROM lifecycle_operations
          WHERE kind = ? AND payload_digest = ? AND source_epoch = ? AND status = 'completed'
+         ORDER BY completed_at DESC LIMIT 1`,
+      )
+      .get(kind, payloadDigest, sourceEpoch) as LifecycleOperationRow | undefined;
+    return row ?? null;
+  }
+
+  /** Failed attempt with the same receipt digest (retry must not duplicate optional backups). */
+  findFailedOperationByPayload(
+    kind: string,
+    payloadDigest: string,
+    sourceEpoch: number,
+  ): LifecycleOperationRow | null {
+    const row = this.db
+      .prepare(
+        `SELECT id, kind, status, source_epoch AS sourceEpoch, result_epoch AS resultEpoch,
+                initiator_kind AS initiatorKind, initiator_ref AS initiatorRef,
+                payload_digest AS payloadDigest, response_json AS responseJson,
+                created_at AS createdAt, completed_at AS completedAt
+         FROM lifecycle_operations
+         WHERE kind = ? AND payload_digest = ? AND source_epoch = ? AND status = 'failed'
          ORDER BY completed_at DESC LIMIT 1`,
       )
       .get(kind, payloadDigest, sourceEpoch) as LifecycleOperationRow | undefined;

@@ -63,6 +63,8 @@ export type LifecycleRuntime = {
     sourceEpoch: number;
     saveBackupBefore?: boolean;
     backupLabel?: string | null;
+    /** Reuse catalog entry from a prior failed attempt with the same receipt digest. */
+    reusePreOperationBackup?: BackupPublicMeta | null;
   }): Promise<{
     resultEpoch: number;
     cleanupFailures: string[];
@@ -75,6 +77,7 @@ export type LifecycleRuntime = {
     expectedDigest: string;
     saveBackupBefore?: boolean;
     backupLabel?: string | null;
+    reusePreOperationBackup?: BackupPublicMeta | null;
   }): Promise<{
     resultEpoch: number;
     cleanupFailures: string[];
@@ -126,7 +129,17 @@ function envFaultHooks(): LifecycleFaultHooks {
   return hooks;
 }
 
+function parsePendingProgress(op: LifecycleOperationRow): Record<string, unknown> {
+  if (!op.responseJson) return {};
+  try {
+    return JSON.parse(op.responseJson) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
 function recoveredResetResponse(op: LifecycleOperationRow, resultEpoch: number) {
+  const partial = parsePendingProgress(op);
   return {
     operationId: op.id,
     kind: "household_reset",
@@ -135,21 +148,13 @@ function recoveredResetResponse(op: LifecycleOperationRow, resultEpoch: number) 
     installationEpoch: resultEpoch,
     cleanupFailures: [] as string[],
     setupRequired: true,
-    preOperationBackup: null,
+    preOperationBackup: partial.preOperationBackup ?? null,
     recovered: true,
   };
 }
 
 function recoveredRestoreResponse(op: LifecycleOperationRow, resultEpoch: number) {
-  let restoredBackup: unknown = null;
-  let preOperationBackup: unknown = null;
-  try {
-    const partial = op.responseJson ? (JSON.parse(op.responseJson) as Record<string, unknown>) : {};
-    restoredBackup = partial.restoredBackup ?? null;
-    preOperationBackup = partial.preOperationBackup ?? null;
-  } catch {
-    /* ignore */
-  }
+  const partial = parsePendingProgress(op);
   return {
     operationId: op.id,
     kind: "household_restore",
@@ -159,8 +164,8 @@ function recoveredRestoreResponse(op: LifecycleOperationRow, resultEpoch: number
     cleanupFailures: [] as string[],
     setupRequired: false,
     signInRequired: true,
-    restoredBackup,
-    preOperationBackup,
+    restoredBackup: partial.restoredBackup ?? null,
+    preOperationBackup: partial.preOperationBackup ?? null,
     recovered: true,
   };
 }
@@ -241,7 +246,12 @@ export function createLifecycleRuntime(
   async function optionalPreBackup(input: {
     saveBackupBefore?: boolean;
     backupLabel?: string | null;
+    reusePreOperationBackup?: BackupPublicMeta | null;
   }): Promise<BackupPublicMeta | null> {
+    if (input.reusePreOperationBackup) {
+      const stillThere = control.getBackup(input.reusePreOperationBackup.id);
+      if (stillThere) return input.reusePreOperationBackup;
+    }
     if (!input.saveBackupBefore) return null;
     await faultHooks.beforeBackup?.();
     const meta = await createCatalogBackup({
@@ -435,11 +445,32 @@ export function createLifecycleRuntime(
               /* fall through to fail */
             }
           }
+          let preOperationBackup: BackupPublicMeta | null = null;
+          let restoredBackup: BackupPublicMeta | null = null;
+          if (op.responseJson) {
+            try {
+              const progress = JSON.parse(op.responseJson) as {
+                preOperationBackup?: BackupPublicMeta | null;
+                restoredBackup?: BackupPublicMeta | null;
+              };
+              if (progress.preOperationBackup?.id) {
+                preOperationBackup = progress.preOperationBackup;
+              }
+              if (progress.restoredBackup?.id) {
+                restoredBackup = progress.restoredBackup;
+              }
+            } catch {
+              /* ignore malformed progress */
+            }
+          }
           control.failLifecycleOperation(
             op.id,
             JSON.stringify({
               code: "FAILED",
               message: "Lifecycle operation interrupted before activation",
+              preOperationBackup,
+              restoredBackup,
+              activeDataUnchanged: true,
             }),
           );
           resolved.push(control.getLifecycleOperation(op.id)!);
@@ -467,7 +498,17 @@ export function createLifecycleRuntime(
         const preOperationBackup = await optionalPreBackup({
           saveBackupBefore: input.saveBackupBefore,
           backupLabel: input.backupLabel,
+          reusePreOperationBackup: input.reusePreOperationBackup,
         });
+        // Durable typed progress before activation so post-activate crashes recover truthfully.
+        control.recordLifecycleOperationProgress(
+          input.operationId,
+          JSON.stringify({
+            kind: "household_reset",
+            sourceEpoch: input.sourceEpoch,
+            preOperationBackup,
+          }),
+        );
 
         const oldDbPath = runtime.activeDbPath;
         const nextEpoch = current.datasetEpoch + 1;
@@ -527,6 +568,7 @@ export function createLifecycleRuntime(
           const preOperationBackup = await optionalPreBackup({
             saveBackupBefore: input.saveBackupBefore,
             backupLabel: input.backupLabel,
+            reusePreOperationBackup: input.reusePreOperationBackup,
           });
 
           const oldDbPath = runtime.activeDbPath;
@@ -541,6 +583,19 @@ export function createLifecycleRuntime(
           await faultHooks.beforeScrub?.();
           // Scrub already applied inside stageRestoreCandidate; revoke control setup tickets.
           control.revokeSetupAuthorityForRestore();
+
+          // Persist typed restore identity before activation/reopen crash window.
+          control.recordLifecycleOperationProgress(
+            input.operationId,
+            JSON.stringify({
+              kind: "household_restore",
+              sourceEpoch: input.sourceEpoch,
+              restoredBackup,
+              preOperationBackup,
+              backupId: restoredBackup.id,
+              contentDigest: restoredBackup.contentDigest,
+            }),
+          );
 
           const activated = await activateAndCleanup({
             nextEpoch,

@@ -90,16 +90,18 @@ Both C-3 slices contribute to **Act at the shared display without losing trust**
 ### CURRENT
 
 - [x] **P0-008A — Create the first manager and start again safely.** Owner-protected setup and repeatable full reset without a new backup are technically accepted and merged via PR #24 at `405c5db` (`briefs/p0-008a-protected-first-run-reset.md`); hosted/Product evaluation remains separate.
-- [ ] **P0-008B — Save a household and restore it in the app.** Protected backup list/create/delete, an off-by-default backup choice during reset/restore, and recovery through Settings or protected Welcome.
-  - **Brief:** `P0-008B r2` (`briefs/p0-008b-household-backups-in-app-restore.md`) is technically accepted at `34179f7`; Build Report metadata is updated at docs-only tip `4448c56`. Project Lead integration is pending; hosted/Product evaluation remains a separate checkpoint.
+- [x] **P0-008B — Save a household and restore it in the app.** Protected backup list/create/delete, an off-by-default backup choice during reset/restore, and recovery through Settings or protected Welcome.
+  - **Brief:** `P0-008B r2` (`briefs/p0-008b-household-backups-in-app-restore.md`) is technically accepted at `34179f7` and merged through PR #25 at `f80d47b`; hosted/Product evaluation remains a separate checkpoint.
   - **Evidence target:** Populated control-store adoption; exact optional-backup semantics; staged compatibility and credential sanitation; typed interrupted-operation recovery; same-epoch/old-client fencing; local PR/RC gates. Hosted reset/restore/restart is a later authorized release check.
-  - **Card:** **Set up and manage my household without operator help** remains In Progress across A–D; B is the current technical slice, not completion of the Product outcome.
+- [ ] **P0-008C — Manage access and remove a person without losing history.** Understandable roles/permissions, invitation links/QR, password help, revoke/restore access, last-manager protection, immediate departure eligibility and careful sample-data remediation.
+  - **Brief:** `P0-008C r1` (`briefs/p0-008c-member-access-removal.md`) is released for Engineering readiness against merged A/B at `f80d47b`. Implementation awaits Architecture ACCEPT / PROCEED; no live remediation is authorized.
+  - **Evidence target:** Complete person-management UI and access denials; current-grant invitations/password recovery; last-manager and removal races; assignment/history/privacy preservation; mixed-data fixture transition and local PR/RC/CI evidence.
+  - **Card:** **Set up and manage my household without operator help** remains In Progress across A–D; C is the current technical slice, not completion of the Product outcome.
 
 ### LIKELY NEXT
 
-The Project Lead requested evidence-gated briefs for the approved complete P0-008 journey. C–D remain successor **DRAFT r1** contracts, not READY or permission to implement in parallel. Architecture refreshes each from accepted predecessor evidence before a fresh Engineering review. Stable intent is preserved now; implementation details and material new findings can revise later briefs.
+The Project Lead requested evidence-gated briefs for the approved complete P0-008 journey. D remains a successor **DRAFT r1** contract, not READY or permission to implement in parallel. Architecture refreshes it from accepted C evidence before a fresh Engineering review. Stable intent is preserved now; implementation details and material new findings can revise it.
 
-- [ ] **P0-008C — Manage access and remove a person without losing history.** Understandable roles/permissions, invitation links/QR, password help, revoke/restore access, last-manager protection, immediate departure eligibility and careful sample-data remediation. Gate: A/B's authority and backup lifecycle. Brief: `briefs/p0-008c-member-access-removal.md`.
 - [ ] **P0-008D — Reach the first useful family day without coaching.** Integrate all five setup steps, optional exits/cross-device resume, first-work review/recap and one complete setup→invite→permissions→remove→backup→reset→restore evaluation. Gate: accepted A–C. Brief: `briefs/p0-008d-guided-first-household-day.md`.
 
 The shared card reaches Ready to Evaluate after A–D technical acceptance; the Project Lead then judges the uninterrupted Product journey. No return to Design is needed simply to continue the approved sequence. Coverage/release checkpoints: `reports/P0-008-architecture-sequencing.md`.

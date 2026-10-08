@@ -1,10 +1,10 @@
 # Architecture Assessment and Sequencing - P0-008
 
-**Date:** 2026-10-02; successor-state refresh 2026-10-05
+**Date:** 2026-10-02; successor-state refresh 2026-10-07
 **Role:** Architecture
 **Source:** Approved `PRODUCT.md`, P0-008 First-Run Setup and Household Member Management; Project Lead's handoff in this task.
 **Original assessment baseline:** `member-management-first-run-setup` @ `4f07593`; `main` @ `415d930` (PR #23), through migration 017.
-**Current inspected baseline:** merged `main` / `origin/main` @ `405c5db` (PR #24), through migration 018. A r1 is technically accepted and merged; B r2 implementation `6545c5f`, recovery correction `abe5fff`, and evidence commit `34179f7` are technically accepted; docs-only Build Report update is at branch tip `4448c56`. Exact PR/RC gates pass at `34179f7`. Project Lead integration and hosted/Product evaluation remain separate; C/D remain gated drafts. No live-data operation or deployment performed by Architecture.
+**Current inspected baseline:** merged `main` / `origin/main` @ `f80d47b` (PR #25), through household migration 018 and B's installation-control catalog migration 001. A r1 and B r2 are technically accepted and merged. B's exact PR/RC gates passed at evidence tip `34179f7`; its Build Report metadata was updated before integration. Hosted/Product evaluation remains separate. C r1 is released for Engineering readiness; D remains a gated draft. No live-data operation or deployment performed by Architecture.
 
 This report records reasoning, traceability and release preparation. The four brief files are the authoritative implementation contracts; this report is not a contract addendum.
 
@@ -18,20 +18,20 @@ This report records reasoning, traceability and release preparation. The four br
 - The existing backup script uses SQLite's backup API. Restore has no compatibility/catalog/credential sanitation layer and unlinks the destination before rename. App stores hold long-lived handles. Online restore cannot safely be a new button around that script.
 - Screenshots are local-only evidence. Local PR/RC and thematic Actions selection remain the implementation gates; hosted testing is for verified release candidates.
 
-These points describe the original pre-A baseline, not current code. A now supplies protected owner/setup access, an installation control store and epoch-fenced reset. Its control store has no backup catalog, and its pending-operation reconciler assumes reset results; B r2 must extend these seams. The actual populated Railway database, secrets and deployed SHA remain uninspected. Earlier conversation descriptions are useful context, not proof of its current schema or contents.
+These points describe the original pre-A baseline, not current code. A now supplies protected owner/setup access, an installation control store and epoch-fenced reset. B now adds the backup catalog, protected restore, and typed recovery. C must preserve both boundaries while changing person access and removal. The actual populated Railway database, secrets and deployed SHA remain uninspected. Earlier conversation descriptions are useful context, not proof of its current schema or contents.
 
 ## Four observable slices
 
 | Slice / authoritative file | Parent checkpoint | Release to Engineering |
 | --- | --- | --- |
 | **P0-008A r1** — `briefs/p0-008a-protected-first-run-reset.md` | Create first manager/household through protected browser access; reset repeatedly and recover Welcome after interruption | Technically ACCEPTED, merged via PR #24 at `405c5db`; hosted/Product evidence separate |
-| **P0-008B r2** — `briefs/p0-008b-household-backups-in-app-restore.md` | Save a backup, reset with backup off, restore from protected Welcome or Settings | Technically accepted at evidence tip `34179f7`; Build Report update at docs-only tip `4448c56`; Project Lead integration pending; see `reports/P0-008B-r2-architecture-review.md` |
-| **P0-008C r1** — `briefs/p0-008c-member-access-removal.md` | Invite, edit permissions, maintain/revoke/restore sign-in, remove a used member, and clean selected sample people without losing real work | DRAFT until A/B accepted; refresh membership/backup baseline |
+| **P0-008B r2** — `briefs/p0-008b-household-backups-in-app-restore.md` | Save a backup, reset with backup off, restore from protected Welcome or Settings | Technically accepted at evidence tip `34179f7`, merged via PR #25 at `f80d47b`; see `reports/P0-008B-r2-architecture-review.md` |
+| **P0-008C r1** — `briefs/p0-008c-member-access-removal.md` | Invite, edit permissions, maintain/revoke/restore sign-in, remove a used member, and clean selected sample people without losing real work | Released for Engineering readiness against merged A/B; implementation waits for Architecture ACCEPT / PROCEED |
 | **P0-008D r1** — `briefs/p0-008d-guided-first-household-day.md` | Complete the named setup steps and the uninterrupted setup→management→backup→reset→restore journey | DRAFT until A–C accepted; integrate their real records and flows |
 
 All slices contribute to **Set up and manage my household without operator help**. The shared card is In Progress after accepted A and reaches Ready to Evaluate after all four technical contracts pass. Intermediate parent checkpoints supply evidence without declaring complete Product acceptance. Each later draft receives a source-baseline refresh and fresh Engineering readiness; materially changed contracts receive a new revision. No automatic bulk implementation is authorized.
 
-Four slices keep two high-risk boundaries independently reviewable: replacement/recovery first, then backup compatibility; member authority/departure next; user-journey integration last. A prioritizes secure nontechnical first-manager access and repeatable hosted reset. Its deliberate interim limitation is reset without a new saved backup; B must close that limitation, and D must complete the approachable first-day journey. Neither disappears into a later parking lot.
+Four slices keep two high-risk boundaries independently reviewable: replacement/recovery first, then backup compatibility; member authority/departure next; user-journey integration last. A prioritizes secure nontechnical first-manager access and repeatable hosted reset. B closes A's interim no-new-backup limitation; D must complete the approachable first-day journey. Neither disappears into a later parking lot.
 
 ## Product requirement coverage
 
@@ -82,12 +82,12 @@ These are a release plan, not commands to run now. Authoritative transition requ
 
 ## Handoff for Engineering
 
-> P0-008B r2 is technically accepted by Architecture at evidence commit `34179f7`; the Build Report update is committed at docs-only tip `4448c56`. Project Lead: push the implementation branch, open/review/merge its PR, then refresh the baseline before proceeding to C. Hosted backup/reset/restore and hands-on Product evaluation remain separate authorized checkpoints. No Railway/live database operation or deployment is implied.
+> P0-008A/B are integrated at `f80d47b`. Engineering: review **P0-008C r1** in `briefs/p0-008c-member-access-removal.md` against that merged baseline and return one consolidated readiness disposition before implementation. Check grant/link consumption, last-manager and departure/assignment races, and B backup serialization for conditional fixture remediation. C does not authorize Railway/live database operations or deployment. D and hosted/Product evaluation remain separate checkpoints.
 
-Suggested implementation branch after the planning/readiness baseline is integrated: `brief/p0-008b-household-backups-in-app-restore`. Architecture has not created a branch.
+Suggested implementation branch after this planning/readiness baseline is integrated: `brief/p0-008c-member-access-removal`. Architecture has not created a branch.
 
 ## Verification of this planning package
 
-The original planning package was documentation-only. B is now revision 2 against merged A; C/D remain revision 1 drafts. This refresh changes only Architecture-owned documentation and the B brief; application code and approved Product content are unchanged.
+The original planning package was documentation-only. B r2 is merged; C r1 is released for readiness against merged A/B, and D r1 remains a draft. This refresh changes only Architecture-owned documentation and the C brief; application code and approved Product content are unchanged.
 
 Application tests were not run because no production/test code changed. No release success or Product acceptance is claimed. Engineering must produce implementation evidence against each released revision.

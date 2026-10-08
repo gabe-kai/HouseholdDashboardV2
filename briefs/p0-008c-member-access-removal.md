@@ -1,7 +1,7 @@
 # BRIEF P0-008C - Understandable Member Access and Safe Removal
 
 **Revision:** 1
-**Status:** IN REVIEW — released for Engineering readiness; implementation awaits Architecture ACCEPT / PROCEED
+**Status:** READY — Architecture ACCEPT / PROCEED after Engineering readiness; implementation authorized on the reviewed r1
 
 P0-008A/B are technically accepted and merged. This is one person-management journey; Engineering readiness should assess access, departure and fixture-transition risk together. Product acceptance is separate.
 
@@ -103,8 +103,8 @@ Inspected merged local `main` / `origin/main` at `f80d47b` (PR #25). P0-008A/B a
 
 ## Engineering readiness
 
-**Reviewed revision:** NOT REVIEWED
-**Readiness:** NOT REVIEWED — Engineering to review r1 against merged `main` at `f80d47b` before implementation
+**Reviewed revision:** 1
+**Readiness:** READY — consolidated review against merged `main` at `f80d47b`; see `reports/P0-008C-r1-engineering-readiness.md`. Architecture disposition: ACCEPT / PROCEED; contract unchanged.
 
 ## Revision history
 

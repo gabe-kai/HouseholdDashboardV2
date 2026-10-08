@@ -199,7 +199,7 @@ Approved intent: `PRODUCT.md` P0-008. Architecture assessment/coverage map: `rep
 | Slice | Observable result | Status |
 | --- | --- | --- |
 | P0-008A r1 — Protected First-Manager Setup and Repeatable Reset | Owner-protected browser setup, required account/household basics, repeatable full reset with no new backup | Technically ACCEPTED and merged via PR #24 at `405c5db`; hosted/Product evaluation separate |
-| P0-008B r2 — Household Backups and In-App Restore | Saved backups, optional pre-reset/pre-restore backup, restore from Settings and protected Welcome | FIX REQUIRED after re-review of `abe5fff`; AT2/6/9 evidence and Build Report metadata remain |
+| P0-008B r2 — Household Backups and In-App Restore | Saved backups, optional pre-reset/pre-restore backup, restore from Settings and protected Welcome | AT2/6/9 closed at `34179f7`; current-tip PR/RC incomplete (Chromium e2e stalled); Build Report metadata remains |
 | P0-008C r1 — Understandable Member Access and Safe Removal | Roles/permissions, invitation links/QR, password/access maintenance, history-preserving departure and reviewed fixture remediation | DRAFT until A/B accepted |
 | P0-008D r1 — Guided Setup to the First Useful Household Day | Five named steps, optional exits/resume, authoritative first-work review/recap and the whole setup/manage/reset/restore journey | DRAFT until A–C accepted |
 

@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-05  
 **Initial brief disposition:** ACCEPT / PROCEED
-**Latest implementation review:** FIX REQUIRED (remaining findings: AT2, AT6, AT9; report metadata)
+**Latest implementation review:** FIX REQUIRED (AT evidence closed; current-tip gates and report metadata pending)
 **Brief:** `briefs/p0-008b-household-backups-in-app-restore.md`, revision 2  
 **Engineering readiness:** READY against integrated A at `405c5db`; `reports/P0-008B-r2-engineering-readiness.md`  
 **Implementation branch:** `brief/p0-008b-household-backups-in-app-restore`
@@ -67,3 +67,24 @@ Engineering's correction is committed at `abe5fff`; implementation remains pinne
 4. **Build Report metadata:** `reports/P0-008B-r2-build-report.md` still calls the FIX REQUIRED corrections uncommitted, although the correction commit is now `abe5fff`. Pin the actual correction tip and working-tree state; do not imply PR/merge or hosted validation.
 
 The r2 contract and scope remain unchanged. No deploy, Railway operation, or live database access is authorized. C/D remain out of scope. Architecture will re-review the focused corrections and existing exact local gate evidence.
+
+## Re-review — second evidence pass, 2026-10-07
+
+The Project Lead committed the second evidence pass at `34179f7` (`test(P0-008B): close remaining AT2/AT6/AT9 restore evidence`). Architecture inspected the tests and diff. The prior PR/RC passes are pinned to `abe5fff`; the new commit changes `src/server/app.ts` with non-hosted delay/revalidation hooks and adds the AT2/AT6/AT9 integration evidence. Engineering reported the focused `p0-008b.test.ts` suite at **15 passed** and did not rerun PR/RC on `34179f7`.
+
+### Closed findings
+
+- **AT2:** A delayed personal-task creation races reset-with-backup. If acknowledged, the task is asserted in the backup image; if rejected, it is absent from the new active image. This closes the prior reauthentication-only race gap.
+- **AT6:** Newer-than-app, unknown-schema and multi-household fixtures are rejected as `UNSUPPORTED`; the test checks epoch, active household state, and catalog remain unchanged.
+- **AT9:** Two displays hold dashboard reads and checklist writes across restore. Old reads/writes are rejected, no step reports are applied, stale session/dashboard/replay requests remain denied, and queued outbox items are retired for the new epoch.
+
+### Current-tip validation review
+
+Architecture then ran `npm run validate:pr` at `34179f7`. Lint, typecheck, all **296** unit/integration tests, and production build passed. Chromium e2e started but produced no output for several minutes and was interrupted; therefore `validate:pr` is **NOT PASS**. Architecture did not run `validate:rc`. This is not a validation failure in the code, but the required current-tip gates remain unverified.
+
+### Remaining FIX REQUIRED
+
+1. **AT10 — complete exact PR/RC gates at current code tip.** Diagnose the silent Chromium e2e stage and run exact `npm run validate:pr` and `npm run validate:rc` on `34179f7`, recording exits/results. The focused integration pass and earlier gates at `abe5fff` do not substitute.
+2. **Build Report commit/tree metadata.** The Build Report still identifies `abe5fff` as HEAD and labels the second pass uncommitted, despite the committed tip `34179f7`. It also says Architecture-owned docs were not absorbed; `git show --stat 34179f7` confirms those writebacks are included in that commit. Update it to name the actual commits and accurately describe the tree at report update, without implying PR/merge or hosted validation.
+
+No live database or hosted service was accessed. No deploy is authorized. Architecture has not run RC.

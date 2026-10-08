@@ -21,7 +21,7 @@
 
 Inspected 2026-10-05: local `main` / `origin/main` are **405c5db** (PR **#24**), through migration 018. P0-008A r1 is technically accepted and integrated. No live Railway reset/restore or hosted Product evaluation is claimed.
 
-**P0-008B r2** implementation (`6545c5f`), first correction (`abe5fff`), and second evidence pass (`34179f7`) are committed on the brief branch. Architecture has closed AT2/AT6/AT9 evidence; technical acceptance remains **FIX REQUIRED**. The current-tip PR attempt passed lint, typecheck, unit/integration tests (296), and build, but Chromium e2e stalled and was interrupted; RC was not run. Engineering must complete exact PR/RC gates at `34179f7` and correct Build Report commit/tree metadata. The r2 contract is unchanged; see `reports/P0-008B-r2-architecture-review.md`. C/D remain successor drafts. The whole Product journey remains one card: **Set up and manage my household without operator help**.
+**P0-008B r2** is technically accepted at evidence commit `34179f7`; docs-only Build Report update is at branch tip `4448c56`. The three AT2/AT6/AT9 findings are closed, exact `validate:pr` / `validate:rc` pass at the evidence tip, and Build Report commit/tree metadata is corrected. The branch is not yet stated as merged; the Project Lead owns PR/integration. Hosted backup/reset/restore and hands-on Product evaluation remain separate. See `reports/P0-008B-r2-architecture-review.md`. C/D remain successor drafts pending integration and predecessor evaluation. The whole Product journey remains one card: **Set up and manage my household without operator help**.
 
 P0-007C's outstanding physical/Product judgments remain distinct from its technical acceptance and from approval to begin P0-008. Old reports retain their inspected SHAs.
 
@@ -45,7 +45,7 @@ P0-007C's outstanding physical/Product judgments remain distinct from its techni
 | P0-007C-3A - Complete Assigned Work at the Shared Display | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `6510fb4` via PR #22 | Product evaluation remains separate; display density feedback recorded |
 | P0-007C-3B - Owner-Controlled Personal Work on the Wall | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `415d930` via PR #23 | Product evaluation of the changed wall remains separate |
 | P0-008A - Protected First-Manager Setup and Repeatable Reset | r1 | ACCEPTED | Integrated foundation | Merged to `main` at `405c5db` via PR #24 | Hosted/Product evaluation remains separate |
-| P0-008B - Household Backups and In-App Restore | r2 | FIX REQUIRED | Engineering | `brief/p0-008b-household-backups-in-app-restore` @ `34179f7` | Complete PR/RC e2e at current tip; correct Build Report commit/tree metadata; re-review |
+| P0-008B - Household Backups and In-App Restore | r2 | ACCEPTED | Project Lead integration | `brief/p0-008b-household-backups-in-app-restore` @ `4448c56` | Push/open PR/merge; later hosted and Product evaluation remain separate |
 | P0-008C - Understandable Member Access and Safe Removal | r1 | DRAFT | Architecture | Successor draft | Accepted A/B evidence; baseline refresh and readiness release |
 | P0-008D - Guided Setup to the First Useful Household Day | r1 | DRAFT | Architecture | Successor draft | Accepted A–C evidence; baseline refresh and readiness release |
 
@@ -84,7 +84,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Engineering completes exact P0-008B r2 PR/RC gates at `34179f7` (Architecture's PR attempt stalled at Chromium e2e; RC was not run), updates `reports/P0-008B-r2-build-report.md` to pin the committed tip and actual tree state, and returns for Architecture confirmation. No deployment/live database operation. C/D remain gated. The Project Lead owns Git integration and later hosted/Product evaluation. Detailed coverage: `reports/P0-008-architecture-sequencing.md`.
+The Project Lead owns integration of technically accepted P0-008B r2 from `brief/p0-008b-household-backups-in-app-restore` @ `4448c56`. After merge, refresh the baseline for C; hosted backup/reset/restore and Product evaluation remain separately authorized checkpoints. No deployment/live database operation is implied. Detailed coverage: `reports/P0-008-architecture-sequencing.md`.
 
 ## Notes for all teams
 

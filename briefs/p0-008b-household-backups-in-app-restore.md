@@ -1,7 +1,7 @@
 # BRIEF P0-008B - Household Backups and In-App Restore
 
 **Revision:** 2
-**Status:** FIX REQUIRED — AT2/AT6/AT9 evidence closed at `34179f7`; current-tip PR/RC validation did not complete; Build Report metadata remains stale; r2 contract unchanged
+**Status:** TECHNICALLY ACCEPTED — P0-008B r2 implementation and evidence accepted at `34179f7`; Build Report metadata/status update `4448c56` is docs-only; merge and hosted/Product evaluation remain separate
 
 Architecture inspected accepted A on merged `main` at `405c5db` (PR #24). This revision replaces the unreleased r1 draft. Engineering must review r2 against the repository before implementation; A's readiness does not carry forward. Product acceptance is separate.
 
@@ -91,7 +91,7 @@ Inspected merged `main` / `origin/main` at `405c5db` (PR #24), with migrations t
 
 **Reviewed revision:** 2
 **Readiness:** READY — consolidated Engineering review against merged A at `405c5db` (planning tip `e34a846`); report `reports/P0-008B-r2-engineering-readiness.md`. No BLOCKER/QUESTION.
-**Architecture disposition:** AT2/AT6/AT9 evidence is closed at `34179f7`. FIX REQUIRED remains pending exact `npm run validate:pr` and `npm run validate:rc` results for this tip and corrected Build Report commit/tree metadata; Architecture's PR attempt passed lint/typecheck/unit/integration/build but Chromium e2e stalled and was interrupted, so it is not a pass. See `reports/P0-008B-r2-architecture-review.md`. No deploy/live database work. C/D remain out of scope.
+**Architecture disposition:** ACCEPTED for technical delivery at evidence commit `34179f7`. AT2/AT6/AT9 evidence is closed; exact `npm run validate:pr` and `npm run validate:rc` PASS at `34179f7`; Build Report metadata update is committed at docs-only tip `4448c56`. See `reports/P0-008B-r2-architecture-review.md`. This is not merge authorization, hosted deployment, or Product acceptance. C/D remain gated until integration and the applicable predecessor evaluation.
 
 ## Revision history
 

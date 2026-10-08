@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-05  
 **Initial brief disposition:** ACCEPT / PROCEED
-**Latest implementation review:** FIX REQUIRED (AT evidence closed; current-tip gates and report metadata pending)
+**Latest implementation review:** ACCEPTED (technical acceptance at evidence tip `34179f7`; docs-only report update `4448c56`)
 **Brief:** `briefs/p0-008b-household-backups-in-app-restore.md`, revision 2  
 **Engineering readiness:** READY against integrated A at `405c5db`; `reports/P0-008B-r2-engineering-readiness.md`  
 **Implementation branch:** `brief/p0-008b-household-backups-in-app-restore`
@@ -80,11 +80,8 @@ The Project Lead committed the second evidence pass at `34179f7` (`test(P0-008B)
 
 ### Current-tip validation review
 
-Architecture then ran `npm run validate:pr` at `34179f7`. Lint, typecheck, all **296** unit/integration tests, and production build passed. Chromium e2e started but produced no output for several minutes and was interrupted; therefore `validate:pr` is **NOT PASS**. Architecture did not run `validate:rc`. This is not a validation failure in the code, but the required current-tip gates remain unverified.
+Architecture initially ran `npm run validate:pr` at `34179f7`; lint, typecheck, all **296** unit/integration tests, and production build passed, but its Chromium e2e stage appeared silent and was interrupted. Engineering later diagnosed the expected quiet startup of piped Playwright web servers and reported exact detached-tip runs at `34179f7`: `validate:pr` PASS (296 tests, Chromium 104, Vite 5) and `validate:rc` PASS (296 tests, e2e 163, Vite 5). The Build Report update at `4448c56` pins those results and distinguishes the evidence tip from later docs-only branch commits. Architecture inspected the report and commit history; it did not independently rerun the gates after Engineering's pass.
 
-### Remaining FIX REQUIRED
+### Final technical disposition — ACCEPTED
 
-1. **AT10 — complete exact PR/RC gates at current code tip.** Diagnose the silent Chromium e2e stage and run exact `npm run validate:pr` and `npm run validate:rc` on `34179f7`, recording exits/results. The focused integration pass and earlier gates at `abe5fff` do not substitute.
-2. **Build Report commit/tree metadata.** The Build Report still identifies `abe5fff` as HEAD and labels the second pass uncommitted, despite the committed tip `34179f7`. It also says Architecture-owned docs were not absorbed; `git show --stat 34179f7` confirms those writebacks are included in that commit. Update it to name the actual commits and accurately describe the tree at report update, without implying PR/merge or hosted validation.
-
-No live database or hosted service was accessed. No deploy is authorized. Architecture has not run RC.
+The exact PR/RC gate results at `34179f7`, the closed AT2/AT6/AT9 evidence, and Build Report metadata update at `4448c56` satisfy the r2 technical acceptance contract. **P0-008B r2 is technically ACCEPTED.** The branch remains unmerged; this is not merge authorization, hosted deployment, or Product acceptance. The Project Lead owns Git integration. No live database or hosted service was accessed, and no deploy is authorized by this acceptance.

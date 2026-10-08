@@ -91,7 +91,7 @@ Both C-3 slices contribute to **Act at the shared display without losing trust**
 
 - [x] **P0-008A — Create the first manager and start again safely.** Owner-protected setup and repeatable full reset without a new backup are technically accepted and merged via PR #24 at `405c5db` (`briefs/p0-008a-protected-first-run-reset.md`); hosted/Product evaluation remains separate.
 - [ ] **P0-008B — Save a household and restore it in the app.** Protected backup list/create/delete, an off-by-default backup choice during reset/restore, and recovery through Settings or protected Welcome.
-  - **Brief:** `P0-008B r2` (`briefs/p0-008b-household-backups-in-app-restore.md`), implementation review is FIX REQUIRED; contract unchanged. Engineering closes recovery/evidence findings and reruns PR/RC before Architecture re-review.
+  - **Brief:** `P0-008B r2` (`briefs/p0-008b-household-backups-in-app-restore.md`), implementation re-review remains FIX REQUIRED; contract unchanged. AT7 recovery, AT4 Settings journey and PR/RC gates are closed. Engineering closes AT2 write-race, AT6 rejection-case, AT9 stale-client evidence and corrects Build Report commit metadata before Architecture re-review.
   - **Evidence target:** Populated control-store adoption; exact optional-backup semantics; staged compatibility and credential sanitation; typed interrupted-operation recovery; same-epoch/old-client fencing; local PR/RC gates. Hosted reset/restore/restart is a later authorized release check.
   - **Card:** **Set up and manage my household without operator help** remains In Progress across A–D; B is the current technical slice, not completion of the Product outcome.
 

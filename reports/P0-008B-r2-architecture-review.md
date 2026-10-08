@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-05  
 **Initial brief disposition:** ACCEPT / PROCEED
-**Latest implementation review:** FIX REQUIRED
+**Latest implementation review:** FIX REQUIRED (remaining findings: AT2, AT6, AT9; report metadata)
 **Brief:** `briefs/p0-008b-household-backups-in-app-restore.md`, revision 2  
 **Engineering readiness:** READY against integrated A at `405c5db`; `reports/P0-008B-r2-engineering-readiness.md`  
 **Implementation branch:** `brief/p0-008b-household-backups-in-app-restore`
@@ -45,3 +45,25 @@ The implementation is committed at `6545c5f` on `brief/p0-008b-household-backups
 These are focused r2 recovery and evidence corrections. The approved product boundary and scope do not change. Do not deploy or operate on Railway/live data. Architecture will re-review the corrected Build Report and exact local gates.
 
 No live database or hosted service was accessed. Architecture did not change application code or commit.
+
+## Re-review — 2026-10-07
+
+Engineering's correction is committed at `abe5fff`; implementation remains pinned at `6545c5f`. The updated Build Report reports exact `validate:pr` and `validate:rc` PASS results. Architecture inspected the changed recovery code, the revised Build Report, and named tests; Architecture did not rerun the full gates.
+
+### Closed findings
+
+- **AT7 recovery result:** Restore intent/result metadata is durably recorded before activation. The after-activation fault test closes and reopens the app, then retrieves a typed `household_restore` result, including the restored backup and optional pre-operation backup, through the continuation credential.
+- **AT4 Settings restore:** A browser journey replaces a different household, previews both identities, restores the selected snapshot, and verifies sign-in to the restored manager.
+- **AT10 gates:** The correction Build Report records exact passing `validate:pr` and `validate:rc` runs. Hosted/live DB work remains explicitly unrun and unauthorized.
+
+### Remaining FIX REQUIRED findings
+
+1. **AT2 — race a real household-data write with the backup boundary.** The added `delayed write` test delays `POST /api/v1/auth/reauthenticate`, then races another reauthentication with reset. It checks status and backup count, but does not race a normal household mutation or inspect the snapshot. Replace or extend it with a deterministic household-data mutation (for example a personal task, routine revision, or setting) and prove that an acknowledged pre-switch write is present in the saved backup, or that the write is rejected across the epoch boundary. Do not accept a successful response for a write absent from both the old active state and the snapshot.
+
+2. **AT6 — prove the remaining restore-admission rejection cases.** Through-017 migration, source-byte preservation, corrupt input and bad digest are now evidenced. The required newer-than-app, unknown migration/schema, and multi-household rejection cases are not named in the current evidence. Add disposable negative fixtures/cases and assert rejection before epoch advancement or active-data change; alternatively mark AT6 partial in the Build Report and complete the required cases before acceptance.
+
+3. **AT9 — prove restore fencing for display work and stale views.** The integration test enrolls two displays, restores, then checks their session endpoints return 401/403; it also checks a post-restore stale member backup-create request is rejected. It does not hold old display reads or queued display checklist work across restore, nor exercise socket close/reconnect/visibility and assert that a stale payload is not rendered or applied. Add focused evidence at the restore epoch boundary for old display pending work and stale reads on the two walls, including recovery/reconnect behavior and no stale data resurfacing. This can reuse the existing P0-007C display harness patterns; a broad redesign or full duplicated matrix is not required.
+
+4. **Build Report metadata:** `reports/P0-008B-r2-build-report.md` still calls the FIX REQUIRED corrections uncommitted, although the correction commit is now `abe5fff`. Pin the actual correction tip and working-tree state; do not imply PR/merge or hosted validation.
+
+The r2 contract and scope remain unchanged. No deploy, Railway operation, or live database access is authorized. C/D remain out of scope. Architecture will re-review the focused corrections and existing exact local gate evidence.

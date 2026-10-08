@@ -12,7 +12,20 @@ import {
   tempDbPath,
   type HttpHarness,
 } from "../helpers/auth-fixture.js";
+import {
+  rejectedDisplayOutboxNotices,
+  retireDisplayOutboxItems,
+  type DisplayOutboxItem,
+} from "../../src/client/display-outbox.js";
+import { householdDateFromInstant } from "../../src/domain/time.js";
+import { sha256Hex } from "../../src/server/crypto.js";
 import { createThrough017BackupFile } from "../helpers/through-017-backup-fixture.js";
+import {
+  createMultiHouseholdBackupFile,
+  createNewerThanAppBackupFile,
+  createUnknownSchemaBackupFile,
+} from "../helpers/admission-reject-backup-fixtures.js";
+import Database from "better-sqlite3";
 
 const OWNER_SECRET = "test-owner-secret-with-enough-entropy-0123456789abcdef";
 const PASSPHRASE = "Unique-passphrase-ok!999";
@@ -202,6 +215,48 @@ async function reauth(
     payload: { passphrase: PASSPHRASE },
   });
   expect(res.statusCode).toBe(200);
+}
+
+function sessionFromMemberCookie(harness: HttpHarness, cookie: string) {
+  return harness.store.getSessionByTokenDigest(
+    sha256Hex(cookie),
+    harness.runtime.epoch,
+  );
+}
+
+function requiredStep(text: string) {
+  return {
+    logicalItemId: randomUUID(),
+    text,
+    obligation: "required" as const,
+  };
+}
+
+async function displaySessionInfo(
+  harness: HttpHarness,
+  displayCookieValue: string,
+): Promise<{
+  csrfToken: string;
+  householdDate: string;
+  activityGeneration: number;
+}> {
+  const res = await harness.app.inject({
+    method: "GET",
+    url: "/api/v1/display/session",
+    headers: {
+      cookie: `${harness.config.displayCookieName}=${displayCookieValue}`,
+    },
+  });
+  expect(res.statusCode).toBe(200);
+  return (
+    res.json() as {
+      session: {
+        csrfToken: string;
+        householdDate: string;
+        activityGeneration: number;
+      };
+    }
+  ).session;
 }
 
 describe("P0-008B household backups and restore", () => {
@@ -661,22 +716,23 @@ describe("P0-008B household backups and restore", () => {
     }
   });
 
-  it("AT2: delayed write across reset-with-backup is either snapshotted or rejected", async () => {
+  it("AT2: delayed household write across reset-with-backup is snapshotted or rejected", async () => {
     const harness = await createBHarness();
     const auth = await setupHousehold(harness);
     await reauth(harness, auth.cookie, auth.csrf);
+    const taskTitle = `Race task ${randomUUID().slice(0, 8)}`;
 
     const delayed = harness.app.inject({
       method: "POST",
-      url: "/api/v1/auth/reauthenticate",
+      url: "/api/v1/personal-tasks",
       headers: {
         origin: harness.origin,
         "content-type": "application/json",
         "x-csrf-token": auth.csrf,
         cookie: `${harness.config.cookieName}=${auth.cookie}`,
-        "x-mutation-delay-ms": "400",
+        "x-mutation-delay-ms": "500",
       },
-      payload: { passphrase: PASSPHRASE },
+      payload: { title: taskTitle, visibility: "private" },
     });
 
     await new Promise((r) => setTimeout(r, 50));
@@ -699,9 +755,40 @@ describe("P0-008B household backups and restore", () => {
       },
     });
     expect(reset.statusCode).toBe(200);
-    const delayedRes = await delayed;
-    expect([200, 401]).toContain(delayedRes.statusCode);
     expect(harness.runtime.control.listBackups()).toHaveLength(1);
+    const delayedRes = await delayed;
+
+    const backupRow = harness.runtime.control.listBackups()[0]!;
+    const backupAbs = path.join(harness.config.backupDir, backupRow.relativePath);
+    const snap = new Database(backupAbs, { readonly: true, fileMustExist: true });
+    let inSnapshot = false;
+    try {
+      inSnapshot = Boolean(
+        snap
+          .prepare(`SELECT 1 AS ok FROM personal_tasks WHERE title = ?`)
+          .get(taskTitle) as { ok: number } | undefined,
+      );
+    } finally {
+      snap.close();
+    }
+    const inActive = Boolean(
+      harness.runtime.db
+        .prepare(`SELECT 1 AS ok FROM personal_tasks WHERE title = ?`)
+        .get(taskTitle) as { ok: number } | undefined,
+    );
+
+    if (delayedRes.statusCode === 200) {
+      // Acknowledged pre-switch writes must be present in the saved backup.
+      expect(inSnapshot).toBe(true);
+    } else {
+      expect([401, 403, 409]).toContain(delayedRes.statusCode);
+      // Rejected across the epoch boundary: not applied to the new empty household.
+      expect(inActive).toBe(false);
+    }
+    // Never acknowledge success for a write absent from both snapshot and active.
+    if (!inSnapshot && !inActive) {
+      expect(delayedRes.statusCode).not.toBe(200);
+    }
   });
 
   it("AT5: pre-restore human/display/setup credentials cannot regain authority", async () => {
@@ -910,6 +997,73 @@ describe("P0-008B household backups and restore", () => {
     });
     expect(bad.statusCode).toBeGreaterThanOrEqual(400);
     expect(harness.runtime.epoch).toBe(epochAfter);
+  });
+
+  it("AT6: newer/unknown-schema/multi-household backups rejected without active change", async () => {
+    const harness = await createBHarness();
+    await setupHousehold(harness);
+    const beforeEpoch = harness.runtime.epoch;
+    const beforeName = (
+      harness.runtime.db.prepare(`SELECT name FROM households LIMIT 1`).get() as {
+        name: string;
+      }
+    ).name;
+    const beforeDigest = (
+      harness.runtime.db.prepare(`SELECT COUNT(*) AS c FROM personal_tasks`).get() as {
+        c: number;
+      }
+    ).c;
+    const beforeCatalog = harness.runtime.control.listBackups().length;
+
+    const owner = await harness.app.inject({
+      method: "POST",
+      url: "/api/v1/owner/session",
+      headers: { origin: harness.origin, "content-type": "application/json" },
+      payload: { secret: OWNER_SECRET },
+    });
+    const ownerCsrf = (owner.json() as { csrfToken: string }).csrfToken;
+    const ownerCookie = owner.cookies.find((c) => c.name.includes("owner"))!.value;
+
+    const newer = await createNewerThanAppBackupFile(harness.config.backupDir);
+    const unknown = createUnknownSchemaBackupFile(harness.config.backupDir);
+    const multi = await createMultiHouseholdBackupFile(harness.config.backupDir);
+
+    for (const [label, fileName] of [
+      ["newer-than-app", newer.fileName],
+      ["unknown-schema", unknown.fileName],
+      ["multi-household", multi.fileName],
+    ] as const) {
+      const registered = await harness.app.inject({
+        method: "POST",
+        url: "/api/v1/owner/backups/register",
+        headers: {
+          origin: harness.origin,
+          "content-type": "application/json",
+          "x-csrf-token": ownerCsrf,
+          cookie: `${harness.config.ownerCookieName}=${ownerCookie}`,
+        },
+        payload: { fileName, label },
+      });
+      expect(registered.statusCode).toBe(400);
+      expect((registered.json() as { code: string }).code).toBe("UNSUPPORTED");
+    }
+
+    expect(harness.runtime.epoch).toBe(beforeEpoch);
+    expect(
+      (
+        harness.runtime.db.prepare(`SELECT name FROM households LIMIT 1`).get() as {
+          name: string;
+        }
+      ).name,
+    ).toBe(beforeName);
+    expect(
+      (
+        harness.runtime.db.prepare(`SELECT COUNT(*) AS c FROM personal_tasks`).get() as {
+          c: number;
+        }
+      ).c,
+    ).toBe(beforeDigest);
+    expect(harness.runtime.control.listBackups()).toHaveLength(beforeCatalog);
   });
 
   it("AT7: afterActivate crash recovers typed restore with backup metadata via continuation", async () => {
@@ -1126,10 +1280,13 @@ describe("P0-008B household backups and restore", () => {
     expect(harness.runtime.epoch).toBeGreaterThan(epoch);
   });
 
-  it("AT9: two display sessions and queued member write retire across restore", async () => {
+  it("AT9: queued display work and stale reads cannot resurface across restore", async () => {
     const harness = await createBHarness();
     const auth = await setupHousehold(harness);
     await reauth(harness, auth.cookie, auth.csrf);
+    const sourceEpoch = auth.epoch;
+    const ctx = sessionFromMemberCookie(harness, auth.cookie)!;
+    const today = householdDateFromInstant(new Date(), ctx.timezone);
 
     async function enrollDisplay(label: string): Promise<string> {
       const created = await harness.app.inject({
@@ -1157,14 +1314,61 @@ describe("P0-008B household backups and restore", () => {
 
     const wallA = await enrollDisplay("Wall A");
     const wallB = await enrollDisplay("Wall B");
-    for (const cookie of [wallA, wallB]) {
-      const session = await harness.app.inject({
-        method: "GET",
-        url: "/api/v1/display/session",
-        headers: { cookie: `${harness.config.displayCookieName}=${cookie}` },
-      });
-      expect(session.statusCode).toBe(200);
-    }
+    const sessionA = await displaySessionInfo(harness, wallA);
+    const sessionB = await displaySessionInfo(harness, wallB);
+
+    harness.store.createResponsibility(ctx, {
+      mutationId: randomUUID(),
+      title: "AT9 Restore Checklist",
+      daypart: "anytime",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      accountableMemberId: ctx.membershipId,
+      steps: [requiredStep("Feed"), requiredStep("Water")],
+    });
+    const occurrence = harness.store
+      .materializeForDate(ctx, today)
+      .find((o) => o.title === "AT9 Restore Checklist")!;
+    const intendedStructure = {
+      revisionId: occurrence.revisionId,
+      accountableMemberId: ctx.membershipId,
+      stepLogicalIds: occurrence.steps
+        .map((s) => s.logicalItemId)
+        .filter((id): id is string => Boolean(id)),
+    };
+
+    const detailA = await harness.app.inject({
+      method: "GET",
+      url: `/api/v1/display/occurrences/${occurrence.id}`,
+      headers: { cookie: `${harness.config.displayCookieName}=${wallA}` },
+    });
+    expect(detailA.statusCode).toBe(200);
+    const occA = (
+      detailA.json() as {
+        occurrence: {
+          householdDate: string;
+          steps: Array<{ id: string }>;
+        };
+      }
+    ).occurrence;
+    const detailB = await harness.app.inject({
+      method: "GET",
+      url: `/api/v1/display/occurrences/${occurrence.id}`,
+      headers: { cookie: `${harness.config.displayCookieName}=${wallB}` },
+    });
+    expect(detailB.statusCode).toBe(200);
+    const occB = (
+      detailB.json() as {
+        occurrence: { steps: Array<{ id: string }> };
+      }
+    ).occurrence;
+
+    const dashBefore = await harness.app.inject({
+      method: "GET",
+      url: "/api/v1/display/dashboard",
+      headers: { cookie: `${harness.config.displayCookieName}=${wallA}` },
+    });
+    expect(dashBefore.statusCode).toBe(200);
+    const beforePayload = dashBefore.body;
 
     const created = await harness.app.inject({
       method: "POST",
@@ -1181,6 +1385,71 @@ describe("P0-008B household backups and restore", () => {
       created.json() as { backup: { id: string; contentDigest: string } }
     ).backup;
 
+    const mutationA = randomUUID();
+    const mutationB = randomUUID();
+    const performedAt = new Date().toISOString();
+
+    // Held stale reads authenticate, then delay across restore revoke/activate.
+    const heldDashA = harness.app.inject({
+      method: "GET",
+      url: "/api/v1/display/dashboard",
+      headers: {
+        cookie: `${harness.config.displayCookieName}=${wallA}`,
+        "x-read-delay-ms": "2500",
+      },
+    });
+    const heldDashB = harness.app.inject({
+      method: "GET",
+      url: "/api/v1/display/dashboard",
+      headers: {
+        cookie: `${harness.config.displayCookieName}=${wallB}`,
+        "x-read-delay-ms": "2500",
+      },
+    });
+
+    // Queued display checklist taps delay across the restore epoch boundary.
+    const delayedTapA = harness.app.inject({
+      method: "POST",
+      url: `/api/v1/display/occurrences/${occurrence.id}/steps/${occA.steps[0]!.id}/status`,
+      headers: {
+        origin: harness.origin,
+        "content-type": "application/json",
+        "x-csrf-token": sessionA.csrfToken,
+        cookie: `${harness.config.displayCookieName}=${wallA}`,
+        "x-mutation-delay-ms": "1500",
+      },
+      payload: {
+        mutationId: mutationA,
+        status: "completed",
+        performedAt,
+        activityGeneration: sessionA.activityGeneration,
+        kind: "responsibility",
+        householdDate: occA.householdDate,
+        intendedStructure,
+      },
+    });
+    const delayedTapB = harness.app.inject({
+      method: "POST",
+      url: `/api/v1/display/occurrences/${occurrence.id}/steps/${occB.steps[1]!.id}/status`,
+      headers: {
+        origin: harness.origin,
+        "content-type": "application/json",
+        "x-csrf-token": sessionB.csrfToken,
+        cookie: `${harness.config.displayCookieName}=${wallB}`,
+        "x-mutation-delay-ms": "1500",
+      },
+      payload: {
+        mutationId: mutationB,
+        status: "completed",
+        performedAt,
+        activityGeneration: sessionB.activityGeneration,
+        kind: "responsibility",
+        householdDate: occA.householdDate,
+        intendedStructure,
+      },
+    });
+
+    await new Promise((r) => setTimeout(r, 40));
     await reauth(harness, auth.cookie, auth.csrf);
     const restore = await harness.app.inject({
       method: "POST",
@@ -1195,20 +1464,71 @@ describe("P0-008B household backups and restore", () => {
         mutationId: randomUUID(),
         backupId: backup.id,
         expectedDigest: backup.contentDigest,
-        expectedEpoch: auth.epoch,
+        expectedEpoch: sourceEpoch,
         confirmationText: "RESTORE",
         saveBackupBeforeRestore: false,
       },
     });
     expect(restore.statusCode).toBe(200);
+    expect(harness.runtime.epoch).toBeGreaterThan(sourceEpoch);
 
+    const heldA = await heldDashA;
+    const heldB = await heldDashB;
+    expect([401, 403]).toContain(heldA.statusCode);
+    expect([401, 403]).toContain(heldB.statusCode);
+    // Rejected held reads must not return the pre-restore dashboard payload.
+    expect(heldA.body).not.toBe(beforePayload);
+    expect(heldB.body).not.toBe(beforePayload);
+
+    const tapA = await delayedTapA;
+    const tapB = await delayedTapB;
+    expect([401, 403]).toContain(tapA.statusCode);
+    expect([401, 403]).toContain(tapB.statusCode);
+    expect(
+      (
+        harness.runtime.db
+          .prepare(
+            `SELECT COUNT(*) AS c FROM step_reports WHERE mutation_id IN (?, ?)`,
+          )
+          .get(mutationA, mutationB) as { c: number }
+      ).c,
+    ).toBe(0);
+
+    // Reconnect / recovery: old display cookies cannot regain session or dashboard.
     for (const cookie of [wallA, wallB]) {
-      const stale = await harness.app.inject({
+      const staleSession = await harness.app.inject({
         method: "GET",
         url: "/api/v1/display/session",
         headers: { cookie: `${harness.config.displayCookieName}=${cookie}` },
       });
-      expect([401, 403]).toContain(stale.statusCode);
+      expect([401, 403]).toContain(staleSession.statusCode);
+      const staleDash = await harness.app.inject({
+        method: "GET",
+        url: "/api/v1/display/dashboard",
+        headers: { cookie: `${harness.config.displayCookieName}=${cookie}` },
+      });
+      expect([401, 403]).toContain(staleDash.statusCode);
+      expect(staleDash.body).not.toBe(beforePayload);
+      const staleReplay = await harness.app.inject({
+        method: "POST",
+        url: `/api/v1/display/occurrences/${occurrence.id}/steps/${occA.steps[0]!.id}/status`,
+        headers: {
+          origin: harness.origin,
+          "content-type": "application/json",
+          "x-csrf-token": sessionA.csrfToken,
+          cookie: `${harness.config.displayCookieName}=${cookie}`,
+        },
+        payload: {
+          mutationId: randomUUID(),
+          status: "completed",
+          performedAt,
+          activityGeneration: sessionA.activityGeneration,
+          kind: "responsibility",
+          householdDate: occA.householdDate,
+          intendedStructure,
+        },
+      });
+      expect([401, 403]).toContain(staleReplay.statusCode);
     }
 
     const staleMember = await harness.app.inject({
@@ -1217,9 +1537,7 @@ describe("P0-008B household backups and restore", () => {
       headers: { cookie: `${harness.config.cookieName}=${auth.cookie}` },
     });
     expect(staleMember.statusCode).toBe(401);
-
-    // Old-epoch member mutate cannot apply under retired session.
-    const queued = await harness.app.inject({
+    const queuedMember = await harness.app.inject({
       method: "POST",
       url: "/api/v1/household/backups",
       headers: {
@@ -1230,7 +1548,50 @@ describe("P0-008B household backups and restore", () => {
       },
       payload: { mutationId: randomUUID(), label: "stale-queue" },
     });
-    expect(queued.statusCode).toBe(401);
+    expect(queuedMember.statusCode).toBe(401);
+
+    // Client reconnect/visibility recovery retires queued display outbox intents.
+    const displayOutbox: DisplayOutboxItem[] = [
+      {
+        mutationId: mutationA,
+        occurrenceId: occurrence.id,
+        stepId: occA.steps[0]!.id,
+        status: "completed",
+        performedAt,
+        activityGeneration: sessionA.activityGeneration,
+        installationEpoch: sourceEpoch,
+        kind: "responsibility",
+        intendedStructure,
+        displaySessionId: randomUUID(),
+        displayId: randomUUID(),
+        householdId: ctx.householdId,
+        householdDate: occA.householdDate,
+        state: "pending",
+      },
+      {
+        mutationId: mutationB,
+        occurrenceId: occurrence.id,
+        stepId: occB.steps[1]!.id,
+        status: "completed",
+        performedAt,
+        activityGeneration: sessionB.activityGeneration,
+        installationEpoch: sourceEpoch,
+        kind: "responsibility",
+        intendedStructure,
+        displaySessionId: randomUUID(),
+        displayId: randomUUID(),
+        householdId: ctx.householdId,
+        householdDate: occA.householdDate,
+        state: "pending",
+      },
+    ];
+    const retired = retireDisplayOutboxItems(displayOutbox, {
+      activityGeneration: sessionA.activityGeneration,
+      householdDate: occA.householdDate,
+      installationEpoch: harness.runtime.epoch,
+    });
+    expect(retired.every((item) => item.state === "rejected")).toBe(true);
+    expect(rejectedDisplayOutboxNotices(retired)[0]?.message).toMatch(/reset/i);
   });
 
   it("AT8: public welcome without owner reveals no backup metadata", async () => {

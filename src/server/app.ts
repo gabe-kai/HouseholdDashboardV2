@@ -1487,8 +1487,16 @@ export async function buildApp(
         .code(400)
         .send(errorBody("VALIDATION", "Invalid personal task", request.id));
     }
-    const task = store.createTask(session, parsed.data);
-    notifyPersonalTaskChange({ session, before: null, after: task });
+    const delayMs = Number(request.headers["x-mutation-delay-ms"] ?? 0);
+    if (config.profile !== "hosted" && delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, Math.min(delayMs, 10_000)));
+      requestSessions.delete(request);
+      if (!requireSession(request, reply)) return;
+    }
+    const liveSession = requireSession(request, reply);
+    if (!liveSession) return;
+    const task = store.createTask(liveSession, parsed.data);
+    notifyPersonalTaskChange({ session: liveSession, before: null, after: task });
     return { task };
   });
 
@@ -1651,7 +1659,15 @@ export async function buildApp(
   app.get("/api/v1/display/dashboard", async (request, reply) => {
     const display = requireDisplay(request, reply);
     if (!display) return;
-    return { dashboard: displayStore.getDisplayDashboard(display) };
+    const delayMs = Number(request.headers["x-read-delay-ms"] ?? 0);
+    if (config.profile !== "hosted" && delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, Math.min(delayMs, 10_000)));
+      requestDisplays.delete(request);
+      if (!requireDisplay(request, reply)) return;
+    }
+    const liveDisplay = requireDisplay(request, reply);
+    if (!liveDisplay) return;
+    return { dashboard: displayStore.getDisplayDashboard(liveDisplay) };
   });
 
   app.get("/api/v1/display/people/:membershipId", async (request, reply) => {

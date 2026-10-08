@@ -4,7 +4,7 @@
 **Role:** Architecture
 **Source:** Approved `PRODUCT.md`, P0-008 First-Run Setup and Household Member Management; Project Lead's handoff in this task.
 **Original assessment baseline:** `member-management-first-run-setup` @ `4f07593`; `main` @ `415d930` (PR #23), through migration 017.
-**Current inspected baseline:** merged `main` / `origin/main` @ `405c5db` (PR #24), through migration 018. A r1 is technically accepted and merged; B r2 implementation at `6545c5f` received FIX REQUIRED pending recovery and acceptance evidence; C/D remain gated drafts. No live-data operation or deployment performed by Architecture.
+**Current inspected baseline:** merged `main` / `origin/main` @ `405c5db` (PR #24), through migration 018. A r1 is technically accepted and merged; B r2 implementation `6545c5f` plus correction `abe5fff` received FIX REQUIRED for remaining AT2/6/9 evidence and Build Report metadata; C/D remain gated drafts. No live-data operation or deployment performed by Architecture.
 
 This report records reasoning, traceability and release preparation. The four brief files are the authoritative implementation contracts; this report is not a contract addendum.
 
@@ -25,7 +25,7 @@ These points describe the original pre-A baseline, not current code. A now suppl
 | Slice / authoritative file | Parent checkpoint | Release to Engineering |
 | --- | --- | --- |
 | **P0-008A r1** — `briefs/p0-008a-protected-first-run-reset.md` | Create first manager/household through protected browser access; reset repeatedly and recover Welcome after interruption | Technically ACCEPTED, merged via PR #24 at `405c5db`; hosted/Product evidence separate |
-| **P0-008B r2** — `briefs/p0-008b-household-backups-in-app-restore.md` | Save a backup, reset with backup off, restore from protected Welcome or Settings | Implemented at `6545c5f`; FIX REQUIRED on same r2; see `reports/P0-008B-r2-architecture-review.md` |
+| **P0-008B r2** — `briefs/p0-008b-household-backups-in-app-restore.md` | Save a backup, reset with backup off, restore from protected Welcome or Settings | Implemented at `6545c5f`, corrected at `abe5fff`; FIX REQUIRED on same r2 for AT2/6/9 and report metadata; see `reports/P0-008B-r2-architecture-review.md` |
 | **P0-008C r1** — `briefs/p0-008c-member-access-removal.md` | Invite, edit permissions, maintain/revoke/restore sign-in, remove a used member, and clean selected sample people without losing real work | DRAFT until A/B accepted; refresh membership/backup baseline |
 | **P0-008D r1** — `briefs/p0-008d-guided-first-household-day.md` | Complete the named setup steps and the uninterrupted setup→management→backup→reset→restore journey | DRAFT until A–C accepted; integrate their real records and flows |
 
@@ -82,7 +82,7 @@ These are a release plan, not commands to run now. Authoritative transition requ
 
 ## Handoff for Engineering
 
-> Acting as Engineering, close the findings in `reports/P0-008B-r2-architecture-review.md` against **P0-008B revision 2** on `brief/p0-008b-household-backups-in-app-restore`. Keep the approved contract unchanged. Persist and recover truthful typed operation results across the activation crash window; close AT2/4/5/6/7/9 evidence; run exact `npm run validate:pr` and `npm run validate:rc`; and correct Build Report commit metadata for implementation `6545c5f`. Update the Build Report with named evidence and return for Architecture re-review. Keep C/D out of scope. Use disposable data only; no Railway/live database operations or deployment. Suggest a commit message but do not commit.
+> Acting as Engineering, close the remaining findings in `reports/P0-008B-r2-architecture-review.md` against **P0-008B revision 2** on `brief/p0-008b-household-backups-in-app-restore`. Keep the approved contract unchanged. AT7 recovery, AT4 Settings restore, and exact PR/RC gates are closed. Add a normal household-data write race with snapshot-or-reject evidence for AT2; complete AT6 newer/unknown/multi-household rejection evidence; and prove AT9 stale display reads/queued work across restore and recovery. Correct Build Report commit metadata for correction tip `abe5fff`, then return for Architecture re-review. Keep C/D out of scope. Use disposable data only; no Railway/live database operations or deployment. Suggest a commit message but do not commit.
 
 Suggested implementation branch after the planning/readiness baseline is integrated: `brief/p0-008b-household-backups-in-app-restore`. Architecture has not created a branch.
 

@@ -82,12 +82,16 @@ export async function restartPreservingE2eServer(baseURL: string): Promise<void>
   fs.mkdirSync(path.dirname(flagPath), { recursive: true });
   fs.writeFileSync(flagPath, `${Date.now()}\n`, "utf8");
 
+  const targetGen = beforeGen + 1;
   try {
-    await waitForGeneration(port, beforeGen + 1, 45_000);
+    await waitForGeneration(port, targetGen, 90_000);
   } catch {
-    // One missed flag poll under suite load: re-arm and wait again.
-    fs.writeFileSync(flagPath, `${Date.now()}\n`, "utf8");
-    await waitForGeneration(port, beforeGen + 1, 60_000);
+    // Only re-arm if the generation never advanced; a late bump must not
+    // trigger a second rebind while the test is already navigating.
+    if (readGeneration(port) < targetGen) {
+      fs.writeFileSync(flagPath, `${Date.now()}\n`, "utf8");
+      await waitForGeneration(port, targetGen, 120_000);
+    }
   }
   await waitForHealth(origin);
 }

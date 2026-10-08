@@ -73,20 +73,28 @@ async function listenFresh(): Promise<Listening> {
   return { app };
 }
 
+async function closeListening(previous: Listening | null): Promise<void> {
+  if (!previous) return;
+  try {
+    await Promise.race([
+      previous.app.close(),
+      new Promise<void>((resolve) => setTimeout(resolve, 8_000)),
+    ]);
+  } catch {
+    /* already closed or timed out — listenFresh will bind the port */
+  }
+}
+
 async function rebindHttpServer(): Promise<void> {
+  // Wait for any in-flight wipe/rebind, then always perform this preserve-rebind.
+  // Returning early used to consume the restart flag without advancing generation.
   if (restartInFlight) {
     await restartInFlight;
-    return;
   }
   restartInFlight = (async () => {
     const previous = current;
-    if (previous) {
-      try {
-        await previous.app.close();
-      } catch {
-        /* already closed */
-      }
-    }
+    current = null;
+    await closeListening(previous);
     current = await listenFresh();
     console.log(
       `E2E server rebound (generation advanced; DB preserved)`,
@@ -131,13 +139,8 @@ async function wipeAndRebindHttpServer(): Promise<void> {
   }
   restartInFlight = (async () => {
     const previous = current;
-    if (previous) {
-      try {
-        await previous.app.close();
-      } catch {
-        /* already closed */
-      }
-    }
+    current = null;
+    await closeListening(previous);
     wipeHouseholdArtifacts();
     current = await listenFresh();
     console.log(`E2E server rebound after wipe (generation advanced)`);

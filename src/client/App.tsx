@@ -1839,6 +1839,14 @@ export function App() {
             setSetupResumeStep(null);
             window.location.assign("/welcome");
           }}
+          onRestoreComplete={() => {
+            identityRef.current = null;
+            setSession(null);
+            clearUiCaches();
+            rememberCsrfToken("");
+            setSetupResumeStep(null);
+            window.location.assign("/today");
+          }}
           onSuccessToast={(message) => showToast(message)}
         />
       ) : null}

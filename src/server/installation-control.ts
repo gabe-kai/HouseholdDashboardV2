@@ -115,7 +115,50 @@ CREATE TABLE IF NOT EXISTS recovery_continuations (
   expires_at TEXT NOT NULL,
   revoked_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS control_schema_migrations (
+  id TEXT PRIMARY KEY,
+  applied_at TEXT NOT NULL
+);
 `;
+
+const CONTROL_MIGRATIONS: Array<{ id: string; sql: string }> = [
+  {
+    id: "001_household_backup_catalog.sql",
+    sql: `
+CREATE TABLE IF NOT EXISTS household_backups (
+  id TEXT PRIMARY KEY,
+  household_id TEXT NOT NULL,
+  household_name TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  label TEXT,
+  schema_manifest TEXT NOT NULL,
+  format_version INTEGER NOT NULL,
+  byte_size INTEGER NOT NULL,
+  content_digest TEXT NOT NULL,
+  relative_path TEXT NOT NULL UNIQUE,
+  source TEXT NOT NULL CHECK (source IN ('app', 'legacy_register')),
+  deleted_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_household_backups_created
+  ON household_backups(created_at DESC);
+`,
+  },
+];
+
+export type HouseholdBackupRow = {
+  id: string;
+  householdId: string;
+  householdName: string;
+  createdAt: string;
+  label: string | null;
+  schemaManifest: string;
+  formatVersion: number;
+  byteSize: number;
+  contentDigest: string;
+  relativePath: string;
+  source: "app" | "legacy_register";
+};
 
 export function resolveInstallationControlPath(configured?: string): string {
   const raw = configured ?? "runtime/installation-control.sqlite";
@@ -144,7 +187,29 @@ export class InstallationControl {
     db.pragma("foreign_keys = ON");
     const control = new InstallationControl(db);
     control.db.exec(CONTROL_SCHEMA);
+    control.applyControlMigrations();
     return control;
+  }
+
+  /** Additive, replay-safe upgrades for populated A control databases. */
+  private applyControlMigrations(): void {
+    const applied = new Set(
+      (
+        this.db.prepare(`SELECT id FROM control_schema_migrations`).all() as Array<{
+          id: string;
+        }>
+      ).map((r) => r.id),
+    );
+    for (const migration of CONTROL_MIGRATIONS) {
+      if (applied.has(migration.id)) continue;
+      const tx = this.db.transaction(() => {
+        this.db.exec(migration.sql);
+        this.db
+          .prepare(`INSERT INTO control_schema_migrations (id, applied_at) VALUES (?, ?)`)
+          .run(migration.id, nowIso());
+      });
+      tx();
+    }
   }
 
   close(): void {
@@ -470,6 +535,20 @@ export class InstallationControl {
       .run(resultEpoch, responseJson, nowIso(), id);
   }
 
+  /**
+   * Persist typed progress on a still-pending operation so crash recovery after
+   * activation can reconstruct restore/backup metadata without fabricating nulls.
+   */
+  recordLifecycleOperationProgress(id: string, responseJson: string): void {
+    this.db
+      .prepare(
+        `UPDATE lifecycle_operations
+         SET response_json = ?
+         WHERE id = ? AND status = 'pending'`,
+      )
+      .run(responseJson, id);
+  }
+
   failLifecycleOperation(id: string, responseJson: string): void {
     this.db
       .prepare(
@@ -519,6 +598,26 @@ export class InstallationControl {
                 created_at AS createdAt, completed_at AS completedAt
          FROM lifecycle_operations
          WHERE kind = ? AND payload_digest = ? AND source_epoch = ? AND status = 'completed'
+         ORDER BY completed_at DESC LIMIT 1`,
+      )
+      .get(kind, payloadDigest, sourceEpoch) as LifecycleOperationRow | undefined;
+    return row ?? null;
+  }
+
+  /** Failed attempt with the same receipt digest (retry must not duplicate optional backups). */
+  findFailedOperationByPayload(
+    kind: string,
+    payloadDigest: string,
+    sourceEpoch: number,
+  ): LifecycleOperationRow | null {
+    const row = this.db
+      .prepare(
+        `SELECT id, kind, status, source_epoch AS sourceEpoch, result_epoch AS resultEpoch,
+                initiator_kind AS initiatorKind, initiator_ref AS initiatorRef,
+                payload_digest AS payloadDigest, response_json AS responseJson,
+                created_at AS createdAt, completed_at AS completedAt
+         FROM lifecycle_operations
+         WHERE kind = ? AND payload_digest = ? AND source_epoch = ? AND status = 'failed'
          ORDER BY completed_at DESC LIMIT 1`,
       )
       .get(kind, payloadDigest, sourceEpoch) as LifecycleOperationRow | undefined;
@@ -578,6 +677,126 @@ export class InstallationControl {
          WHERE operation_id = ?`,
       )
       .run(nowIso(), operationId);
+  }
+
+  private mapBackupRow(row: {
+    id: string;
+    household_id: string;
+    household_name: string;
+    created_at: string;
+    label: string | null;
+    schema_manifest: string;
+    format_version: number;
+    byte_size: number;
+    content_digest: string;
+    relative_path: string;
+    source: "app" | "legacy_register";
+  }): HouseholdBackupRow {
+    return {
+      id: row.id,
+      householdId: row.household_id,
+      householdName: row.household_name,
+      createdAt: row.created_at,
+      label: row.label,
+      schemaManifest: row.schema_manifest,
+      formatVersion: row.format_version,
+      byteSize: row.byte_size,
+      contentDigest: row.content_digest,
+      relativePath: row.relative_path,
+      source: row.source,
+    };
+  }
+
+  insertBackup(row: HouseholdBackupRow): void {
+    this.db
+      .prepare(
+        `INSERT INTO household_backups
+         (id, household_id, household_name, created_at, label, schema_manifest,
+          format_version, byte_size, content_digest, relative_path, source, deleted_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+      )
+      .run(
+        row.id,
+        row.householdId,
+        row.householdName,
+        row.createdAt,
+        row.label,
+        row.schemaManifest,
+        row.formatVersion,
+        row.byteSize,
+        row.contentDigest,
+        row.relativePath,
+        row.source,
+      );
+  }
+
+  getBackup(id: string): HouseholdBackupRow | null {
+    const row = this.db
+      .prepare(
+        `SELECT id, household_id, household_name, created_at, label, schema_manifest,
+                format_version, byte_size, content_digest, relative_path, source
+         FROM household_backups WHERE id = ? AND deleted_at IS NULL`,
+      )
+      .get(id) as
+      | {
+          id: string;
+          household_id: string;
+          household_name: string;
+          created_at: string;
+          label: string | null;
+          schema_manifest: string;
+          format_version: number;
+          byte_size: number;
+          content_digest: string;
+          relative_path: string;
+          source: "app" | "legacy_register";
+        }
+      | undefined;
+    return row ? this.mapBackupRow(row) : null;
+  }
+
+  listBackups(): HouseholdBackupRow[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, household_id, household_name, created_at, label, schema_manifest,
+                format_version, byte_size, content_digest, relative_path, source
+         FROM household_backups WHERE deleted_at IS NULL
+         ORDER BY created_at DESC`,
+      )
+      .all() as Array<{
+      id: string;
+      household_id: string;
+      household_name: string;
+      created_at: string;
+      label: string | null;
+      schema_manifest: string;
+      format_version: number;
+      byte_size: number;
+      content_digest: string;
+      relative_path: string;
+      source: "app" | "legacy_register";
+    }>;
+    return rows.map((r) => this.mapBackupRow(r));
+  }
+
+  deleteBackup(id: string): void {
+    this.db
+      .prepare(`UPDATE household_backups SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`)
+      .run(nowIso(), id);
+  }
+
+  /** Revoke setup invitations/sessions that must not survive restore (owner sessions retained). */
+  revokeSetupAuthorityForRestore(): void {
+    this.revokeSetupInvitations();
+    this.revokeSetupSessions();
+  }
+
+  controlMigrationIds(): string[] {
+    return (
+      this.db.prepare(`SELECT id FROM control_schema_migrations ORDER BY id`).all() as Array<{
+        id: string;
+      }>
+    ).map((r) => r.id);
   }
 }
 

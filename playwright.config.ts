@@ -121,12 +121,12 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      testIgnore: ["**/z-p0-008a-*.spec.ts"],
+      testIgnore: ["**/z-p0-008a-*.spec.ts", "**/z-p0-008b-*.spec.ts"],
       use: { ...devices["Pixel 7"], baseURL: chromiumURL },
     },
     {
       name: "chromium-008a",
-      testMatch: ["**/z-p0-008a-*.spec.ts"],
+      testMatch: ["**/z-p0-008a-*.spec.ts", "**/z-p0-008b-*.spec.ts"],
       testIgnore: ["**/z-p0-008a-desktop-setup.spec.ts"],
       use: { ...devices["Pixel 7"], baseURL: chromium008aURL },
     },
@@ -174,12 +174,16 @@ export default defineConfig({
     },
     {
       name: "webkit",
-      testIgnore: ["**/z-p0-008a-*.spec.ts"],
+      testIgnore: ["**/z-p0-008a-*.spec.ts", "**/z-p0-008b-*.spec.ts"],
       use: { ...devices["iPhone 13"], baseURL: webkitURL },
     },
     {
       name: "webkit-008a",
-      testMatch: ["**/z-p0-008a-setup-reset.spec.ts", "**/z-p0-008a-geometry.spec.ts"],
+      testMatch: [
+        "**/z-p0-008a-setup-reset.spec.ts",
+        "**/z-p0-008a-geometry.spec.ts",
+        "**/z-p0-008b-backup-restore.spec.ts",
+      ],
       use: { ...devices["iPhone 13"], baseURL: webkit008aURL },
     },
   ],

@@ -2,7 +2,11 @@ import { createHash, randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { nowUtcIso } from "../domain/time.js";
 import {
+  HouseholdBackupCreateSchema,
+  HouseholdBackupDeleteSchema,
   HouseholdResetSchema,
+  HouseholdRestoreSchema,
+  OwnerLegacyBackupRegisterSchema,
   OwnerSecretSchema,
   PasswordReauthenticateSchema,
   SetupAccountSchema,
@@ -10,10 +14,18 @@ import {
   SetupInvitationExchangeSchema,
 } from "../shared/schemas.js";
 import type { AppConfig } from "./config.js";
+import {
+  assertSafeLegacyCandidate,
+  buildRestorePreview,
+  listLegacyBackupCandidates,
+  toPublicMeta,
+  verifyCatalogBackupFile,
+} from "./backup-catalog.js";
 import { digestEquals, sha256Hex } from "./crypto.js";
 import {
   InstallationControl,
   ownerSecretDigestFromEnv,
+  resolveInstallationControlPath,
   verifyOwnerSecret,
 } from "./installation-control.js";
 import type { LifecycleRuntime } from "./lifecycle-runtime.js";
@@ -87,6 +99,27 @@ function setContinuationCookie(reply: FastifyReply, config: AppConfig, token: st
     secure: config.cookieSecure,
     path: "/",
   });
+}
+
+function reusablePreOperationBackup(
+  control: InstallationControl,
+  kind: string,
+  payloadDigest: string,
+  sourceEpoch: number,
+): import("./backup-catalog.js").BackupPublicMeta | null {
+  const failed = control.findFailedOperationByPayload(kind, payloadDigest, sourceEpoch);
+  if (!failed?.responseJson) return null;
+  try {
+    const body = JSON.parse(failed.responseJson) as {
+      preOperationBackup?: { id?: string } | null;
+    };
+    const id = body.preOperationBackup?.id;
+    if (!id) return null;
+    const row = control.getBackup(id);
+    return row ? toPublicMeta(row) : null;
+  } catch {
+    return null;
+  }
 }
 
 function ownerSessionFromRequest(
@@ -333,6 +366,456 @@ export function registerLifecycleRoutes(app: FastifyInstance, deps: LifecycleRou
     return { ok: true, confirmedAt: nowUtcIso() };
   });
 
+  function requireLifecycleManager(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): AuthContext | null {
+    const session = deps.requireSession(request, reply);
+    if (!session) return null;
+    if (!session.grants.includes("household.lifecycle.manage")) {
+      void reply
+        .code(403)
+        .send(deps.errorBody("FORBIDDEN", "Required authority is missing", request.id));
+      return null;
+    }
+    return session;
+  }
+
+  function requireRecentPassword(
+    session: AuthContext,
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): boolean {
+    if (!deps.getStore().passwordConfirmedRecently(session.sessionId)) {
+      void reply
+        .code(403)
+        .send(deps.errorBody("FORBIDDEN", "Recent password confirmation required", request.id));
+      return false;
+    }
+    return true;
+  }
+
+  /** Catalog list: lifecycle manager or owner recovery — never reset continuation alone. */
+  function canAccessBackupCatalog(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): { kind: "member"; session: AuthContext } | { kind: "owner" } | null {
+    // Prefer an active lifecycle manager when both cookies exist (Settings restore
+    // after owner-issued invite). Owner-only Welcome recovery has no member cookie.
+    const session = deps.trySession(request);
+    if (session?.grants.includes("household.lifecycle.manage")) {
+      return { kind: "member", session };
+    }
+    const owner = ownerSessionFromRequest(request, deps.config, deps.runtime.control);
+    if (owner) return { kind: "owner" };
+    if (session) {
+      void reply
+        .code(403)
+        .send(deps.errorBody("FORBIDDEN", "Required authority is missing", request.id));
+      return null;
+    }
+    if (request.cookies[deps.config.recoveryContinuationCookieName]) {
+      void reply
+        .code(403)
+        .send(
+          deps.errorBody(
+            "FORBIDDEN",
+            "Reset recovery cannot enumerate backups; sign in as owner or a lifecycle manager",
+            request.id,
+          ),
+        );
+      return null;
+    }
+    void reply
+      .code(401)
+      .send(deps.errorBody("UNAUTHORIZED", "Authentication required", request.id));
+    return null;
+  }
+
+  app.get("/api/v1/household/backups", async (request, reply) => {
+    const access = canAccessBackupCatalog(request, reply);
+    if (!access) return;
+    const items = deps.runtime.control.listBackups().map(toPublicMeta);
+    reply.header("Cache-Control", "no-store");
+    return { backups: items };
+  });
+
+  app.post("/api/v1/household/backups", async (request, reply) => {
+    const session = requireLifecycleManager(request, reply);
+    if (!session) return;
+    if (!requireRecentPassword(session, request, reply)) return;
+    const parsed = HouseholdBackupCreateSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(deps.errorBody("VALIDATION", "Invalid backup payload", request.id));
+    }
+    const sourceEpoch = deps.getInstallationEpoch();
+    const payloadDigest = createHash("sha256")
+      .update(
+        `${parsed.data.mutationId}:${sourceEpoch}:BACKUP:${parsed.data.label ?? ""}`,
+      )
+      .digest("hex");
+    const prior = deps.runtime.control.findCompletedOperationByPayload(
+      "household_backup",
+      payloadDigest,
+      sourceEpoch,
+    );
+    if (prior?.responseJson) {
+      reply.header("Cache-Control", "no-store");
+      return JSON.parse(prior.responseJson) as Record<string, unknown>;
+    }
+    const operationId = randomUUID();
+    deps.runtime.control.beginLifecycleOperation({
+      id: operationId,
+      kind: "household_backup",
+      sourceEpoch,
+      initiatorKind: "member",
+      initiatorRef: session.membershipId,
+      payloadDigest,
+    });
+    try {
+      const backup = await deps.runtime.createBackup({ label: parsed.data.label ?? null });
+      const response = {
+        operationId,
+        kind: "household_backup",
+        sourceEpoch,
+        resultEpoch: sourceEpoch,
+        backup,
+      };
+      deps.runtime.control.completeLifecycleOperation(
+        operationId,
+        sourceEpoch,
+        JSON.stringify(response),
+      );
+      reply.header("Cache-Control", "no-store");
+      return response;
+    } catch (err) {
+      deps.runtime.control.failLifecycleOperation(
+        operationId,
+        JSON.stringify({
+          code: "FAILED",
+          message: err instanceof Error ? err.message : "Backup failed",
+        }),
+      );
+      const code =
+        err && typeof err === "object" && "code" in err
+          ? String((err as { code: string }).code)
+          : "FAILED";
+      const status = code === "CONFLICT" ? 409 : code === "NOT_FOUND" ? 404 : 500;
+      return reply
+        .code(status)
+        .send(
+          deps.errorBody(code, err instanceof Error ? err.message : "Backup failed", request.id),
+        );
+    }
+  });
+
+  app.delete("/api/v1/household/backups/:id", async (request, reply) => {
+    const session = requireLifecycleManager(request, reply);
+    if (!session) return;
+    if (!requireRecentPassword(session, request, reply)) return;
+    const { id } = request.params as { id: string };
+    const parsed = HouseholdBackupDeleteSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(deps.errorBody("VALIDATION", "Confirmation text must be DELETE", request.id));
+    }
+    try {
+      await deps.runtime.deleteBackup(id);
+      reply.header("Cache-Control", "no-store");
+      return { ok: true, id };
+    } catch (err) {
+      const code =
+        err && typeof err === "object" && "code" in err
+          ? String((err as { code: string }).code)
+          : "FAILED";
+      const status =
+        code === "NOT_FOUND" ? 404 : code === "CONFLICT" ? 409 : code === "VALIDATION" ? 400 : 500;
+      return reply
+        .code(status)
+        .send(
+          deps.errorBody(code, err instanceof Error ? err.message : "Delete failed", request.id),
+        );
+    }
+  });
+
+  app.get("/api/v1/household/backups/:id/preview", async (request, reply) => {
+    const access = canAccessBackupCatalog(request, reply);
+    if (!access) return;
+    const { id } = request.params as { id: string };
+    const row = deps.runtime.control.getBackup(id);
+    if (!row) {
+      return reply.code(404).send(deps.errorBody("NOT_FOUND", "Backup not found", request.id));
+    }
+    const verified = verifyCatalogBackupFile(deps.config.backupDir, row);
+    if ("error" in verified) {
+      return reply
+        .code(verified.error.code === "NOT_FOUND" ? 404 : 400)
+        .send(deps.errorBody(verified.error.code, verified.error.message, request.id));
+    }
+    reply.header("Cache-Control", "no-store");
+    return buildRestorePreview({
+      meta: toPublicMeta(row),
+      activeDbPath: deps.runtime.activeDbPath,
+    });
+  });
+
+  app.get("/api/v1/owner/backups/scan", async (request, reply) => {
+    const owner = requireOwnerSession(request, reply, deps);
+    if (!owner) return;
+    const files = listLegacyBackupCandidates(deps.config.backupDir);
+    const registered = new Set(
+      deps.runtime.control.listBackups().map((b) => b.relativePath),
+    );
+    reply.header("Cache-Control", "no-store");
+    return {
+      files: files.map((f) => ({
+        fileName: f.fileName,
+        byteSize: f.byteSize,
+        mtimeUtc: f.mtimeUtc,
+        alreadyRegistered: registered.has(f.fileName),
+      })),
+    };
+  });
+
+  app.post("/api/v1/owner/backups/register", async (request, reply) => {
+    const owner = requireOwnerSession(request, reply, deps);
+    if (!owner) return;
+    const tokenHeader = request.headers["x-csrf-token"];
+    if (
+      typeof tokenHeader !== "string" ||
+      !digestEquals(sha256Hex(tokenHeader), sha256Hex(owner.csrfSecret))
+    ) {
+      return reply
+        .code(403)
+        .send(deps.errorBody("CSRF", "CSRF token is invalid", request.id));
+    }
+    const parsed = OwnerLegacyBackupRegisterSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(deps.errorBody("VALIDATION", "Invalid register payload", request.id));
+    }
+    try {
+      const legacyAbs = assertSafeLegacyCandidate({
+        backupDir: deps.config.backupDir,
+        requestedName: parsed.data.fileName,
+        controlPath: resolveInstallationControlPath(deps.config.installationControlPath),
+        activeDbPath: deps.runtime.activeDbPath,
+        activeDbRelativePath: deps.runtime.activeDbRelativePath,
+      });
+      const backup = await deps.runtime.registerLegacyBackup({
+        legacySourceAbs: legacyAbs,
+        label: parsed.data.label ?? null,
+      });
+      reply.header("Cache-Control", "no-store");
+      return { backup };
+    } catch (err) {
+      const code =
+        err && typeof err === "object" && "code" in err
+          ? String((err as { code: string }).code)
+          : "FAILED";
+      const status =
+        code === "NOT_FOUND" ? 404 : code === "VALIDATION" || code === "UNSUPPORTED" ? 400 : 500;
+      return reply
+        .code(status)
+        .send(
+          deps.errorBody(
+            code,
+            err instanceof Error ? err.message : "Register failed",
+            request.id,
+          ),
+        );
+    }
+  });
+
+  app.post("/api/v1/household/restore", async (request, reply) => {
+    const access = canAccessBackupCatalog(request, reply);
+    if (!access) return;
+    const parsed = HouseholdRestoreSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(deps.errorBody("VALIDATION", "Invalid restore payload", request.id));
+    }
+    if (access.kind === "member") {
+      if (!requireRecentPassword(access.session, request, reply)) return;
+    } else {
+      const tokenHeader = request.headers["x-csrf-token"];
+      const owner = ownerSessionFromRequest(request, deps.config, deps.runtime.control);
+      if (
+        !owner ||
+        typeof tokenHeader !== "string" ||
+        !digestEquals(sha256Hex(tokenHeader), sha256Hex(owner.csrfSecret))
+      ) {
+        return reply
+          .code(403)
+          .send(deps.errorBody("CSRF", "CSRF token is invalid", request.id));
+      }
+    }
+
+    const sourceEpoch = deps.getInstallationEpoch();
+    if (parsed.data.expectedEpoch !== sourceEpoch) {
+      return reply
+        .code(409)
+        .send(
+          deps.errorBody("CONFLICT", "Installation epoch changed; reload and try again", request.id, {
+            installationEpoch: sourceEpoch,
+          }),
+        );
+    }
+    const saveFlag = parsed.data.saveBackupBeforeRestore ? "1" : "0";
+    const payloadDigest = createHash("sha256")
+      .update(
+        `${parsed.data.mutationId}:${sourceEpoch}:RESTORE:${parsed.data.backupId}:${parsed.data.expectedDigest}:${saveFlag}`,
+      )
+      .digest("hex");
+    const prior = deps.runtime.control.findCompletedOperationByPayload(
+      "household_restore",
+      payloadDigest,
+      sourceEpoch,
+    );
+    if (prior?.responseJson) {
+      reply.header("Cache-Control", "no-store");
+      return JSON.parse(prior.responseJson) as Record<string, unknown>;
+    }
+    const reusePreOperationBackup = reusablePreOperationBackup(
+      deps.runtime.control,
+      "household_restore",
+      payloadDigest,
+      sourceEpoch,
+    );
+
+    const initiatorKind = access.kind === "owner" ? "owner" : "member";
+    const initiatorRef =
+      access.kind === "owner" ? "owner" : access.session.membershipId;
+    const operationId = randomUUID();
+    deps.runtime.control.beginLifecycleOperation({
+      id: operationId,
+      kind: "household_restore",
+      sourceEpoch,
+      initiatorKind,
+      initiatorRef,
+      payloadDigest,
+    });
+    const continuation = deps.runtime.control.createRecoveryContinuation({
+      operationId,
+      sourceEpoch,
+      initiatorRef,
+    });
+    setContinuationCookie(reply, deps.config, continuation);
+
+    let replacement: {
+      resultEpoch: number;
+      cleanupFailures: string[];
+      preOperationBackup: import("./backup-catalog.js").BackupPublicMeta | null;
+      restoredBackup: import("./backup-catalog.js").BackupPublicMeta;
+    };
+    // Revoke before exclusive drain so in-flight shared holders revalidate as 401 (AT10).
+    deps.getStore().revokeAllSessionsAndClaims();
+    deps.sync.closeAll("restore");
+
+    try {
+      replacement = await deps.runtime.replaceWithRestoredDatabase({
+        operationId,
+        sourceEpoch,
+        backupId: parsed.data.backupId,
+        expectedDigest: parsed.data.expectedDigest,
+        saveBackupBefore: parsed.data.saveBackupBeforeRestore,
+        backupLabel: parsed.data.backupLabel ?? null,
+        reusePreOperationBackup,
+      });
+    } catch (err) {
+      deps.syncRuntimeRefs();
+      deps.runtime.reconcilePendingOperations();
+      const recovered = deps.runtime.control.getLifecycleOperation(operationId);
+      if (recovered?.status === "completed" && recovered.responseJson) {
+        reply.header("Cache-Control", "no-store");
+        deps.clearSessionCookie(reply);
+        return JSON.parse(recovered.responseJson) as Record<string, unknown>;
+      }
+      if (!recovered || recovered.status === "pending") {
+        let progress: Record<string, unknown> = {};
+        try {
+          progress = recovered?.responseJson
+            ? (JSON.parse(recovered.responseJson) as Record<string, unknown>)
+            : {};
+        } catch {
+          progress = {};
+        }
+        deps.runtime.control.failLifecycleOperation(
+          operationId,
+          JSON.stringify({
+            code: "FAILED",
+            message: err instanceof Error ? err.message : "Restore failed",
+            restoredBackup: progress.restoredBackup ?? null,
+            preOperationBackup: progress.preOperationBackup ?? null,
+            activeDataUnchanged: true,
+          }),
+        );
+      }
+      const code =
+        err && typeof err === "object" && "code" in err
+          ? String((err as { code: string }).code)
+          : "FAILED";
+      const status =
+        code === "CONFLICT"
+          ? 409
+          : code === "NOT_FOUND"
+            ? 404
+            : code === "UNSUPPORTED" || code === "CORRUPT"
+              ? 400
+              : 500;
+      return reply
+        .code(status)
+        .send(
+          deps.errorBody(
+            code,
+            err instanceof Error ? err.message : "Restore failed",
+            request.id,
+            {
+              preOperationBackup:
+                recovered?.responseJson &&
+                (() => {
+                  try {
+                    return (
+                      JSON.parse(recovered.responseJson) as {
+                        preOperationBackup?: unknown;
+                      }
+                    ).preOperationBackup;
+                  } catch {
+                    return null;
+                  }
+                })(),
+            },
+          ),
+        );
+    }
+
+    const response = {
+      operationId,
+      kind: "household_restore",
+      sourceEpoch,
+      resultEpoch: replacement.resultEpoch,
+      installationEpoch: replacement.resultEpoch,
+      cleanupFailures: replacement.cleanupFailures,
+      setupRequired: false,
+      signInRequired: true,
+      restoredBackup: replacement.restoredBackup,
+      preOperationBackup: replacement.preOperationBackup,
+    };
+    deps.runtime.control.completeLifecycleOperation(
+      operationId,
+      replacement.resultEpoch,
+      JSON.stringify(response),
+    );
+    reply.header("Cache-Control", "no-store");
+    deps.clearSessionCookie(reply);
+    return response;
+  });
+
   app.post("/api/v1/household/reset", async (request, reply) => {
     const session = deps.requireSession(request, reply);
     if (!session) return;
@@ -368,8 +851,11 @@ export function registerLifecycleRoutes(app: FastifyInstance, deps: LifecycleRou
           }),
         );
     }
+    const saveFlag = parsed.data.saveBackupBeforeReset ? "1" : "0";
     const payloadDigest = createHash("sha256")
-      .update(`${parsed.data.mutationId}:${sourceEpoch}:RESET`)
+      .update(
+        `${parsed.data.mutationId}:${sourceEpoch}:RESET:${saveFlag}:${parsed.data.backupLabel ?? ""}`,
+      )
       .digest("hex");
     const prior = deps.runtime.control.findCompletedOperationByPayload(
       "household_reset",
@@ -380,6 +866,12 @@ export function registerLifecycleRoutes(app: FastifyInstance, deps: LifecycleRou
       reply.header("Cache-Control", "no-store");
       return JSON.parse(prior.responseJson) as Record<string, unknown>;
     }
+    const reusePreOperationBackup = reusablePreOperationBackup(
+      deps.runtime.control,
+      "household_reset",
+      payloadDigest,
+      sourceEpoch,
+    );
 
     const operationId = randomUUID();
     deps.runtime.control.beginLifecycleOperation({
@@ -397,14 +889,22 @@ export function registerLifecycleRoutes(app: FastifyInstance, deps: LifecycleRou
     });
     setContinuationCookie(reply, deps.config, continuation);
 
+    let replacement: {
+      resultEpoch: number;
+      cleanupFailures: string[];
+      preOperationBackup: import("./backup-catalog.js").BackupPublicMeta | null;
+    };
+    // Revoke before exclusive drain so in-flight shared holders revalidate as 401 (AT10).
     deps.getStore().revokeAllSessionsAndClaims();
-    deps.sync.closeAll();
+    deps.sync.closeAll("reset");
 
-    let replacement: { resultEpoch: number; cleanupFailures: string[] };
     try {
       replacement = await deps.runtime.replaceWithEmptyDatabase({
         operationId,
         sourceEpoch,
+        saveBackupBefore: parsed.data.saveBackupBeforeReset,
+        backupLabel: parsed.data.backupLabel ?? null,
+        reusePreOperationBackup,
       });
     } catch (err) {
       // Activation may already have swapped runtime; reconcile so a pending op
@@ -417,12 +917,24 @@ export function registerLifecycleRoutes(app: FastifyInstance, deps: LifecycleRou
         deps.clearSessionCookie(reply);
         return JSON.parse(recovered.responseJson) as Record<string, unknown>;
       }
-      if (!recovered || recovered.status === "pending") {
+      // Backup may have succeeded before a later fault — surface that truthfully.
+      if (recovered?.status === "pending" || !recovered) {
+        let preOperationBackup: unknown = null;
+        try {
+          const progress = recovered?.responseJson
+            ? (JSON.parse(recovered.responseJson) as { preOperationBackup?: unknown })
+            : {};
+          preOperationBackup = progress.preOperationBackup ?? null;
+        } catch {
+          /* ignore */
+        }
         deps.runtime.control.failLifecycleOperation(
           operationId,
           JSON.stringify({
             code: "FAILED",
             message: err instanceof Error ? err.message : "Reset failed",
+            preOperationBackup,
+            activeDataUnchanged: true,
           }),
         );
       }
@@ -431,11 +943,13 @@ export function registerLifecycleRoutes(app: FastifyInstance, deps: LifecycleRou
 
     const response = {
       operationId,
+      kind: "household_reset",
       sourceEpoch,
       resultEpoch: replacement.resultEpoch,
       installationEpoch: replacement.resultEpoch,
       cleanupFailures: replacement.cleanupFailures,
       setupRequired: true,
+      preOperationBackup: replacement.preOperationBackup,
     };
     deps.runtime.control.completeLifecycleOperation(
       operationId,

@@ -19,9 +19,9 @@
 
 ## Current focus
 
-Inspected 2026-10-05: integrated local `main` / `origin/main` remain **415d930** (PR **#23**), through migration 017. P0-008A r1 is technically accepted against branch `brief/p0-008a-protected-first-run-reset` at committed tip **bab13b0** plus the reviewed uncommitted AT10 closure. No live Railway operation or deployment occurred.
+Inspected 2026-10-05: local `main` / `origin/main` are **405c5db** (PR **#24**), through migration 018. P0-008A r1 is technically accepted and integrated. No live Railway reset/restore or hosted Product evaluation is claimed.
 
-**P0-008A r1** is **ACCEPTED by Architecture** against committed tip `bab13b0` plus the reviewed working-tree closure. Engineering reports PR/RC gates passing; closure changes are not yet committed. Hosted setup/reset and Product evaluation remain separate. B–D remain **DRAFT** and gated pending A integration/baseline refresh. The whole Product journey remains one card: **Set up and manage my household without operator help**.
+**P0-008B r2** is technically accepted at evidence commit `34179f7`; docs-only Build Report update is at branch tip `4448c56`. The three AT2/AT6/AT9 findings are closed, exact `validate:pr` / `validate:rc` pass at the evidence tip, and Build Report commit/tree metadata is corrected. The branch is not yet stated as merged; the Project Lead owns PR/integration. Hosted backup/reset/restore and hands-on Product evaluation remain separate. See `reports/P0-008B-r2-architecture-review.md`. C/D remain successor drafts pending integration and predecessor evaluation. The whole Product journey remains one card: **Set up and manage my household without operator help**.
 
 P0-007C's outstanding physical/Product judgments remain distinct from its technical acceptance and from approval to begin P0-008. Old reports retain their inspected SHAs.
 
@@ -44,8 +44,8 @@ P0-007C's outstanding physical/Product judgments remain distinct from its techni
 | P0-007C-2 - Household Display and Read-only Dashboard | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `739f7e3` via PR #21 | Physical readability reported; full Product acceptance remains separate |
 | P0-007C-3A - Complete Assigned Work at the Shared Display | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `6510fb4` via PR #22 | Product evaluation remains separate; display density feedback recorded |
 | P0-007C-3B - Owner-Controlled Personal Work on the Wall | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `415d930` via PR #23 | Product evaluation of the changed wall remains separate |
-| P0-008A - Protected First-Manager Setup and Repeatable Reset | r1 | ACCEPTED | Project Lead | `brief/p0-008a-protected-first-run-reset` | Commit reviewed closure, then PR/merge; hosted/Product evaluation remains later |
-| P0-008B - Household Backups and In-App Restore | r1 | DRAFT | Architecture | Successor draft | Accepted A evidence; baseline refresh and readiness release |
+| P0-008A - Protected First-Manager Setup and Repeatable Reset | r1 | ACCEPTED | Integrated foundation | Merged to `main` at `405c5db` via PR #24 | Hosted/Product evaluation remains separate |
+| P0-008B - Household Backups and In-App Restore | r2 | ACCEPTED | Project Lead integration | `brief/p0-008b-household-backups-in-app-restore` @ `4448c56` | Push/open PR/merge; later hosted and Product evaluation remain separate |
 | P0-008C - Understandable Member Access and Safe Removal | r1 | DRAFT | Architecture | Successor draft | Accepted A/B evidence; baseline refresh and readiness release |
 | P0-008D - Guided Setup to the First Useful Household Day | r1 | DRAFT | Architecture | Successor draft | Accepted A–C evidence; baseline refresh and readiness release |
 
@@ -80,11 +80,11 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next Project Lead decision
 
-- Project Lead commits the reviewed P0-008A r1 closure and opens/merges the PR. Hosted setup/reset and hands-on Product evaluation remain explicit later checkpoints; live reset remains Project Lead–authorized only.
+- Project Lead controls Git integration of the B r2 planning writeback and later implementation. Hosted backup/reset/restore and hands-on Product evaluation remain explicit later checkpoints; live data replacement remains Project Lead–authorized only.
 
 ## Next likely handoff
 
-Architecture technical re-review of **P0-008A revision 1**. B–D remain gated. The Project Lead owns Git integration and later hosted/Product evaluation. Detailed coverage: `reports/P0-008-architecture-sequencing.md`.
+The Project Lead owns integration of technically accepted P0-008B r2 from `brief/p0-008b-household-backups-in-app-restore` @ `4448c56`. After merge, refresh the baseline for C; hosted backup/reset/restore and Product evaluation remain separately authorized checkpoints. No deployment/live database operation is implied. Detailed coverage: `reports/P0-008-architecture-sequencing.md`.
 
 ## Notes for all teams
 

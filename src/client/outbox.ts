@@ -155,6 +155,36 @@ export function retireOutboxItemsForEpoch(
   });
 }
 
+export const IDENTITY_LOSS_RETIRE_MESSAGE =
+  "Your sign-in access changed; this checklist change was not saved.";
+
+/**
+ * Mark pending/retrying commands as rejected because the member lost sign-in
+ * access (revoked, removed, or session no longer valid). Never replays them.
+ */
+export function retireOutboxItemsForIdentityLoss(
+  items: OutboxItem[],
+  message: string = IDENTITY_LOSS_RETIRE_MESSAGE,
+): OutboxItem[] {
+  return items.map((item) =>
+    item.state === "rejected"
+      ? item
+      : { ...item, state: "rejected" as const, errorMessage: message },
+  );
+}
+
+export async function retireOutboxForIdentityLoss(
+  membershipId: string,
+  message: string = IDENTITY_LOSS_RETIRE_MESSAGE,
+): Promise<OutboxItem[]> {
+  let next: OutboxItem[] = [];
+  await update<OutboxItem[]>(keyForMembership(membershipId), (current) => {
+    next = retireOutboxItemsForIdentityLoss(current ?? [], message);
+    return next;
+  });
+  return next;
+}
+
 export async function retireMismatchedMemberOutbox(
   membershipId: string,
   installationEpoch: number,

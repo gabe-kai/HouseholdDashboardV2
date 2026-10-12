@@ -251,6 +251,40 @@ export function assignmentUsesGroup(plan: StoredResponsibilityPlan): string[] {
   return [...ids];
 }
 
+function assignmentReferencesMembership(
+  assignment: AssignmentSpec,
+  membershipId: string,
+): boolean {
+  if (assignment.fixedMemberId === membershipId) return true;
+  if (assignment.cycleOrder?.includes(membershipId)) return true;
+  if (assignment.excludedMemberIds?.includes(membershipId)) return true;
+  if (assignment.savedRingOrder?.includes(membershipId)) return true;
+  if (
+    assignment.weeklyMap &&
+    Object.values(assignment.weeklyMap).includes(membershipId)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** True when a stored plan names this membership in base or addition assignment content. */
+export function planReferencesMembership(
+  plan: StoredResponsibilityPlan,
+  membershipId: string,
+): boolean {
+  if (assignmentReferencesMembership(plan.assignment, membershipId)) return true;
+  for (const addition of plan.scheduledAdditions) {
+    if (
+      addition.assignment &&
+      assignmentReferencesMembership(addition.assignment, membershipId)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function isPlanEffectiveOnOrAfter(planAnchor: HouseholdDate, date: HouseholdDate): boolean {
   return compareHouseholdDates(date, planAnchor) >= 0;
 }

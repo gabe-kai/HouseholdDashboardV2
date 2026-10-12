@@ -51,7 +51,7 @@ import {
   nowUtcIso,
   type HouseholdDate,
 } from "../domain/time.js";
-import { GRANT_PRESETS } from "../shared/grants.js";
+import { GRANT_PRESETS, MEMBER_DEFAULT_GRANTS } from "../shared/grants.js";
 import type {
   AccessState,
   ActivityClearResult,
@@ -100,6 +100,7 @@ import {
   loadResponsibilityPlan,
   normalizeAssignmentInput,
   normalizeScheduledAdditions,
+  planReferencesMembership,
   resolveResponsibilityComposition,
   shiftPlanAnchorsForBoundaryMove,
   updateResponsibilityPlan,
@@ -115,6 +116,35 @@ import {
   selectActiveEntryRowForDate,
   toScheduleEntryLike,
 } from "./routine-plan.js";
+import {
+  accessMetaForMembership,
+  assertEssentialManagerSurvives,
+  bumpAuthorityVersion,
+  countEssentialManagers,
+  digestPayload,
+  findAccessClaimByToken,
+  fixtureRemediationCandidates,
+  grantsForMembership as queryMembershipGrants,
+  hasActiveLifecycleManager as queryHasActiveLifecycleManager,
+  insertAccessClaim,
+  isMemberDeparted,
+  isMemberEligible as queryMemberEligible,
+  issuerHasEnrollmentAuthority,
+  markMembershipDeparted,
+  membershipCountsForEssentialManager,
+  mergedPermissionsFromInput,
+  physicallyDeleteUnusedMembership,
+  previewAccessClaimPayload,
+  readStructureReceipt as readStructureMutationReceipt,
+  replaceGrants as replaceMembershipGrants,
+  revokeOpenAccessClaims,
+  revokeOpenEnrollmentClaims,
+  resolveClaimGrants,
+  toMemberPublicShape,
+  unknownGrants,
+  writeStructureReceipt as writeStructureMutationReceipt,
+  type StructureMutationReceiptKind,
+} from "./member-access.js";
 import { SEED } from "./seeds/evaluation.js";
 
 export type AuthContext = {
@@ -123,7 +153,7 @@ export type AuthContext = {
   membershipId: string;
   householdId: string;
   displayName: string;
-  grants: Grant[];
+  grants: string[];
   timezone: string;
   csrfSecret: string;
   installationEpoch: number;
@@ -411,7 +441,7 @@ function normalizedLogin(loginName: string): string {
   return loginName.trim().toLowerCase();
 }
 
-function legacyCapabilities(grants: Grant[]): string {
+function legacyCapabilities(grants: readonly Grant[]): string {
   return JSON.stringify(
     grants.includes("routine.shared.manage")
       ? ["manage_routine", "execute_own_occurrence"]
@@ -456,6 +486,7 @@ export class AppStore {
    * return (P0-007B AT10). Throwing rolls back group + dependent occurrences.
    */
   private groupUpdateFailureHook: (() => void) | null = null;
+  private memberRemovalFailureHook: (() => void) | null = null;
 
   setCalendarSaveFailureHook(hook: (() => void) | null): void {
     this.calendarSaveFailureHook = hook;
@@ -479,6 +510,10 @@ export class AppStore {
 
   setGroupUpdateFailureHook(hook: (() => void) | null): void {
     this.groupUpdateFailureHook = hook;
+  }
+
+  setMemberRemovalFailureHook(hook: (() => void) | null): void {
+    this.memberRemovalFailureHook = hook;
   }
 
   hasGrant(ctx: AuthContext, grant: Grant): boolean {
@@ -811,18 +846,28 @@ export class AppStore {
   }
 
   hasActiveLifecycleManager(): boolean {
-    const row = this.db
-      .prepare(
-        `SELECT 1 AS ok
-         FROM household_memberships hm
-         JOIN membership_grants mg ON mg.membership_id = hm.id
-         JOIN users u ON u.id = hm.user_id AND u.disabled = 0
-         WHERE hm.status = 'active'
-           AND mg.grant_name = 'household.lifecycle.manage'
-         LIMIT 1`,
-      )
-      .get() as { ok: number } | undefined;
-    return Boolean(row?.ok);
+    return queryHasActiveLifecycleManager(this.db);
+  }
+
+  countEssentialManagers(householdId: string): number {
+    return countEssentialManagers(this.db, householdId);
+  }
+
+  assertEssentialManagerSurvives(
+    householdId: string,
+    input:
+      | { nextGrantMap: ReadonlyMap<string, readonly string[]> }
+      | { removedMembershipIds: readonly string[] },
+  ): void {
+    assertEssentialManagerSurvives(this.db, householdId, input);
+  }
+
+  isMemberDeparted(membershipId: string): boolean {
+    return isMemberDeparted(this.db, membershipId);
+  }
+
+  previewAccessClaim(token: string) {
+    return previewAccessClaimPayload(this.db, token);
   }
 
   setupRequired(): boolean {
@@ -1011,7 +1056,9 @@ export class AppStore {
     const memberships = this.db
       .prepare(
         `SELECT id FROM household_memberships
-         WHERE user_id = ? AND status = 'active' ORDER BY created_at`,
+         WHERE user_id = ? AND status = 'active'
+           AND departed_at IS NULL AND sign_in_revoked_at IS NULL
+         ORDER BY created_at`,
       )
       .all(user.id) as Array<{ id: string }>;
     if (memberships.length !== 1) {
@@ -1067,6 +1114,18 @@ export class AppStore {
       fail("UNAUTHORIZED", "Claim is invalid or expired");
     }
 
+    const issuerId = (
+      this.db
+        .prepare(`SELECT created_by_membership_id FROM enrollment_claims WHERE id = ?`)
+        .get(claim.id) as { created_by_membership_id: string | null } | undefined
+    )?.created_by_membership_id;
+    if (
+      issuerId &&
+      !issuerHasEnrollmentAuthority(this.db, issuerId, claim.household_id)
+    ) {
+      fail("UNAUTHORIZED", "Claim is invalid or expired");
+    }
+
     const existingUser = this.db
       .prepare("SELECT 1 FROM users WHERE login_name = ?")
       .get(loginName);
@@ -1076,7 +1135,11 @@ export class AppStore {
     const userId = randomUUID();
     const membershipId = claim.membership_id ?? randomUUID();
     const createdAt = nowUtcIso();
-    const grants = GRANT_PRESETS[claim.preset];
+    const grants = resolveClaimGrants(
+      this.db,
+      claim.membership_id,
+      GRANT_PRESETS[claim.preset],
+    );
 
     const tx = this.db.transaction(() => {
       const fresh = this.db
@@ -1147,7 +1210,7 @@ export class AppStore {
           .run(claim.household_id);
       }
 
-      this.replaceGrants(membershipId, grants);
+      replaceMembershipGrants(this.db, membershipId, grants);
       this.db
         .prepare("UPDATE enrollment_claims SET consumed_at = ? WHERE id = ?")
         .run(createdAt, claim.id);
@@ -1167,19 +1230,26 @@ export class AppStore {
     loginName: string;
     newPassphrase: string;
   }): Promise<{ membershipId: string; userId: string }> {
+    const household = this.db
+      .prepare(`SELECT id FROM households ORDER BY id LIMIT 1`)
+      .get() as { id: string } | undefined;
+    if (!household) fail("CONFLICT", "Expected exactly one active essential manager");
     const managers = this.db
       .prepare(
         `SELECT hm.id, hm.user_id, u.login_name
          FROM household_memberships hm
-         JOIN membership_grants mg ON mg.membership_id = hm.id
          JOIN users u ON u.id = hm.user_id AND u.disabled = 0
-         WHERE hm.status = 'active' AND mg.grant_name = 'household.lifecycle.manage'`,
+         WHERE hm.household_id = ? AND hm.status = 'active'
+           AND hm.departed_at IS NULL AND hm.sign_in_revoked_at IS NULL`,
       )
-      .all() as Array<{ id: string; user_id: string; login_name: string }>;
-    if (managers.length !== 1) {
-      fail("CONFLICT", "Expected exactly one active lifecycle manager");
+      .all(household.id) as Array<{ id: string; user_id: string; login_name: string }>;
+    const essentialManagers = managers.filter((row) =>
+      membershipCountsForEssentialManager(this.db, row.id),
+    );
+    if (essentialManagers.length !== 1) {
+      fail("CONFLICT", "Expected exactly one active essential manager");
     }
-    const manager = managers[0];
+    const manager = essentialManagers[0]!;
     if (normalizedLogin(input.loginName) !== manager.login_name) {
       fail("VALIDATION", "Login name does not match the sole manager");
     }
@@ -1219,7 +1289,12 @@ export class AppStore {
 
   issueEnrollmentClaim(
     ctx: AuthContext,
-    input: { mutationId: string; membershipId: string; preset: GrantPreset },
+    input: {
+      mutationId: string;
+      membershipId: string;
+      /** Ignored for grant application; claim redeem uses current membership grants. */
+      preset?: GrantPreset;
+    },
   ): {
     claimId: string;
     membershipId: string;
@@ -1229,7 +1304,10 @@ export class AppStore {
     token?: string;
   } {
     this.requireGrant(ctx, "household.member.enroll");
-    if (!GRANT_PRESETS[input.preset]) fail("VALIDATION", "Invalid grant preset");
+    // Preset is retained only for legacy enrollment_claims rows; redeem reads
+    // current membership grants via resolveClaimGrants.
+    const preset: GrantPreset = input.preset ?? "proposal_personalizer";
+    if (!GRANT_PRESETS[preset]) fail("VALIDATION", "Invalid grant preset");
 
     const prior = this.readStructureReceipt(input.mutationId, "setup_issue");
     if (prior) {
@@ -1274,7 +1352,7 @@ export class AppStore {
         householdId: ctx.householdId,
         membershipId: input.membershipId,
         displayName: membership.display_name,
-        preset: input.preset,
+        preset,
         creatorMembershipId: ctx.membershipId,
         kind: "enrollment",
       });
@@ -1315,6 +1393,703 @@ export class AppStore {
     return { membershipId, accessState: this.accessStateForMembership(membershipId) };
   }
 
+  issueAccessClaim(
+    ctx: AuthContext,
+    input: { mutationId: string; membershipId: string; purpose: import("../shared/schemas.js").AccessClaimPurpose },
+  ): {
+    claimId: string;
+    membershipId: string;
+    purpose: import("../shared/schemas.js").AccessClaimPurpose;
+    expiresAt: string;
+    accessState: AccessState;
+    secretAlreadyIssued: boolean;
+    token?: string;
+  } {
+    this.requireGrant(ctx, "household.access.manage");
+    const prior = readStructureMutationReceipt(this.db, input.mutationId, "access_claim_issue");
+    if (prior) {
+      return prior as {
+        claimId: string;
+        membershipId: string;
+        purpose: import("../shared/schemas.js").AccessClaimPurpose;
+        expiresAt: string;
+        accessState: AccessState;
+        secretAlreadyIssued: boolean;
+      };
+    }
+
+    const membership = this.db
+      .prepare(
+        `SELECT id, user_id, status, departed_at, sign_in_revoked_at
+         FROM household_memberships WHERE id = ? AND household_id = ?`,
+      )
+      .get(input.membershipId, ctx.householdId) as
+      | {
+          id: string;
+          user_id: string | null;
+          status: "active" | "pending";
+          departed_at: string | null;
+          sign_in_revoked_at: string | null;
+        }
+      | undefined;
+    if (!membership || membership.departed_at) fail("NOT_FOUND", "Person not found");
+
+    if (input.purpose === "invitation") {
+      if (membership.user_id && !membership.sign_in_revoked_at) {
+        fail("CONFLICT", "This person already has sign-in access");
+      }
+      if (membership.status !== "pending" && !membership.sign_in_revoked_at) {
+        fail("CONFLICT", "Invitation is only for people without active sign-in");
+      }
+    } else if (input.purpose === "password_reset") {
+      if (!membership.user_id || membership.sign_in_revoked_at) {
+        fail("CONFLICT", "Password reset requires an active signed-in person");
+      }
+    } else if (input.purpose === "restore_sign_in") {
+      if (!membership.user_id || !membership.sign_in_revoked_at) {
+        fail("CONFLICT", "Restore sign-in requires a revoked person with an existing account");
+      }
+    }
+
+    let issued!: {
+      claimId: string;
+      membershipId: string;
+      purpose: import("../shared/schemas.js").AccessClaimPurpose;
+      expiresAt: string;
+      accessState: AccessState;
+      secretAlreadyIssued: boolean;
+      token?: string;
+    };
+    const tx = this.db.transaction(() => {
+      const now = nowUtcIso();
+      revokeOpenAccessClaims(this.db, input.membershipId, input.purpose, now);
+      if (input.purpose === "invitation") {
+        revokeOpenEnrollmentClaims(this.db, input.membershipId, now);
+      }
+      const claim = insertAccessClaim(this.db, {
+        householdId: ctx.householdId,
+        membershipId: input.membershipId,
+        purpose: input.purpose,
+        creatorMembershipId: ctx.membershipId,
+      });
+      const safe = {
+        claimId: claim.claimId,
+        membershipId: input.membershipId,
+        purpose: input.purpose,
+        expiresAt: claim.expiresAt,
+        accessState: accessMetaForMembership(this.db, input.membershipId).state,
+        secretAlreadyIssued: true,
+      };
+      writeStructureMutationReceipt(this.db, input.mutationId, "access_claim_issue", safe);
+      issued = { ...safe, secretAlreadyIssued: false, token: claim.token };
+    });
+    tx();
+    return issued;
+  }
+
+  cancelAccessClaims(
+    ctx: AuthContext,
+    input: {
+      mutationId: string;
+      membershipId: string;
+      purpose?: import("../shared/schemas.js").AccessClaimPurpose;
+    },
+  ): { membershipId: string; accessState: AccessState } {
+    this.requireGrant(ctx, "household.access.manage");
+    const prior = readStructureMutationReceipt(this.db, input.mutationId, "access_claim_cancel");
+    if (prior) return prior as { membershipId: string; accessState: AccessState };
+
+    const membership = this.db
+      .prepare(`SELECT id FROM household_memberships WHERE id = ? AND household_id = ?`)
+      .get(input.membershipId, ctx.householdId);
+    if (!membership) fail("NOT_FOUND", "Person not found");
+
+    const tx = this.db.transaction(() => {
+      const now = nowUtcIso();
+      revokeOpenAccessClaims(this.db, input.membershipId, input.purpose, now);
+      if (!input.purpose || input.purpose === "invitation") {
+        revokeOpenEnrollmentClaims(this.db, input.membershipId, now);
+      }
+      const result = {
+        membershipId: input.membershipId,
+        accessState: accessMetaForMembership(this.db, input.membershipId).state,
+      };
+      writeStructureMutationReceipt(this.db, input.mutationId, "access_claim_cancel", result);
+      return result;
+    });
+    return tx();
+  }
+
+  async redeemAccessClaim(
+    input: {
+      claimToken: string;
+      loginName?: string;
+      passphrase?: string;
+      displayName?: string;
+      newPassphrase?: string;
+    },
+    installationEpoch = 1,
+  ): Promise<
+    | {
+        purpose: import("../shared/schemas.js").AccessClaimPurpose;
+        token: string;
+        csrfSecret: string;
+        context: AuthContext;
+      }
+    | { purpose: import("../shared/schemas.js").AccessClaimPurpose; ok: true }
+  > {
+    const claim = findAccessClaimByToken(this.db, input.claimToken);
+    if (
+      !claim ||
+      claim.consumed_at ||
+      claim.revoked_at ||
+      new Date(claim.expires_at) <= new Date()
+    ) {
+      fail("UNAUTHORIZED", "Claim is invalid or expired");
+    }
+    if (
+      claim.created_by_membership_id &&
+      !issuerHasEnrollmentAuthority(
+        this.db,
+        claim.created_by_membership_id,
+        claim.household_id,
+      )
+    ) {
+      fail("UNAUTHORIZED", "Claim is invalid or expired");
+    }
+    if (isMemberDeparted(this.db, claim.membership_id)) {
+      fail("UNAUTHORIZED", "Claim is invalid or expired");
+    }
+
+    const consumedAt = nowUtcIso();
+
+    if (claim.purpose === "password_reset") {
+      const newPass = input.newPassphrase ?? input.passphrase;
+      if (!newPass) fail("VALIDATION", "New passphrase is required");
+      const policy = this.validatePassphrasePolicy(newPass);
+      if (!policy.ok) fail("VALIDATION", policy.message ?? "Invalid passphrase");
+      const membership = this.db
+        .prepare(`SELECT user_id FROM household_memberships WHERE id = ?`)
+        .get(claim.membership_id) as { user_id: string | null } | undefined;
+      if (!membership?.user_id) fail("CONFLICT", "Account not found");
+      const phc = await hashPassphrase(newPass);
+      const tx = this.db.transaction(() => {
+        const fresh = findAccessClaimByToken(this.db, input.claimToken);
+        if (!fresh || fresh.consumed_at || fresh.revoked_at) {
+          fail("UNAUTHORIZED", "Claim is invalid or expired");
+        }
+        this.db
+          .prepare(`UPDATE user_credentials SET passphrase_phc = ?, updated_at = ? WHERE user_id = ?`)
+          .run(phc, consumedAt, membership.user_id);
+        this.db
+          .prepare(`UPDATE membership_access_claims SET consumed_at = ? WHERE id = ?`)
+          .run(consumedAt, claim.id);
+        revokeOpenAccessClaims(this.db, claim.membership_id, "password_reset", consumedAt);
+        this.revokeUserSessions(membership.user_id!);
+      });
+      tx();
+      return { purpose: "password_reset", ok: true };
+    }
+
+    if (claim.purpose === "restore_sign_in") {
+      const tx = this.db.transaction(() => {
+        const fresh = findAccessClaimByToken(this.db, input.claimToken);
+        if (!fresh || fresh.consumed_at || fresh.revoked_at) {
+          fail("UNAUTHORIZED", "Claim is invalid or expired");
+        }
+        this.db
+          .prepare(
+            `UPDATE household_memberships SET sign_in_revoked_at = NULL WHERE id = ?`,
+          )
+          .run(claim.membership_id);
+        this.db
+          .prepare(`UPDATE membership_access_claims SET consumed_at = ? WHERE id = ?`)
+          .run(consumedAt, claim.id);
+        revokeOpenAccessClaims(this.db, claim.membership_id, undefined, consumedAt);
+        revokeOpenEnrollmentClaims(this.db, claim.membership_id, consumedAt);
+      });
+      tx();
+      const userId = (
+        this.db
+          .prepare(`SELECT user_id FROM household_memberships WHERE id = ?`)
+          .get(claim.membership_id) as { user_id: string } | undefined
+      )?.user_id;
+      if (!userId) fail("CONFLICT", "Account not found");
+      return {
+        purpose: "restore_sign_in",
+        ...this.createSession(userId, claim.membership_id, installationEpoch),
+      };
+    }
+
+    // invitation
+    if (!input.loginName || !input.passphrase || !input.displayName) {
+      fail("VALIDATION", "Login name, passphrase, and display name are required");
+    }
+    const loginName = normalizedLogin(input.loginName);
+    if (!LOGIN_RE.test(loginName)) fail("VALIDATION", "Invalid login name");
+    const policy = this.validatePassphrasePolicy(input.passphrase);
+    if (!policy.ok) fail("VALIDATION", policy.message ?? "Invalid passphrase");
+    const displayName = input.displayName.trim();
+    if (!displayName || displayName.length > 80) {
+      fail("VALIDATION", "Display name must be between 1 and 80 characters");
+    }
+    if (this.db.prepare("SELECT 1 FROM users WHERE login_name = ?").get(loginName)) {
+      fail("UNAUTHORIZED", "Claim could not be completed");
+    }
+    const grants = queryMembershipGrants(this.db, claim.membership_id);
+    const passphrasePhc = await hashPassphrase(input.passphrase);
+    const userId = randomUUID();
+    const createdAt = consumedAt;
+
+    const tx = this.db.transaction(() => {
+      const fresh = findAccessClaimByToken(this.db, input.claimToken);
+      if (!fresh || fresh.consumed_at || fresh.revoked_at) {
+        fail("UNAUTHORIZED", "Claim is invalid or expired");
+      }
+      this.db
+        .prepare("INSERT INTO users (id, login_name, created_at, disabled) VALUES (?, ?, ?, 0)")
+        .run(userId, loginName, createdAt);
+      this.db
+        .prepare(
+          "INSERT INTO user_credentials (user_id, passphrase_phc, updated_at) VALUES (?, ?, ?)",
+        )
+        .run(userId, passphrasePhc, createdAt);
+
+      const existing = this.db
+        .prepare(
+          `SELECT id, user_id, status, sign_in_revoked_at FROM household_memberships
+           WHERE id = ? AND household_id = ?`,
+        )
+        .get(claim.membership_id, claim.household_id) as
+        | {
+            id: string;
+            user_id: string | null;
+            status: string;
+            sign_in_revoked_at: string | null;
+          }
+        | undefined;
+      if (!existing) fail("NOT_FOUND", "Person not found");
+      if (existing.user_id && !existing.sign_in_revoked_at) {
+        fail("CONFLICT", "Membership is no longer claimable");
+      }
+      if (
+        existing.status === "pending" &&
+        existing.user_id &&
+        !existing.sign_in_revoked_at
+      ) {
+        fail("CONFLICT", "Membership is no longer claimable");
+      }
+      this.db
+        .prepare(
+          `UPDATE household_memberships
+           SET user_id = ?, display_name = ?, status = 'active',
+               sign_in_revoked_at = NULL, version = version + 1
+           WHERE id = ?`,
+        )
+        .run(userId, displayName, claim.membership_id);
+      this.db
+        .prepare("UPDATE members SET display_name = ?, capabilities_json = ? WHERE id = ?")
+        .run(displayName, legacyCapabilities(grants as Grant[]), claim.membership_id);
+      replaceMembershipGrants(this.db, claim.membership_id, grants);
+      this.db
+        .prepare(`UPDATE membership_access_claims SET consumed_at = ? WHERE id = ?`)
+        .run(createdAt, claim.id);
+      revokeOpenAccessClaims(this.db, claim.membership_id, undefined, createdAt);
+      revokeOpenEnrollmentClaims(this.db, claim.membership_id, createdAt);
+    });
+    tx();
+    return {
+      purpose: "invitation",
+      ...this.createSession(userId, claim.membership_id, installationEpoch),
+    };
+  }
+
+  saveMembershipPermissions(
+    ctx: AuthContext,
+    membershipId: string,
+    input: {
+      mutationId: string;
+      expectedAuthorityVersion: number;
+      role: import("../shared/schemas.js").AuthorityRole;
+      memberMode?: import("../shared/schemas.js").MemberPersonalizeMode;
+      secondaryGrants: readonly string[];
+    },
+  ): MemberPublic {
+    this.requireGrant(ctx, "household.access.manage");
+    const prior = readStructureMutationReceipt(this.db, input.mutationId, "permission_save");
+    if (prior) return prior as MemberPublic;
+
+    let saved!: MemberPublic;
+    const tx = this.db.transaction(() => {
+      const row = this.db
+        .prepare(
+          `SELECT id, display_name, status, classification, version, authority_version,
+                  sort_order, departed_at, sign_in_revoked_at
+           FROM household_memberships WHERE id = ? AND household_id = ?`,
+        )
+        .get(membershipId, ctx.householdId) as
+        | {
+            id: string;
+            display_name: string;
+            status: "active" | "pending";
+            classification: PersonClassification | null;
+            version: number;
+            authority_version: number;
+            sort_order: number;
+            departed_at: string | null;
+            sign_in_revoked_at: string | null;
+          }
+        | undefined;
+      if (!row || row.departed_at) fail("NOT_FOUND", "Person not found");
+      const priorGrants = queryMembershipGrants(this.db, membershipId);
+      const merged = mergedPermissionsFromInput({
+        role: input.role,
+        memberMode: input.memberMode,
+        secondaryGrants: input.secondaryGrants,
+        priorGrants,
+      });
+      const nextMap = new Map<string, readonly string[]>([[membershipId, merged]]);
+      assertEssentialManagerSurvives(this.db, ctx.householdId, { nextGrantMap: nextMap });
+      const nextAuthority = bumpAuthorityVersion(
+        this.db,
+        membershipId,
+        input.expectedAuthorityVersion,
+      );
+      replaceMembershipGrants(this.db, membershipId, merged);
+      this.db
+        .prepare("UPDATE members SET capabilities_json = ? WHERE id = ?")
+        .run(legacyCapabilities(merged as Grant[]), membershipId);
+      saved = toMemberPublicShape(this.db, {
+        ...row,
+        authority_version: nextAuthority,
+      });
+      writeStructureMutationReceipt(this.db, input.mutationId, "permission_save", saved);
+    });
+    tx();
+    return saved;
+  }
+
+  revokeSignIn(
+    ctx: AuthContext,
+    membershipId: string,
+    input: { mutationId: string; expectedAuthorityVersion: number },
+  ): MemberPublic {
+    this.requireGrant(ctx, "household.access.manage");
+    const prior = readStructureMutationReceipt(this.db, input.mutationId, "sign_in_revoke");
+    if (prior) return prior as MemberPublic;
+
+    let saved!: MemberPublic;
+    const tx = this.db.transaction(() => {
+      const row = this.db
+        .prepare(
+          `SELECT id, display_name, status, classification, version, authority_version,
+                  sort_order, departed_at, sign_in_revoked_at, user_id
+           FROM household_memberships WHERE id = ? AND household_id = ?`,
+        )
+        .get(membershipId, ctx.householdId) as
+        | {
+            id: string;
+            display_name: string;
+            status: "active" | "pending";
+            classification: PersonClassification | null;
+            version: number;
+            authority_version: number;
+            sort_order: number;
+            departed_at: string | null;
+            sign_in_revoked_at: string | null;
+            user_id: string | null;
+          }
+        | undefined;
+      if (!row || row.departed_at || !row.user_id) fail("NOT_FOUND", "Person not found");
+      // Revoked sign-in no longer counts toward essential-manager continuity.
+      assertEssentialManagerSurvives(this.db, ctx.householdId, {
+        removedMembershipIds: [membershipId],
+      });
+      bumpAuthorityVersion(this.db, membershipId, input.expectedAuthorityVersion);
+      const now = nowUtcIso();
+      this.db
+        .prepare(`UPDATE household_memberships SET sign_in_revoked_at = ? WHERE id = ?`)
+        .run(now, membershipId);
+      revokeOpenAccessClaims(this.db, membershipId, undefined, now);
+      revokeOpenEnrollmentClaims(this.db, membershipId, now);
+      this.revokeUserSessions(row.user_id);
+      saved = toMemberPublicShape(this.db, {
+        ...row,
+        sign_in_revoked_at: now,
+        authority_version: row.authority_version + 1,
+      });
+      writeStructureMutationReceipt(this.db, input.mutationId, "sign_in_revoke", saved);
+    });
+    tx();
+    return saved;
+  }
+
+  async changeOwnPassword(
+    ctx: AuthContext,
+    input: {
+      mutationId: string;
+      currentPassphrase: string;
+      newPassphrase: string;
+    },
+  ): Promise<{ token: string; csrfSecret: string; context: AuthContext }> {
+    const prior = readStructureMutationReceipt(this.db, input.mutationId, "password_change");
+    if (prior) {
+      // Prior receipt only proves success; issue a fresh same-browser session.
+      return this.createSession(ctx.userId, ctx.membershipId, ctx.installationEpoch);
+    }
+
+    const user = this.db
+      .prepare(
+        `SELECT c.passphrase_phc FROM users u
+         JOIN user_credentials c ON c.user_id = u.id
+         WHERE u.id = ?`,
+      )
+      .get(ctx.userId) as { passphrase_phc: string } | undefined;
+    if (!user) fail("UNAUTHORIZED", "Session is no longer valid");
+    const currentOk = await verifyPassphrase(user.passphrase_phc, input.currentPassphrase);
+    if (!currentOk) fail("UNAUTHORIZED", "Current passphrase is incorrect");
+    const policy = this.validatePassphrasePolicy(input.newPassphrase);
+    if (!policy.ok) fail("VALIDATION", policy.message ?? "Invalid passphrase");
+    const phc = await hashPassphrase(input.newPassphrase);
+    const now = nowUtcIso();
+    const tx = this.db.transaction(() => {
+      this.db
+        .prepare(`UPDATE user_credentials SET passphrase_phc = ?, updated_at = ? WHERE user_id = ?`)
+        .run(phc, now, ctx.userId);
+      revokeOpenAccessClaims(this.db, ctx.membershipId, "password_reset", now);
+      this.revokeUserSessions(ctx.userId);
+      writeStructureMutationReceipt(this.db, input.mutationId, "password_change", { ok: true });
+    });
+    tx();
+    return this.createSession(ctx.userId, ctx.membershipId, ctx.installationEpoch);
+  }
+
+  previewMemberRemoval(
+    ctx: AuthContext,
+    membershipId: string,
+    input: { expectedAuthorityVersion: number; expectedVersion: number },
+  ) {
+    this.requireGrant(ctx, "household.member.remove");
+    const row = this.db
+      .prepare(
+        `SELECT id, display_name, version, authority_version, departed_at, user_id, status
+         FROM household_memberships WHERE id = ? AND household_id = ?`,
+      )
+      .get(membershipId, ctx.householdId) as
+      | {
+          id: string;
+          display_name: string;
+          version: number;
+          authority_version: number;
+          departed_at: string | null;
+          user_id: string | null;
+          status: string;
+        }
+      | undefined;
+    if (!row || row.departed_at) fail("NOT_FOUND", "Person not found");
+    if (row.authority_version !== input.expectedAuthorityVersion) {
+      fail("CONFLICT", "Permissions were updated elsewhere; refresh the preview");
+    }
+    if (row.version !== input.expectedVersion) {
+      fail("CONFLICT", "Person was updated elsewhere; refresh the preview");
+    }
+    const groups = this.db
+      .prepare(
+        `SELECT g.id, g.name FROM household_groups g
+         JOIN household_group_members gm ON gm.group_id = g.id
+         WHERE gm.membership_id = ? AND g.deleted_at IS NULL`,
+      )
+      .all(membershipId) as Array<{ id: string; name: string }>;
+    const today = this.householdDateNow(ctx);
+    const mode =
+      row.user_id || row.status === "active" ? ("depart" as const) : ("delete" as const);
+    const days =
+      mode === "depart"
+        ? this.buildMemberRemovalImpactDays(ctx.householdId, membershipId, today, 7)
+        : [];
+    const repairLinks = this.repairLinksFromRemovalDays(days);
+    const impact = {
+      membershipId,
+      displayName: row.display_name,
+      groups,
+      mode,
+      canceledUnstartedOccurrencesFrom: today,
+      fromDate: today,
+      days,
+      repairLinks,
+    };
+    const previewDigest = digestPayload({
+      ...impact,
+      authorityVersion: row.authority_version,
+      version: row.version,
+    });
+    return { impact, previewDigest };
+  }
+
+  async commitMemberRemoval(
+    ctx: AuthContext,
+    membershipId: string,
+    input: {
+      mutationId: string;
+      expectedAuthorityVersion: number;
+      expectedVersion: number;
+      passphrase: string;
+      previewDigest: string;
+      confirmationText: "REMOVE";
+    },
+  ): Promise<{ mode: "departed" | "deleted"; membershipId: string }> {
+    this.requireGrant(ctx, "household.member.remove");
+    const prior = readStructureMutationReceipt(this.db, input.mutationId, "member_remove");
+    if (prior) return prior as { mode: "departed" | "deleted"; membershipId: string };
+
+    const preview = this.previewMemberRemoval(ctx, membershipId, {
+      expectedAuthorityVersion: input.expectedAuthorityVersion,
+      expectedVersion: input.expectedVersion,
+    });
+    if (preview.previewDigest !== input.previewDigest) {
+      fail("CONFLICT", "Removal preview is stale; refresh and try again");
+    }
+    await this.confirmPasswordForSession(ctx.sessionId, input.passphrase);
+
+    let result!: { mode: "departed" | "deleted"; membershipId: string };
+    const tx = this.db.transaction(() => {
+      assertEssentialManagerSurvives(this.db, ctx.householdId, {
+        removedMembershipIds: [membershipId],
+      });
+      const now = nowUtcIso();
+      const today = this.householdDateNow(ctx);
+      if (preview.impact.mode === "delete") {
+        physicallyDeleteUnusedMembership(this.db, membershipId, ctx.householdId);
+        result = { mode: "deleted", membershipId };
+      } else {
+        const affected = this.findDefinitionsAffectedByMembership(
+          ctx.householdId,
+          membershipId,
+          today,
+        );
+        markMembershipDeparted(this.db, membershipId, now, today);
+        for (const definitionId of affected) {
+          this.reconcileOccurrenceRange(ctx.householdId, definitionId, today, null);
+        }
+        revokeOpenAccessClaims(this.db, membershipId, undefined, now);
+        revokeOpenEnrollmentClaims(this.db, membershipId, now);
+        const userId = (
+          this.db
+            .prepare(`SELECT user_id FROM household_memberships WHERE id = ?`)
+            .get(membershipId) as { user_id: string | null } | undefined
+        )?.user_id;
+        if (userId) this.revokeUserSessions(userId);
+        result = { mode: "departed", membershipId };
+      }
+      this.memberRemovalFailureHook?.();
+      writeStructureMutationReceipt(this.db, input.mutationId, "member_remove", result);
+    });
+    tx();
+    return result;
+  }
+
+  previewFixtureRemediation(ctx: AuthContext) {
+    this.requireGrant(ctx, "household.member.remove");
+    const candidates = fixtureRemediationCandidates(this.db, ctx.householdId);
+    if (candidates.length === 0) {
+      fail("NOT_FOUND", "Fixture remediation is not available for this household");
+    }
+    const previewDigest = digestPayload({ candidates, householdId: ctx.householdId });
+    return { candidates, previewDigest };
+  }
+
+  async applyFixtureRemediation(
+    ctx: AuthContext,
+    input: {
+      mutationId: string;
+      selectedMembershipIds: string[];
+      previewDigest: string;
+      passphrase: string;
+      saveBackupBefore?: boolean;
+      backupLabel?: string | null;
+      confirmationText: "REMOVE SAMPLES";
+    },
+    opts?: {
+      createBackup?: (label: string | null) => Promise<{ id: string; label: string | null }>;
+    },
+  ) {
+    this.requireGrant(ctx, "household.member.remove");
+    const prior = readStructureMutationReceipt(this.db, input.mutationId, "fixture_remediation");
+    if (prior) return prior;
+
+    const preview = this.previewFixtureRemediation(ctx);
+    if (preview.previewDigest !== input.previewDigest) {
+      fail("CONFLICT", "Fixture preview is stale; refresh and try again");
+    }
+    for (const membershipId of input.selectedMembershipIds) {
+      if (!preview.candidates.some((c) => c.membershipId === membershipId)) {
+        fail("VALIDATION", "Selected person is not a fixture candidate");
+      }
+    }
+    await this.confirmPasswordForSession(ctx.sessionId, input.passphrase);
+    assertEssentialManagerSurvives(this.db, ctx.householdId, {
+      removedMembershipIds: input.selectedMembershipIds,
+    });
+
+    let backup: { id: string; label: string | null } | null = null;
+    if (input.saveBackupBefore) {
+      this.requireGrant(ctx, "household.lifecycle.manage");
+      if (!opts?.createBackup) {
+        fail("VALIDATION", "Backup is unavailable in this context");
+      }
+      backup = await opts.createBackup(input.backupLabel ?? null);
+    }
+
+    // Re-check preview digest after optional backup so intervening writes force re-preview.
+    const previewAfter = this.previewFixtureRemediation(ctx);
+    if (previewAfter.previewDigest !== input.previewDigest) {
+      fail(
+        "CONFLICT",
+        "Household changed during backup; refresh the remediation preview and try again",
+      );
+    }
+
+    const results: Array<{ membershipId: string; mode: "departed" | "deleted" }> = [];
+    const tx = this.db.transaction(() => {
+      assertEssentialManagerSurvives(this.db, ctx.householdId, {
+        removedMembershipIds: input.selectedMembershipIds,
+      });
+      const now = nowUtcIso();
+      const today = this.householdDateNow(ctx);
+      for (const membershipId of input.selectedMembershipIds) {
+        const candidate = previewAfter.candidates.find((c) => c.membershipId === membershipId);
+        if (!candidate) fail("VALIDATION", "Selected person is not a fixture candidate");
+        const row = this.db
+          .prepare(`SELECT user_id, status FROM household_memberships WHERE id = ?`)
+          .get(membershipId) as { user_id: string | null; status: string } | undefined;
+        if (!row) continue;
+        if (!row.user_id && row.status === "pending" && candidate.disposable) {
+          physicallyDeleteUnusedMembership(this.db, membershipId, ctx.householdId);
+          results.push({ membershipId, mode: "deleted" });
+        } else {
+          const affected = this.findDefinitionsAffectedByMembership(
+            ctx.householdId,
+            membershipId,
+            today,
+          );
+          markMembershipDeparted(this.db, membershipId, now, today);
+          for (const definitionId of affected) {
+            this.reconcileOccurrenceRange(ctx.householdId, definitionId, today, null);
+          }
+          revokeOpenAccessClaims(this.db, membershipId, undefined, now);
+          revokeOpenEnrollmentClaims(this.db, membershipId, now);
+          if (row.user_id) this.revokeUserSessions(row.user_id);
+          results.push({ membershipId, mode: "departed" });
+        }
+      }
+      this.memberRemovalFailureHook?.();
+      const payload = { results, backup };
+      writeStructureMutationReceipt(this.db, input.mutationId, "fixture_remediation", payload);
+      return payload;
+    });
+    return tx();
+  }
+
   validatePassphrasePolicy(passphrase: string): { ok: boolean; message?: string } {
     const normalized = passphrase.normalize("NFC");
     const length = [...normalized].length;
@@ -1334,9 +2109,10 @@ export class AppStore {
   listMemberships(householdId: string): MemberPublic[] {
     const rows = this.db
       .prepare(
-        `SELECT id, display_name, status, classification, version, sort_order
+        `SELECT id, display_name, status, classification, version, authority_version,
+                sort_order, departed_at, sign_in_revoked_at
          FROM household_memberships
-         WHERE household_id = ?
+         WHERE household_id = ? AND departed_at IS NULL
          ORDER BY sort_order, id`,
       )
       .all(householdId) as Array<{
@@ -1345,9 +2121,12 @@ export class AppStore {
       status: "active" | "pending";
       classification: PersonClassification | null;
       version: number;
+      authority_version: number;
       sort_order: number;
+      departed_at: string | null;
+      sign_in_revoked_at: string | null;
     }>;
-    return rows.map((row) => this.toMemberPublic(row));
+    return rows.map((row) => toMemberPublicShape(this.db, row));
   }
 
   createPerson(
@@ -1383,7 +2162,7 @@ export class AppStore {
         displayName,
         "pending",
         createdAt,
-        [],
+        [...MEMBER_DEFAULT_GRANTS],
         sortOrder,
       );
       this.db
@@ -1504,7 +2283,7 @@ export class AppStore {
          ORDER BY lower(g.name)`,
       )
       .all(ctx.householdId, membershipId) as Array<{ id: string; name: string }>;
-    const accessMeta = this.accessMetaForMembership(membershipId);
+    const accessMeta = accessMetaForMembership(this.db, membershipId);
     const routines = this.personRoutineProjections(ctx, membershipId);
     const morningDef = routines.find((routine) => routine.daypart === "morning");
     let morningRoutine: PersonDetail["morningRoutine"] = {
@@ -1534,6 +2313,7 @@ export class AppStore {
       routines,
       morningRoutine,
       access: accessMeta,
+      unknownGrants: unknownGrants(person.grants),
     };
   }
 
@@ -3908,7 +4688,9 @@ export class AppStore {
               this.groupMembersOnDate(groupId, householdDate),
             ),
           })) {
-            planParticipants.add(membershipId);
+            if (this.isMemberEligible(householdId, membershipId, householdDate)) {
+              planParticipants.add(membershipId);
+            }
           }
         }
 
@@ -4175,6 +4957,12 @@ export class AppStore {
         | undefined;
       if (!occurrence || occurrence.household_id !== actor.householdId) {
         fail("NOT_FOUND", "Occurrence not found");
+      }
+      if (
+        occurrence.accountable_member_id &&
+        isMemberDeparted(this.db, occurrence.accountable_member_id)
+      ) {
+        fail("FORBIDDEN", "This work belongs to a former household member");
       }
       const occurrenceKind: WorkKind =
         occurrence.occurrence_kind === "responsibility" ||
@@ -5620,22 +6408,12 @@ export class AppStore {
       membershipId: row.membership_id,
       householdId: row.household_id,
       displayName: row.display_name,
-      grants: this.grantsForMembership(row.membership_id),
+      grants: queryMembershipGrants(this.db, row.membership_id),
       timezone: row.timezone,
       csrfSecret: row.csrf_secret,
       installationEpoch: row.installation_epoch,
       passwordConfirmedAt: row.password_confirmed_at,
     };
-  }
-
-  private grantsForMembership(membershipId: string): Grant[] {
-    return (
-      this.db
-        .prepare(
-          "SELECT grant_name FROM membership_grants WHERE membership_id = ? ORDER BY grant_name",
-        )
-        .all(membershipId) as Array<{ grant_name: Grant }>
-    ).map((row) => row.grant_name);
   }
 
   private requireGrant(ctx: AuthContext, grant: Grant): void {
@@ -5807,16 +6585,6 @@ export class AppStore {
     };
   }
 
-  private replaceGrants(membershipId: string, grants: readonly Grant[]): void {
-    this.db
-      .prepare("DELETE FROM membership_grants WHERE membership_id = ?")
-      .run(membershipId);
-    const insert = this.db.prepare(
-      "INSERT INTO membership_grants (membership_id, grant_name) VALUES (?, ?)",
-    );
-    for (const grant of grants) insert.run(membershipId, grant);
-  }
-
   private insertCompatibleMembership(
     id: string,
     householdId: string,
@@ -5824,7 +6592,7 @@ export class AppStore {
     displayName: string,
     status: "active" | "pending",
     createdAt: string,
-    grants: readonly Grant[],
+    grants: readonly string[],
     sortOrder?: number,
   ): void {
     const order =
@@ -5842,7 +6610,7 @@ export class AppStore {
         `INSERT INTO members (id, household_id, display_name, capabilities_json)
          VALUES (?, ?, ?, ?)`,
       )
-      .run(id, householdId, displayName, legacyCapabilities([...grants]));
+      .run(id, householdId, displayName, legacyCapabilities(grants as Grant[]));
     this.db
       .prepare(
         `INSERT INTO household_memberships
@@ -5850,7 +6618,7 @@ export class AppStore {
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(id, householdId, userId, displayName, status, createdAt, order);
-    this.replaceGrants(id, grants);
+    replaceMembershipGrants(this.db, id, grants);
   }
 
   private insertClaim(input: {
@@ -5887,30 +6655,11 @@ export class AppStore {
     return { claimId, token, expiresAt };
   }
 
-  private toMemberPublic(row: {
-    id: string;
-    display_name: string;
-    status: "active" | "pending";
-    classification: PersonClassification | null;
-    version: number;
-    sort_order: number;
-  }): MemberPublic {
-    return {
-      id: row.id,
-      displayName: row.display_name,
-      status: row.status,
-      classification: row.classification,
-      version: row.version,
-      sortOrder: row.sort_order,
-      grants: this.grantsForMembership(row.id),
-      accessState: this.accessStateForMembership(row.id),
-    };
-  }
-
   private requireMemberPublic(membershipId: string, householdId: string): MemberPublic {
     const row = this.db
       .prepare(
-        `SELECT id, display_name, status, classification, version, sort_order
+        `SELECT id, display_name, status, classification, version, authority_version,
+                sort_order, departed_at, sign_in_revoked_at
          FROM household_memberships WHERE id = ? AND household_id = ?`,
       )
       .get(membershipId, householdId) as
@@ -5920,101 +6669,18 @@ export class AppStore {
           status: "active" | "pending";
           classification: PersonClassification | null;
           version: number;
+          authority_version: number;
           sort_order: number;
+          departed_at: string | null;
+          sign_in_revoked_at: string | null;
         }
       | undefined;
     if (!row) fail("NOT_FOUND", "Person not found");
-    return this.toMemberPublic(row);
+    return toMemberPublicShape(this.db, row);
   }
 
   private accessStateForMembership(membershipId: string): AccessState {
-    return this.accessMetaForMembership(membershipId).state;
-  }
-
-  private accessMetaForMembership(membershipId: string): {
-    state: AccessState;
-    setupClaimId: string | null;
-    setupCreatedAt: string | null;
-    setupExpiresAt: string | null;
-  } {
-    const membership = this.db
-      .prepare(
-        `SELECT hm.user_id, u.disabled
-         FROM household_memberships hm
-         LEFT JOIN users u ON u.id = hm.user_id
-         WHERE hm.id = ?`,
-      )
-      .get(membershipId) as
-      | { user_id: string | null; disabled: number | null }
-      | undefined;
-    if (membership?.user_id && membership.disabled === 0) {
-      return {
-        state: "access_set_up",
-        setupClaimId: null,
-        setupCreatedAt: null,
-        setupExpiresAt: null,
-      };
-    }
-
-    const now = new Date();
-    const actionable = this.db
-      .prepare(
-        `SELECT id, created_at, expires_at
-         FROM enrollment_claims
-         WHERE membership_id = ?
-           AND kind = 'enrollment'
-           AND consumed_at IS NULL
-           AND revoked_at IS NULL
-           AND expires_at > ?
-         ORDER BY created_at DESC LIMIT 1`,
-      )
-      .get(membershipId, isoAt(now)) as
-      | { id: string; created_at: string; expires_at: string }
-      | undefined;
-    if (actionable) {
-      return {
-        state: "setup_ready",
-        setupClaimId: actionable.id,
-        setupCreatedAt: actionable.created_at,
-        setupExpiresAt: actionable.expires_at,
-      };
-    }
-
-    const latest = this.db
-      .prepare(
-        `SELECT id, created_at, expires_at, consumed_at
-         FROM enrollment_claims
-         WHERE membership_id = ?
-           AND kind = 'enrollment'
-           AND revoked_at IS NULL
-         ORDER BY created_at DESC LIMIT 1`,
-      )
-      .get(membershipId) as
-      | {
-          id: string;
-          created_at: string;
-          expires_at: string;
-          consumed_at: string | null;
-        }
-      | undefined;
-    if (
-      latest &&
-      !latest.consumed_at &&
-      new Date(latest.expires_at) <= now
-    ) {
-      return {
-        state: "setup_expired",
-        setupClaimId: latest.id,
-        setupCreatedAt: latest.created_at,
-        setupExpiresAt: latest.expires_at,
-      };
-    }
-    return {
-      state: "not_set_up",
-      setupClaimId: null,
-      setupCreatedAt: null,
-      setupExpiresAt: null,
-    };
+    return accessMetaForMembership(this.db, membershipId).state;
   }
 
   private personRoutineProjections(
@@ -6106,29 +6772,17 @@ export class AppStore {
 
   private readStructureReceipt(
     mutationId: string,
-    kind: "person_create" | "group_create" | "setup_issue",
+    kind: StructureMutationReceiptKind,
   ): unknown | null {
-    const row = this.db
-      .prepare(
-        `SELECT response_json FROM structure_mutation_receipts
-         WHERE mutation_id = ? AND kind = ?`,
-      )
-      .get(mutationId, kind) as { response_json: string } | undefined;
-    return row ? (JSON.parse(row.response_json) as unknown) : null;
+    return readStructureMutationReceipt(this.db, mutationId, kind);
   }
 
   private writeStructureReceipt(
     mutationId: string,
-    kind: "person_create" | "group_create" | "setup_issue",
+    kind: StructureMutationReceiptKind,
     response: unknown,
   ): void {
-    this.db
-      .prepare(
-        `INSERT INTO structure_mutation_receipts
-         (mutation_id, kind, response_json, created_at)
-         VALUES (?, ?, ?, ?)`,
-      )
-      .run(mutationId, kind, JSON.stringify(response), nowUtcIso());
+    writeStructureMutationReceipt(this.db, mutationId, kind, response);
   }
 
   private loginThrottle(key: string, now: Date): number {
@@ -6276,12 +6930,28 @@ export class AppStore {
   private resolveParticipantsForRevision(
     revisionId: string,
     date: HouseholdDate,
+    householdId?: string,
   ): string[] {
     const directMemberIds = this.revisionAssignees(revisionId);
     const groupMemberIdSets = this.revisionGroupSources(revisionId).map((groupId) =>
       this.groupMembersOnDate(groupId, date),
     );
-    return resolveParticipants({ directMemberIds, groupMemberIdSets });
+    const participants = resolveParticipants({ directMemberIds, groupMemberIdSets });
+    if (!householdId) {
+      const revisionHousehold = this.db
+        .prepare(
+          `SELECT d.household_id AS household_id
+           FROM routine_revisions rr
+           JOIN routine_definitions d ON d.id = rr.definition_id
+           WHERE rr.id = ?`,
+        )
+        .get(revisionId) as { household_id: string } | undefined;
+      householdId = revisionHousehold?.household_id;
+    }
+    if (!householdId) return participants;
+    return participants.filter((membershipId) =>
+      this.isMemberEligible(householdId!, membershipId, date),
+    );
   }
 
   private groupActivelyReferenced(groupId: string, today: HouseholdDate): boolean {
@@ -6821,6 +7491,9 @@ export class AppStore {
     if (!input.assignment && !input.accountableMemberId) {
       fail("VALIDATION", "Either assignment or accountableMemberId is required");
     }
+    if (input.accountableMemberId && isMemberDeparted(this.db, input.accountableMemberId)) {
+      fail("NOT_FOUND", "Person not found");
+    }
     for (const step of input.steps) {
       const rule = step.applicability;
       if (rule && rule.kind !== "every_time") {
@@ -6895,13 +7568,18 @@ export class AppStore {
       .get(groupId, householdId);
   }
 
-  private getCompositionDeps(householdId: string): CompositionDeps {
+  private getCompositionDeps(
+    householdId: string,
+    excludeMembershipId?: string,
+  ): CompositionDeps {
     return {
       groupMembersOnDate: (groupId, date) => this.groupMembersOnDate(groupId, date),
       memberFirstAdmission: (groupId, memberId) =>
         this.memberFirstAdmission(groupId, memberId),
       isMemberEligible: (memberId, date) =>
-        this.isMemberEligible(householdId, memberId, date),
+        memberId === excludeMembershipId
+          ? false
+          : this.isMemberEligible(householdId, memberId, date),
     };
   }
 
@@ -6925,7 +7603,7 @@ export class AppStore {
     memberId: string,
     _date: HouseholdDate,
   ): boolean {
-    return this.membershipExists(householdId, memberId);
+    return queryMemberEligible(this.db, householdId, memberId);
   }
 
   private resolveCompositionForRevision(
@@ -6987,6 +7665,325 @@ export class AppStore {
       }
     }
     return [...definitionIds];
+  }
+
+  /**
+   * Definitions whose current/future unstarted work must reconcile when a member departs.
+   */
+  private findDefinitionsAffectedByMembership(
+    householdId: string,
+    membershipId: string,
+    fromDate: HouseholdDate,
+  ): string[] {
+    const ids = new Set<string>();
+
+    const direct = this.db
+      .prepare(
+        `SELECT DISTINCT d.id AS id
+         FROM routine_definitions d
+         JOIN routine_revisions rr ON rr.definition_id = d.id
+         JOIN revision_assignees ra ON ra.revision_id = rr.id
+         WHERE d.household_id = ? AND d.deleted_at IS NULL AND ra.member_id = ?`,
+      )
+      .all(householdId, membershipId) as Array<{ id: string }>;
+    for (const row of direct) ids.add(row.id);
+
+    const groupRows = this.db
+      .prepare(
+        `SELECT DISTINCT d.id AS id, rgs.group_id AS group_id
+         FROM routine_definitions d
+         JOIN routine_revisions rr ON rr.definition_id = d.id
+         JOIN revision_group_sources rgs ON rgs.revision_id = rr.id
+         WHERE d.household_id = ? AND d.deleted_at IS NULL AND d.kind = 'routine'`,
+      )
+      .all(householdId) as Array<{ id: string; group_id: string }>;
+    for (const row of groupRows) {
+      if (this.groupMembersOnDate(row.group_id, fromDate).includes(membershipId)) {
+        ids.add(row.id);
+      }
+    }
+
+    const planRows = this.db
+      .prepare(
+        `SELECT DISTINCT rr.definition_id AS id, rrp.assignment_json, rrp.scheduled_additions_json,
+                rrp.revision_id AS revision_id
+         FROM revision_responsibility_plans rrp
+         JOIN routine_revisions rr ON rr.id = rrp.revision_id
+         JOIN routine_definitions d ON d.id = rr.definition_id
+         WHERE d.household_id = ? AND d.kind = 'responsibility' AND d.deleted_at IS NULL`,
+      )
+      .all(householdId) as Array<{
+      id: string;
+      assignment_json: string;
+      scheduled_additions_json: string;
+      revision_id: string;
+    }>;
+    for (const row of planRows) {
+      const plan: StoredResponsibilityPlan = {
+        assignment: JSON.parse(row.assignment_json) as AssignmentSpec,
+        scheduledAdditions: JSON.parse(
+          row.scheduled_additions_json,
+        ) as ScheduledAdditionSpec[],
+      };
+      if (planReferencesMembership(plan, membershipId)) {
+        ids.add(row.id);
+        continue;
+      }
+      for (const groupId of assignmentUsesGroup(plan)) {
+        if (this.groupMembersOnDate(groupId, fromDate).includes(membershipId)) {
+          ids.add(row.id);
+          break;
+        }
+      }
+    }
+
+    const occRows = this.db
+      .prepare(
+        `SELECT DISTINCT definition_id AS id FROM occurrences
+         WHERE household_id = ? AND accountable_member_id = ?
+           AND household_date >= ? AND canceled_at IS NULL`,
+      )
+      .all(householdId, membershipId, fromDate) as Array<{ id: string }>;
+    for (const row of occRows) ids.add(row.id);
+
+    return [...ids];
+  }
+
+  private membershipDisplayName(membershipId: string | null): string | null {
+    if (!membershipId) return null;
+    const row = this.db
+      .prepare(`SELECT display_name FROM household_memberships WHERE id = ?`)
+      .get(membershipId) as { display_name: string } | undefined;
+    return row?.display_name ?? null;
+  }
+
+  private buildMemberRemovalImpactDays(
+    householdId: string,
+    membershipId: string,
+    fromDate: HouseholdDate,
+    dayCount: number,
+  ): Array<{
+    householdDate: string;
+    items: Array<{
+      definitionId: string;
+      kind: "routine" | "responsibility";
+      title: string;
+      daypart: Daypart | null;
+      revisionId: string | null;
+      effect:
+        | { type: "participation_ends" }
+        | {
+            type: "owner_becomes";
+            accountableMemberId: string | null;
+            accountableMemberName: string | null;
+            unassignedReason: string | null;
+          }
+        | {
+            type: "started_protected";
+            accountableMemberId: string | null;
+            accountableMemberName: string | null;
+          };
+    }>;
+  }> {
+    const defs = this.findDefinitionsAffectedByMembership(
+      householdId,
+      membershipId,
+      fromDate,
+    );
+    const excludeDeps = this.getCompositionDeps(householdId, membershipId);
+    const days: Array<{
+      householdDate: string;
+      items: Array<{
+        definitionId: string;
+        kind: "routine" | "responsibility";
+        title: string;
+        daypart: Daypart | null;
+        revisionId: string | null;
+        effect:
+          | { type: "participation_ends" }
+          | {
+              type: "owner_becomes";
+              accountableMemberId: string | null;
+              accountableMemberName: string | null;
+              unassignedReason: string | null;
+            }
+          | {
+              type: "started_protected";
+              accountableMemberId: string | null;
+              accountableMemberName: string | null;
+            };
+      }>;
+    }> = [];
+
+    for (let offset = 0; offset < dayCount; offset += 1) {
+      const householdDate = addHouseholdDays(fromDate, offset);
+      const items: (typeof days)[number]["items"] = [];
+
+      for (const definitionId of defs) {
+        const definition = this.loadRoutineDefinition(householdId, definitionId);
+        if (!definition || definition.deletedAt) continue;
+        const pastImmediateCutoff =
+          definition.endMode === "immediate" &&
+          !isBeforeArchiveCutoff(householdDate, definition.archiveCutoffDate);
+        const pastLegacyCutoff =
+          definition.endMode !== "immediate" &&
+          !isBeforeArchiveCutoff(householdDate, definition.archiveCutoffDate);
+        if (pastImmediateCutoff || pastLegacyCutoff) continue;
+
+        const revision = this.selectRevisionContentForDate(definition, householdDate);
+        if (!revision || !isDateApplicable(householdDate, revision.weekdays)) continue;
+
+        if (definition.kind === "responsibility") {
+          const stored = this.db
+            .prepare(
+              `SELECT id, accountable_member_id, started_at, canceled_at
+               FROM occurrences
+               WHERE definition_id = ? AND household_date = ?
+               LIMIT 1`,
+            )
+            .get(definitionId, householdDate) as
+            | {
+                id: string;
+                accountable_member_id: string | null;
+                started_at: string | null;
+                canceled_at: string | null;
+              }
+            | undefined;
+          if (stored && isOccurrenceStarted(stored.started_at)) {
+            if (stored.accountable_member_id === membershipId) {
+              items.push({
+                definitionId,
+                kind: "responsibility",
+                title: revision.title,
+                daypart: revision.daypart,
+                revisionId: revision.id,
+                effect: {
+                  type: "started_protected",
+                  accountableMemberId: stored.accountable_member_id,
+                  accountableMemberName: this.membershipDisplayName(
+                    stored.accountable_member_id,
+                  ),
+                },
+              });
+            }
+            continue;
+          }
+
+          const plan = loadResponsibilityPlan(this.db, revision.id);
+          if (!plan) continue;
+          const baseSteps = this.revisionSteps(revision.id).map((step) => ({
+            logicalItemId: step.logicalItemId,
+            text: step.text,
+            obligation: step.obligation,
+          }));
+          const composed = resolveResponsibilityComposition(
+            {
+              householdDate,
+              revisionId: revision.id,
+              parentWeekdays: revision.weekdays,
+              baseSteps,
+              plan,
+            },
+            excludeDeps,
+          );
+          if (!composed.applicable) continue;
+          const ownerId = composed.accountableMemberId ?? null;
+          items.push({
+            definitionId,
+            kind: "responsibility",
+            title: revision.title,
+            daypart: revision.daypart,
+            revisionId: revision.id,
+            effect: {
+              type: "owner_becomes",
+              accountableMemberId: ownerId,
+              accountableMemberName: ownerId
+                ? this.membershipDisplayName(ownerId)
+                : composed.unassignedReason
+                  ? "Unassigned"
+                  : null,
+              unassignedReason: composed.unassignedReason ?? null,
+            },
+          });
+          continue;
+        }
+
+        const rawParticipants = resolveAccountableMembers("routine", {
+          directMemberIds: revision.assigneeMemberIds,
+          groupMemberIdSets: revision.assigneeGroupIds.map((groupId) =>
+            this.groupMembersOnDate(groupId, householdDate),
+          ),
+        });
+        if (!rawParticipants.includes(membershipId)) continue;
+
+        const stored = this.db
+          .prepare(
+            `SELECT id, started_at, canceled_at FROM occurrences
+             WHERE definition_id = ? AND household_date = ? AND accountable_member_id = ?
+             LIMIT 1`,
+          )
+          .get(definitionId, householdDate, membershipId) as
+          | {
+              id: string;
+              started_at: string | null;
+              canceled_at: string | null;
+            }
+          | undefined;
+        if (stored && isOccurrenceStarted(stored.started_at)) {
+          items.push({
+            definitionId,
+            kind: "routine",
+            title: revision.title,
+            daypart: revision.daypart,
+            revisionId: revision.id,
+            effect: {
+              type: "started_protected",
+              accountableMemberId: membershipId,
+              accountableMemberName: this.membershipDisplayName(membershipId),
+            },
+          });
+          continue;
+        }
+        items.push({
+          definitionId,
+          kind: "routine",
+          title: revision.title,
+          daypart: revision.daypart,
+          revisionId: revision.id,
+          effect: { type: "participation_ends" },
+        });
+      }
+
+      days.push({ householdDate, items });
+    }
+
+    return days;
+  }
+
+  private repairLinksFromRemovalDays(
+    days: Array<{
+      items: Array<{
+        definitionId: string;
+        kind: "routine" | "responsibility";
+        title: string;
+        effect: { type: string; unassignedReason?: string | null; accountableMemberId?: string | null };
+      }>;
+    }>,
+  ): Array<{ definitionId: string; kind: "responsibility"; title: string }> {
+    const byId = new Map<string, { definitionId: string; kind: "responsibility"; title: string }>();
+    for (const day of days) {
+      for (const item of day.items) {
+        if (item.kind !== "responsibility") continue;
+        if (item.effect.type !== "owner_becomes") continue;
+        if (item.effect.accountableMemberId != null) continue;
+        byId.set(item.definitionId, {
+          definitionId: item.definitionId,
+          kind: "responsibility",
+          title: item.title,
+        });
+      }
+    }
+    return [...byId.values()];
   }
 
   private resolveRevisionLogicalIds(
@@ -7496,7 +8493,9 @@ export class AppStore {
         groupMemberIdSets: revision.assigneeGroupIds.map((groupId) =>
           this.groupMembersOnDate(groupId, householdDate),
         ),
-      }),
+      }).filter((membershipId) =>
+        this.isMemberEligible(householdId, membershipId, householdDate),
+      ),
     );
 
     const rows = this.db

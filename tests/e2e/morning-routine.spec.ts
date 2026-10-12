@@ -96,6 +96,32 @@ async function claimChild(
   if (options?.ensureRoutine !== false) {
     await ensureSharedRoutine(request);
   }
+  // P0-008C: claim redeem uses current membership grants, not the enrollment preset.
+  // Align the person's grants before issuing the claim when a preset is requested.
+  if (options?.preset) {
+    const people = await request.get("/api/v1/people");
+    expect(people.ok()).toBeTruthy();
+    const person = (
+      (await people.json()) as {
+        people: Array<{ id: string; authorityVersion: number }>;
+      }
+    ).people.find((row) => row.id === membershipId);
+    expect(person, `membership ${membershipId}`).toBeTruthy();
+    const permissions = await request.post(
+      `/api/v1/people/${membershipId}/permissions`,
+      {
+        headers: await mutatingHeaders(request),
+        data: {
+          mutationId: crypto.randomUUID(),
+          expectedAuthorityVersion: person!.authorityVersion,
+          role: "member",
+          memberMode: options.preset === "direct_personalizer" ? "direct" : "approval",
+          secondaryGrants: [],
+        },
+      },
+    );
+    expect(permissions.ok(), await permissions.text()).toBeTruthy();
+  }
   const enroll = await request.post("/api/v1/enrollment/claims", {
     headers: await mutatingHeaders(request),
     data: { mutationId: crypto.randomUUID(), membershipId, preset: options?.preset ?? "direct_personalizer" },

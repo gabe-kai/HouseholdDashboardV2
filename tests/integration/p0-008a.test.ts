@@ -434,7 +434,7 @@ describe("P0-008A AT1 populated through-017 adoption", () => {
     expect(
       (harness.db.prepare("SELECT COUNT(*) AS c FROM schema_migrations").get() as { c: number })
         .c,
-    ).toBe(18);
+    ).toBe(19);
 
     const after = snapshotPopulatedCounts(harness.db);
     expect(after.households).toBe(before.households);

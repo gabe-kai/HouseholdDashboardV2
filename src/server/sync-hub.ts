@@ -204,6 +204,29 @@ export class SyncHub {
     }
   }
 
+  closeMembership(membershipId: string): void {
+    for (const client of [...this.clients]) {
+      if (client.kind !== "member") continue;
+      if (client.membershipId !== membershipId) continue;
+      try {
+        if (client.socket.readyState === 1) {
+          client.socket.send(
+            JSON.stringify({
+              type: "display_invalidate",
+              householdId: client.householdId,
+              reason: "access_lost",
+              at: new Date().toISOString(),
+            } satisfies DisplaySyncEvent),
+          );
+          client.socket.close(4401, "access_lost");
+        }
+      } catch {
+        /* ignore */
+      }
+      this.clients.delete(client);
+    }
+  }
+
   closeAll(reason: "reset" | "restore" = "reset"): void {
     if (this.pingTimer) {
       clearInterval(this.pingTimer);

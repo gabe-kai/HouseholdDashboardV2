@@ -8,7 +8,7 @@ If this document disagrees with the repository about what exists, the repository
 
 ## Technical overview
 
-- **Current repository truth (2026-10-05):** Local `main` / `origin/main` point to **405c5db** (PR **#24**), integrating technically accepted **P0-008A r1** and migrations through **018**. B r2 is released for Engineering readiness; C/D remain drafts. The current Railway database/schema and hosted A journey have not been inspected by this Architecture refresh. C-3B's Product wall evaluation remains separate.
+- **Current repository truth (2026-10-07):** Local `main` / `origin/main` point to **f80d47b** (PR **#25**), integrating technically accepted **P0-008A r1** and **P0-008B r2**. Household migrations run through **018**; B also adds installation-control catalog migration **001**. C r1 is released for Engineering readiness; D remains a successor draft. The Railway database/schema and hosted setup/backup/restore journey have not been inspected by this Architecture refresh. C-3B's Product wall evaluation remains separate.
 - **Retained P0-005 foundation:** P0-005 r3 entered `main` at `31aad37`: `routine_schedule_entries`, immutable revision content versions, definition `ended_at` / `end_mode` / `deleted_at`, occurrence `canceled_at`, current-plan range reconciliation to the next schedule boundary, upcoming schedule create/edit/move/delete, Delete unused vs End, started/history visibility when live audience excludes a person, and atomic lifecycle receipts. Migrations `007_routine_schedule_lifecycle.sql` and `008_widen_routine_mutation_receipt_kinds.sql` cover lifecycle storage and long-lived-database receipt kinds. r2 locks, personal tomorrow-floor, group next-day, sync/outbox, and Origin/CSRF/WS protections remain preserved. Recorded pre-P0-005 integrated baseline: `93ef494`.
 - **Project type:** Mobile-first, responsive household web application with local/LAN development and a provider-neutral secure single-host release target.
 - **Languages/runtimes:** TypeScript throughout on the Node.js 24 LTS line (`engines.node`: `>=24 <25`, `.nvmrc` pins `24`); browser-delivered HTML and CSS.
@@ -199,8 +199,8 @@ Approved intent: `PRODUCT.md` P0-008. Architecture assessment/coverage map: `rep
 | Slice | Observable result | Status |
 | --- | --- | --- |
 | P0-008A r1 — Protected First-Manager Setup and Repeatable Reset | Owner-protected browser setup, required account/household basics, repeatable full reset with no new backup | Technically ACCEPTED and merged via PR #24 at `405c5db`; hosted/Product evaluation separate |
-| P0-008B r2 — Household Backups and In-App Restore | Saved backups, optional pre-reset/pre-restore backup, restore from Settings and protected Welcome | Technically ACCEPTED at `34179f7`; Build Report update at `4448c56`; Project Lead integration pending |
-| P0-008C r1 — Understandable Member Access and Safe Removal | Roles/permissions, invitation links/QR, password/access maintenance, history-preserving departure and reviewed fixture remediation | DRAFT until A/B accepted |
+| P0-008B r2 — Household Backups and In-App Restore | Saved backups, optional pre-reset/pre-restore backup, restore from Settings and protected Welcome | Technically ACCEPTED at `34179f7`, merged via PR #25 at `f80d47b`; hosted/Product evaluation separate |
+| P0-008C r1 — Understandable Member Access and Safe Removal | Roles/permissions, invitation links/QR, password/access maintenance, history-preserving departure and reviewed fixture remediation | FIX REQUIRED at implementation commit `aedd416`; same-revision corrections in `reports/P0-008C-r1-architecture-review.md` |
 | P0-008D r1 — Guided Setup to the First Useful Household Day | Five named steps, optional exits/resume, authoritative first-work review/recap and the whole setup/manage/reset/restore journey | DRAFT until A–C accepted |
 
 #### P0-008A implementation notes (r1)
@@ -230,7 +230,7 @@ From the repository root, with Node.js 24:
 - **Migrate/seed:** `npm run db:migrate` then opt-in `npm run db:seed` (seed creates pending fictional memberships only; hosted profile forbids `AUTO_SEED`).
 - **Bootstrap:** `npm run auth:bootstrap` issues one single-use manager claim token (shown once). On an empty database it creates only the minimum household plus that claim — no demo people.
 - **Fixture cleanup:** `npm run db:cleanup-fixtures` (dry-run) / `… -- --apply` removes only proven-safe canonical fixture memberships by exact ID; backup-first; never automatic.
-- **Backup/restore:** `npm run db:backup` writes an operator file, not an in-app catalog entry. The legacy `npm run db:restore -- path/to/backup.sqlite` refuses when installation control exists; it is not a bypass for A's epoch-fenced replacement. Run backup before applying migrations on populated data; B will add protected in-app restore.
+- **Backup/restore:** `npm run db:backup` writes an operator file, not an in-app catalog entry. The legacy `npm run db:restore -- path/to/backup.sqlite` refuses when installation control exists; it is not a bypass for A's epoch-fenced replacement. Run backup before applying migrations on populated data; B now provides protected in-app backup/restore through Settings and Welcome.
 - **Run/develop:** `npm run dev` (API on `127.0.0.1:8787`, Vite on `127.0.0.1:5173` with `/api/v1` proxy). Login/claim Origin must match the Vite URL (`http://127.0.0.1:5173` by default).
 - **Phone on LAN:** `npm run dev:lan` (binds Vite/API for LAN; prints `http://<lan-ip>:5173`). With `EVAL_LAN_ACCESS=1`, claim/login also accept other private/loopback HTTP Origins so a mismatched NIC IP does not block the phone. Not for public internet exposure.
 - **Build/package:** `npm run build`.
@@ -414,7 +414,7 @@ Group-backed materialization -> resolve dated direct/group sources -> one unique
 ## Known technical debt
 
 - CI pull-request validation is defined in `.github/workflows/validate-pr.yml`; required-check branch protection remains a Project Lead setting. Contract catalog: `docs/protected-behaviors.md`.
-- Hosted backup/restore remains operator-driven in implemented code. P0-008A/B are the approved replacement-lifecycle and in-app backup/restore contracts; automatic backup scheduling and off-host retention remain separate operational work.
+- In-app backup/restore is implemented through P0-008B; hosted execution remains unverified here. Automatic backup scheduling and off-host retention remain separate operational work.
 - The initial weekly Morning schedule is deliberately narrower than the contextual schedule model Product anticipates.
 - P0-001 supports transient disconnection after load, not a fully offline-installable application.
 

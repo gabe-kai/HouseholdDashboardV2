@@ -945,13 +945,15 @@ export class DisplayStore {
       title: string;
       owner_membership_id: string;
     }>;
-    return rows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      ownerMembershipId: row.owner_membership_id,
-      ownerDisplayName:
-        nameById.get(row.owner_membership_id) ?? "Household member",
-    }));
+    // Departed owners leave the current display projection (D-054).
+    return rows
+      .filter((row) => nameById.has(row.owner_membership_id))
+      .map((row) => ({
+        id: row.id,
+        title: row.title,
+        ownerMembershipId: row.owner_membership_id,
+        ownerDisplayName: nameById.get(row.owner_membership_id)!,
+      }));
   }
 
   private requireDisplayManage(ctx: AuthContext): void {
@@ -1121,7 +1123,7 @@ export class DisplayStore {
         .prepare(
           `SELECT id, display_name, sort_order, status
            FROM household_memberships
-           WHERE household_id = ?
+           WHERE household_id = ? AND departed_at IS NULL
            ORDER BY sort_order, id`,
         )
         .all(householdId) as Array<{

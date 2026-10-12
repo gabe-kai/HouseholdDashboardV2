@@ -1,9 +1,9 @@
-﻿import { randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { GRANT_PRESETS } from "../../src/shared/grants.js";
+import { GRANT_PRESETS, MEMBER_DEFAULT_GRANTS } from "../../src/shared/grants.js";
 import { migrate, openDatabase } from "../../src/server/db.js";
 import { AppStore, type AuthContext } from "../../src/server/store.js";
 import {
@@ -95,7 +95,8 @@ describe("P0-004A people, groups, and access", () => {
         classification: "child",
       }).id,
     ).toBe(elizabeth.id);
-    expect(elizabeth.grants).toEqual([]);
+    // P0-008C: new people default to the Member (approval) grants.
+    expect([...elizabeth.grants].sort()).toEqual([...MEMBER_DEFAULT_GRANTS].sort());
     expect(elizabeth.accessState).toBe("not_set_up");
     expect(elizabeth.classification).toBe("child");
 

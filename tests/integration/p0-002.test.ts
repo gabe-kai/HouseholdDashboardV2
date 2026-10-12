@@ -8,7 +8,6 @@ import { migrate, openDatabase, resolveDbPath } from "../../src/server/db.js";
 import { AppStore } from "../../src/server/store.js";
 import { assertArgon2idPhc } from "../../src/server/crypto.js";
 import { SEED, legacyCapabilitiesJson } from "../../src/server/seeds/evaluation.js";
-import { GRANT_PRESETS } from "../../src/shared/grants.js";
 
 const temps: string[] = [];
 const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")), "../..");
@@ -339,6 +338,9 @@ describe("P0-002 authenticated authority", () => {
     ] as const;
     for (const [index, membership] of pending.entries()) {
       const preset = presets[index]!;
+      // P0-008C: claims redeem the person's current grants; the legacy preset is
+      // retained only on legacy enrollment_claims rows.
+      const priorGrants = [...membership.grants];
       const claim = store.issueEnrollmentClaim(manager.context, {
         mutationId: crypto.randomUUID(),
         membershipId: membership.id,
@@ -350,7 +352,8 @@ describe("P0-002 authenticated authority", () => {
         passphrase: "unique-passphrase-ok!",
         displayName: membership.displayName,
       });
-      for (const grant of GRANT_PRESETS[preset]) {
+      expect(priorGrants.length).toBeGreaterThan(0);
+      for (const grant of priorGrants) {
         expect(auth.context.grants).toContain(grant);
       }
     }

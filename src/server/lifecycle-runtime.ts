@@ -53,6 +53,10 @@ export type LifecycleRuntime = {
   createBackup(input: {
     label?: string | null;
   }): Promise<BackupPublicMeta>;
+  /** Create a catalog backup from inside a `withExclusive` callback (no catalog lock). */
+  createBackupWhileExclusive(input: {
+    label?: string | null;
+  }): Promise<BackupPublicMeta>;
   registerLegacyBackup(input: {
     legacySourceAbs: string;
     label?: string | null;
@@ -340,6 +344,12 @@ export function createLifecycleRuntime(
         exclusiveHeld = false;
         notifyWaiters();
       }
+    },
+    async createBackupWhileExclusive(input) {
+      return (await optionalPreBackup({
+        saveBackupBefore: true,
+        backupLabel: input.label ?? null,
+      }))!;
     },
     async createBackup(input) {
       return withCatalogLock(async () => {

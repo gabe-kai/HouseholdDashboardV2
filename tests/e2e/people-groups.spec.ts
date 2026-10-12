@@ -79,21 +79,21 @@ test.describe("P0-004A People & Groups focused UX", () => {
     await page.getByRole("radio", { name: "Child" }).check();
     await page.getByRole("button", { name: "Add person" }).click();
     await expect(page.getByRole("heading", { name: "Elizabeth" })).toBeVisible();
-    await expect(page.getByText("Role:")).toContainText("Child");
+    await expect(page.getByText("Adult/Child:")).toContainText("Child");
+    await expect(page.getByTestId("people-role-label")).toHaveText("Member");
     await expect(page.getByText("Not set up")).toBeVisible();
 
-    await page.getByRole("button", { name: "Edit person" }).click();
+    await page.getByRole("button", { name: "Edit profile" }).click();
     await expect(page.getByRole("heading", { name: "Edit person" })).toBeVisible();
     await page.getByRole("button", { name: /Back to Elizabeth/i }).click();
 
-    await page.getByRole("button", { name: "Set up access" }).click();
-    await expect(page.getByRole("heading", { name: "Access setup" })).toBeVisible();
-    await page.getByRole("radio", { name: /Guided member/i }).check();
+    await page.getByRole("button", { name: "Manage sign-in" }).click();
+    await expect(page.getByRole("heading", { name: "Manage sign-in" })).toBeVisible();
     // Do not capture setup material; keep prior P0-004A screenshots as committed evidence.
-    await page.getByRole("button", { name: "Prepare access setup" }).click();
-    await expect(page.getByText(/Copy this setup material now/i)).toBeVisible();
-    await expect(page.locator(".token-box code")).toBeVisible();
-    await page.getByRole("button", { name: "Cancel setup" }).click();
+    await page.getByRole("button", { name: "Set up sign-in" }).click();
+    await expect(page.getByTestId("access-copy-link")).toBeVisible();
+    await expect(page.getByTestId("access-invite-link")).toBeVisible();
+    await page.getByRole("button", { name: "Cancel invitation" }).click();
     await page.getByRole("button", { name: /Back to Elizabeth/i }).click();
     await page.getByRole("button", { name: "Back to People & Groups" }).click();
 
@@ -161,9 +161,9 @@ test.describe("P0-004A People & Groups focused UX", () => {
     await page.getByRole("button", { name: "Add person" }).click();
     await expect(page.getByRole("heading", { name: "Geometry Child" })).toBeVisible();
 
-    const editPerson = page.getByRole("button", { name: "Edit person" });
+    const editPerson = page.getByRole("button", { name: "Edit profile" });
     const editBox = await editPerson.boundingBox();
-    expect(editBox, "Edit person touch target").toBeTruthy();
+    expect(editBox, "Edit profile touch target").toBeTruthy();
     expect(editBox!.height).toBeGreaterThanOrEqual(44);
 
     await editPerson.click();
@@ -201,13 +201,15 @@ test.describe("P0-004A People & Groups focused UX", () => {
     expect(composed!.inputLeftOfTextCenter).toBe(true);
 
     await page.getByRole("button", { name: /Back to Geometry Child/i }).click();
-    await page.getByRole("button", { name: "Set up access" }).click();
-    const prepare = page.getByRole("button", { name: "Prepare access setup" });
+    await page.getByRole("button", { name: "Manage sign-in" }).click();
+    const prepare = page.getByRole("button", { name: "Set up sign-in" });
     const prepareBox = await prepare.boundingBox();
     expect(prepareBox!.height).toBeGreaterThanOrEqual(44);
 
-    const guided = page.locator("label.choice-row").filter({ hasText: /Guided member/i });
-    const guidedGeom = await guided.evaluate((node) => {
+    await page.getByRole("button", { name: /Back to Geometry Child/i }).click();
+    await page.getByRole("button", { name: "Edit permissions" }).click();
+    const memberRow = page.locator("label.choice-row").filter({ hasText: /^Member/ });
+    const memberGeom = await memberRow.evaluate((node) => {
       const input = node.querySelector("input");
       const rowBox = node.getBoundingClientRect();
       const inputBox = input!.getBoundingClientRect();
@@ -217,8 +219,8 @@ test.describe("P0-004A People & Groups focused UX", () => {
         sideBySide: Math.abs(inputBox.top + inputBox.height / 2 - (rowBox.top + rowBox.height / 2)) < 12,
       };
     });
-    expect(guidedGeom.display).toBe("flex");
-    expect(guidedGeom.sideBySide).toBe(true);
-    expect(guidedGeom.stacked).toBe(false);
+    expect(memberGeom.display).toBe("flex");
+    expect(memberGeom.sideBySide).toBe(true);
+    expect(memberGeom.stacked).toBe(false);
   });
 });

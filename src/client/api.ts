@@ -1,5 +1,9 @@
 import type {
+  AccessClaimPurpose,
+  AccessState,
   ApplicabilityRule,
+  AuthorityRole,
+  MemberPersonalizeMode,
   AssignmentSpec,
   Daypart,
   Grant,
@@ -723,6 +727,235 @@ export async function issueEnrollmentClaim(body: {
   }>("/api/v1/enrollment/claims", {
     method: "POST",
     body: JSON.stringify(body),
+  });
+}
+
+export type IssuedAccessClaim = {
+  claimId: string;
+  membershipId: string;
+  purpose: AccessClaimPurpose;
+  expiresAt: string;
+  accessState: AccessState;
+  secretAlreadyIssued: boolean;
+  /** One-time secret; only present on first issue. */
+  token?: string;
+};
+
+export type AccessClaimPreview = {
+  householdName: string;
+  personDisplayName: string;
+  purpose: AccessClaimPurpose;
+  expiresAt: string;
+};
+
+export type AccessClaimRedeemResult =
+  | ({ purpose: AccessClaimPurpose } & SessionInfo)
+  | { purpose: AccessClaimPurpose; ok: true };
+
+export type MemberRemovalImpactDayItem = {
+  definitionId: string;
+  kind: "routine" | "responsibility";
+  title: string;
+  daypart: string | null;
+  revisionId: string | null;
+  effect:
+    | { type: "participation_ends" }
+    | {
+        type: "owner_becomes";
+        accountableMemberId: string | null;
+        accountableMemberName: string | null;
+        unassignedReason: string | null;
+      }
+    | {
+        type: "started_protected";
+        accountableMemberId: string | null;
+        accountableMemberName: string | null;
+      };
+};
+
+export type MemberRemovalImpact = {
+  membershipId: string;
+  displayName: string;
+  groups: Array<{ id: string; name: string }>;
+  mode: "depart" | "delete";
+  canceledUnstartedOccurrencesFrom: string;
+  fromDate: string;
+  days: Array<{ householdDate: string; items: MemberRemovalImpactDayItem[] }>;
+  repairLinks: Array<{ definitionId: string; kind: "responsibility"; title: string }>;
+};
+
+export type MemberRemovalPreview = {
+  impact: MemberRemovalImpact;
+  previewDigest: string;
+};
+
+export type FixtureRemediationCandidate = {
+  membershipId: string;
+  displayName: string;
+  preselected: boolean;
+  disposable: boolean;
+  blockers: string[];
+};
+
+export type FixtureRemediationPreview = {
+  candidates: FixtureRemediationCandidate[];
+  previewDigest: string;
+};
+
+export type FixtureRemediationResult = {
+  results: Array<{ membershipId: string; mode: "departed" | "deleted" }>;
+  backup: { id: string; label: string | null } | null;
+};
+
+export async function issueAccessClaim(body: {
+  mutationId: string;
+  membershipId: string;
+  purpose: AccessClaimPurpose;
+}) {
+  return request<{ claim: IssuedAccessClaim }>(
+    `/api/v1/people/${encodeURIComponent(body.membershipId)}/access-claims`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export async function cancelAccessClaims(body: {
+  mutationId: string;
+  membershipId: string;
+  purpose?: AccessClaimPurpose;
+}) {
+  return request<{ membershipId: string; accessState: AccessState }>(
+    `/api/v1/people/${encodeURIComponent(body.membershipId)}/access-claims/cancel`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export async function previewAccessClaim(token: string) {
+  return request<{ preview: AccessClaimPreview }>(
+    `/api/v1/auth/access-claims/preview?token=${encodeURIComponent(token)}`,
+  );
+}
+
+export async function redeemAccessClaim(body: {
+  claimToken: string;
+  loginName?: string;
+  passphrase?: string;
+  displayName?: string;
+  newPassphrase?: string;
+}): Promise<AccessClaimRedeemResult> {
+  const result = await request<AccessClaimRedeemResult>(
+    "/api/v1/auth/access-claims/redeem",
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+  if ("csrfToken" in result && result.csrfToken) {
+    retainSessionToken(result);
+  }
+  return result;
+}
+
+export async function saveMembershipPermissions(
+  membershipId: string,
+  body: {
+    mutationId: string;
+    expectedAuthorityVersion: number;
+    role: AuthorityRole;
+    memberMode?: MemberPersonalizeMode;
+    secondaryGrants: string[];
+  },
+) {
+  return request<{ person: MemberPublic }>(
+    `/api/v1/people/${encodeURIComponent(membershipId)}/permissions`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+/** Server returns the updated MemberPublic directly (not wrapped). */
+export async function revokeSignIn(
+  membershipId: string,
+  body: { mutationId: string; expectedAuthorityVersion: number },
+) {
+  return request<MemberPublic>(
+    `/api/v1/people/${encodeURIComponent(membershipId)}/sign-in/revoke`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export async function changeOwnPassword(body: {
+  mutationId: string;
+  currentPassphrase: string;
+  newPassphrase: string;
+}) {
+  return retainSessionToken(
+    await request<SessionInfo>("/api/v1/auth/password", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+export async function previewMemberRemoval(
+  membershipId: string,
+  body: { expectedAuthorityVersion: number; expectedVersion: number },
+) {
+  return request<MemberRemovalPreview>(
+    `/api/v1/people/${encodeURIComponent(membershipId)}/removal/preview`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export async function commitMemberRemoval(
+  membershipId: string,
+  body: {
+    mutationId: string;
+    expectedAuthorityVersion: number;
+    expectedVersion: number;
+    passphrase: string;
+    previewDigest: string;
+    confirmationText: "REMOVE";
+  },
+) {
+  return request<{ mode: "departed" | "deleted"; membershipId: string }>(
+    `/api/v1/people/${encodeURIComponent(membershipId)}/removal`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export async function previewFixtureRemediation() {
+  return request<FixtureRemediationPreview>("/api/v1/fixtures/remediation");
+}
+
+export async function applyFixtureRemediation(body: {
+  mutationId: string;
+  selectedMembershipIds: string[];
+  previewDigest: string;
+  passphrase: string;
+  saveBackupBefore?: boolean;
+  backupLabel?: string | null;
+  confirmationText: "REMOVE SAMPLES";
+}) {
+  return request<FixtureRemediationResult>("/api/v1/fixtures/remediation/apply", {
+    method: "POST",
+    body: JSON.stringify({ saveBackupBefore: false, ...body }),
   });
 }
 

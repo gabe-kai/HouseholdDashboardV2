@@ -1,7 +1,7 @@
 # BRIEF P0-008C - Understandable Member Access and Safe Removal
 
 **Revision:** 1
-**Status:** IMPLEMENTED — awaiting Architecture technical acceptance (see `reports/P0-008C-r1-build-report.md`)
+**Status:** FIX REQUIRED — Architecture found r1 contract/evidence gaps; same-revision corrections requested
 
 P0-008A/B are technically accepted and merged. This is one person-management journey; Engineering readiness should assess access, departure and fixture-transition risk together. Product acceptance is separate.
 
@@ -104,8 +104,8 @@ Inspected merged local `main` / `origin/main` at `f80d47b` (PR #25). P0-008A/B a
 ## Engineering readiness
 
 **Reviewed revision:** 1
-**Readiness:** READY — consolidated review against merged `main` at `f80d47b`; see `reports/P0-008C-r1-engineering-readiness.md`. Architecture disposition: ACCEPT / PROCEED; contract unchanged.
+**Readiness:** READY — consolidated review against merged `main` at `f80d47b`; see `reports/P0-008C-r1-engineering-readiness.md`. Architecture disposition: FIX REQUIRED against r1; contract unchanged. Findings: `reports/P0-008C-r1-architecture-review.md`.
 
 ## Revision history
 
-- **r1:** Unreleased successor draft refreshed against merged A/B at `f80d47b` and released for Engineering readiness; complete member/access/departure and hosted fixture-remediation journey preserved.
+- **r1:** Refreshed against merged A/B at `f80d47b`, reviewed READY, implemented at `aedd416`, then returned FIX REQUIRED for AT9–AT14 departure/display/backup evidence and Build Report metadata. Contract unchanged.

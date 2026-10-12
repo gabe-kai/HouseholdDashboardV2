@@ -21,7 +21,7 @@
 
 Inspected 2026-10-07: local `main` / `origin/main` are **f80d47b** (PR **#25**), through household migration 018 plus B's installation-control catalog migration 001. P0-008A r1 and P0-008B r2 are technically accepted and integrated. No live Railway reset/restore or hosted Product evaluation is claimed.
 
-**P0-008C r1** is **IMPLEMENTED** on `brief/p0-008c-member-access-removal` against merged A/B at `f80d47b`, awaiting Architecture technical acceptance (`reports/P0-008C-r1-build-report.md`). It covers role/permission clarity, person-specific links and password help, revoke/restore sign-in, ordinary removal with history and assignment safeguards, and conditional provenance-safe fixture remediation. D remains a successor draft; hosted backup/reset/restore and hands-on Product evaluation remain separate. The whole Product journey remains one card: **Set up and manage my household without operator help**.
+**P0-008C r1** is **FIX REQUIRED** on `brief/p0-008c-member-access-removal` at `aedd416`. Architecture found unmet AT9–AT11 behavior/evidence, AT13–AT14 evidence gaps, and stale Build Report commit metadata. Contract is unchanged; see `reports/P0-008C-r1-architecture-review.md`. D remains a successor draft; hosted backup/reset/restore and hands-on Product evaluation remain separate. The whole Product journey remains one card: **Set up and manage my household without operator help**.
 
 P0-007C's outstanding physical/Product judgments remain distinct from its technical acceptance and from approval to begin P0-008. Old reports retain their inspected SHAs.
 
@@ -46,7 +46,7 @@ P0-007C's outstanding physical/Product judgments remain distinct from its techni
 | P0-007C-3B - Owner-Controlled Personal Work on the Wall | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `415d930` via PR #23 | Product evaluation of the changed wall remains separate |
 | P0-008A - Protected First-Manager Setup and Repeatable Reset | r1 | ACCEPTED | Integrated foundation | Merged to `main` at `405c5db` via PR #24 | Hosted/Product evaluation remains separate |
 | P0-008B - Household Backups and In-App Restore | r2 | ACCEPTED | Integrated foundation | Merged to `main` at `f80d47b` via PR #25 | Hosted and Product evaluation remain separate |
-| P0-008C - Understandable Member Access and Safe Removal | r1 | IMPLEMENTED | Architecture technical acceptance | `brief/p0-008c-member-access-removal` against `f80d47b` | Review `reports/P0-008C-r1-build-report.md`; Product acceptance remains separate |
+| P0-008C - Understandable Member Access and Safe Removal | r1 | FIX REQUIRED | Engineering corrections | `brief/p0-008c-member-access-removal` at `aedd416` | Close Architecture findings in `reports/P0-008C-r1-architecture-review.md`; then re-review |
 | P0-008D - Guided Setup to the First Useful Household Day | r1 | DRAFT | Architecture | Successor draft | Accepted A–C evidence; baseline refresh and readiness release |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
@@ -84,7 +84,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Architecture reviews **P0-008C r1** Build Report (`reports/P0-008C-r1-build-report.md`) for technical acceptance. Engineering readiness context remains in `reports/P0-008C-r1-engineering-readiness.md`. Hosted backup/reset/restore and Product evaluation remain separately authorized checkpoints. No deployment/live database operation is implied. Detailed coverage: `reports/P0-008-architecture-sequencing.md`.
+Engineering closes **P0-008C r1** findings in `reports/P0-008C-r1-architecture-review.md` on the existing branch and updates the Build Report to pin the committed implementation. Architecture will re-review the corrected evidence. Hosted backup/reset/restore and Product evaluation remain separately authorized checkpoints. No deployment/live database operation is implied. Detailed coverage: `reports/P0-008-architecture-sequencing.md`.
 
 ## Notes for all teams
 

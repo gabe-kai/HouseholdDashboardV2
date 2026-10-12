@@ -98,12 +98,11 @@ test.describe("P0-007B AT7 group eligibility", () => {
     await page.getByRole("radio", { name: "Child" }).check();
     await page.getByRole("button", { name: "Add person" }).click();
     await expect(page.getByRole("heading", { name: pendingName })).toBeVisible();
-    await page.getByRole("button", { name: "Set up access" }).click();
-    await expect(page.getByRole("heading", { name: "Access setup" })).toBeVisible();
-    await page.getByRole("radio", { name: /Guided member/i }).check();
-    await page.getByRole("button", { name: "Prepare access setup" }).click();
-    await expect(page.getByText(/Copy this setup material now/i)).toBeVisible();
-    await page.getByRole("button", { name: "Cancel setup" }).click();
+    await page.getByRole("button", { name: "Manage sign-in" }).click();
+    await expect(page.getByRole("heading", { name: "Manage sign-in" })).toBeVisible();
+    await page.getByRole("button", { name: "Set up sign-in" }).click();
+    await expect(page.getByTestId("access-copy-link")).toBeVisible();
+    await page.getByRole("button", { name: "Cancel invitation" }).click();
     await page.getByRole("button", { name: new RegExp(`Back to ${pendingName}`) }).click();
     await expect(page.getByText("Not set up")).toBeVisible();
     await page.getByRole("button", { name: "Back to People & Groups" }).click();
@@ -308,7 +307,7 @@ test.describe("P0-007B AT7 group eligibility", () => {
     // Family name change for a non-seed person updates preview without changing occurrence identity.
     await openPeopleGroups(page);
     await page.getByRole("button", { name: new RegExp(pendingName) }).first().click();
-    await page.getByRole("button", { name: "Edit person" }).click();
+    await page.getByRole("button", { name: "Edit profile" }).click();
     await expect(page.getByRole("heading", { name: "Edit person" })).toBeVisible();
     await page.getByRole("textbox", { name: "Name" }).first().fill(`Pat Renamed ${suffix}`);
     await page.getByRole("button", { name: "Save", exact: true }).click();

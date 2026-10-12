@@ -10,6 +10,7 @@ import {
 import { isLockingStepStatus } from "../domain/occurrence-lock";
 import { reconcileOccurrence, retainPendingOmittedOccurrences } from "../domain/reconcile";
 import type {
+  AccessClaimPurpose,
   ApplicabilityRule,
   Grant,
   MemberPublic,
@@ -33,6 +34,8 @@ import {
   fetchToday,
   login,
   logout,
+  previewAccessClaim,
+  redeemAccessClaim,
   savePersonalLayer,
   setStepStatus,
   rememberCsrfToken,
@@ -41,6 +44,7 @@ import {
   type Proposal,
   type Routine,
   type RoutinePreview,
+  type AccessClaimPreview,
   type MetaInfo,
   type SessionInfo,
 } from "./api";
@@ -70,6 +74,7 @@ import {
   readOutbox,
   removeOutboxItem,
   retireMismatchedMemberOutbox,
+  retireOutboxForIdentityLoss,
   writeOutbox,
   type OutboxItem,
 } from "./outbox";
@@ -98,6 +103,45 @@ type HouseholdLeaf = "approvals" | "activity" | null;
 type TodaySecondary = "personalize" | "preview" | null;
 
 const ACTIVITY_CLEARED_HINT = /routine history was cleared/i;
+
+const IDENTITY_LOSS_NOTICE_KEY = "hd-identity-loss-notice";
+
+/**
+ * Read `#access=<token>` from the URL fragment and clear it so the secret never
+ * lingers in history, referrers, or screenshots of the address bar.
+ */
+function readAndClearAccessHash(): string | null {
+  if (typeof window === "undefined") return null;
+  const match = /^#access=(.+)$/.exec(window.location.hash);
+  if (!match) return null;
+  let token: string;
+  try {
+    token = decodeURIComponent(match[1]!).trim();
+  } catch {
+    token = match[1]!.trim();
+  }
+  try {
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${window.location.search}`,
+    );
+  } catch {
+    /* ignore */
+  }
+  return token.length > 0 ? token : null;
+}
+
+/** StrictMode-safe: the fragment is consumed once per page load. */
+let initialAccessHashRead = false;
+let initialAccessToken: string | null = null;
+function takeInitialAccessToken(): string | null {
+  if (!initialAccessHashRead) {
+    initialAccessHashRead = true;
+    initialAccessToken = readAndClearAccessHash();
+  }
+  return initialAccessToken;
+}
 
 function primaryTabFor(location: AppLocation): PrimaryTab {
   if (
@@ -271,6 +315,9 @@ export function App() {
   const [tasks, setTasks] = useState<PersonalTask[]>([]);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [outbox, setOutbox] = useState<OutboxItem[]>([]);
+  const [pendingAccessToken, setPendingAccessToken] = useState<string | null>(() =>
+    takeInitialAccessToken(),
+  );
   const [householdDate, setHouseholdDate] = useState("");
   const [occurrencesLoaded, setOccurrencesLoaded] = useState(false);
   const [knownActivityGeneration, setKnownActivityGeneration] = useState(0);
@@ -431,6 +478,33 @@ export function App() {
     rememberIntendedPath(window.location.pathname, window.location.search);
   }
 
+  function consumePendingAccessToken() {
+    initialAccessToken = null;
+    setPendingAccessToken(null);
+  }
+
+  /**
+   * The signed-in member lost access (sign-in revoked, removed, or permissions
+   * no longer allow this session). Retire pending checklist work with an
+   * explanation, then return to the sign-in screen.
+   */
+  const handleIdentityLoss = useEffectEvent(async (membershipId: string) => {
+    if (identityRef.current !== membershipId) return;
+    try {
+      await retireOutboxForIdentityLoss(membershipId);
+    } catch {
+      /* best-effort; session is ending regardless */
+    }
+    if (identityRef.current !== membershipId) return;
+    try {
+      sessionStorage.setItem(IDENTITY_LOSS_NOTICE_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+    rememberCsrfToken("");
+    expireSession();
+  });
+
   const retireStaleOutboxForGeneration = useEffectEvent(
     async (membershipId: string, serverGeneration: number): Promise<boolean> => {
       if (identityRef.current !== membershipId) return false;
@@ -530,15 +604,25 @@ export function App() {
         setMemberships(memberResult.value.people);
         setFamilyOrderVersion(memberResult.value.familyOrderVersion);
         const self = memberResult.value.people.find((person) => person.id === membershipId);
+        if (self && (self.departed || self.signInRevoked)) {
+          void handleIdentityLoss(membershipId);
+          return;
+        }
         if (self) {
-          setSession((current) =>
-            current && current.member.displayName !== self.displayName
-              ? {
-                  ...current,
-                  member: { ...current.member, displayName: self.displayName },
-                }
-              : current,
-          );
+          setSession((current) => {
+            if (!current || current.member.id !== self.id) return current;
+            const grantsChanged =
+              [...self.grants].sort().join("\0") !== [...current.grants].sort().join("\0");
+            const nameChanged = current.member.displayName !== self.displayName;
+            if (!grantsChanged && !nameChanged) return current;
+            return {
+              ...current,
+              grants: grantsChanged ? (self.grants as Grant[]) : current.grants,
+              member: nameChanged
+                ? { ...current.member, displayName: self.displayName }
+                : current.member,
+            };
+          });
         }
       }
       if (taskResult.status === "fulfilled") setTasks(taskResult.value.tasks);
@@ -608,22 +692,41 @@ export function App() {
         const code = (caught as { code?: string }).code;
         const message = errorMessage(caught);
         if (code === "UNAUTHORIZED") {
-          // Household reset (and other revoke paths) must explain retired pending work.
-          for (const pending of items.filter((entry) => entry.state !== "rejected")) {
-            items = await patchOutboxItem(membershipId, pending.mutationId, {
-              state: "rejected",
-              errorMessage: "The household was reset; this checklist change was not saved.",
-            });
+          // Household reset or lost access (revoked/removed) must explain retired pending work.
+          let householdWasReset = true;
+          try {
+            const latestMeta = await fetchMeta();
+            householdWasReset =
+              latestMeta.installationEpoch !== installationEpochRef.current ||
+              latestMeta.setupRequired;
+          } catch {
+            // Ambiguous: keep the conservative reset explanation.
+            householdWasReset = true;
           }
+          if (identityRef.current !== membershipId) return;
+          if (householdWasReset) {
+            for (const pending of items.filter((entry) => entry.state !== "rejected")) {
+              items = await patchOutboxItem(membershipId, pending.mutationId, {
+                state: "rejected",
+                errorMessage: "The household was reset; this checklist change was not saved.",
+              });
+            }
+            outboxRef.current = items;
+            setOutbox(items);
+            setInstallationResetBanner(true);
+            try {
+              sessionStorage.setItem("hd-installation-reset-notice", "1");
+            } catch {
+              /* ignore */
+            }
+            expireSession();
+            return;
+          }
+          items = await retireOutboxForIdentityLoss(membershipId);
+          if (identityRef.current !== membershipId) return;
           outboxRef.current = items;
           setOutbox(items);
-          setInstallationResetBanner(true);
-          try {
-            sessionStorage.setItem("hd-installation-reset-notice", "1");
-          } catch {
-            /* ignore */
-          }
-          expireSession();
+          await handleIdentityLoss(membershipId);
           return;
         }
         if (
@@ -716,6 +819,16 @@ export function App() {
       }
       setRestoring(false);
     })();
+  }, []);
+
+  useEffect(() => {
+    // Pasting an access link into an already-open tab changes only the fragment.
+    const onHashChange = () => {
+      const token = readAndClearAccessHash();
+      if (token) setPendingAccessToken(token);
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
   useEffect(() => {
@@ -1018,7 +1131,24 @@ export function App() {
     return (
       <AuthScreen
         evaluationBanner={meta?.evaluationMode ? meta.banner : null}
-        onAuthenticated={establishSession}
+        accessToken={pendingAccessToken}
+        onAccessTokenConsumed={consumePendingAccessToken}
+        onAuthenticated={(next) => {
+          consumePendingAccessToken();
+          establishSession(next);
+        }}
+      />
+    );
+  }
+
+  if (session && pendingAccessToken) {
+    return (
+      <SharedDeviceAccessNotice
+        signedInName={session.member.displayName}
+        onSignOut={async () => {
+          await signOut();
+        }}
+        onKeepSession={consumePendingAccessToken}
       />
     );
   }
@@ -1063,6 +1193,8 @@ export function App() {
     hasGrant(activeSession, "routine.shared.manage") ||
     hasGrant(activeSession, "responsibility.manage");
   const canEnroll = hasGrant(activeSession, "household.member.enroll");
+  const canAccessManage = hasGrant(activeSession, "household.access.manage");
+  const canMemberRemove = hasGrant(activeSession, "household.member.remove");
   const canManageStructure = hasGrant(activeSession, "household.structure.manage");
   const canManageSchedule = hasGrant(activeSession, "household.schedule.manage");
   const canDecide = hasGrant(activeSession, "routine.proposal.decide");
@@ -1653,6 +1785,10 @@ export function App() {
           familyOrderVersion={familyOrderVersion}
           canManageStructure={canManageStructure}
           canEnroll={canEnroll}
+          canAccessManage={canAccessManage}
+          canMemberRemove={canMemberRemove}
+          canLifecycleManage={canManageLifecycle}
+          currentMembershipId={activeSession.member.id}
           canViewActivity={false}
           entry={
             gatedLocation.name === "household-person"
@@ -1953,18 +2089,102 @@ function PrimaryNavButton(props: {
   );
 }
 
+/** Accept a pasted token or a full `...#access=<token>` link. */
+function extractAccessToken(raw: string): string {
+  const trimmed = raw.trim();
+  const match = /#access=([^\s]+)/.exec(trimmed);
+  if (match) {
+    try {
+      return decodeURIComponent(match[1]!);
+    } catch {
+      return match[1]!;
+    }
+  }
+  return trimmed;
+}
+
+const ACCESS_PURPOSE_HEADINGS: Record<AccessClaimPurpose, string> = {
+  invitation: "Set up your account",
+  password_reset: "Choose a new password",
+  restore_sign_in: "Restore your sign-in",
+};
+
+function SharedDeviceAccessNotice(props: {
+  signedInName: string;
+  onSignOut: () => Promise<void>;
+  onKeepSession: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <main className="app-shell auth-shell">
+      <section
+        className="panel auth-panel"
+        role="alertdialog"
+        aria-labelledby="shared-device-heading"
+        data-testid="shared-device-access-notice"
+      >
+        <p className="eyebrow">Household Dashboard</p>
+        <h1 id="shared-device-heading" className="page-heading">
+          Someone is already signed in
+        </h1>
+        <p>
+          This device is signed in as <strong>{props.signedInName}</strong>. The access link you
+          opened is for a household member&apos;s own sign-in.
+        </p>
+        <p className="meta">
+          If this is a shared device, sign out first so the link sets up the right person. Otherwise
+          keep your session and ignore the link.
+        </p>
+        <div className="button-row">
+          <button
+            type="button"
+            className="primary"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await props.onSignOut();
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Sign out and continue
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy}
+            onClick={props.onKeepSession}
+          >
+            Keep my session
+          </button>
+        </div>
+      </section>
+    </main>
+  );
+}
+
 function AuthScreen(props: {
   evaluationBanner: string | null;
+  /** Token captured from `#access=` (fragment already cleared by the caller). */
+  accessToken?: string | null;
+  onAccessTokenConsumed?: () => void;
   onAuthenticated: (session: SessionInfo) => void;
 }) {
-  const [mode, setMode] = useState<"login" | "claim">("login");
+  const [mode, setMode] = useState<"login" | "claim" | "access">("login");
   const [loginName, setLoginName] = useState("");
   const [passphrase, setPassphrase] = useState("");
+  const [newPassphrase, setNewPassphrase] = useState("");
   const [token, setToken] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [accessPreview, setAccessPreview] = useState<AccessClaimPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [resetNotice, setResetNotice] = useState(false);
+  const [identityLossNotice, setIdentityLossNotice] = useState(false);
+  const previewRunRef = useRef(0);
 
   useEffect(() => {
     try {
@@ -1972,16 +2192,81 @@ function AuthScreen(props: {
         setResetNotice(true);
         sessionStorage.removeItem("hd-installation-reset-notice");
       }
+      if (sessionStorage.getItem(IDENTITY_LOSS_NOTICE_KEY) === "1") {
+        setIdentityLossNotice(true);
+        sessionStorage.removeItem(IDENTITY_LOSS_NOTICE_KEY);
+      }
     } catch {
       /* ignore */
     }
   }, []);
+
+  async function loadAccessPreview(rawToken: string) {
+    const claimToken = extractAccessToken(rawToken);
+    const run = ++previewRunRef.current;
+    setBusy(true);
+    setError(null);
+    setAccessPreview(null);
+    try {
+      const result = await previewAccessClaim(claimToken);
+      if (run !== previewRunRef.current) return;
+      setToken(claimToken);
+      setAccessPreview(result.preview);
+      if (result.preview.purpose === "invitation") {
+        setDisplayName((current) => current || result.preview.personDisplayName);
+      }
+    } catch (caught) {
+      if (run !== previewRunRef.current) return;
+      setError(
+        `${errorMessage(caught)}. Ask a household manager for a new link if this one has expired.`,
+      );
+    } finally {
+      if (run === previewRunRef.current) setBusy(false);
+    }
+  }
+
+  const incomingAccessToken = props.accessToken ?? null;
+  useEffect(() => {
+    if (!incomingAccessToken) return;
+    setMode("access");
+    setToken(incomingAccessToken);
+    props.onAccessTokenConsumed?.();
+    void loadAccessPreview(incomingAccessToken);
+    // Preview once per captured token; callbacks are intentionally not dependencies.
+  }, [incomingAccessToken]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
     setError(null);
     try {
+      if (mode === "access") {
+        if (!accessPreview) {
+          await loadAccessPreview(token);
+          return;
+        }
+        const claimToken = extractAccessToken(token);
+        const purpose = accessPreview.purpose;
+        const result = await redeemAccessClaim(
+          purpose === "invitation"
+            ? { claimToken, loginName, passphrase, displayName }
+            : purpose === "password_reset"
+              ? { claimToken, newPassphrase }
+              : { claimToken },
+        );
+        if ("csrfToken" in result && result.csrfToken) {
+          props.onAuthenticated(result);
+          return;
+        }
+        // Password reset ends every session; sign in again with the new passphrase.
+        setNewPassphrase("");
+        setPassphrase("");
+        setAccessPreview(null);
+        setToken("");
+        setMode("login");
+        setNotice("Password updated. Sign in with your new passphrase.");
+        return;
+      }
       const session =
         mode === "login"
           ? await login(loginName, passphrase)
@@ -2019,12 +2304,135 @@ function AuthScreen(props: {
           </button>
         </div>
       ) : null}
+      {identityLossNotice ? (
+        <div
+          className="status-notice activity-reset-banner"
+          role="status"
+          data-testid="identity-loss-banner"
+        >
+          <p>
+            Your access to this household changed. Pending checklist changes were not saved.
+          </p>
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => setIdentityLossNotice(false)}
+          >
+            Dismiss
+          </button>
+        </div>
+      ) : null}
       <section className="panel auth-panel">
         <p className="eyebrow">Household Dashboard</p>
         <h1 className="page-heading">
-          {mode === "login" ? "Sign in" : "Claim your household account"}
+          {mode === "login"
+            ? "Sign in"
+            : mode === "access"
+              ? accessPreview
+                ? ACCESS_PURPOSE_HEADINGS[accessPreview.purpose]
+                : "Use an access link"
+              : "Claim your household account"}
         </h1>
+        {notice ? (
+          <p className="status-pill" data-kind="ok" role="status">
+            {notice}
+          </p>
+        ) : null}
+        {mode === "access" && accessPreview ? (
+          <p className="meta" data-testid="access-claim-summary">
+            {accessPreview.personDisplayName} · {accessPreview.householdName}
+          </p>
+        ) : null}
         <form className="form-grid" onSubmit={submit}>
+          {mode === "access" ? (
+            <>
+              {!accessPreview ? (
+                <label>
+                  Access link or code
+                  <textarea
+                    autoComplete="off"
+                    value={token}
+                    onChange={(event) => setToken(event.target.value)}
+                    required
+                  />
+                </label>
+              ) : null}
+              {accessPreview?.purpose === "invitation" ? (
+                <>
+                  <label>
+                    Display name
+                    <input
+                      autoComplete="name"
+                      value={displayName}
+                      onChange={(event) => setDisplayName(event.target.value)}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Login name
+                    <input
+                      autoComplete="username"
+                      value={loginName}
+                      onChange={(event) => setLoginName(event.target.value)}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Passphrase
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      value={passphrase}
+                      onChange={(event) => setPassphrase(event.target.value)}
+                      required
+                    />
+                  </label>
+                  <p className="meta">
+                    Use at least 15 characters. Paste and password managers are supported.
+                  </p>
+                </>
+              ) : null}
+              {accessPreview?.purpose === "password_reset" ? (
+                <>
+                  <label>
+                    New passphrase
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      value={newPassphrase}
+                      onChange={(event) => setNewPassphrase(event.target.value)}
+                      required
+                    />
+                  </label>
+                  <p className="meta">
+                    Use at least 15 characters. You will sign in again with the new passphrase.
+                  </p>
+                </>
+              ) : null}
+              {accessPreview?.purpose === "restore_sign_in" ? (
+                <p className="meta">
+                  A household manager restored your sign-in. Continue to sign in again with your
+                  existing account.
+                </p>
+              ) : null}
+              <button type="submit" className="primary" disabled={busy}>
+                {busy
+                  ? "Please wait…"
+                  : !accessPreview
+                    ? "Continue"
+                    : accessPreview.purpose === "invitation"
+                      ? "Create account and sign in"
+                      : accessPreview.purpose === "password_reset"
+                        ? "Save new passphrase"
+                        : "Restore sign-in"}
+              </button>
+              {error ? (
+                <p role="alert" className="form-error">
+                  {error}
+                </p>
+              ) : null}
+            </>
+          ) : null}
           {mode === "claim" ? (
             <>
               <label>
@@ -2047,47 +2455,70 @@ function AuthScreen(props: {
               </label>
             </>
           ) : null}
-          <label>
-            Login name
-            <input
-              autoComplete="username"
-              value={loginName}
-              onChange={(event) => setLoginName(event.target.value)}
-              required
-            />
-          </label>
-          <label>
-            Passphrase
-            <input
-              type="password"
-              autoComplete={mode === "login" ? "current-password" : "new-password"}
-              value={passphrase}
-              onChange={(event) => setPassphrase(event.target.value)}
-              required
-            />
-          </label>
-          {mode === "claim" ? (
-            <p className="meta">Use at least 15 characters. Paste and password managers are supported.</p>
-          ) : null}
-          <button type="submit" className="primary" disabled={busy}>
-            {busy ? "Please wait…" : mode === "login" ? "Sign in" : "Claim and sign in"}
-          </button>
-          {error ? (
-            <p role="alert" className="form-error">
-              {error}
-            </p>
+          {mode !== "access" ? (
+            <>
+              <label>
+                Login name
+                <input
+                  autoComplete="username"
+                  value={loginName}
+                  onChange={(event) => setLoginName(event.target.value)}
+                  required
+                />
+              </label>
+              <label>
+                Passphrase
+                <input
+                  type="password"
+                  autoComplete={mode === "login" ? "current-password" : "new-password"}
+                  value={passphrase}
+                  onChange={(event) => setPassphrase(event.target.value)}
+                  required
+                />
+              </label>
+              {mode === "claim" ? (
+                <p className="meta">Use at least 15 characters. Paste and password managers are supported.</p>
+              ) : null}
+              <button type="submit" className="primary" disabled={busy}>
+                {busy ? "Please wait…" : mode === "login" ? "Sign in" : "Claim and sign in"}
+              </button>
+              {error ? (
+                <p role="alert" className="form-error">
+                  {error}
+                </p>
+              ) : null}
+            </>
           ) : null}
         </form>
         <button
           type="button"
           className="text-button"
           onClick={() => {
+            previewRunRef.current += 1;
             setMode((current) => (current === "login" ? "claim" : "login"));
+            setAccessPreview(null);
+            setNotice(null);
             setError(null);
+            setBusy(false);
           }}
         >
           {mode === "login" ? "I have an enrollment token" : "Back to sign in"}
         </button>
+        {mode === "login" ? (
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => {
+              setMode("access");
+              setToken("");
+              setAccessPreview(null);
+              setNotice(null);
+              setError(null);
+            }}
+          >
+            I have an access link
+          </button>
+        ) : null}
       </section>
     </main>
   );

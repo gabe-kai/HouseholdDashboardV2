@@ -32,8 +32,17 @@ import {
   EndResponsibilitySchema,
   EndRoutineSchema,
   HouseholdDateSchema,
+  CancelAccessClaimSchema,
+  ChangeOwnPasswordSchema,
+  CommitMemberRemovalSchema,
+  FixtureRemediationApplySchema,
+  IssueAccessClaimSchema,
   IssueEnrollmentSchema,
   LoginSchema,
+  PreviewMemberRemovalSchema,
+  RedeemAccessClaimSchema,
+  RevokeSignInSchema,
+  SaveMembershipPermissionsSchema,
   MoveScheduleEntrySchema,
   SaveFamilyOrderSchema,
   SavePersonalLayerSchema,
@@ -61,6 +70,7 @@ const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const CSRF_EXEMPT = new Set([
   "/api/v1/auth/login",
   "/api/v1/auth/claim",
+  "/api/v1/auth/access-claims/redeem",
   "/api/v1/health",
   "/api/v1/meta",
   "/api/v1/test/bootstrap-claim",
@@ -73,6 +83,7 @@ const CSRF_EXEMPT = new Set([
 const AUTH_ORIGIN_REQUIRED = new Set([
   "/api/v1/auth/login",
   "/api/v1/auth/claim",
+  "/api/v1/auth/access-claims/redeem",
   "/api/v1/display/claim",
   "/api/v1/owner/session",
   "/api/v1/setup/exchange",
@@ -198,7 +209,8 @@ export async function buildApp(
       pathOnly === "/api/v1/household/restore" ||
       (method === "POST" && pathOnly === "/api/v1/household/backups") ||
       (method === "DELETE" && /^\/api\/v1\/household\/backups\/[^/]+$/.test(pathOnly)) ||
-      pathOnly === "/api/v1/owner/backups/register"
+      pathOnly === "/api/v1/owner/backups/register" ||
+      pathOnly === "/api/v1/fixtures/remediation/apply"
     ) {
       return;
     }
@@ -740,6 +752,280 @@ export async function buildApp(
     const result = store.cancelEnrollmentSetup(session, membershipId);
     broadcast(session, "membership", result.membershipId);
     return result;
+  });
+
+  app.post("/api/v1/people/:membershipId/access-claims", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const membershipId = (request.params as { membershipId: string }).membershipId;
+    if (!UuidSchema.safeParse(membershipId).success) {
+      return reply.code(400).send(errorBody("VALIDATION", "Invalid person id", request.id));
+    }
+    const parsed = IssueAccessClaimSchema.safeParse({
+      ...(request.body as object),
+      membershipId,
+    });
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid access claim", request.id));
+    }
+    const claim = store.issueAccessClaim(session, parsed.data);
+    broadcast(session, "membership", claim.membershipId);
+    return { claim };
+  });
+
+  app.post("/api/v1/people/:membershipId/access-claims/cancel", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const membershipId = (request.params as { membershipId: string }).membershipId;
+    if (!UuidSchema.safeParse(membershipId).success) {
+      return reply.code(400).send(errorBody("VALIDATION", "Invalid person id", request.id));
+    }
+    const parsed = CancelAccessClaimSchema.safeParse({
+      ...(request.body as object),
+      membershipId,
+    });
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid cancel payload", request.id));
+    }
+    const result = store.cancelAccessClaims(session, parsed.data);
+    broadcast(session, "membership", result.membershipId);
+    return result;
+  });
+
+  app.get("/api/v1/auth/access-claims/preview", async (request, reply) => {
+    const token =
+      typeof (request.query as { token?: string }).token === "string"
+        ? (request.query as { token: string }).token
+        : "";
+    if (!token || token.length < 16) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid access claim token", request.id));
+    }
+    try {
+      return { preview: store.previewAccessClaim(token) };
+    } catch (err) {
+      const code =
+        err && typeof err === "object" && "code" in err
+          ? String((err as { code: string }).code)
+          : "UNAUTHORIZED";
+      return reply
+        .code(code === "UNAUTHORIZED" ? 401 : 400)
+        .send(
+          errorBody(
+            code,
+            err instanceof Error ? err.message : "Invalid claim",
+            request.id,
+          ),
+        );
+    }
+  });
+
+  app.post(
+    "/api/v1/auth/access-claims/redeem",
+    { config: { rateLimit: claimRateLimit } },
+    async (request, reply) => {
+      const parsed = RedeemAccessClaimSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid redeem payload", request.id));
+      }
+      try {
+        const result = await store.redeemAccessClaim(parsed.data, getInstallationEpoch());
+        if ("token" in result) {
+          setSessionCookie(reply, result.token);
+          broadcast(result.context, "membership", result.context.membershipId);
+          return {
+            purpose: result.purpose,
+            ...sessionBody(result.context, result.csrfSecret),
+          };
+        }
+        return { purpose: result.purpose, ok: true };
+      } catch (err) {
+        const code =
+          err && typeof err === "object" && "code" in err
+            ? String((err as { code: string }).code)
+            : "UNAUTHORIZED";
+        const status =
+          code === "UNAUTHORIZED" ? 401 : code === "CONFLICT" ? 409 : 400;
+        return reply
+          .code(status)
+          .send(
+            errorBody(
+              code,
+              err instanceof Error ? err.message : "Redeem failed",
+              request.id,
+            ),
+          );
+      }
+    },
+  );
+
+  app.post("/api/v1/people/:membershipId/permissions", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const membershipId = (request.params as { membershipId: string }).membershipId;
+    if (!UuidSchema.safeParse(membershipId).success) {
+      return reply.code(400).send(errorBody("VALIDATION", "Invalid person id", request.id));
+    }
+    const parsed = SaveMembershipPermissionsSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid permissions payload", request.id));
+    }
+    const person = store.saveMembershipPermissions(session, membershipId, parsed.data);
+    sync.closeMembership(membershipId);
+    broadcast(session, "membership", person.id, person.version);
+    return { person };
+  });
+
+  app.post("/api/v1/people/:membershipId/sign-in/revoke", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const membershipId = (request.params as { membershipId: string }).membershipId;
+    if (!UuidSchema.safeParse(membershipId).success) {
+      return reply.code(400).send(errorBody("VALIDATION", "Invalid person id", request.id));
+    }
+    const parsed = RevokeSignInSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid revoke payload", request.id));
+    }
+    const result = store.revokeSignIn(session, membershipId, parsed.data);
+    sync.closeMembership(membershipId);
+    broadcast(session, "membership", membershipId);
+    return result;
+  });
+
+  app.post("/api/v1/auth/password", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const parsed = ChangeOwnPasswordSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid password change", request.id));
+    }
+    const result = await store.changeOwnPassword(session, parsed.data);
+    setSessionCookie(reply, result.token);
+    return sessionBody(result.context, result.csrfSecret);
+  });
+
+  app.post("/api/v1/people/:membershipId/removal/preview", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const membershipId = (request.params as { membershipId: string }).membershipId;
+    if (!UuidSchema.safeParse(membershipId).success) {
+      return reply.code(400).send(errorBody("VALIDATION", "Invalid person id", request.id));
+    }
+    const parsed = PreviewMemberRemovalSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid removal preview", request.id));
+    }
+    return store.previewMemberRemoval(session, membershipId, parsed.data);
+  });
+
+  app.post("/api/v1/people/:membershipId/removal", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const membershipId = (request.params as { membershipId: string }).membershipId;
+    if (!UuidSchema.safeParse(membershipId).success) {
+      return reply.code(400).send(errorBody("VALIDATION", "Invalid person id", request.id));
+    }
+    const parsed = CommitMemberRemovalSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid removal commit", request.id));
+    }
+    const result = await store.commitMemberRemoval(session, membershipId, parsed.data);
+    sync.closeMembership(membershipId);
+    broadcast(session, "membership", membershipId);
+    broadcast(session, "family_order", session.householdId, store.getFamilyOrderVersion(session.householdId));
+    return result;
+  });
+
+  app.get("/api/v1/fixtures/remediation", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    try {
+      return store.previewFixtureRemediation(session);
+    } catch (err) {
+      const code =
+        err && typeof err === "object" && "code" in err
+          ? String((err as { code: string }).code)
+          : "FAILED";
+      return reply
+        .code(code === "NOT_FOUND" ? 404 : code === "FORBIDDEN" ? 403 : 400)
+        .send(
+          errorBody(
+            code,
+            err instanceof Error ? err.message : "Remediation unavailable",
+            request.id,
+          ),
+        );
+    }
+  });
+
+  app.post("/api/v1/fixtures/remediation/apply", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const parsed = FixtureRemediationApplySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid remediation apply", request.id));
+    }
+    try {
+      const result = (await runtime.withExclusive(async () =>
+        store.applyFixtureRemediation(session, parsed.data, {
+          createBackup: async (label) => {
+            // Already inside withExclusive; createBackup would wait on that barrier forever.
+            const meta = await runtime.createBackupWhileExclusive({ label });
+            return { id: meta.id, label: meta.label };
+          },
+        }),
+      )) as {
+        results: Array<{ membershipId: string; mode: "departed" | "deleted" }>;
+        backup: { id: string; label: string | null } | null;
+      };
+      for (const row of result.results) {
+        sync.closeMembership(row.membershipId);
+        broadcast(session, "membership", row.membershipId);
+      }
+      broadcast(
+        session,
+        "family_order",
+        session.householdId,
+        store.getFamilyOrderVersion(session.householdId),
+      );
+      return result;
+    } catch (err) {
+      const code =
+        err && typeof err === "object" && "code" in err
+          ? String((err as { code: string }).code)
+          : "FAILED";
+      const status =
+        code === "CONFLICT" ? 409 : code === "FORBIDDEN" ? 403 : 400;
+      return reply
+        .code(status)
+        .send(
+          errorBody(
+            code,
+            err instanceof Error ? err.message : "Remediation failed",
+            request.id,
+          ),
+        );
+    }
   });
 
   app.get("/api/v1/groups", async (request, reply) => {

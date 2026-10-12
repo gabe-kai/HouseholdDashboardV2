@@ -1,8 +1,18 @@
+import { toDataURL } from "qrcode";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import {
+  GRANT_PRESETS,
+  MEMBER_DEFAULT_GRANTS,
+  MEMBER_DIRECT_GRANTS,
+  SECONDARY_EDITABLE_GRANTS,
+  memberModeFromGrants,
+  mergePermissionGrants,
+} from "../shared/grants";
 import type {
+  AccessClaimPurpose,
   AccessState,
   Daypart,
-  GrantPreset,
+  Grant,
   GroupPublic,
   MemberPublic,
   OccurrenceView,
@@ -10,16 +20,25 @@ import type {
   StepStatus,
 } from "../shared/schemas";
 import {
-  cancelEnrollmentSetup,
+  applyFixtureRemediation,
+  cancelAccessClaims,
+  commitMemberRemoval,
   createGroup,
   createPerson,
   deleteGroup,
   fetchGroups,
   fetchPerson,
-  issueEnrollmentClaim,
+  issueAccessClaim,
+  previewFixtureRemediation,
+  previewMemberRemoval,
+  revokeSignIn,
   saveFamilyOrder,
+  saveMembershipPermissions,
   updateGroup,
   updatePerson,
+  type FixtureRemediationPreview,
+  type IssuedAccessClaim,
+  type MemberRemovalPreview,
   type PersonalTask,
 } from "./api";
 import { newClientId } from "./id";
@@ -40,6 +59,8 @@ type ViewState =
   | { kind: "edit-person"; personId: string }
   | { kind: "reorder-people" }
   | { kind: "access"; personId: string }
+  | { kind: "permissions"; personId: string }
+  | { kind: "remove-person"; personId: string }
   | { kind: "group-detail"; groupId: string }
   | { kind: "create-group" }
   | { kind: "edit-group"; groupId: string }
@@ -66,24 +87,99 @@ function roleLabel(value: MemberPublic["classification"]): string {
   return "Role not selected";
 }
 
-function overviewRoleLabel(value: MemberPublic["classification"]): string | null {
-  if (value === "adult") return "Adult";
-  if (value === "child") return "Child";
-  return null;
+/** Authority (permissions) label for the directory and detail; never Adult/Child. */
+function authorityRoleLabel(value: MemberPublic["roleLabel"]): string {
+  if (value === "manager") return "Manager";
+  if (value === "member") return "Member";
+  return "Customized";
 }
 
-function accessLabel(state: AccessState): string {
+function signInStatusLabel(state: AccessState): string {
   switch (state) {
     case "access_set_up":
-      return "Access set up";
+      return "Active";
     case "setup_ready":
-      return "Setup ready";
+      return "Invitation ready";
     case "setup_expired":
-      return "Setup expired";
+      return "Invitation expired";
+    case "access_revoked":
+      return "Access revoked";
     default:
       return "Not set up";
   }
 }
+
+function memberModeLabel(mode: "approval" | "direct" | null): string {
+  if (mode === "direct") return "Can edit own additions";
+  if (mode === "approval") return "Approval required";
+  return "Mixed";
+}
+
+/** Plain-language names for every grant the Permissions editor can show. */
+const GRANT_LABELS: Record<string, string> = {
+  "household.member.enroll": "Add and enroll people",
+  "household.display.manage": "Manage household displays",
+  "household.structure.manage": "Edit people and groups",
+  "household.lifecycle.manage": "Back up, reset, and restore the household",
+  "household.access.manage": "Manage sign-in and permissions",
+  "household.member.remove": "Remove people from the household",
+  "household.schedule.manage": "Manage the school calendar",
+  "household.activity.clear": "Clear routine history",
+  "routine.shared.manage": "Edit shared routines",
+  "routine.proposal.decide": "Decide on routine suggestions",
+  "responsibility.manage": "Manage responsibilities",
+  "routine.personalize.propose": "Suggest changes to own routines",
+  "routine.personalize.direct": "Edit own routine additions",
+  "routine.execute.own": "Complete own routines",
+  "responsibility.execute.own": "Complete own responsibilities",
+  "personal_task.create": "Create personal tasks",
+};
+
+function grantLabel(grant: string): string {
+  return GRANT_LABELS[grant] ?? grant;
+}
+
+const ALL_KNOWN_GRANTS: readonly string[] = [
+  ...new Set<string>([
+    ...GRANT_PRESETS.manager,
+    ...MEMBER_DEFAULT_GRANTS,
+    ...MEMBER_DIRECT_GRANTS,
+    ...SECONDARY_EDITABLE_GRANTS,
+  ]),
+];
+
+const SECONDARY_GRANT_SET = new Set<string>(SECONDARY_EDITABLE_GRANTS);
+
+/** Role/mode/secondary draft derived from a person's effective grants. */
+function permissionDraftFromGrants(person: Pick<MemberPublic, "grants" | "roleLabel">): {
+  role: "manager" | "member";
+  memberMode: "approval" | "direct";
+  secondary: string[];
+} {
+  const role =
+    person.roleLabel === "manager" ||
+    (person.roleLabel === "customized" &&
+      ["household.member.enroll", "household.structure.manage", "household.access.manage"].every(
+        (grant) => person.grants.includes(grant),
+      ))
+      ? "manager"
+      : "member";
+  return {
+    role,
+    memberMode: memberModeFromGrants(person.grants) ?? "approval",
+    secondary: person.grants.filter((grant) => SECONDARY_GRANT_SET.has(grant)),
+  };
+}
+
+function accessLinkFor(token: string): string {
+  return `${window.location.origin}/#access=${encodeURIComponent(token)}`;
+}
+
+const ACCESS_PURPOSE_LABELS: Record<AccessClaimPurpose, string> = {
+  invitation: "Invitation link",
+  password_reset: "Password reset link",
+  restore_sign_in: "Restore sign-in link",
+};
 
 function memberCountLabel(count: number): string {
   return `${count} member${count === 1 ? "" : "s"}`;
@@ -94,28 +190,6 @@ function statusLabel(status: StepStatus): string {
   if (status === "completed") return "Completed";
   return "Open";
 }
-
-const PRESET_OPTIONS: Array<{
-  value: GrantPreset;
-  label: string;
-  description: string;
-}> = [
-  {
-    value: "manager",
-    label: "Household manager",
-    description: "Manage people, access, and groups; shared Morning Routine; approvals.",
-  },
-  {
-    value: "direct_personalizer",
-    label: "Independent member",
-    description: "Change their own routine directly; own checklist and personal tasks.",
-  },
-  {
-    value: "proposal_personalizer",
-    label: "Guided member",
-    description: "Suggest routine changes for approval; own checklist and personal tasks.",
-  },
-];
 
 function FocusHeading(props: { id: string; children: ReactNode }) {
   const ref = useRef<HTMLHeadingElement>(null);
@@ -147,6 +221,14 @@ export function PeopleGroupsView(props: {
   familyOrderVersion: number;
   canManageStructure: boolean;
   canEnroll: boolean;
+  /** household.access.manage: sign-in links, permissions, revoke/restore. */
+  canAccessManage?: boolean;
+  /** household.member.remove: remove people and sample-data remediation. */
+  canMemberRemove?: boolean;
+  /** household.lifecycle.manage: optional backup before sample remediation. */
+  canLifecycleManage?: boolean;
+  /** Signed-in member; self cannot be revoked or removed from this screen. */
+  currentMembershipId?: string;
   canViewActivity: boolean;
   /** When nested under Household, start on overview, activity, or a detail route. */
   entry?: "overview" | "activity" | "person" | "group";
@@ -167,7 +249,11 @@ export function PeopleGroupsView(props: {
   }) => void;
   onDirtyChange?: (dirty: boolean) => void;
 }) {
-  const sortedMemberships = sortPeople(props.memberships);
+  // Departed people should never reach the client; filter defensively.
+  const sortedMemberships = sortPeople(props.memberships.filter((person) => !person.departed));
+  const canAccessManage = props.canAccessManage ?? false;
+  const canMemberRemove = props.canMemberRemove ?? false;
+  const canLifecycleManage = props.canLifecycleManage ?? false;
   const [view, setView] = useState<ViewState>(() => {
     if (props.entry === "activity") return { kind: "household-activity" };
     if (props.entry === "person" && props.personId) {
@@ -193,11 +279,13 @@ export function PeopleGroupsView(props: {
       setView((current) =>
         current.kind === "person-detail" && current.personId === personId
           ? current
-          : current.kind === "edit-person" && current.personId === personId
+          : (current.kind === "edit-person" ||
+                current.kind === "access" ||
+                current.kind === "permissions" ||
+                current.kind === "remove-person") &&
+              current.personId === personId
             ? current
-            : current.kind === "access" && current.personId === personId
-              ? current
-              : { kind: "person-detail", personId },
+            : { kind: "person-detail", personId },
       );
       return;
     }
@@ -241,7 +329,11 @@ export function PeopleGroupsView(props: {
   }, [groups, view]);
 
   const openPersonId =
-    view.kind === "person-detail" || view.kind === "edit-person" || view.kind === "access"
+    view.kind === "person-detail" ||
+    view.kind === "edit-person" ||
+    view.kind === "access" ||
+    view.kind === "permissions" ||
+    view.kind === "remove-person"
       ? view.personId
       : null;
 
@@ -254,6 +346,21 @@ export function PeopleGroupsView(props: {
       .then((result) => setDetail(result.person))
       .catch((caught) => setError(errorMessage(caught)));
   }, [openPersonId, props.memberships]);
+
+  /** Re-read one person so authority versions stay current after access changes. */
+  async function refreshDetail(personId: string) {
+    try {
+      const result = await fetchPerson(personId);
+      setDetail(result.person);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    }
+  }
+
+  function handleAccessChanged(personId: string) {
+    props.onPeopleChanged();
+    void refreshDetail(personId);
+  }
 
   function goOverview() {
     if (props.entry === "activity" && props.onExit) {
@@ -297,8 +404,16 @@ export function PeopleGroupsView(props: {
           memberships={sortedMemberships}
           groups={loadedGroups}
           canManageStructure={props.canManageStructure}
+          canMemberRemove={canMemberRemove}
+          canLifecycleManage={canLifecycleManage}
           canViewActivity={props.canViewActivity}
           onExit={props.onExit}
+          onRemediationApplied={(text) => {
+            setMessage(text);
+            setError(null);
+            props.onPeopleChanged();
+          }}
+          onError={setError}
           onOpenPerson={openPerson}
           onAddPerson={() => {
             clearFeedback();
@@ -343,7 +458,9 @@ export function PeopleGroupsView(props: {
         <PersonDetailState
           detail={detail}
           canManageStructure={props.canManageStructure}
-          canEnroll={props.canEnroll}
+          canAccessManage={canAccessManage}
+          canMemberRemove={canMemberRemove}
+          isSelf={props.currentMembershipId === detail.id}
           onBack={goOverview}
           onEdit={() => {
             clearFeedback();
@@ -352,6 +469,14 @@ export function PeopleGroupsView(props: {
           onAccess={() => {
             clearFeedback();
             setView({ kind: "access", personId: detail.id });
+          }}
+          onPermissions={() => {
+            clearFeedback();
+            setView({ kind: "permissions", personId: detail.id });
+          }}
+          onRemove={() => {
+            clearFeedback();
+            setView({ kind: "remove-person", personId: detail.id });
           }}
         />
       ) : null}
@@ -386,11 +511,48 @@ export function PeopleGroupsView(props: {
       ) : null}
 
       {view.kind === "access" && detail && detail.id === view.personId ? (
-        <AccessStateView
+        <SignInManageView
+          detail={detail}
+          canAccessManage={canAccessManage}
+          isSelf={props.currentMembershipId === detail.id}
+          onBack={() => setView({ kind: "person-detail", personId: detail.id })}
+          onChanged={() => handleAccessChanged(detail.id)}
+          onMessage={setMessage}
+          onError={setError}
+        />
+      ) : null}
+
+      {view.kind === "permissions" && detail && detail.id === view.personId ? (
+        <PermissionsEditorState
           detail={detail}
           onBack={() => setView({ kind: "person-detail", personId: detail.id })}
-          onChanged={() => props.onPeopleChanged()}
-          onMessage={setMessage}
+          onSaved={(name) => {
+            setMessage(`Permissions saved for ${name}.`);
+            setError(null);
+            setView({ kind: "person-detail", personId: detail.id });
+            handleAccessChanged(detail.id);
+          }}
+          onError={setError}
+          onDirtyChange={props.onDirtyChange}
+        />
+      ) : null}
+
+      {view.kind === "remove-person" && detail && detail.id === view.personId ? (
+        <RemovePersonState
+          detail={detail}
+          onBack={() => setView({ kind: "person-detail", personId: detail.id })}
+          onRemoved={(name, mode) => {
+            setMessage(
+              mode === "deleted"
+                ? `${name} was deleted.`
+                : `${name} was removed from the household.`,
+            );
+            setError(null);
+            setDetail(null);
+            setView({ kind: "overview" });
+            props.onNavigate?.({ kind: "overview" });
+            props.onPeopleChanged();
+          }}
           onError={setError}
         />
       ) : null}
@@ -504,8 +666,12 @@ function OverviewState(props: {
   memberships: MemberPublic[];
   groups: GroupPublic[];
   canManageStructure: boolean;
+  canMemberRemove: boolean;
+  canLifecycleManage: boolean;
   canViewActivity: boolean;
   onExit?: () => void;
+  onRemediationApplied: (message: string) => void;
+  onError: (value: string | null) => void;
   onOpenPerson: (personId: string) => void;
   onAddPerson: () => void;
   onReorderPeople: () => void;
@@ -527,7 +693,6 @@ function OverviewState(props: {
       <h2>People</h2>
       <ul className="people-list">
         {props.memberships.map((person) => {
-          const role = overviewRoleLabel(person.classification);
           return (
             <li key={person.id}>
               <button
@@ -536,8 +701,12 @@ function OverviewState(props: {
                 onClick={() => props.onOpenPerson(person.id)}
               >
                 <span className="person-name">{person.displayName}</span>
-                {role ? <span className="meta">{role}</span> : null}
-                <span className="meta">{accessLabel(person.accessState)}</span>
+                <span className="meta" data-testid="people-role-label">
+                  {authorityRoleLabel(person.roleLabel)}
+                </span>
+                <span className="meta" data-testid="people-sign-in-status">
+                  {signInStatusLabel(person.accessState)}
+                </span>
                 <span className="row-affordance">View details</span>
               </button>
             </li>
@@ -584,6 +753,14 @@ function OverviewState(props: {
         </button>
       ) : null}
 
+      {props.canMemberRemove ? (
+        <FixtureRemediationPanel
+          canLifecycleManage={props.canLifecycleManage}
+          onApplied={props.onRemediationApplied}
+          onError={props.onError}
+        />
+      ) : null}
+
       {props.canViewActivity ? (
         <div className="button-row">
           <button type="button" onClick={props.onViewActivity}>
@@ -595,80 +772,189 @@ function OverviewState(props: {
   );
 }
 
-function PersonDetailState(props: {
-  detail: PersonDetail;
-  canManageStructure: boolean;
-  canEnroll: boolean;
-  onBack: () => void;
-  onEdit: () => void;
-  onAccess: () => void;
+function FixtureRemediationPanel(props: {
+  canLifecycleManage: boolean;
+  onApplied: (message: string) => void;
+  onError: (value: string | null) => void;
 }) {
-  const access = props.detail.access.state;
+  const [preview, setPreview] = useState<FixtureRemediationPreview | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [saveBackup, setSaveBackup] = useState(false);
+  const [backupLabel, setBackupLabel] = useState("");
+  const [passphrase, setPassphrase] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const mutationIdRef = useRef<string>(newClientId());
+
+  async function loadPreview() {
+    try {
+      const next = await previewFixtureRemediation();
+      setPreview(next);
+      // D-055: preselect only disposable candidates (never claimed, renamed, or used people).
+      setSelected(
+        next.candidates
+          .filter((candidate) => candidate.preselected && candidate.disposable)
+          .map((candidate) => candidate.membershipId),
+      );
+      mutationIdRef.current = newClientId();
+    } catch {
+      // Not a sample household (or no candidates left): the panel stays hidden.
+      setPreview(null);
+      setSelected([]);
+    }
+  }
+
+  useEffect(() => {
+    void loadPreview();
+  }, []);
+
+  if (!preview || preview.candidates.length === 0) return null;
+
+  const backupRequested = saveBackup && props.canLifecycleManage;
+  const canSubmit =
+    !busy &&
+    selected.length > 0 &&
+    passphrase.length > 0 &&
+    confirmation === "REMOVE SAMPLES";
+
+  function toggle(id: string) {
+    setSelected((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
+    );
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!preview || !canSubmit) return;
+    setBusy(true);
+    setLocalError(null);
+    props.onError(null);
+    try {
+      const result = await applyFixtureRemediation({
+        mutationId: mutationIdRef.current,
+        selectedMembershipIds: selected,
+        previewDigest: preview.previewDigest,
+        passphrase,
+        saveBackupBefore: backupRequested,
+        backupLabel: backupRequested && backupLabel.trim() ? backupLabel.trim() : null,
+        confirmationText: "REMOVE SAMPLES",
+      });
+      setPassphrase("");
+      setConfirmation("");
+      setSaveBackup(false);
+      setBackupLabel("");
+      const count = result.results.length;
+      props.onApplied(
+        `${count} sample ${count === 1 ? "person was" : "people were"} removed.${
+          result.backup ? " A backup was saved first." : ""
+        }`,
+      );
+      await loadPreview();
+    } catch (caught) {
+      setLocalError(errorMessage(caught));
+      // A stale preview is the common failure; re-read so the next attempt uses fresh digest.
+      if ((caught as { code?: string }).code === "CONFLICT") await loadPreview();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <div className="focused-state" aria-labelledby="person-detail-heading">
-      <BackButton label="Back to People & Groups" onClick={props.onBack} />
-      <FocusHeading id="person-detail-heading">{props.detail.displayName}</FocusHeading>
-      <p>
-        Friendly name: <strong>{props.detail.displayName}</strong>
+    <section
+      className="fixture-remediation"
+      aria-labelledby="fixture-remediation-heading"
+      data-testid="fixture-remediation"
+    >
+      <h2 id="fixture-remediation-heading">Sample people</h2>
+      <p className="meta">
+        This household still has sample people from the evaluation data. Remove the ones you do not
+        need. People who signed in, were renamed, or have activity are kept off by default and are
+        removed with their history preserved.
       </p>
-      <p>
-        Full name: <strong>{displayOrNotSet(props.detail.fullName)}</strong>
-      </p>
-      <p>
-        Birthday: <strong>{displayOrNotSet(props.detail.birthday)}</strong>
-      </p>
-      <p>
-        Email: <strong>{displayOrNotSet(props.detail.email)}</strong>
-      </p>
-      <p>
-        Role: <strong>{roleLabel(props.detail.classification)}</strong>
-      </p>
-      <p>
-        Access: <strong>{accessLabel(access)}</strong>
-        {props.detail.access.setupExpiresAt ? (
-          <span className="meta">
-            {" "}
-            · setup expires {new Date(props.detail.access.setupExpiresAt).toLocaleString()}
+      <form className="form-grid" onSubmit={submit}>
+        <fieldset disabled={busy}>
+          <legend>Sample people to remove</legend>
+          {preview.candidates.map((candidate) => (
+            <label key={candidate.membershipId} className="choice-row">
+              <input
+                type="checkbox"
+                checked={selected.includes(candidate.membershipId)}
+                onChange={() => toggle(candidate.membershipId)}
+              />
+              <span>
+                <strong>{candidate.displayName}</strong>
+                <span className="meta">
+                  {" "}
+                  —{" "}
+                  {candidate.disposable
+                    ? "Unused sample"
+                    : `Kept by default (${
+                        candidate.blockers.length > 0
+                          ? candidate.blockers.map((b) => b.replaceAll("_", " ")).join(", ")
+                          : "in use"
+                      })`}
+                </span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+        <label className="choice-row">
+          <input
+            type="checkbox"
+            checked={saveBackup && props.canLifecycleManage}
+            disabled={busy || !props.canLifecycleManage}
+            onChange={(event) => setSaveBackup(event.target.checked)}
+          />
+          <span>
+            Save a backup first
+            {!props.canLifecycleManage ? (
+              <span className="meta"> — requires permission to back up the household</span>
+            ) : null}
           </span>
+        </label>
+        {backupRequested ? (
+          <label>
+            Backup label (optional)
+            <input
+              value={backupLabel}
+              maxLength={80}
+              disabled={busy}
+              onChange={(event) => setBackupLabel(event.target.value)}
+            />
+          </label>
         ) : null}
-      </p>
-      <p className="meta">
-        Groups:{" "}
-        {props.detail.groups.length
-          ? props.detail.groups.map((group) => group.name).join(", ")
-          : "None"}
-      </p>
-      <p className="meta">
-        Routines:{" "}
-        {props.detail.routines && props.detail.routines.length > 0
-          ? props.detail.routines
-              .map((routine) => {
-                const source =
-                  routine.source === "group"
-                    ? "group"
-                    : routine.source === "both"
-                      ? "direct + group"
-                      : "direct";
-                return `${routine.title} (${source})`;
-              })
-              .join(", ")
-          : props.detail.morningRoutine?.currentlyAssigned
-            ? `Assigned on current shared revision (${props.detail.morningRoutine.revisionTitle})`
-            : "Not currently assigned to a shared routine"}
-      </p>
-      <div className="button-row">
-        {props.canManageStructure ? (
-          <button type="button" onClick={props.onEdit}>
-            Edit person
+        <label>
+          Your passphrase
+          <input
+            type="password"
+            autoComplete="current-password"
+            value={passphrase}
+            disabled={busy}
+            onChange={(event) => setPassphrase(event.target.value)}
+          />
+        </label>
+        <label>
+          Type REMOVE SAMPLES to confirm
+          <input
+            value={confirmation}
+            autoComplete="off"
+            disabled={busy}
+            onChange={(event) => setConfirmation(event.target.value)}
+          />
+        </label>
+        <div className="button-row">
+          <button type="submit" className="danger" disabled={!canSubmit}>
+            {busy ? "Removing…" : "Remove selected samples"}
           </button>
+        </div>
+        {localError ? (
+          <p role="alert" className="form-error">
+            {localError}
+          </p>
         ) : null}
-        {props.canEnroll ? (
-          <button type="button" onClick={props.onAccess}>
-            {access === "not_set_up" ? "Set up access" : "Manage access"}
-          </button>
-        ) : null}
-      </div>
-    </div>
+      </form>
+    </section>
   );
 }
 
@@ -736,7 +1022,7 @@ function AddPersonState(props: {
           </label>
         </fieldset>
         <button type="submit" className="primary" disabled={busy}>
-          {busy ? "Adding…" : "Add person"}
+          {busy ? "Addingâ€¦" : "Add person"}
         </button>
       </form>
     </div>
@@ -805,7 +1091,7 @@ function EditPersonState(props: {
     if (
       dirty &&
       !window.confirm(
-        "You have unsaved changes. Discard them?\n\nOK = Discard · Cancel = Keep editing",
+        "You have unsaved changes. Discard them?\n\nOK = Discard Â· Cancel = Keep editing",
       )
     ) {
       return;
@@ -893,7 +1179,7 @@ function EditPersonState(props: {
         </fieldset>
         <div className="button-row">
           <button type="submit" className="primary" disabled={busy || !dirty}>
-            {busy ? "Saving…" : "Save"}
+            {busy ? "Savingâ€¦" : "Save"}
           </button>
           <button type="button" className="secondary" disabled={busy} onClick={cancel}>
             Cancel
@@ -915,7 +1201,7 @@ function ReorderPeopleState(props: {
   const [draft, setDraft] = useState(() => props.people.map((person) => person.id));
   // Pin baseline + expectedVersion at open (and on remote version advances). Live
   // membership refreshes must not retarget Save at a newer version while the draft
-  // still mirrors the older baseline — that CONFLICT flake under full-suite churn.
+  // still mirrors the older baseline â€” that CONFLICT flake under full-suite churn.
   const [baselineIds, setBaselineIds] = useState(() =>
     props.people.map((person) => person.id),
   );
@@ -972,7 +1258,7 @@ function ReorderPeopleState(props: {
     if (
       dirty &&
       !window.confirm(
-        "You have unsaved changes. Discard them?\n\nOK = Discard · Cancel = Keep editing",
+        "You have unsaved changes. Discard them?\n\nOK = Discard Â· Cancel = Keep editing",
       )
     ) {
       return;
@@ -1001,7 +1287,7 @@ function ReorderPeopleState(props: {
       />
       <div className="button-row">
         <button type="button" className="primary" disabled={busy || !dirty} onClick={() => void save()}>
-          {busy ? "Saving…" : "Save"}
+          {busy ? "Savingâ€¦" : "Save"}
         </button>
         <button type="button" className="secondary" disabled={busy} onClick={cancel}>
           Cancel
@@ -1011,53 +1297,138 @@ function ReorderPeopleState(props: {
   );
 }
 
-function AccessStateView(props: {
+function PersonDetailState(props: {
   detail: PersonDetail;
+  canManageStructure: boolean;
+  canAccessManage: boolean;
+  canMemberRemove: boolean;
+  isSelf: boolean;
+  onBack: () => void;
+  onEdit: () => void;
+  onAccess: () => void;
+  onPermissions: () => void;
+  onRemove: () => void;
+}) {
+  const access = props.detail.access.state;
+  return (
+    <div className="focused-state" aria-labelledby="person-detail-heading">
+      <BackButton label="Back to People & Groups" onClick={props.onBack} />
+      <FocusHeading id="person-detail-heading">{props.detail.displayName}</FocusHeading>
+
+      <section>
+        <h3>Profile</h3>
+        <p>
+          Friendly name: <strong>{props.detail.displayName}</strong>
+        </p>
+        <p>
+          Full name: <strong>{displayOrNotSet(props.detail.fullName)}</strong>
+        </p>
+        <p>
+          Birthday: <strong>{displayOrNotSet(props.detail.birthday)}</strong>
+        </p>
+        <p>
+          Email: <strong>{displayOrNotSet(props.detail.email)}</strong>
+        </p>
+        <p>
+          Adult/Child: <strong>{roleLabel(props.detail.classification)}</strong>
+        </p>
+        {props.canManageStructure ? (
+          <div className="button-row">
+            <button type="button" onClick={props.onEdit}>
+              Edit profile
+            </button>
+          </div>
+        ) : null}
+      </section>
+
+      <section data-testid="person-sign-in-section">
+        <h3>Sign-in &amp; permissions</h3>
+        <p>
+          Role:{" "}
+          <strong data-testid="people-role-label">
+            {authorityRoleLabel(props.detail.roleLabel)}
+          </strong>
+        </p>
+        <p>
+          Sign-in:{" "}
+          <strong data-testid="people-sign-in-status">{signInStatusLabel(access)}</strong>
+          {props.detail.access.setupExpiresAt ? (
+            <span className="meta">
+              {" "}
+              · expires {new Date(props.detail.access.setupExpiresAt).toLocaleString()}
+            </span>
+          ) : null}
+        </p>
+        <p className="meta">
+          Personal additions: {memberModeLabel(memberModeFromGrants(props.detail.grants))}
+        </p>
+        <p className="meta">
+          Groups:{" "}
+          {props.detail.groups.length
+            ? props.detail.groups.map((group) => group.name).join(", ")
+            : "None"}
+        </p>
+        <div className="button-row">
+          {props.canAccessManage ? (
+            <>
+              <button type="button" onClick={props.onAccess}>
+                Manage sign-in
+              </button>
+              <button type="button" onClick={props.onPermissions}>
+                Edit permissions
+              </button>
+            </>
+          ) : null}
+          {props.canMemberRemove && !props.isSelf ? (
+            <button type="button" onClick={props.onRemove}>
+              Remove from household
+            </button>
+          ) : null}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function SignInManageView(props: {
+  detail: PersonDetail;
+  canAccessManage: boolean;
+  isSelf: boolean;
   onBack: () => void;
   onChanged: () => void;
   onMessage: (value: string | null) => void;
   onError: (value: string | null) => void;
 }) {
-  const [preset, setPreset] = useState<GrantPreset>("proposal_personalizer");
-  const [issuedToken, setIssuedToken] = useState<string | null>(null);
-  const [replaceExplained, setReplaceExplained] = useState(false);
+  const [issued, setIssued] = useState<IssuedAccessClaim | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const access = props.detail.access.state;
 
   useEffect(() => {
-    setIssuedToken(null);
-    setReplaceExplained(false);
+    setIssued(null);
+    setQrDataUrl(null);
     setBusy(false);
   }, [props.detail.id]);
 
-  const access = props.detail.access.state;
-
-  async function prepareSetup(replace: boolean) {
-    if (busy) return;
-    if (replace && !replaceExplained) {
-      setReplaceExplained(true);
-      props.onMessage(
-        "Creating a replacement invalidates the previous setup material. Confirm by preparing again.",
-      );
-      return;
-    }
+  async function issue(purpose: AccessClaimPurpose) {
+    if (busy || !props.canAccessManage) return;
     props.onError(null);
-    setIssuedToken(null);
     setBusy(true);
+    setQrDataUrl(null);
     try {
-      const result = await issueEnrollmentClaim({
+      const result = await issueAccessClaim({
         mutationId: newClientId(),
         membershipId: props.detail.id,
-        preset,
+        purpose,
       });
       if (result.claim.secretAlreadyIssued || !result.claim.token) {
         props.onMessage(
-          "Setup material was already issued for this request. Status is available; create a replacement if needed.",
+          "That link was already issued for this request. Cancel and create a replacement if needed.",
         );
       } else {
-        setIssuedToken(result.claim.token);
-        props.onMessage("Setup ready. Copy the one-time material now; it cannot be retrieved later.");
+        setIssued(result.claim);
+        props.onMessage("Link ready. Copy it or show the QR code now; it cannot be retrieved later.");
       }
-      setReplaceExplained(false);
       props.onChanged();
     } catch (caught) {
       props.onError(errorMessage(caught));
@@ -1066,14 +1437,67 @@ function AccessStateView(props: {
     }
   }
 
-  async function cancelSetup() {
-    if (busy) return;
+  async function cancelOutstanding() {
+    if (busy || !props.canAccessManage) return;
     props.onError(null);
     setBusy(true);
     try {
-      await cancelEnrollmentSetup(props.detail.id);
-      setIssuedToken(null);
-      props.onMessage("Setup cancelled.");
+      await cancelAccessClaims({
+        mutationId: newClientId(),
+        membershipId: props.detail.id,
+      });
+      setIssued(null);
+      setQrDataUrl(null);
+      props.onMessage("Outstanding sign-in links cancelled.");
+      props.onChanged();
+    } catch (caught) {
+      props.onError(errorMessage(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function copyLink() {
+    if (!issued?.token) return;
+    try {
+      await navigator.clipboard.writeText(accessLinkFor(issued.token));
+      props.onMessage("Link copied.");
+    } catch {
+      props.onError("Could not copy the link. Select it manually.");
+    }
+  }
+
+  async function showQr() {
+    if (!issued?.token) return;
+    try {
+      const url = await toDataURL(accessLinkFor(issued.token), {
+        margin: 1,
+        width: 220,
+        errorCorrectionLevel: "M",
+      });
+      setQrDataUrl(url);
+    } catch {
+      props.onError("Could not generate a QR code.");
+    }
+  }
+
+  async function doRevoke() {
+    if (busy || !props.canAccessManage || props.isSelf) return;
+    if (
+      !window.confirm(
+        `Revoke sign-in for ${props.detail.displayName}? They stay in the household but cannot sign in until restored.`,
+      )
+    ) {
+      return;
+    }
+    props.onError(null);
+    setBusy(true);
+    try {
+      await revokeSignIn(props.detail.id, {
+        mutationId: newClientId(),
+        expectedAuthorityVersion: props.detail.authorityVersion,
+      });
+      props.onMessage("Sign-in revoked.");
       props.onChanged();
     } catch (caught) {
       props.onError(errorMessage(caught));
@@ -1083,68 +1507,389 @@ function AccessStateView(props: {
   }
 
   return (
-    <div className="focused-state" aria-labelledby="access-heading">
+    <div className="focused-state" aria-labelledby="sign-in-manage-heading">
       <BackButton label={`Back to ${props.detail.displayName}`} onClick={props.onBack} />
-      <FocusHeading id="access-heading">Access setup</FocusHeading>
+      <FocusHeading id="sign-in-manage-heading">Manage sign-in</FocusHeading>
       <p>
-        Access: <strong>{accessLabel(access)}</strong>
+        Sign-in: <strong data-testid="people-sign-in-status">{signInStatusLabel(access)}</strong>
         {props.detail.access.setupExpiresAt ? (
           <span className="meta">
             {" "}
-            · setup expires {new Date(props.detail.access.setupExpiresAt).toLocaleString()}
+            · expires {new Date(props.detail.access.setupExpiresAt).toLocaleString()}
           </span>
         ) : null}
       </p>
-      <p className="meta">
-        Adult/Child does not choose access level. Pick an access level explicitly.
-      </p>
+      {!props.canAccessManage ? (
+        <p className="meta">You can view this status, but not change it.</p>
+      ) : (
+        <div className="form-grid">
+          <div className="button-row">
+            {access === "not_set_up" || access === "setup_expired" ? (
+              <button
+                type="button"
+                className="primary"
+                disabled={busy}
+                onClick={() => void issue("invitation")}
+              >
+                Set up sign-in
+              </button>
+            ) : null}
+            {access === "access_revoked" ? (
+              <button
+                type="button"
+                className="primary"
+                disabled={busy}
+                onClick={() => void issue("restore_sign_in")}
+              >
+                Restore sign-in link
+              </button>
+            ) : null}
+            {access === "setup_ready" ? (
+              <>
+                <button type="button" disabled={busy} onClick={() => void issue("invitation")}>
+                  Replace invitation
+                </button>
+                <button type="button" disabled={busy} onClick={() => void cancelOutstanding()}>
+                  Cancel invitation
+                </button>
+              </>
+            ) : null}
+            {access === "access_set_up" ? (
+              <>
+                <button type="button" disabled={busy} onClick={() => void issue("password_reset")}>
+                  Password help link
+                </button>
+                {!props.isSelf ? (
+                  <button type="button" disabled={busy} onClick={() => void doRevoke()}>
+                    Revoke sign-in
+                  </button>
+                ) : null}
+              </>
+            ) : null}
+          </div>
+          {issued?.token ? (
+            <div className="token-box" role="status">
+              <strong>{ACCESS_PURPOSE_LABELS[issued.purpose]}</strong>
+              <p className="meta">Expires {new Date(issued.expiresAt).toLocaleString()}</p>
+              <code data-testid="access-invite-link">{accessLinkFor(issued.token)}</code>
+              <div className="button-row">
+                <button type="button" data-testid="access-copy-link" onClick={() => void copyLink()}>
+                  Copy link
+                </button>
+                <button type="button" data-testid="access-show-qr" onClick={() => void showQr()}>
+                  Show QR
+                </button>
+              </div>
+              {qrDataUrl ? (
+                <img
+                  src={qrDataUrl}
+                  alt="Sign-in QR code"
+                  data-testid="access-qr-image"
+                  width={220}
+                  height={220}
+                />
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PermissionsEditorState(props: {
+  detail: PersonDetail;
+  onBack: () => void;
+  onSaved: (name: string) => void;
+  onError: (value: string | null) => void;
+  onDirtyChange?: (dirty: boolean) => void;
+}) {
+  const initial = permissionDraftFromGrants(props.detail);
+  const [role, setRole] = useState<"manager" | "member">(initial.role);
+  const [memberMode, setMemberMode] = useState<"approval" | "direct">(initial.memberMode);
+  const [secondary, setSecondary] = useState<string[]>(initial.secondary);
+  const [showPreview, setShowPreview] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const next = permissionDraftFromGrants(props.detail);
+    setRole(next.role);
+    setMemberMode(next.memberMode);
+    setSecondary(next.secondary);
+    setShowPreview(false);
+  }, [props.detail.id, props.detail.authorityVersion]);
+
+  const nextGrants = mergePermissionGrants({
+    role,
+    memberMode: role === "member" ? memberMode : undefined,
+    secondaryGrants: secondary,
+    priorGrants: props.detail.grants,
+    knownGrants: ALL_KNOWN_GRANTS as Grant[],
+  });
+  const priorSet = new Set(props.detail.grants);
+  const nextSet = new Set(nextGrants);
+  const added = nextGrants.filter((g) => !priorSet.has(g));
+  const removed = props.detail.grants.filter((g) => !nextSet.has(g));
+  const dirty =
+    role !== initial.role ||
+    memberMode !== initial.memberMode ||
+    secondary.slice().sort().join("\0") !== initial.secondary.slice().sort().join("\0");
+
+  useEffect(() => {
+    props.onDirtyChange?.(dirty);
+    return () => props.onDirtyChange?.(false);
+  }, [dirty, props.onDirtyChange]);
+
+  async function save() {
+    if (busy) return;
+    if (!showPreview) {
+      setShowPreview(true);
+      return;
+    }
+    props.onError(null);
+    setBusy(true);
+    try {
+      await saveMembershipPermissions(props.detail.id, {
+        mutationId: newClientId(),
+        expectedAuthorityVersion: props.detail.authorityVersion,
+        role,
+        memberMode: role === "member" ? memberMode : undefined,
+        secondaryGrants: secondary,
+      });
+      props.onDirtyChange?.(false);
+      props.onSaved(props.detail.displayName);
+    } catch (caught) {
+      props.onError(errorMessage(caught));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      className="focused-state"
+      aria-labelledby="permissions-heading"
+      data-testid="person-permissions-section"
+    >
+      <BackButton label={`Back to ${props.detail.displayName}`} onClick={props.onBack} />
+      <FocusHeading id="permissions-heading">Permissions</FocusHeading>
+      {props.detail.unknownGrants.length > 0 ? (
+        <p className="meta" role="status">
+          Older capabilities kept as-is: {props.detail.unknownGrants.join(", ")}
+        </p>
+      ) : null}
       <div className="form-grid">
         <fieldset disabled={busy}>
-          <legend>Access level</legend>
-          {PRESET_OPTIONS.map((option) => (
-            <label key={option.value} className="choice-row">
+          <legend>Household role</legend>
+          <label className="choice-row">
+            <input
+              type="radio"
+              name="authority-role"
+              checked={role === "manager"}
+              onChange={() => {
+                setRole("manager");
+                setShowPreview(false);
+              }}
+            />
+            <span>
+              <strong>Manager</strong>
+              <span className="meta"> — manage people, access, shared work, and recovery.</span>
+            </span>
+          </label>
+          <label className="choice-row">
+            <input
+              type="radio"
+              name="authority-role"
+              checked={role === "member"}
+              onChange={() => {
+                setRole("member");
+                setShowPreview(false);
+              }}
+            />
+            <span>
+              <strong>Member</strong>
+              <span className="meta"> — own checklist and personal tasks.</span>
+            </span>
+          </label>
+        </fieldset>
+        {role === "member" ? (
+          <fieldset disabled={busy}>
+            <legend>Personal routine additions</legend>
+            <label className="choice-row">
               <input
                 type="radio"
-                name="access-preset"
-                checked={preset === option.value}
-                onChange={() => setPreset(option.value)}
+                name="member-mode"
+                checked={memberMode === "approval"}
+                onChange={() => {
+                  setMemberMode("approval");
+                  setShowPreview(false);
+                }}
               />
-              <span>
-                <strong>{option.label}</strong>
-                <span className="meta"> — {option.description}</span>
-              </span>
+              Approval required
+            </label>
+            <label className="choice-row">
+              <input
+                type="radio"
+                name="member-mode"
+                checked={memberMode === "direct"}
+                onChange={() => {
+                  setMemberMode("direct");
+                  setShowPreview(false);
+                }}
+              />
+              Can edit own additions
+            </label>
+          </fieldset>
+        ) : null}
+        <fieldset disabled={busy}>
+          <legend>Additional permissions</legend>
+          {SECONDARY_EDITABLE_GRANTS.map((grant) => (
+            <label key={grant} className="choice-row">
+              <input
+                type="checkbox"
+                checked={secondary.includes(grant)}
+                onChange={() => {
+                  setSecondary((current) =>
+                    current.includes(grant)
+                      ? current.filter((item) => item !== grant)
+                      : [...current, grant],
+                  );
+                  setShowPreview(false);
+                }}
+              />
+              {grantLabel(grant)}
             </label>
           ))}
         </fieldset>
-        <div className="button-row">
-          {access === "setup_ready" || access === "setup_expired" || access === "access_set_up" ? (
-            <button type="button" disabled={busy} onClick={() => void prepareSetup(true)}>
-              {replaceExplained ? "Confirm replacement setup" : "Replace setup"}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="primary"
-              disabled={busy}
-              onClick={() => void prepareSetup(false)}
-            >
-              Prepare access setup
-            </button>
-          )}
-          {access === "setup_ready" ? (
-            <button type="button" disabled={busy} onClick={() => void cancelSetup()}>
-              Cancel setup
-            </button>
-          ) : null}
-        </div>
-        {issuedToken ? (
+        {showPreview ? (
           <div className="token-box" role="status">
-            <strong>Copy this setup material now</strong>
-            <code>{issuedToken}</code>
-            <span className="meta">It cannot be shown again after you leave this screen.</span>
+            <strong>Save preview</strong>
+            {added.length === 0 && removed.length === 0 ? (
+              <p className="meta">No permission changes.</p>
+            ) : (
+              <>
+                {added.length > 0 ? (
+                  <p className="meta">Add: {added.map(grantLabel).join("; ")}</p>
+                ) : null}
+                {removed.length > 0 ? (
+                  <p className="meta">Remove: {removed.map(grantLabel).join("; ")}</p>
+                ) : null}
+              </>
+            )}
           </div>
         ) : null}
+        <div className="button-row">
+          <button type="button" className="primary" disabled={busy || !dirty} onClick={() => void save()}>
+            {showPreview ? (busy ? "Saving…" : "Confirm save") : "Preview & save"}
+          </button>
+          <button type="button" className="secondary" disabled={busy} onClick={props.onBack}>
+            Cancel
+          </button>
+        </div>
       </div>
+    </div>
+  );
+}
+
+function RemovePersonState(props: {
+  detail: PersonDetail;
+  onBack: () => void;
+  onRemoved: (name: string, mode: "departed" | "deleted") => void;
+  onError: (value: string | null) => void;
+}) {
+  const [preview, setPreview] = useState<MemberRemovalPreview | null>(null);
+  const [passphrase, setPassphrase] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setBusy(true);
+    void previewMemberRemoval(props.detail.id, {
+      expectedAuthorityVersion: props.detail.authorityVersion,
+      expectedVersion: props.detail.version,
+    })
+      .then((result) => {
+        if (!cancelled) setPreview(result);
+      })
+      .catch((caught) => {
+        if (!cancelled) props.onError(errorMessage(caught));
+      })
+      .finally(() => {
+        if (!cancelled) setBusy(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [props.detail.id, props.detail.authorityVersion, props.detail.version]);
+
+  async function commit(event: FormEvent) {
+    event.preventDefault();
+    if (!preview || busy) return;
+    props.onError(null);
+    setBusy(true);
+    try {
+      const result = await commitMemberRemoval(props.detail.id, {
+        mutationId: newClientId(),
+        expectedAuthorityVersion: props.detail.authorityVersion,
+        expectedVersion: props.detail.version,
+        passphrase,
+        previewDigest: preview.previewDigest,
+        confirmationText: "REMOVE",
+      });
+      props.onRemoved(props.detail.displayName, result.mode);
+    } catch (caught) {
+      props.onError(errorMessage(caught));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="focused-state" aria-labelledby="remove-person-heading" data-testid="removal-preview">
+      <BackButton label={`Back to ${props.detail.displayName}`} onClick={props.onBack} />
+      <FocusHeading id="remove-person-heading">Remove from household</FocusHeading>
+      {!preview ? (
+        <p className="meta">{busy ? "Loading impact…" : "Unable to load impact."}</p>
+      ) : (
+        <form className="form-grid" onSubmit={(event) => void commit(event)}>
+          <p>
+            Remove <strong>{preview.impact.displayName}</strong>?
+          </p>
+          <p className="meta">
+            Mode:{" "}
+            {preview.impact.mode === "delete"
+              ? "Delete unused person"
+              : "Depart and keep history"}
+          </p>
+          <p className="meta">
+            Groups:{" "}
+            {preview.impact.groups.length
+              ? preview.impact.groups.map((group) => group.name).join(", ")
+              : "None"}
+          </p>
+          <p className="meta">
+            Unstarted work from {preview.impact.canceledUnstartedOccurrencesFrom} will be
+            reconciled. Started work stays as Needs attention.
+          </p>
+          <label>
+            Your password
+            <input
+              type="password"
+              autoComplete="current-password"
+              value={passphrase}
+              onChange={(event) => setPassphrase(event.target.value)}
+              required
+              disabled={busy}
+            />
+          </label>
+          <div className="button-row">
+            <button type="submit" className="primary" disabled={busy || !passphrase}>
+              {busy ? "Removing…" : "Confirm REMOVE"}
+            </button>
+            <button type="button" className="secondary" disabled={busy} onClick={props.onBack}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }

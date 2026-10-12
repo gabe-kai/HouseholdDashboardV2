@@ -217,7 +217,7 @@ test.describe("P0-006C profiles, history, and clear", () => {
     await page.goto(`/household/people/${AVERY_ID}`);
     await expect(page.locator("#person-detail-heading")).toBeVisible({ timeout: 15_000 });
 
-    await page.getByRole("button", { name: "Edit person" }).click();
+    await page.getByRole("button", { name: "Edit profile" }).click();
     await expect(page.getByRole("heading", { name: "Edit person" })).toBeVisible();
     await page.getByLabel("Friendly name").fill(friendlyName);
     await page.getByLabel("Full name").fill(fullName);

@@ -24,6 +24,8 @@ export const GrantSchema = z.enum([
   "household.display.manage",
   "household.structure.manage",
   "household.lifecycle.manage",
+  "household.access.manage",
+  "household.member.remove",
   "household.schedule.manage",
   "household.activity.clear",
   "routine.shared.manage",
@@ -65,8 +67,22 @@ export const AccessStateSchema = z.enum([
   "setup_ready",
   "setup_expired",
   "access_set_up",
+  "access_revoked",
 ]);
 export type AccessState = z.infer<typeof AccessStateSchema>;
+
+export const AccessClaimPurposeSchema = z.enum([
+  "invitation",
+  "password_reset",
+  "restore_sign_in",
+]);
+export type AccessClaimPurpose = z.infer<typeof AccessClaimPurposeSchema>;
+
+export const AuthorityRoleSchema = z.enum(["manager", "member"]);
+export type AuthorityRole = z.infer<typeof AuthorityRoleSchema>;
+
+export const MemberPersonalizeModeSchema = z.enum(["approval", "direct"]);
+export type MemberPersonalizeMode = z.infer<typeof MemberPersonalizeModeSchema>;
 
 export const GrantPresetSchema = z.enum([
   "manager",
@@ -303,10 +319,76 @@ export const ClaimSchema = z.object({
   displayName: z.string().trim().min(1).max(80),
 });
 
+/** @deprecated Prefer IssueAccessClaimSchema; kept for bootstrap/legacy tests. */
 export const IssueEnrollmentSchema = z.object({
   mutationId: UuidSchema,
   membershipId: UuidSchema,
-  preset: GrantPresetSchema,
+  preset: GrantPresetSchema.optional(),
+});
+
+export const IssueAccessClaimSchema = z.object({
+  mutationId: UuidSchema,
+  membershipId: UuidSchema,
+  purpose: AccessClaimPurposeSchema,
+});
+
+export const CancelAccessClaimSchema = z.object({
+  mutationId: UuidSchema,
+  membershipId: UuidSchema,
+  purpose: AccessClaimPurposeSchema.optional(),
+});
+
+export const RedeemAccessClaimSchema = z.object({
+  claimToken: z.string().min(16).max(256),
+  loginName: LoginNameSchema.optional(),
+  passphrase: PassphraseSchema.optional(),
+  displayName: z.string().trim().min(1).max(80).optional(),
+  newPassphrase: PassphraseSchema.optional(),
+});
+
+export const SaveMembershipPermissionsSchema = z.object({
+  mutationId: UuidSchema,
+  expectedAuthorityVersion: z.number().int().positive(),
+  role: AuthorityRoleSchema,
+  memberMode: MemberPersonalizeModeSchema.optional(),
+  secondaryGrants: z.array(z.string().min(1).max(80)).default([]),
+});
+
+export const RevokeSignInSchema = z.object({
+  mutationId: UuidSchema,
+  expectedAuthorityVersion: z.number().int().positive(),
+});
+
+export const ChangeOwnPasswordSchema = z.object({
+  mutationId: UuidSchema,
+  currentPassphrase: z.string().min(1).max(128),
+  newPassphrase: PassphraseSchema,
+});
+
+export const PreviewMemberRemovalSchema = z.object({
+  expectedAuthorityVersion: z.number().int().positive(),
+  expectedVersion: z.number().int().positive(),
+});
+
+export const CommitMemberRemovalSchema = z.object({
+  mutationId: UuidSchema,
+  expectedAuthorityVersion: z.number().int().positive(),
+  expectedVersion: z.number().int().positive(),
+  passphrase: z.string().min(1).max(128),
+  previewDigest: z.string().min(16).max(128),
+  confirmationText: z.literal("REMOVE"),
+});
+
+export const FixtureRemediationPreviewSchema = z.object({});
+
+export const FixtureRemediationApplySchema = z.object({
+  mutationId: UuidSchema,
+  selectedMembershipIds: z.array(UuidSchema).min(1),
+  previewDigest: z.string().min(16).max(128),
+  passphrase: z.string().min(1).max(128),
+  saveBackupBefore: z.boolean().default(false),
+  backupLabel: z.string().trim().max(80).nullable().optional(),
+  confirmationText: z.literal("REMOVE SAMPLES"),
 });
 
 export const CreatePersonSchema = z.object({
@@ -567,11 +649,17 @@ export type SchoolCalendarPublic = {
 export type MemberPublic = {
   id: string;
   displayName: string;
-  grants: Grant[];
+  /** Effective grants including preserved unknown legacy values. */
+  grants: string[];
   status: "active" | "pending";
   classification: PersonClassification | null;
   accessState: AccessState;
   version: number;
+  authorityVersion: number;
+  /** Derived Manager / Member / customized label for directory. */
+  roleLabel: "manager" | "member" | "customized";
+  departed: boolean;
+  signInRevoked: boolean;
   /** Household-wide peer order (0-based). */
   sortOrder: number;
 };
@@ -617,7 +705,9 @@ export type PersonDetail = MemberPublic & {
     setupClaimId: string | null;
     setupCreatedAt: string | null;
     setupExpiresAt: string | null;
+    purpose: AccessClaimPurpose | null;
   };
+  unknownGrants: string[];
 };
 
 export type GroupRoutineReference = {

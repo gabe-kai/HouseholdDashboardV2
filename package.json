@@ -11,7 +11,6 @@
     "dev:lan": "node scripts/dev-lan.mjs",
     "dev:client": "vite",
     "dev:server": "tsx watch src/server/index.ts",
-
     "build": "npm run build:client && npm run build:server",
     "build:client": "vite build",
     "build:server": "tsc -p tsconfig.server.json",
@@ -37,6 +36,7 @@
     "test:e2e:chromium:phone:007c3b": "playwright test --project=chromium --grep \"P0-007C-3B\"",
     "test:e2e:chromium:phone:008a": "playwright test --project=chromium-008a --grep \"P0-008A\"",
     "test:e2e:chromium:phone:008b": "playwright test --project=chromium-008a --grep \"P0-008B\"",
+    "test:e2e:chromium:phone:008c": "playwright test --project=chromium-008a --grep \"P0-008C\"",
     "test:e2e:chromium:desktop": "playwright test --project=chromium-desktop --project=chromium-display",
     "test:e2e:vite": "playwright install chromium && playwright test -c playwright.vite.config.ts",
     "validate": "npm run lint && npm run typecheck && npm test",
@@ -53,6 +53,7 @@
     "better-sqlite3": "^13.0.3",
     "fastify": "^5.6.0",
     "idb-keyval": "^6.2.2",
+    "qrcode": "^1.5.4",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "zod": "^3.25.76"
@@ -62,6 +63,7 @@
     "@playwright/test": "^1.55.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.3.1",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.2",

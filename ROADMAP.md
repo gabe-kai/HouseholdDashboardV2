@@ -87,24 +87,30 @@ Both C-3 slices contribute to **Act at the shared display without losing trust**
   - **Status:** Technically ACCEPTED on r1 at `57780ce`, merged through PR #23 at `415d930`. The held-status correction closes the Architecture finding. Product acceptance of **Act at the shared display without losing trust** remains separately tracked.
   - **Evidence:** Owner-only sharing/promotion with stable completion-time meaning, default-off populated upgrade, private exclusion at API/event/client boundaries, compact open-task placement in both wall summaries, withdrawal without stale resurrection, C-3A regression, and local PR/RC gates. Physical density/readability of the changed wall remains Product evaluation.
 
-### CURRENT
+### P0-008 INTEGRATED FOUNDATIONS
 
 - [x] **P0-008A — Create the first manager and start again safely.** Owner-protected setup and repeatable full reset without a new backup are technically accepted and merged via PR #24 at `405c5db` (`briefs/p0-008a-protected-first-run-reset.md`); hosted/Product evaluation remains separate.
 - [x] **P0-008B — Save a household and restore it in the app.** Protected backup list/create/delete, an off-by-default backup choice during reset/restore, and recovery through Settings or protected Welcome.
   - **Brief:** `P0-008B r2` (`briefs/p0-008b-household-backups-in-app-restore.md`) is technically accepted at `34179f7` and merged through PR #25 at `f80d47b`; hosted/Product evaluation remains a separate checkpoint.
   - **Evidence target:** Populated control-store adoption; exact optional-backup semantics; staged compatibility and credential sanitation; typed interrupted-operation recovery; same-epoch/old-client fencing; local PR/RC gates. Hosted reset/restore/restart is a later authorized release check.
 - [x] **P0-008C — Manage access and remove a person without losing history.** Understandable roles/permissions, invitation links/QR, password help, revoke/restore access, last-manager protection, immediate departure eligibility and careful sample-data remediation.
-  - **Brief:** `P0-008C r1` (`briefs/p0-008c-member-access-removal.md`) is technically accepted after same-revision corrections; acceptance and fresh local PR/RC results are recorded in `reports/P0-008C-r1-architecture-reacceptance.md`. The correction set awaits Project Lead commit/merge. No live remediation is authorized.
+  - **Brief:** `P0-008C r1` (`briefs/p0-008c-member-access-removal.md`) is technically accepted and integrated through PR #26 at `1709097` (correction `90de153`); acceptance and fresh local PR/RC results are recorded in `reports/P0-008C-r1-architecture-reacceptance.md`. No live remediation is authorized.
   - **Evidence target:** Complete person-management UI and access denials; current-grant invitations/password recovery; last-manager and removal races; assignment/history/privacy preservation; mixed-data fixture transition and local PR/RC/CI evidence.
-  - **Card:** **Set up and manage my household without operator help** remains In Progress across A–D; C is the current technical slice, not completion of the Product outcome.
+  - **Card:** **Set up and manage my household without operator help** remains In Progress across A–D; these integrated foundations do not close the full Product outcome.
+
+### CURRENT
+
+- [ ] **P0-008D — Reach the first useful family day without coaching.** Complete the five named setup steps, optional exits/cross-device resume, first-work review/recap and the ordinary app setup→management→backup→reset→restore journey.
+  - **Brief:** `P0-008D r2` (`briefs/p0-008d-guided-first-household-day.md`) is IN REVIEW, released against merged A–C at `1709097`. Engineering readiness precedes Architecture ACCEPT / PROCEED.
+  - **Evidence target:** Atomic saved records/progress/retry, actual next dates/owners without materialization, compact phone/desktop entry, upgrade/removal/restore compatibility, complete UI journey and local PR/RC/CI selection. Include the newly inspected C access-claim sanitation gap in staged restore.
+  - **Card:** Shared P0-008 card remains In Progress; D technical acceptance makes the complete result Ready to Evaluate.
 
 ### LIKELY NEXT
 
-The Project Lead requested evidence-gated briefs for the approved complete P0-008 journey. D remains a successor **DRAFT r1** contract, not READY or permission to implement in parallel. After C is integrated, Architecture refreshes D from accepted A–C evidence and the integrated baseline before a fresh Engineering review. Stable intent is preserved now; implementation details and material new findings can revise it.
+- [ ] **Evaluate the complete P0-008 release candidate.** After accepted local/CI evidence, use an authorized HTTPS candidate for persistence/reset/restore/restart checks and one uninterrupted phone/desktop Project Lead session. Record what was actually observed using `docs/p0-008-release-evaluation.md`; no live reset/remediation is automatic.
+- Let the Project Lead's experience with the complete flow determine corrections or the next Design direction. No new feature sequence is committed before that evaluation. The approved proposal already supplies D's intent; no resubmission from Design is needed to begin it.
 
-- [ ] **P0-008D — Reach the first useful family day without coaching.** Integrate all five setup steps, optional exits/cross-device resume, first-work review/recap and one complete setup→invite→permissions→remove→backup→reset→restore evaluation. Gate: accepted A–C. Brief: `briefs/p0-008d-guided-first-household-day.md`.
-
-The shared card reaches Ready to Evaluate after A–D technical acceptance; the Project Lead then judges the uninterrupted Product journey. No return to Design is needed simply to continue the approved sequence. Coverage/release checkpoints: `reports/P0-008-architecture-sequencing.md`.
+The shared card reaches Product Accepted only after hands-on acceptance. Coverage/release checkpoints: `reports/P0-008-architecture-sequencing.md`.
 
 ### LATER
 

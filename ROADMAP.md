@@ -93,14 +93,14 @@ Both C-3 slices contribute to **Act at the shared display without losing trust**
 - [x] **P0-008B — Save a household and restore it in the app.** Protected backup list/create/delete, an off-by-default backup choice during reset/restore, and recovery through Settings or protected Welcome.
   - **Brief:** `P0-008B r2` (`briefs/p0-008b-household-backups-in-app-restore.md`) is technically accepted at `34179f7` and merged through PR #25 at `f80d47b`; hosted/Product evaluation remains a separate checkpoint.
   - **Evidence target:** Populated control-store adoption; exact optional-backup semantics; staged compatibility and credential sanitation; typed interrupted-operation recovery; same-epoch/old-client fencing; local PR/RC gates. Hosted reset/restore/restart is a later authorized release check.
-- [ ] **P0-008C — Manage access and remove a person without losing history.** Understandable roles/permissions, invitation links/QR, password help, revoke/restore access, last-manager protection, immediate departure eligibility and careful sample-data remediation.
-  - **Brief:** `P0-008C r1` (`briefs/p0-008c-member-access-removal.md`) is FIX REQUIRED at implementation commit `aedd416`; Architecture findings are recorded in `reports/P0-008C-r1-architecture-review.md`. Contract unchanged; no live remediation is authorized.
+- [x] **P0-008C — Manage access and remove a person without losing history.** Understandable roles/permissions, invitation links/QR, password help, revoke/restore access, last-manager protection, immediate departure eligibility and careful sample-data remediation.
+  - **Brief:** `P0-008C r1` (`briefs/p0-008c-member-access-removal.md`) is technically accepted after same-revision corrections; acceptance and fresh local PR/RC results are recorded in `reports/P0-008C-r1-architecture-reacceptance.md`. The correction set awaits Project Lead commit/merge. No live remediation is authorized.
   - **Evidence target:** Complete person-management UI and access denials; current-grant invitations/password recovery; last-manager and removal races; assignment/history/privacy preservation; mixed-data fixture transition and local PR/RC/CI evidence.
   - **Card:** **Set up and manage my household without operator help** remains In Progress across A–D; C is the current technical slice, not completion of the Product outcome.
 
 ### LIKELY NEXT
 
-The Project Lead requested evidence-gated briefs for the approved complete P0-008 journey. D remains a successor **DRAFT r1** contract, not READY or permission to implement in parallel. Architecture refreshes it from accepted C evidence before a fresh Engineering review. Stable intent is preserved now; implementation details and material new findings can revise it.
+The Project Lead requested evidence-gated briefs for the approved complete P0-008 journey. D remains a successor **DRAFT r1** contract, not READY or permission to implement in parallel. After C is integrated, Architecture refreshes D from accepted A–C evidence and the integrated baseline before a fresh Engineering review. Stable intent is preserved now; implementation details and material new findings can revise it.
 
 - [ ] **P0-008D — Reach the first useful family day without coaching.** Integrate all five setup steps, optional exits/cross-device resume, first-work review/recap and one complete setup→invite→permissions→remove→backup→reset→restore evaluation. Gate: accepted A–C. Brief: `briefs/p0-008d-guided-first-household-day.md`.
 

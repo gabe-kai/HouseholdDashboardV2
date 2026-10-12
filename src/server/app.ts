@@ -951,6 +951,8 @@ export async function buildApp(
     sync.closeMembership(membershipId);
     broadcast(session, "membership", membershipId);
     broadcast(session, "family_order", session.householdId, store.getFamilyOrderVersion(session.householdId));
+    // People already invalidates via membership/family_order broadcast; tasks must leave too.
+    displayInvalidate(session.householdId, "tasks");
     return result;
   });
 
@@ -1008,6 +1010,7 @@ export async function buildApp(
         session.householdId,
         store.getFamilyOrderVersion(session.householdId),
       );
+      displayInvalidate(session.householdId, "tasks");
       return result;
     } catch (err) {
       const code =

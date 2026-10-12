@@ -752,12 +752,36 @@ export type AccessClaimRedeemResult =
   | ({ purpose: AccessClaimPurpose } & SessionInfo)
   | { purpose: AccessClaimPurpose; ok: true };
 
+export type MemberRemovalImpactDayItem = {
+  definitionId: string;
+  kind: "routine" | "responsibility";
+  title: string;
+  daypart: string | null;
+  revisionId: string | null;
+  effect:
+    | { type: "participation_ends" }
+    | {
+        type: "owner_becomes";
+        accountableMemberId: string | null;
+        accountableMemberName: string | null;
+        unassignedReason: string | null;
+      }
+    | {
+        type: "started_protected";
+        accountableMemberId: string | null;
+        accountableMemberName: string | null;
+      };
+};
+
 export type MemberRemovalImpact = {
   membershipId: string;
   displayName: string;
   groups: Array<{ id: string; name: string }>;
   mode: "depart" | "delete";
   canceledUnstartedOccurrencesFrom: string;
+  fromDate: string;
+  days: Array<{ householdDate: string; items: MemberRemovalImpactDayItem[] }>;
+  repairLinks: Array<{ definitionId: string; kind: "responsibility"; title: string }>;
 };
 
 export type MemberRemovalPreview = {

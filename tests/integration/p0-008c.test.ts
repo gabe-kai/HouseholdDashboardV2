@@ -806,55 +806,540 @@ describe("P0-008C member access and safe removal", () => {
     expect((await listPeople(h, mgr)).map((p) => p.id)).not.toContain(unused.id);
   });
 
-  it("AT9/AT10: removal preview digest gates commit; departed member loses sessions and cannot own checklists", async () => {
+  it("AT9: resolver seven-day removal impact covers fixed/weekly/cycle/group; reconcile excludes departed", async () => {
     const h = await createCHarness();
     const mgr = await setupHousehold(h);
-    const { person, auth: memberAuth } = await enrollMember(h, mgr, "Dana Departing", "dana.depart");
-    const fresh = (await getPerson(h, mgr, person.id))!;
+    const { person: dana } = await enrollMember(h, mgr, "Dana Departing", "dana.impact");
+    const { person: casey } = await enrollMember(h, mgr, "Casey Stay", "casey.stay");
+    const today = (
+      await h.app.inject({
+        method: "GET",
+        url: "/api/v1/auth/session",
+        headers: { cookie: `${h.config.cookieName}=${mgr.cookie}` },
+      })
+    ).json() as { householdDate: string };
+    const householdDate = today.householdDate;
 
+    const group = await call(h, mgr, "POST", "/api/v1/groups", {
+      mutationId: randomUUID(),
+      name: "Kids",
+      membershipIds: [dana.id, casey.id],
+    });
+    expect(group.statusCode).toBe(200);
+    const groupId = (group.json() as { group: { id: string } }).group.id;
+
+    const fixed = await call(h, mgr, "POST", "/api/v1/responsibilities", {
+      mutationId: randomUUID(),
+      title: "Fixed trash",
+      daypart: "evening",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      assignment: {
+        mode: "fixed",
+        anchorDate: householdDate,
+        fixedMemberId: dana.id,
+      },
+      steps: [{ text: "Take out trash", obligation: "required" }],
+    });
+    expect(fixed.statusCode).toBe(200);
+    const fixedId = (fixed.json() as { responsibility: { id: string } }).responsibility.id;
+
+    const weekly = await call(h, mgr, "POST", "/api/v1/responsibilities", {
+      mutationId: randomUUID(),
+      title: "Weekly kitchen",
+      daypart: "evening",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      assignment: {
+        mode: "weekly",
+        anchorDate: householdDate,
+        weeklyMap: {
+          "1": dana.id,
+          "2": casey.id,
+          "3": dana.id,
+          "4": casey.id,
+          "5": dana.id,
+          "6": casey.id,
+          "7": dana.id,
+        },
+      },
+      steps: [{ text: "Wipe counters", obligation: "required" }],
+    });
+    expect(weekly.statusCode).toBe(200);
+    const weeklyId = (weekly.json() as { responsibility: { id: string } }).responsibility.id;
+
+    const cyclic = await call(h, mgr, "POST", "/api/v1/responsibilities", {
+      mutationId: randomUUID(),
+      title: "Turn dishes",
+      daypart: "evening",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      assignment: {
+        mode: "take_turns",
+        anchorDate: householdDate,
+        cycleOrder: [dana.id, casey.id],
+        savedRingOrder: [dana.id, casey.id],
+      },
+      steps: [{ text: "Load dishwasher", obligation: "required" }],
+    });
+    expect(cyclic.statusCode).toBe(200);
+    const cyclicId = (cyclic.json() as { responsibility: { id: string } }).responsibility.id;
+
+    const routine = await call(h, mgr, "POST", "/api/v1/routines", {
+      mutationId: randomUUID(),
+      title: "Morning kids",
+      daypart: "morning",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      assigneeMemberIds: [dana.id],
+      assigneeGroupIds: [groupId],
+      steps: [{ text: "Brush teeth", obligation: "required" }],
+    });
+    expect(routine.statusCode).toBe(200);
+    const routineId = (routine.json() as { routine: { id: string } }).routine.id;
+
+    await call(h, mgr, "GET", `/api/v1/today?date=${householdDate}`);
+
+    const fresh = (await getPerson(h, mgr, dana.id))!;
     const preview = await previewRemoval(h, mgr, fresh);
     expect(preview.statusCode).toBe(200);
-    const { previewDigest, impact } = preview.json() as {
+    const body = preview.json() as {
       previewDigest: string;
-      impact: { displayName: string; mode: string; groups: unknown[] };
+      impact: {
+        displayName: string;
+        mode: string;
+        fromDate: string;
+        days: Array<{
+          householdDate: string;
+          items: Array<{
+            definitionId: string;
+            kind: string;
+            effect: {
+              type: string;
+              accountableMemberId?: string | null;
+              accountableMemberName?: string | null;
+              unassignedReason?: string | null;
+            };
+          }>;
+        }>;
+        repairLinks: Array<{ definitionId: string; title: string }>;
+      };
     };
-    expect(previewDigest).toMatch(/^[0-9a-f]{64}$/);
-    expect(impact.displayName).toBe("Dana Departing");
+    expect(body.previewDigest).toMatch(/^[0-9a-f]{64}$/);
+    expect(body.impact.days).toHaveLength(7);
+    expect(body.impact.fromDate).toBe(householdDate);
+    const flat = body.impact.days.flatMap((d) => d.items);
+    expect(flat.some((i) => i.definitionId === fixedId && i.effect.type === "owner_becomes")).toBe(
+      true,
+    );
+    expect(
+      flat.some(
+        (i) =>
+          i.definitionId === fixedId &&
+          i.effect.type === "owner_becomes" &&
+          i.effect.accountableMemberId == null,
+      ),
+    ).toBe(true);
+    expect(flat.some((i) => i.definitionId === weeklyId)).toBe(true);
+    expect(flat.some((i) => i.definitionId === cyclicId && i.effect.type === "owner_becomes")).toBe(
+      true,
+    );
+    expect(
+      flat.some((i) => i.definitionId === routineId && i.effect.type === "participation_ends"),
+    ).toBe(true);
+    expect(body.impact.repairLinks.some((l) => l.definitionId === fixedId)).toBe(true);
 
-    // Stale versions, wrong digest, bad passphrase, bad confirmation all refuse.
+    // Stale digest / version gates.
+    expect((await commitRemoval(h, mgr, fresh, "f".repeat(64))).statusCode).toBe(409);
     const stalePreview = await call(h, mgr, "POST", `/api/v1/people/${fresh.id}/removal/preview`, {
       expectedAuthorityVersion: fresh.authorityVersion + 1,
       expectedVersion: fresh.version,
     });
     expect(stalePreview.statusCode).toBe(409);
-    expect((await commitRemoval(h, mgr, fresh, "f".repeat(64))).statusCode).toBe(409);
-    expect(
-      (await commitRemoval(h, mgr, fresh, previewDigest, { passphrase: "wrong-passphrase-here" }))
-        .statusCode,
-    ).toBe(401);
-    expect(
-      (await commitRemoval(h, mgr, fresh, previewDigest, { confirmationText: "remove" })).statusCode,
-    ).toBe(400);
-    expect(await getPerson(h, mgr, fresh.id)).toBeDefined();
 
-    const commit = await commitRemoval(h, mgr, fresh, previewDigest);
+    const commit = await commitRemoval(h, mgr, fresh, body.previewDigest);
     expect(commit.statusCode).toBe(200);
-    expect(commit.json()).toMatchObject({ mode: "departed" });
 
-    expect(await getPerson(h, mgr, fresh.id)).toBeUndefined();
-    expect(await sessionStatus(h, memberAuth)).toBe(401);
-    expect((await login(h, "dana.depart")).statusCode).toBe(401);
+    const afterToday = await call(h, mgr, "GET", `/api/v1/today?date=${householdDate}`);
+    expect(afterToday.statusCode).toBe(200);
+    const occs = (afterToday.json() as { occurrences: Array<{ definitionId: string; accountableMemberId: string | null; canceledAt?: string | null }> }).occurrences;
+    expect(
+      occs.some((o) => o.definitionId === routineId && o.accountableMemberId === dana.id),
+    ).toBe(false);
+    const fixedOcc = occs.find((o) => o.definitionId === fixedId);
+    expect(fixedOcc?.accountableMemberId ?? null).toBeNull();
+    const cyclicOcc = occs.find((o) => o.definitionId === cyclicId);
+    expect(cyclicOcc?.accountableMemberId).toBe(casey.id);
 
-    // Departed person cannot own a new checklist.
     const checklist = await call(h, mgr, "POST", "/api/v1/responsibilities", {
       mutationId: randomUUID(),
       title: "Departed owner checklist",
       daypart: "anytime",
       weekdays: [1, 2, 3, 4, 5, 6, 7],
-      accountableMemberId: fresh.id,
-      steps: [{ logicalItemId: randomUUID(), text: "Step", obligation: "required" }],
+      accountableMemberId: dana.id,
+      steps: [{ text: "Step", obligation: "required" }],
     });
     expect(checklist.statusCode).toBeGreaterThanOrEqual(400);
+  });
+
+  it("AT10: action-first and departure-first preserve history and block later execution (member + display)", async () => {
+    const h = await createCHarness();
+    const mgr = await setupHousehold(h);
+    const { person: actorPerson, auth: actor } = await enrollMember(
+      h,
+      mgr,
+      "Action Owner",
+      "action.owner",
+    );
+    await savePermissions(h, mgr, (await getPerson(h, mgr, actorPerson.id))!, {
+      role: "member",
+      memberMode: "direct",
+    });
+
+    const displayIssue = await call(h, mgr, "POST", "/api/v1/displays", {
+      mutationId: randomUUID(),
+      label: "Kitchen AT10",
+    });
+    const code = (displayIssue.json() as { enrollment: { code: string } }).enrollment.code;
+    const claim = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/display/claim",
+      headers: { origin: h.origin, "content-type": "application/json" },
+      payload: { code },
+    });
+    const displayCookie = claim.cookies.find((c) => c.name === h.config.displayCookieName)!.value;
+
+    async function createOwnedChecklist(title: string) {
+      const created = await call(h, mgr, "POST", "/api/v1/responsibilities", {
+        mutationId: randomUUID(),
+        title,
+        daypart: "anytime",
+        weekdays: [1, 2, 3, 4, 5, 6, 7],
+        accountableMemberId: actorPerson.id,
+        steps: [{ text: "Do the thing", obligation: "required" }],
+      });
+      expect(created.statusCode).toBe(200);
+      return (created.json() as { responsibility: { id: string } }).responsibility.id;
+    }
+
+    async function materializeOwned(definitionId: string) {
+      const todayRes = await call(h, mgr, "GET", "/api/v1/today");
+      const occ = (
+        todayRes.json() as {
+          occurrences: Array<{
+            id: string;
+            definitionId: string;
+            householdDate: string;
+            accountableMemberId: string | null;
+            revisionId: string;
+            startedAt: string | null;
+            steps: Array<{ id: string; logicalItemId: string; text: string; status: string }>;
+          }>;
+        }
+      ).occurrences.find((o) => o.definitionId === definitionId)!;
+      return occ;
+    }
+
+    // --- Action-first: lock, then depart, history intact, further action denied ---
+    const firstId = await createOwnedChecklist("Action first");
+    const firstOcc = await materializeOwned(firstId);
+    const intent = {
+      revisionId: firstOcc.revisionId,
+      accountableMemberId: actorPerson.id,
+      stepLogicalIds: firstOcc.steps.map((s) => s.logicalItemId),
+    };
+    const firstAction = await call(
+      h,
+      actor,
+      "POST",
+      `/api/v1/occurrences/${firstOcc.id}/steps/${firstOcc.steps[0]!.id}/status`,
+      {
+        mutationId: randomUUID(),
+        status: "completed",
+        performedAt: new Date().toISOString(),
+        householdDate: firstOcc.householdDate,
+        kind: "responsibility",
+        intendedStructure: intent,
+      },
+    );
+    expect(firstAction.statusCode).toBe(200);
+    const locked = (firstAction.json() as { occurrence: { startedAt: string; accountableMemberId: string; steps: Array<{ text: string }> } }).occurrence;
+    expect(locked.startedAt).toBeTruthy();
+    expect(locked.accountableMemberId).toBe(actorPerson.id);
+
+    const fresh = (await getPerson(h, mgr, actorPerson.id))!;
+    const preview = await previewRemoval(h, mgr, fresh);
+    expect(preview.statusCode).toBe(200);
+    const digest = (preview.json() as { previewDigest: string }).previewDigest;
+    expect((await commitRemoval(h, mgr, fresh, digest)).statusCode).toBe(200);
+
+    const history = await call(h, mgr, "GET", `/api/v1/history/occurrences/${firstOcc.id}`);
+    expect(history.statusCode).toBe(200);
+    const hist = history.json() as {
+      occurrence: { accountableMemberId: string; startedAt: string; steps: Array<{ text: string }> };
+    };
+    expect(hist.occurrence.accountableMemberId).toBe(actorPerson.id);
+    expect(hist.occurrence.startedAt).toBeTruthy();
+    expect(hist.occurrence.steps[0]?.text).toBe("Do the thing");
+
+    const memberReplay = await call(
+      h,
+      mgr,
+      "POST",
+      `/api/v1/occurrences/${firstOcc.id}/steps/${firstOcc.steps[0]!.id}/status`,
+      {
+        mutationId: randomUUID(),
+        status: "not_needed",
+        performedAt: new Date().toISOString(),
+        householdDate: firstOcc.householdDate,
+        kind: "responsibility",
+        intendedStructure: intent,
+      },
+    );
+    expect(memberReplay.statusCode).toBeGreaterThanOrEqual(400);
+
+    const displayReplay = await h.app.inject({
+      method: "POST",
+      url: `/api/v1/display/occurrences/${firstOcc.id}/steps/${firstOcc.steps[0]!.id}/status`,
+      headers: {
+        origin: h.origin,
+        "content-type": "application/json",
+        cookie: `${h.config.displayCookieName}=${displayCookie}`,
+      },
+      payload: {
+        mutationId: randomUUID(),
+        status: "not_needed",
+        performedAt: new Date().toISOString(),
+        householdDate: firstOcc.householdDate,
+        kind: "responsibility",
+        intendedStructure: intent,
+      },
+    });
+    expect(displayReplay.statusCode).toBeGreaterThanOrEqual(400);
+    expect(await sessionStatus(h, actor)).toBe(401);
+
+    // --- Departure-first: cannot create a new lock after departure ---
+    const { person: lea, auth: leaAuth } = await enrollMember(h, mgr, "Lea Later", "lea.later");
+    await savePermissions(h, mgr, (await getPerson(h, mgr, lea.id))!, {
+      role: "member",
+      memberMode: "direct",
+    });
+    const secondCreated = await call(h, mgr, "POST", "/api/v1/responsibilities", {
+      mutationId: randomUUID(),
+      title: "Depart first",
+      daypart: "anytime",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      accountableMemberId: lea.id,
+      steps: [{ text: "Do the thing", obligation: "required" }],
+    });
+    expect(secondCreated.statusCode).toBe(200);
+    const secondDefId = (secondCreated.json() as { responsibility: { id: string } }).responsibility
+      .id;
+    const secondOcc = (
+      (await call(h, mgr, "GET", "/api/v1/today")).json() as {
+        occurrences: Array<{
+          id: string;
+          definitionId: string;
+          householdDate: string;
+          revisionId: string;
+          steps: Array<{ id: string; logicalItemId: string }>;
+        }>;
+      }
+    ).occurrences.find((o) => o.definitionId === secondDefId)!;
+
+    const leaFresh = (await getPerson(h, mgr, lea.id))!;
+    const leaPreview = await previewRemoval(h, mgr, leaFresh);
+    expect(
+      (
+        await commitRemoval(
+          h,
+          mgr,
+          leaFresh,
+          (leaPreview.json() as { previewDigest: string }).previewDigest,
+        )
+      ).statusCode,
+    ).toBe(200);
+
+    const departFirstMember = await call(
+      h,
+      mgr,
+      "POST",
+      `/api/v1/occurrences/${secondOcc.id}/steps/${secondOcc.steps[0]!.id}/status`,
+      {
+        mutationId: randomUUID(),
+        status: "completed",
+        performedAt: new Date().toISOString(),
+        householdDate: secondOcc.householdDate,
+        kind: "responsibility",
+        intendedStructure: {
+          revisionId: secondOcc.revisionId,
+          accountableMemberId: lea.id,
+          stepLogicalIds: secondOcc.steps.map((s) => s.logicalItemId),
+        },
+      },
+    );
+    expect(departFirstMember.statusCode).toBeGreaterThanOrEqual(400);
+
+    const departFirstDisplay = await h.app.inject({
+      method: "POST",
+      url: `/api/v1/display/occurrences/${secondOcc.id}/steps/${secondOcc.steps[0]!.id}/status`,
+      headers: {
+        origin: h.origin,
+        "content-type": "application/json",
+        cookie: `${h.config.displayCookieName}=${displayCookie}`,
+      },
+      payload: {
+        mutationId: randomUUID(),
+        status: "completed",
+        performedAt: new Date().toISOString(),
+        householdDate: secondOcc.householdDate,
+        kind: "responsibility",
+        intendedStructure: {
+          revisionId: secondOcc.revisionId,
+          accountableMemberId: lea.id,
+          stepLogicalIds: secondOcc.steps.map((s) => s.logicalItemId),
+        },
+      },
+    });
+    expect(departFirstDisplay.statusCode).toBeGreaterThanOrEqual(400);
+    expect(await sessionStatus(h, leaAuth)).toBe(401);
+  });
+
+  it("AT11: departed people and promoted tasks leave display projections; invalidate on removal", async () => {
+    const WebSocket = (await import("ws")).default;
+    const h = await createCHarness();
+    const mgr = await setupHousehold(h);
+    const { person: departing, auth: depAuth } = await enrollMember(
+      h,
+      mgr,
+      "Display Gone",
+      "display.gone",
+    );
+
+    const privateTask = await call(h, mgr, "POST", "/api/v1/personal-tasks", {
+      title: `Private secret ${randomUUID().slice(0, 8)}`,
+      visibility: "private",
+    });
+    expect(privateTask.statusCode).toBe(200);
+    const privateBody = privateTask.json() as { task: { id: string; title: string } };
+
+    const promoted = await call(h, depAuth, "POST", "/api/v1/personal-tasks", {
+      title: `Promoted visible ${randomUUID().slice(0, 8)}`,
+      visibility: "household",
+      showOnSharedDashboard: true,
+    });
+    expect(promoted.statusCode).toBe(200);
+    const promotedTask = (promoted.json() as { task: { id: string; title: string } }).task;
+
+    async function enrollDisplay(label: string) {
+      const issue = await call(h, mgr, "POST", "/api/v1/displays", {
+        mutationId: randomUUID(),
+        label,
+      });
+      expect(issue.statusCode).toBe(200);
+      const enrollCode = (issue.json() as { enrollment: { code: string } }).enrollment.code;
+      const claimed = await h.app.inject({
+        method: "POST",
+        url: "/api/v1/display/claim",
+        headers: { origin: h.origin, "content-type": "application/json" },
+        payload: { code: enrollCode },
+      });
+      expect(claimed.statusCode).toBe(200);
+      return claimed.cookies.find((c) => c.name === h.config.displayCookieName)!.value;
+    }
+
+    const cookieA = await enrollDisplay("Wall A");
+    const cookieB = await enrollDisplay("Wall B");
+
+    const beforeA = await h.app.inject({
+      method: "GET",
+      url: "/api/v1/display/dashboard",
+      headers: { cookie: `${h.config.displayCookieName}=${cookieA}` },
+    });
+    expect(beforeA.statusCode).toBe(200);
+    const beforeDash = beforeA.json() as {
+      dashboard: {
+        byPerson: Array<{ membershipId: string; displayName: string }>;
+        promotedPersonalTasks: Array<{ id: string; title: string }>;
+      };
+    };
+    expect(beforeDash.dashboard.byPerson.some((p) => p.membershipId === departing.id)).toBe(true);
+    expect(beforeDash.dashboard.promotedPersonalTasks.some((t) => t.id === promotedTask.id)).toBe(
+      true,
+    );
+    const beforeText = JSON.stringify(beforeDash);
+    expect(beforeText).not.toContain(privateBody.task.id);
+    expect(beforeText).not.toContain(privateBody.task.title);
+
+    await h.app.listen({ host: "127.0.0.1", port: 0 });
+    const address = h.app.server.address();
+    if (!address || typeof address === "string") throw new Error("no listen port");
+    const wsMessages: unknown[] = [];
+    const ws = new WebSocket(`ws://127.0.0.1:${address.port}/api/v1/display/sync`, {
+      headers: { Origin: h.origin, Cookie: `${h.config.displayCookieName}=${cookieB}` },
+    });
+    await new Promise<void>((resolve, reject) => {
+      ws.once("open", () => resolve());
+      ws.once("error", reject);
+    });
+    ws.on("message", (data) => {
+      try {
+        wsMessages.push(JSON.parse(String(data)));
+      } catch {
+        /* ignore */
+      }
+    });
+
+    const fresh = (await getPerson(h, mgr, departing.id))!;
+    const preview = await previewRemoval(h, mgr, fresh);
+    expect(
+      (
+        await commitRemoval(
+          h,
+          mgr,
+          fresh,
+          (preview.json() as { previewDigest: string }).previewDigest,
+        )
+      ).statusCode,
+    ).toBe(200);
+
+    await new Promise((r) => setTimeout(r, 200));
+    expect(
+      wsMessages.some(
+        (m) =>
+          typeof m === "object" &&
+          m !== null &&
+          (m as { type?: string; reason?: string }).type === "display_invalidate" &&
+          ["people", "tasks"].includes((m as { reason?: string }).reason ?? ""),
+      ),
+    ).toBe(true);
+    ws.close();
+
+    for (const cookie of [cookieA, cookieB]) {
+      const after = await h.app.inject({
+        method: "GET",
+        url: "/api/v1/display/dashboard",
+        headers: { cookie: `${h.config.displayCookieName}=${cookie}` },
+      });
+      expect(after.statusCode).toBe(200);
+      const dash = after.json() as {
+        dashboard: {
+          byPerson: Array<{ membershipId: string }>;
+          promotedPersonalTasks: Array<{ id: string; title: string }>;
+        };
+      };
+      const text = JSON.stringify(dash);
+      expect(dash.dashboard.byPerson.some((p) => p.membershipId === departing.id)).toBe(false);
+      expect(dash.dashboard.promotedPersonalTasks.some((t) => t.id === promotedTask.id)).toBe(false);
+      expect(text).not.toContain(departing.id);
+      expect(text).not.toContain(promotedTask.id);
+      expect(text).not.toContain(promotedTask.title);
+      expect(text).not.toContain(privateBody.task.id);
+      expect(text).not.toContain(privateBody.task.title);
+    }
+
+    const personGone = await h.app.inject({
+      method: "GET",
+      url: `/api/v1/display/people/${departing.id}`,
+      headers: { cookie: `${h.config.displayCookieName}=${cookieA}` },
+    });
+    expect(personGone.statusCode).toBe(404);
   });
 
   it("AT12: household display keeps working after a manager is removed while another manager exists", async () => {
@@ -1001,6 +1486,234 @@ describe("P0-008C member access and safe removal", () => {
     expect(await getPerson(h, morgan, rowanId)).toBeUndefined();
     expect(await getPerson(h, morgan, morgan.membershipId)).toBeDefined();
   }, 120_000);
+
+  it("AT13b: fixture remediation rejects intervening writes; backup matches pre-apply; receipt is idempotent", async () => {
+    const Database = (await import("better-sqlite3")).default;
+    const h = await createSeededHarness();
+    const boot = await h.app.inject({ method: "POST", url: "/api/v1/test/bootstrap-claim" });
+    const bootToken = (boot.json() as { token: string }).token;
+    const claim = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/auth/claim",
+      headers: { origin: h.origin, "content-type": "application/json" },
+      payload: {
+        claimToken: bootToken,
+        loginName: "morgan.race",
+        passphrase: PASSPHRASE,
+        displayName: "Morgan Reed",
+      },
+    });
+    const morgan = authFromSessionResponse(h, claim);
+    const loadPreview = async () => {
+      const res = await call(h, morgan, "GET", "/api/v1/fixtures/remediation");
+      expect(res.statusCode).toBe(200);
+      return res.json() as {
+        candidates: Array<{ membershipId: string }>;
+        previewDigest: string;
+      };
+    };
+
+    const taylorId = SEED.members[4]!.id;
+    const rowanId = SEED.members[5]!.id;
+    const preview = await loadPreview();
+
+    // Intervening rename invalidates the reviewed digest.
+    const taylor = (await getPerson(h, morgan, taylorId))!;
+    expect(
+      (
+        await call(h, morgan, "PATCH", `/api/v1/people/${taylor.id}`, {
+          displayName: "Taylor Changed",
+          classification: "child",
+          expectedVersion: taylor.version,
+        })
+      ).statusCode,
+    ).toBe(200);
+    const staleApply = await call(h, morgan, "POST", "/api/v1/fixtures/remediation/apply", {
+      mutationId: randomUUID(),
+      selectedMembershipIds: [taylorId, rowanId],
+      previewDigest: preview.previewDigest,
+      passphrase: PASSPHRASE,
+      saveBackupBefore: false,
+      confirmationText: "REMOVE SAMPLES",
+    });
+    expect(staleApply.statusCode).toBe(409);
+    expect(await getPerson(h, morgan, taylorId)).toBeDefined();
+
+    // Prime morgan's personal-task blocker so a delayed create does not flip the digest.
+    expect(
+      (
+        await call(h, morgan, "POST", "/api/v1/personal-tasks", {
+          title: `Prime ${randomUUID().slice(0, 8)}`,
+          visibility: "private",
+        })
+      ).statusCode,
+    ).toBe(200);
+    const fresh = await loadPreview();
+    const mutationId = randomUUID();
+    const raceTitle = `Fixture race ${randomUUID().slice(0, 8)}`;
+    const delayed = h.app.inject({
+      method: "POST",
+      url: "/api/v1/personal-tasks",
+      headers: {
+        ...authHeaders(h, morgan),
+        "x-mutation-delay-ms": "400",
+      },
+      payload: { title: raceTitle, visibility: "private" },
+    });
+    await new Promise((r) => setTimeout(r, 40));
+    const applied = await call(h, morgan, "POST", "/api/v1/fixtures/remediation/apply", {
+      mutationId,
+      selectedMembershipIds: [taylorId, rowanId],
+      previewDigest: fresh.previewDigest,
+      passphrase: PASSPHRASE,
+      saveBackupBefore: true,
+      backupLabel: "Race samples",
+      confirmationText: "REMOVE SAMPLES",
+    });
+    expect(applied.statusCode).toBe(200);
+    const result = applied.json() as {
+      results: Array<{ membershipId: string; mode: string }>;
+      backup: { id: string; label: string | null } | null;
+    };
+    expect(result.backup?.label).toBe("Race samples");
+    expect(await getPerson(h, morgan, taylorId)).toBeUndefined();
+    expect(await getPerson(h, morgan, rowanId)).toBeUndefined();
+
+    const delayedRes = await delayed;
+    const backups = h.runtime.control.listBackups();
+    expect(backups.length).toBeGreaterThanOrEqual(1);
+    const backupRow = backups.find((b) => b.id === result.backup?.id) ?? backups[0]!;
+    const backupAbs = path.join(h.config.backupDir, backupRow.relativePath);
+    const snap = new Database(backupAbs, { readonly: true, fileMustExist: true });
+    let inSnapshot = false;
+    try {
+      inSnapshot = Boolean(
+        snap.prepare(`SELECT 1 AS ok FROM personal_tasks WHERE title = ?`).get(raceTitle) as
+          | { ok: number }
+          | undefined,
+      );
+      // Pre-remediation identities remain in the snapshot.
+      expect(
+        snap
+          .prepare(`SELECT departed_at FROM household_memberships WHERE id = ?`)
+          .get(taylorId) as { departed_at: string | null },
+      ).toMatchObject({ departed_at: null });
+    } finally {
+      snap.close();
+    }
+    if (delayedRes.statusCode === 200) {
+      expect(inSnapshot).toBe(true);
+    } else {
+      expect([401, 403, 409]).toContain(delayedRes.statusCode);
+    }
+
+    // Receipt replay does not create a second backup or re-apply.
+    const replay = await call(h, morgan, "POST", "/api/v1/fixtures/remediation/apply", {
+      mutationId,
+      selectedMembershipIds: [taylorId, rowanId],
+      previewDigest: fresh.previewDigest,
+      passphrase: PASSPHRASE,
+      saveBackupBefore: true,
+      backupLabel: "Race samples",
+      confirmationText: "REMOVE SAMPLES",
+    });
+    expect(replay.statusCode).toBe(200);
+    expect((replay.json() as { backup: { id: string } | null }).backup?.id).toBe(result.backup?.id);
+    expect(h.runtime.control.listBackups().filter((b) => b.label === "Race samples")).toHaveLength(
+      1,
+    );
+  }, 120_000);
+
+  it("AT14b: injected mid-transaction removal failure rolls back membership, claims, and reconcile", async () => {
+    const h = await createCHarness();
+    const mgr = await setupHousehold(h);
+    const { person, auth } = await enrollMember(h, mgr, "Rollback Target", "rollback.target");
+    const today = (
+      (
+        await h.app.inject({
+          method: "GET",
+          url: "/api/v1/auth/session",
+          headers: { cookie: `${h.config.cookieName}=${mgr.cookie}` },
+        })
+      ).json() as { householdDate: string }
+    ).householdDate;
+
+    const created = await call(h, mgr, "POST", "/api/v1/responsibilities", {
+      mutationId: randomUUID(),
+      title: "Rollback chores",
+      daypart: "anytime",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      accountableMemberId: person.id,
+      steps: [{ text: "Sweep", obligation: "required" }],
+    });
+    expect(created.statusCode).toBe(200);
+    const definitionId = (created.json() as { responsibility: { id: string } }).responsibility.id;
+    await call(h, mgr, "GET", `/api/v1/today?date=${today}`);
+    const beforeOcc = h.db
+      .prepare(
+        `SELECT accountable_member_id, canceled_at FROM occurrences
+         WHERE definition_id = ? AND household_date = ?`,
+      )
+      .get(definitionId, today) as {
+      accountable_member_id: string | null;
+      canceled_at: string | null;
+    };
+    expect(beforeOcc.accountable_member_id).toBe(person.id);
+    expect(beforeOcc.canceled_at).toBeNull();
+
+    const { claimId } = await issueClaim(h, mgr, person.id, "password_reset");
+    const fresh = (await getPerson(h, mgr, person.id))!;
+    const preview = await previewRemoval(h, mgr, fresh);
+    expect(preview.statusCode).toBe(200);
+    const digest = (preview.json() as { previewDigest: string }).previewDigest;
+
+    h.store.setMemberRemovalFailureHook(() => {
+      throw Object.assign(new Error("injected removal failure"), { code: "INTERNAL" });
+    });
+    try {
+      const failed = await commitRemoval(h, mgr, fresh, digest);
+      expect(failed.statusCode).toBeGreaterThanOrEqual(400);
+    } finally {
+      h.store.setMemberRemovalFailureHook(null);
+    }
+
+    expect(await getPerson(h, mgr, person.id)).toBeDefined();
+    expect(await sessionStatus(h, auth)).toBe(200);
+    const tombstone = h.db
+      .prepare(`SELECT departed_at FROM household_memberships WHERE id = ?`)
+      .get(person.id) as { departed_at: string | null };
+    expect(tombstone.departed_at).toBeNull();
+    const afterOcc = h.db
+      .prepare(
+        `SELECT accountable_member_id, canceled_at FROM occurrences
+         WHERE definition_id = ? AND household_date = ?`,
+      )
+      .get(definitionId, today) as {
+      accountable_member_id: string | null;
+      canceled_at: string | null;
+    };
+    expect(afterOcc).toEqual(beforeOcc);
+    const claimOpen = h.db
+      .prepare(
+        `SELECT 1 AS ok FROM membership_access_claims WHERE id = ? AND consumed_at IS NULL AND revoked_at IS NULL`,
+      )
+      .get(claimId) as { ok: number } | undefined;
+    expect(claimOpen?.ok).toBe(1);
+
+    // Clean success path still works after the rolled-back attempt.
+    const retryPreview = await previewRemoval(h, mgr, (await getPerson(h, mgr, person.id))!);
+    expect(
+      (
+        await commitRemoval(
+          h,
+          mgr,
+          (await getPerson(h, mgr, person.id))!,
+          (retryPreview.json() as { previewDigest: string }).previewDigest,
+        )
+      ).statusCode,
+    ).toBe(200);
+    expect(await getPerson(h, mgr, person.id)).toBeUndefined();
+  });
 
   it("AT14: permission, access, and removal routes deny anonymous, CSRF-less, and under-privileged callers", async () => {
     const h = await createCHarness();

@@ -1866,9 +1866,43 @@ function RemovePersonState(props: {
               : "None"}
           </p>
           <p className="meta">
-            Unstarted work from {preview.impact.canceledUnstartedOccurrencesFrom} will be
-            reconciled. Started work stays as Needs attention.
+            Unstarted work from {preview.impact.fromDate ?? preview.impact.canceledUnstartedOccurrencesFrom} will be
+            reconciled through the assignment resolver. Started work stays as Needs attention.
           </p>
+          {preview.impact.days?.some((day) => day.items.length > 0) ? (
+            <div className="meta" data-testid="removal-impact-days">
+              <p>Next seven household days:</p>
+              <ul>
+                {preview.impact.days.map((day) =>
+                  day.items.length === 0 ? null : (
+                    <li key={day.householdDate}>
+                      <strong>{day.householdDate}</strong>
+                      <ul>
+                        {day.items.map((item) => (
+                          <li key={`${day.householdDate}-${item.definitionId}-${item.effect.type}`}>
+                            {item.title}
+                            {item.effect.type === "participation_ends"
+                              ? " — participation ends"
+                              : item.effect.type === "started_protected"
+                                ? " — started work kept"
+                                : item.effect.accountableMemberName
+                                  ? ` — becomes ${item.effect.accountableMemberName}`
+                                  : " — becomes Unassigned"}
+                          </li>
+                        ))}
+                      </ul>
+                    </li>
+                  ),
+                )}
+              </ul>
+            </div>
+          ) : null}
+          {preview.impact.repairLinks?.length ? (
+            <p className="meta" data-testid="removal-repair-links">
+              Repair Unassigned plans:{" "}
+              {preview.impact.repairLinks.map((link) => link.title).join(", ")}
+            </p>
+          ) : null}
           <label>
             Your password
             <input

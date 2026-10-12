@@ -100,6 +100,7 @@ import {
   loadResponsibilityPlan,
   normalizeAssignmentInput,
   normalizeScheduledAdditions,
+  planReferencesMembership,
   resolveResponsibilityComposition,
   shiftPlanAnchorsForBoundaryMove,
   updateResponsibilityPlan,
@@ -119,7 +120,6 @@ import {
   accessMetaForMembership,
   assertEssentialManagerSurvives,
   bumpAuthorityVersion,
-  cancelUnstartedOccurrencesForMember,
   countEssentialManagers,
   digestPayload,
   findAccessClaimByToken,
@@ -486,6 +486,7 @@ export class AppStore {
    * return (P0-007B AT10). Throwing rolls back group + dependent occurrences.
    */
   private groupUpdateFailureHook: (() => void) | null = null;
+  private memberRemovalFailureHook: (() => void) | null = null;
 
   setCalendarSaveFailureHook(hook: (() => void) | null): void {
     this.calendarSaveFailureHook = hook;
@@ -509,6 +510,10 @@ export class AppStore {
 
   setGroupUpdateFailureHook(hook: (() => void) | null): void {
     this.groupUpdateFailureHook = hook;
+  }
+
+  setMemberRemovalFailureHook(hook: (() => void) | null): void {
+    this.memberRemovalFailureHook = hook;
   }
 
   hasGrant(ctx: AuthContext, grant: Grant): boolean {
@@ -1896,12 +1901,22 @@ export class AppStore {
       )
       .all(membershipId) as Array<{ id: string; name: string }>;
     const today = this.householdDateNow(ctx);
+    const mode =
+      row.user_id || row.status === "active" ? ("depart" as const) : ("delete" as const);
+    const days =
+      mode === "depart"
+        ? this.buildMemberRemovalImpactDays(ctx.householdId, membershipId, today, 7)
+        : [];
+    const repairLinks = this.repairLinksFromRemovalDays(days);
     const impact = {
       membershipId,
       displayName: row.display_name,
       groups,
-      mode: row.user_id || row.status === "active" ? ("depart" as const) : ("delete" as const),
+      mode,
       canceledUnstartedOccurrencesFrom: today,
+      fromDate: today,
+      days,
+      repairLinks,
     };
     const previewDigest = digestPayload({
       ...impact,
@@ -1947,14 +1962,15 @@ export class AppStore {
         physicallyDeleteUnusedMembership(this.db, membershipId, ctx.householdId);
         result = { mode: "deleted", membershipId };
       } else {
-        markMembershipDeparted(this.db, membershipId, now, today);
-        cancelUnstartedOccurrencesForMember(
-          this.db,
+        const affected = this.findDefinitionsAffectedByMembership(
           ctx.householdId,
           membershipId,
           today,
-          now,
         );
+        markMembershipDeparted(this.db, membershipId, now, today);
+        for (const definitionId of affected) {
+          this.reconcileOccurrenceRange(ctx.householdId, definitionId, today, null);
+        }
         revokeOpenAccessClaims(this.db, membershipId, undefined, now);
         revokeOpenEnrollmentClaims(this.db, membershipId, now);
         const userId = (
@@ -1965,6 +1981,7 @@ export class AppStore {
         if (userId) this.revokeUserSessions(userId);
         result = { mode: "departed", membershipId };
       }
+      this.memberRemovalFailureHook?.();
       writeStructureMutationReceipt(this.db, input.mutationId, "member_remove", result);
     });
     tx();
@@ -2050,20 +2067,22 @@ export class AppStore {
           physicallyDeleteUnusedMembership(this.db, membershipId, ctx.householdId);
           results.push({ membershipId, mode: "deleted" });
         } else {
-          markMembershipDeparted(this.db, membershipId, now, today);
-          cancelUnstartedOccurrencesForMember(
-            this.db,
+          const affected = this.findDefinitionsAffectedByMembership(
             ctx.householdId,
             membershipId,
             today,
-            now,
           );
+          markMembershipDeparted(this.db, membershipId, now, today);
+          for (const definitionId of affected) {
+            this.reconcileOccurrenceRange(ctx.householdId, definitionId, today, null);
+          }
           revokeOpenAccessClaims(this.db, membershipId, undefined, now);
           revokeOpenEnrollmentClaims(this.db, membershipId, now);
           if (row.user_id) this.revokeUserSessions(row.user_id);
           results.push({ membershipId, mode: "departed" });
         }
       }
+      this.memberRemovalFailureHook?.();
       const payload = { results, backup };
       writeStructureMutationReceipt(this.db, input.mutationId, "fixture_remediation", payload);
       return payload;
@@ -4669,7 +4688,9 @@ export class AppStore {
               this.groupMembersOnDate(groupId, householdDate),
             ),
           })) {
-            planParticipants.add(membershipId);
+            if (this.isMemberEligible(householdId, membershipId, householdDate)) {
+              planParticipants.add(membershipId);
+            }
           }
         }
 
@@ -6909,12 +6930,28 @@ export class AppStore {
   private resolveParticipantsForRevision(
     revisionId: string,
     date: HouseholdDate,
+    householdId?: string,
   ): string[] {
     const directMemberIds = this.revisionAssignees(revisionId);
     const groupMemberIdSets = this.revisionGroupSources(revisionId).map((groupId) =>
       this.groupMembersOnDate(groupId, date),
     );
-    return resolveParticipants({ directMemberIds, groupMemberIdSets });
+    const participants = resolveParticipants({ directMemberIds, groupMemberIdSets });
+    if (!householdId) {
+      const revisionHousehold = this.db
+        .prepare(
+          `SELECT d.household_id AS household_id
+           FROM routine_revisions rr
+           JOIN routine_definitions d ON d.id = rr.definition_id
+           WHERE rr.id = ?`,
+        )
+        .get(revisionId) as { household_id: string } | undefined;
+      householdId = revisionHousehold?.household_id;
+    }
+    if (!householdId) return participants;
+    return participants.filter((membershipId) =>
+      this.isMemberEligible(householdId!, membershipId, date),
+    );
   }
 
   private groupActivelyReferenced(groupId: string, today: HouseholdDate): boolean {
@@ -7531,13 +7568,18 @@ export class AppStore {
       .get(groupId, householdId);
   }
 
-  private getCompositionDeps(householdId: string): CompositionDeps {
+  private getCompositionDeps(
+    householdId: string,
+    excludeMembershipId?: string,
+  ): CompositionDeps {
     return {
       groupMembersOnDate: (groupId, date) => this.groupMembersOnDate(groupId, date),
       memberFirstAdmission: (groupId, memberId) =>
         this.memberFirstAdmission(groupId, memberId),
       isMemberEligible: (memberId, date) =>
-        this.isMemberEligible(householdId, memberId, date),
+        memberId === excludeMembershipId
+          ? false
+          : this.isMemberEligible(householdId, memberId, date),
     };
   }
 
@@ -7623,6 +7665,325 @@ export class AppStore {
       }
     }
     return [...definitionIds];
+  }
+
+  /**
+   * Definitions whose current/future unstarted work must reconcile when a member departs.
+   */
+  private findDefinitionsAffectedByMembership(
+    householdId: string,
+    membershipId: string,
+    fromDate: HouseholdDate,
+  ): string[] {
+    const ids = new Set<string>();
+
+    const direct = this.db
+      .prepare(
+        `SELECT DISTINCT d.id AS id
+         FROM routine_definitions d
+         JOIN routine_revisions rr ON rr.definition_id = d.id
+         JOIN revision_assignees ra ON ra.revision_id = rr.id
+         WHERE d.household_id = ? AND d.deleted_at IS NULL AND ra.member_id = ?`,
+      )
+      .all(householdId, membershipId) as Array<{ id: string }>;
+    for (const row of direct) ids.add(row.id);
+
+    const groupRows = this.db
+      .prepare(
+        `SELECT DISTINCT d.id AS id, rgs.group_id AS group_id
+         FROM routine_definitions d
+         JOIN routine_revisions rr ON rr.definition_id = d.id
+         JOIN revision_group_sources rgs ON rgs.revision_id = rr.id
+         WHERE d.household_id = ? AND d.deleted_at IS NULL AND d.kind = 'routine'`,
+      )
+      .all(householdId) as Array<{ id: string; group_id: string }>;
+    for (const row of groupRows) {
+      if (this.groupMembersOnDate(row.group_id, fromDate).includes(membershipId)) {
+        ids.add(row.id);
+      }
+    }
+
+    const planRows = this.db
+      .prepare(
+        `SELECT DISTINCT rr.definition_id AS id, rrp.assignment_json, rrp.scheduled_additions_json,
+                rrp.revision_id AS revision_id
+         FROM revision_responsibility_plans rrp
+         JOIN routine_revisions rr ON rr.id = rrp.revision_id
+         JOIN routine_definitions d ON d.id = rr.definition_id
+         WHERE d.household_id = ? AND d.kind = 'responsibility' AND d.deleted_at IS NULL`,
+      )
+      .all(householdId) as Array<{
+      id: string;
+      assignment_json: string;
+      scheduled_additions_json: string;
+      revision_id: string;
+    }>;
+    for (const row of planRows) {
+      const plan: StoredResponsibilityPlan = {
+        assignment: JSON.parse(row.assignment_json) as AssignmentSpec,
+        scheduledAdditions: JSON.parse(
+          row.scheduled_additions_json,
+        ) as ScheduledAdditionSpec[],
+      };
+      if (planReferencesMembership(plan, membershipId)) {
+        ids.add(row.id);
+        continue;
+      }
+      for (const groupId of assignmentUsesGroup(plan)) {
+        if (this.groupMembersOnDate(groupId, fromDate).includes(membershipId)) {
+          ids.add(row.id);
+          break;
+        }
+      }
+    }
+
+    const occRows = this.db
+      .prepare(
+        `SELECT DISTINCT definition_id AS id FROM occurrences
+         WHERE household_id = ? AND accountable_member_id = ?
+           AND household_date >= ? AND canceled_at IS NULL`,
+      )
+      .all(householdId, membershipId, fromDate) as Array<{ id: string }>;
+    for (const row of occRows) ids.add(row.id);
+
+    return [...ids];
+  }
+
+  private membershipDisplayName(membershipId: string | null): string | null {
+    if (!membershipId) return null;
+    const row = this.db
+      .prepare(`SELECT display_name FROM household_memberships WHERE id = ?`)
+      .get(membershipId) as { display_name: string } | undefined;
+    return row?.display_name ?? null;
+  }
+
+  private buildMemberRemovalImpactDays(
+    householdId: string,
+    membershipId: string,
+    fromDate: HouseholdDate,
+    dayCount: number,
+  ): Array<{
+    householdDate: string;
+    items: Array<{
+      definitionId: string;
+      kind: "routine" | "responsibility";
+      title: string;
+      daypart: Daypart | null;
+      revisionId: string | null;
+      effect:
+        | { type: "participation_ends" }
+        | {
+            type: "owner_becomes";
+            accountableMemberId: string | null;
+            accountableMemberName: string | null;
+            unassignedReason: string | null;
+          }
+        | {
+            type: "started_protected";
+            accountableMemberId: string | null;
+            accountableMemberName: string | null;
+          };
+    }>;
+  }> {
+    const defs = this.findDefinitionsAffectedByMembership(
+      householdId,
+      membershipId,
+      fromDate,
+    );
+    const excludeDeps = this.getCompositionDeps(householdId, membershipId);
+    const days: Array<{
+      householdDate: string;
+      items: Array<{
+        definitionId: string;
+        kind: "routine" | "responsibility";
+        title: string;
+        daypart: Daypart | null;
+        revisionId: string | null;
+        effect:
+          | { type: "participation_ends" }
+          | {
+              type: "owner_becomes";
+              accountableMemberId: string | null;
+              accountableMemberName: string | null;
+              unassignedReason: string | null;
+            }
+          | {
+              type: "started_protected";
+              accountableMemberId: string | null;
+              accountableMemberName: string | null;
+            };
+      }>;
+    }> = [];
+
+    for (let offset = 0; offset < dayCount; offset += 1) {
+      const householdDate = addHouseholdDays(fromDate, offset);
+      const items: (typeof days)[number]["items"] = [];
+
+      for (const definitionId of defs) {
+        const definition = this.loadRoutineDefinition(householdId, definitionId);
+        if (!definition || definition.deletedAt) continue;
+        const pastImmediateCutoff =
+          definition.endMode === "immediate" &&
+          !isBeforeArchiveCutoff(householdDate, definition.archiveCutoffDate);
+        const pastLegacyCutoff =
+          definition.endMode !== "immediate" &&
+          !isBeforeArchiveCutoff(householdDate, definition.archiveCutoffDate);
+        if (pastImmediateCutoff || pastLegacyCutoff) continue;
+
+        const revision = this.selectRevisionContentForDate(definition, householdDate);
+        if (!revision || !isDateApplicable(householdDate, revision.weekdays)) continue;
+
+        if (definition.kind === "responsibility") {
+          const stored = this.db
+            .prepare(
+              `SELECT id, accountable_member_id, started_at, canceled_at
+               FROM occurrences
+               WHERE definition_id = ? AND household_date = ?
+               LIMIT 1`,
+            )
+            .get(definitionId, householdDate) as
+            | {
+                id: string;
+                accountable_member_id: string | null;
+                started_at: string | null;
+                canceled_at: string | null;
+              }
+            | undefined;
+          if (stored && isOccurrenceStarted(stored.started_at)) {
+            if (stored.accountable_member_id === membershipId) {
+              items.push({
+                definitionId,
+                kind: "responsibility",
+                title: revision.title,
+                daypart: revision.daypart,
+                revisionId: revision.id,
+                effect: {
+                  type: "started_protected",
+                  accountableMemberId: stored.accountable_member_id,
+                  accountableMemberName: this.membershipDisplayName(
+                    stored.accountable_member_id,
+                  ),
+                },
+              });
+            }
+            continue;
+          }
+
+          const plan = loadResponsibilityPlan(this.db, revision.id);
+          if (!plan) continue;
+          const baseSteps = this.revisionSteps(revision.id).map((step) => ({
+            logicalItemId: step.logicalItemId,
+            text: step.text,
+            obligation: step.obligation,
+          }));
+          const composed = resolveResponsibilityComposition(
+            {
+              householdDate,
+              revisionId: revision.id,
+              parentWeekdays: revision.weekdays,
+              baseSteps,
+              plan,
+            },
+            excludeDeps,
+          );
+          if (!composed.applicable) continue;
+          const ownerId = composed.accountableMemberId ?? null;
+          items.push({
+            definitionId,
+            kind: "responsibility",
+            title: revision.title,
+            daypart: revision.daypart,
+            revisionId: revision.id,
+            effect: {
+              type: "owner_becomes",
+              accountableMemberId: ownerId,
+              accountableMemberName: ownerId
+                ? this.membershipDisplayName(ownerId)
+                : composed.unassignedReason
+                  ? "Unassigned"
+                  : null,
+              unassignedReason: composed.unassignedReason ?? null,
+            },
+          });
+          continue;
+        }
+
+        const rawParticipants = resolveAccountableMembers("routine", {
+          directMemberIds: revision.assigneeMemberIds,
+          groupMemberIdSets: revision.assigneeGroupIds.map((groupId) =>
+            this.groupMembersOnDate(groupId, householdDate),
+          ),
+        });
+        if (!rawParticipants.includes(membershipId)) continue;
+
+        const stored = this.db
+          .prepare(
+            `SELECT id, started_at, canceled_at FROM occurrences
+             WHERE definition_id = ? AND household_date = ? AND accountable_member_id = ?
+             LIMIT 1`,
+          )
+          .get(definitionId, householdDate, membershipId) as
+          | {
+              id: string;
+              started_at: string | null;
+              canceled_at: string | null;
+            }
+          | undefined;
+        if (stored && isOccurrenceStarted(stored.started_at)) {
+          items.push({
+            definitionId,
+            kind: "routine",
+            title: revision.title,
+            daypart: revision.daypart,
+            revisionId: revision.id,
+            effect: {
+              type: "started_protected",
+              accountableMemberId: membershipId,
+              accountableMemberName: this.membershipDisplayName(membershipId),
+            },
+          });
+          continue;
+        }
+        items.push({
+          definitionId,
+          kind: "routine",
+          title: revision.title,
+          daypart: revision.daypart,
+          revisionId: revision.id,
+          effect: { type: "participation_ends" },
+        });
+      }
+
+      days.push({ householdDate, items });
+    }
+
+    return days;
+  }
+
+  private repairLinksFromRemovalDays(
+    days: Array<{
+      items: Array<{
+        definitionId: string;
+        kind: "routine" | "responsibility";
+        title: string;
+        effect: { type: string; unassignedReason?: string | null; accountableMemberId?: string | null };
+      }>;
+    }>,
+  ): Array<{ definitionId: string; kind: "responsibility"; title: string }> {
+    const byId = new Map<string, { definitionId: string; kind: "responsibility"; title: string }>();
+    for (const day of days) {
+      for (const item of day.items) {
+        if (item.kind !== "responsibility") continue;
+        if (item.effect.type !== "owner_becomes") continue;
+        if (item.effect.accountableMemberId != null) continue;
+        byId.set(item.definitionId, {
+          definitionId: item.definitionId,
+          kind: "responsibility",
+          title: item.title,
+        });
+      }
+    }
+    return [...byId.values()];
   }
 
   private resolveRevisionLogicalIds(
@@ -8132,7 +8493,9 @@ export class AppStore {
         groupMemberIdSets: revision.assigneeGroupIds.map((groupId) =>
           this.groupMembersOnDate(groupId, householdDate),
         ),
-      }),
+      }).filter((membershipId) =>
+        this.isMemberEligible(householdId, membershipId, householdDate),
+      ),
     );
 
     const rows = this.db

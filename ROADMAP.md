@@ -101,7 +101,7 @@ Both C-3 slices contribute to **Act at the shared display without losing trust**
 ### CURRENT
 
 - [ ] **P0-008D — Reach the first useful family day without coaching.** Complete the five named setup steps, optional exits/cross-device resume, first-work review/recap and the ordinary app setup→management→backup→reset→restore journey.
-  - **Brief:** `P0-008D r2` (`briefs/p0-008d-guided-first-household-day.md`) R1–R7 corrections after FIX REQUIRED at `b90cd7f` are IMPLEMENTED — awaiting Architecture re-review. Build Report: `reports/P0-008D-r2-build-report.md`. Hosted/Product checkpoints remain separate.
+  - **Brief:** `P0-008D r2` (`briefs/p0-008d-guided-first-household-day.md`) remains FIX REQUIRED after reassessment of correction `efc1f22` on 2026-10-13. Improved foundations retained; Engineering closes the remaining original R1–R7 in `reports/P0-008D-r2-architecture-reassessment.md`. Build Report: `reports/P0-008D-r2-build-report.md`. Hosted/Product checkpoints remain separate.
   - **Evidence target:** Atomic saved records/progress/retry, actual next dates/owners without materialization, compact phone/desktop entry, upgrade/removal/restore compatibility, complete UI journey and local PR/RC/CI selection. Include the newly inspected C access-claim sanitation gap in staged restore.
   - **Card:** Shared P0-008 card remains In Progress; D technical acceptance makes the complete result Ready to Evaluate.
 

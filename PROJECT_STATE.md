@@ -21,7 +21,7 @@
 
 Inspected 2026-10-12: clean local `main` / `origin/main` are **1709097** (PR **#26**), through household migration 019 plus B's installation-control catalog migration 001. P0-008A r1, P0-008B r2 and P0-008C r1 are technically accepted and integrated. C's accepted correction is `90de153`. No live Railway reset/restore or hosted Product evaluation is claimed.
 
-**P0-008D r2** corrections for Architecture **FIX REQUIRED** (`b90cd7f`, review in `reports/P0-008D-r2-architecture-review.md`) are **IMPLEMENTED — awaiting Architecture re-review** on `brief/p0-008d-guided-first-household-day`. Updated Build Report: `reports/P0-008D-r2-build-report.md`. Contract unchanged. Hosted and hands-on Product evaluation remain later checkpoints. The shared card **Set up and manage my household without operator help** stays In Progress.
+**P0-008D r2** committed correction `efc1f22` was reassessed on 2026-10-13: **FIX REQUIRED**, same contract. Improved foundations are retained; remaining saved-work/recap, command/preview binding, dirty/live recovery and required lifecycle/upgrade/restore/UI evidence are consolidated in `reports/P0-008D-r2-architecture-reassessment.md`. Engineering owns the next correction pass on `brief/p0-008d-guided-first-household-day`. Hosted and hands-on Product evaluation remain later checkpoints. The shared card **Set up and manage my household without operator help** stays In Progress.
 
 P0-007C's outstanding physical/Product judgments remain distinct from its technical acceptance and from approval to begin P0-008. Old reports retain their inspected SHAs.
 
@@ -47,7 +47,7 @@ P0-007C's outstanding physical/Product judgments remain distinct from its techni
 | P0-008A - Protected First-Manager Setup and Repeatable Reset | r1 | ACCEPTED | Integrated foundation | Merged to `main` at `405c5db` via PR #24 | Hosted/Product evaluation remains separate |
 | P0-008B - Household Backups and In-App Restore | r2 | ACCEPTED | Integrated foundation | Merged to `main` at `f80d47b` via PR #25 | Hosted and Product evaluation remain separate |
 | P0-008C - Understandable Member Access and Safe Removal | r1 | ACCEPTED | Integrated foundation | Merged to `main` at `1709097` via PR #26; correction `90de153` | Hosted/Product evaluation remains separate |
-| P0-008D - Guided Setup to the First Useful Household Day | r2 | IMPLEMENTED | Architecture re-review | `brief/p0-008d-guided-first-household-day` (correction tip after `b90cd7f`); Build Report `reports/P0-008D-r2-build-report.md` | Architecture re-review of R1–R7 closure + exact PR/RC |
+| P0-008D - Guided Setup to the First Useful Household Day | r2 | FIX REQUIRED | Engineering | `brief/p0-008d-guided-first-household-day`; reviewed correction `efc1f22` | Remaining original R1–R7 in Architecture reassessment; corrected-tree evidence and exact PR/RC |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -85,7 +85,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Architecture re-reviews `reports/P0-008D-r2-build-report.md` for R1–R7 closure and exact corrected-tree PR/RC evidence on **P0-008D r2**. Hosted backup/reset/restore and Product evaluation remain separately authorized checkpoints. No deployment/live database operation is implied.
+Engineering closes the remaining original R1–R7 requirements in `reports/P0-008D-r2-architecture-reassessment.md` against **P0-008D r2**, then returns named evidence and the updated Build Report. No new readiness cycle is needed. Hosted backup/reset/restore and Product evaluation remain separately authorized checkpoints. No deployment/live database operation is implied.
 
 ## Notes for all teams
 

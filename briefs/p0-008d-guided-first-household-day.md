@@ -1,7 +1,7 @@
 # BRIEF P0-008D - Guided Setup to the First Useful Household Day
 
 **Revision:** 2
-**Status:** IMPLEMENTED — awaiting Architecture re-review of R1–R7 corrections; prior FIX REQUIRED of `b90cd7f` is in `reports/P0-008D-r2-architecture-review.md`; Build Report `reports/P0-008D-r2-build-report.md`; contract remains revision 2
+**Status:** FIX REQUIRED — Architecture reassessed committed correction `efc1f22` on 2026-10-13; remaining original R1–R7 requirements are consolidated in `reports/P0-008D-r2-architecture-reassessment.md`. Prior review: `reports/P0-008D-r2-architecture-review.md`; Build Report: `reports/P0-008D-r2-build-report.md`. Contract remains revision 2.
 **Inspected baseline:** integrated `main` / `origin/main` at `1709097` (PR #26), 2026-10-12
 
 This is the final slice of the approved P0-008 journey. A r1, B r2 and C r1 are technically accepted and integrated. This revision replaces the pre-A r1 successor draft; no earlier readiness applies. Local technical acceptance and the hosted/Project Lead evaluation checkpoint are separate.
@@ -128,3 +128,4 @@ Source inspected on clean integrated `main` at `1709097`. C's accepted correctio
 - **r1:** Pre-A successor draft preserving the guided first-day and complete P0-008 intent; never reviewed or implemented.
 - **r2:** Released against merged A–C. Makes household progress/atomic save recovery, missing draft previews, upgrade/reference/restore compatibility and authority explicit; separates local technical gates from the required subsequent hosted/Product checkpoint. Engineering readiness READY at `f0f89b6`; Architecture ACCEPT / PROCEED recorded 2026-10-12 with no contract change.
   - Implementation `b90cd7f` reviewed on 2026-10-12: FIX REQUIRED for the complete guide, calendar preservation, operation/preview/live recovery guards and acceptance evidence. Contract unchanged.
+  - Correction `efc1f22` reassessed on 2026-10-13: FIX REQUIRED remains for saved-work return/recap, usable assignment controls, complete command/review binding, dirty/late-result recovery and required lifecycle/upgrade/restore/UI evidence. Improved foundations retained; contract unchanged.

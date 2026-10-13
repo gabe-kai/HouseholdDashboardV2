@@ -1,7 +1,7 @@
 # BRIEF P0-008D - Guided Setup to the First Useful Household Day
 
 **Revision:** 2
-**Status:** READY — Architecture ACCEPT / PROCEED recorded 2026-10-12; Engineering may implement revision 2 on `brief/p0-008d-guided-first-household-day`
+**Status:** IMPLEMENTED — awaiting Architecture acceptance; Build Report `reports/P0-008D-r2-build-report.md`
 **Inspected baseline:** integrated `main` / `origin/main` at `1709097` (PR #26), 2026-10-12
 
 This is the final slice of the approved P0-008 journey. A r1, B r2 and C r1 are technically accepted and integrated. This revision replaces the pre-A r1 successor draft; no earlier readiness applies. Local technical acceptance and the hosted/Project Lead evaluation checkpoint are separate.
@@ -121,7 +121,7 @@ Source inspected on clean integrated `main` at `1709097`. C's accepted correctio
 ## Engineering readiness
 
 **Reviewed revision:** 2
-**Readiness:** READY — consolidated repository-grounded review against integrated `main` at `1709097`; see `reports/P0-008D-r2-engineering-readiness.md`, committed at `f0f89b6`. No BLOCKER/QUESTION. Architecture **ACCEPT / PROCEED** on 2026-10-12: all five IMPORTANT items are required in-scope delivery work already covered by r2; ordinary storage/component/wire choices remain Engineering discretion. No contract revision is needed. Implement r2 only, then return its Build Report and exact local PR/RC evidence. Hosted/live-data and Product checkpoints remain separate.
+**Readiness:** READY (historical) — Architecture **ACCEPT / PROCEED** on 2026-10-12. Engineering implemented r2; see `reports/P0-008D-r2-build-report.md`. Awaiting Architecture acceptance of the Build Report. Hosted/live-data and Product checkpoints remain separate.
 
 ## Revision history
 

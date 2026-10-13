@@ -286,6 +286,22 @@ export function HouseholdSettingsView(props: {
       </div>
 
       {props.canManageLifecycle ? (
+        <div className="settings-section settings-action" data-testid="finish-setup-section">
+          <h2>Finish setup</h2>
+          <p className="meta">
+            Return to the guided setup for people, school days, and first household work.
+          </p>
+          <a
+            className="primary button-link"
+            href="/household/setup"
+            data-testid="settings-finish-setup"
+          >
+            Finish setup
+          </a>
+        </div>
+      ) : null}
+
+      {props.canManageLifecycle ? (
         <div className="settings-section settings-action" data-testid="backups-section">
           <h2>Backups</h2>
           <p className="meta">

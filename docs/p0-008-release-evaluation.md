@@ -2,7 +2,21 @@
 
 Prepared by Architecture on 2026-10-12 for **P0-008D r2**. This is the release/evaluation plan, not a record of completed checks. Engineering updates actual routes and records local evidence in its Build Report. Product/Project Lead owns hands-on judgment.
 
-**Current evidence:** A–C are technically accepted and merged at `1709097`. D is IN REVIEW. Hosted adoption/reset/restore and the uninterrupted full Product session remain **NOT RUN**. The actual Railway dataset, storage layout and deployed commit have not been inspected for this release.
+**Current evidence:** A–C are technically accepted and merged at `1709097`. D r2 local implementation is delivered on `brief/p0-008d-guided-first-household-day` (see `reports/P0-008D-r2-build-report.md`). Hosted adoption/reset/restore and the uninterrupted full Product session remain **NOT RUN**. The actual Railway dataset, storage layout and deployed commit have not been inspected for this release.
+
+### Runnable local paths (after D r2 implementation)
+
+| Surface | Path / command |
+| --- | --- |
+| Protected Welcome | `/welcome` |
+| Guided first-day setup | `/household/settings` → Finish setup, or `/household/setup` after household basics |
+| Settings grouping | Household details → Finish setup → Backups |
+| Integration evidence | `npx vitest run tests/integration/p0-008d.test.ts` |
+| Phone Chromium D | `npm run test:e2e:chromium:phone:008d` |
+| Phone WebKit D | `npx playwright test --project=webkit-008a --grep "P0-008D"` |
+| Desktop D | `npx playwright test --project=chromium-008a-desktop --grep "P0-008D"` |
+| Exact gates | `npm run validate:pr` then `npm run validate:rc` |
+| Local screenshots only | `reports/_local-screenshots/p0-008d-r2/` (gitignored) |
 
 ## 1. Complete local technical acceptance first
 

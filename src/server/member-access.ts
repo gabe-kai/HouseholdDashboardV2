@@ -34,7 +34,12 @@ export type StructureMutationReceiptKind =
   | "sign_in_revoke"
   | "member_remove"
   | "fixture_remediation"
-  | "password_change";
+  | "password_change"
+  | "guide_progress"
+  | "guide_people"
+  | "guide_school"
+  | "guide_work"
+  | "guide_dismiss";
 
 export const INVITATION_CLAIM_MS = 24 * 60 * 60 * 1_000;
 export const PASSWORD_RESET_CLAIM_MS = 30 * 60 * 1_000;
@@ -655,6 +660,12 @@ const RETIRABLE_SETUP_RECEIPT_KINDS = new Set<string>([
   "permission_save",
   "access_claim_issue",
   "access_claim_cancel",
+  // Guide receipts may name people/work links; retire when solely owned by the unused person.
+  "guide_progress",
+  "guide_people",
+  "guide_school",
+  "guide_work",
+  "guide_dismiss",
 ]);
 
 export function physicallyDeleteUnusedMembership(
@@ -690,6 +701,24 @@ export function physicallyDeleteUnusedMembership(
     `UPDATE structure_mutation_receipts SET response_json = ? WHERE mutation_id = ?`,
   );
   for (const row of owned) retire.run(JSON.stringify({ retired: true }), row.mutation_id);
+  // Drop stable guide links so progress never blocks unused-person deletion (P0-008D AT7).
+  const progress = db
+    .prepare(
+      `SELECT people_membership_ids_json FROM setup_progress WHERE household_id = ?`,
+    )
+    .get(householdId) as { people_membership_ids_json: string } | undefined;
+  if (progress) {
+    try {
+      const ids = (
+        JSON.parse(progress.people_membership_ids_json) as unknown[]
+      ).filter((id): id is string => typeof id === "string" && id !== membershipId);
+      db.prepare(
+        `UPDATE setup_progress SET people_membership_ids_json = ?, updated_at = ? WHERE household_id = ?`,
+      ).run(JSON.stringify(ids), nowUtcIso(), householdId);
+    } catch {
+      /* ignore malformed progress JSON */
+    }
+  }
   db.prepare("DELETE FROM membership_access_claims WHERE membership_id = ?").run(membershipId);
   db.prepare("DELETE FROM membership_grants WHERE membership_id = ?").run(membershipId);
   db.prepare("DELETE FROM household_memberships WHERE id = ?").run(membershipId);

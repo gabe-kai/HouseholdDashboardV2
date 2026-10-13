@@ -59,6 +59,8 @@ import type {
   FamilyOrderSaveResult,
   Grant,
   GrantPreset,
+  GuideProgressPublic,
+  GuideStepStatus,
   GroupPublic,
   GroupRoutineReference,
   HistoryOccurrenceDetail,
@@ -74,6 +76,7 @@ import type {
   ResponsibilityMutationResult,
   ResponsibilityPreviewDay,
   RoutineDefinitionPublic,
+  RoutineDraftPreviewDay,
   RoutineMutationResult,
   RoutineRevisionPublic,
   ScheduleEntryPublic,
@@ -145,6 +148,12 @@ import {
   writeStructureReceipt as writeStructureMutationReceipt,
   type StructureMutationReceiptKind,
 } from "./member-access.js";
+import {
+  parseIdListJson,
+  readGuideProgressRow,
+  toGuideProgressPublic,
+  unlinkGuideWorkDefinition,
+} from "./guide-progress.js";
 import { SEED } from "./seeds/evaluation.js";
 
 export type AuthContext = {
@@ -487,6 +496,11 @@ export class AppStore {
    */
   private groupUpdateFailureHook: (() => void) | null = null;
   private memberRemovalFailureHook: (() => void) | null = null;
+  /**
+   * Test-only: after guide domain write, before progress/receipt commit (P0-008D AT4).
+   * Throwing rolls back domain + progress + guide receipt together.
+   */
+  private guideSaveFailureHook: (() => void) | null = null;
 
   setCalendarSaveFailureHook(hook: (() => void) | null): void {
     this.calendarSaveFailureHook = hook;
@@ -514,6 +528,10 @@ export class AppStore {
 
   setMemberRemovalFailureHook(hook: (() => void) | null): void {
     this.memberRemovalFailureHook = hook;
+  }
+
+  setGuideSaveFailureHook(hook: (() => void) | null): void {
+    this.guideSaveFailureHook = hook;
   }
 
   hasGrant(ctx: AuthContext, grant: Grant): boolean {
@@ -1003,6 +1021,491 @@ export class AppStore {
     });
     tx();
     return { householdId: ctx.householdId, name: input.name.trim(), timezone: input.timezone.trim() };
+  }
+
+  /**
+   * Full guided-setup progress. Requires lifecycle.manage.
+   * Ensures a progress row for existing completed households without inventing wizard times
+   * from "now" — uses earliest manager membership created_at when backfilling.
+   */
+  getGuideProgress(ctx: AuthContext): GuideProgressPublic {
+    this.requireGrant(ctx, "household.lifecycle.manage");
+    this.ensureGuideProgressRow(ctx.householdId);
+    const row = readGuideProgressRow(this.db, ctx.householdId);
+    if (!row) fail("NOT_FOUND", "Setup progress not found");
+    return toGuideProgressPublic(this.db, row, this.setupRequired());
+  }
+
+  /** Atomic guide people add: domain person + progress link + guide receipt. */
+  guideSavePerson(
+    ctx: AuthContext,
+    input: {
+      mutationId: string;
+      expectedGuideVersion: number;
+      displayName: string;
+      classification: PersonClassification;
+    },
+  ): { progress: GuideProgressPublic; person: MemberPublic } {
+    this.requireGrant(ctx, "household.lifecycle.manage");
+    const prior = this.readStructureReceipt(input.mutationId, "guide_people");
+    if (prior) {
+      return prior as { progress: GuideProgressPublic; person: MemberPublic };
+    }
+    const result = this.db.transaction(() => {
+      this.assertExpectedGuideVersion(ctx.householdId, input.expectedGuideVersion);
+      const person = this.createPerson(ctx, {
+        mutationId: randomUUID(),
+        displayName: input.displayName,
+        classification: input.classification,
+      });
+      this.guideSaveFailureHook?.();
+      const progress = this.bumpGuideProgress(ctx.householdId, {
+        peopleStatus: "not_chosen",
+        appendPeopleId: person.id,
+      });
+      const payload = { progress, person };
+      this.writeStructureReceipt(input.mutationId, "guide_people", payload);
+      return payload;
+    })();
+    return result;
+  }
+
+  /** Mark people step completed/skipped without creating a person. */
+  guideCompletePeople(
+    ctx: AuthContext,
+    input: {
+      mutationId: string;
+      expectedGuideVersion: number;
+      status: "completed" | "skipped";
+    },
+  ): GuideProgressPublic {
+    this.requireGrant(ctx, "household.lifecycle.manage");
+    const prior = this.readStructureReceipt(input.mutationId, "guide_people");
+    if (prior && typeof prior === "object" && prior !== null && "progress" in prior) {
+      return (prior as { progress: GuideProgressPublic }).progress;
+    }
+    if (prior && typeof prior === "object" && prior !== null && "guideVersion" in prior) {
+      return prior as GuideProgressPublic;
+    }
+    return this.db.transaction(() => {
+      this.assertExpectedGuideVersion(ctx.householdId, input.expectedGuideVersion);
+      this.guideSaveFailureHook?.();
+      const progress = this.bumpGuideProgress(ctx.householdId, {
+        peopleStatus: input.status,
+      });
+      this.writeStructureReceipt(input.mutationId, "guide_people", progress);
+      return progress;
+    })();
+  }
+
+  /** Save school calendar through guide, or record Not now. */
+  guideSaveSchool(
+    ctx: AuthContext,
+    input: {
+      mutationId: string;
+      expectedGuideVersion: number;
+      status: "completed" | "skipped";
+      calendar?: SaveSchoolCalendarInput;
+    },
+  ): { progress: GuideProgressPublic; calendar: SchoolCalendarPublic | null } {
+    this.requireGrant(ctx, "household.lifecycle.manage");
+    const prior = this.readStructureReceipt(input.mutationId, "guide_school");
+    if (prior) {
+      return prior as { progress: GuideProgressPublic; calendar: SchoolCalendarPublic | null };
+    }
+    return this.db.transaction(() => {
+      this.assertExpectedGuideVersion(ctx.householdId, input.expectedGuideVersion);
+      let calendar: SchoolCalendarPublic | null = null;
+      if (input.status === "completed" && input.calendar) {
+        calendar = this.saveSchoolCalendar(ctx, input.calendar);
+      } else if (input.status === "completed" && !input.calendar) {
+        fail("VALIDATION", "School calendar payload is required when completing school setup");
+      }
+      this.guideSaveFailureHook?.();
+      const progress = this.bumpGuideProgress(ctx.householdId, {
+        schoolStatus: input.status,
+      });
+      const payload = { progress, calendar };
+      this.writeStructureReceipt(input.mutationId, "guide_school", payload);
+      return payload;
+    })();
+  }
+
+  /** Create first routine and/or responsibility through the guide, or skip/finish work. */
+  guideSaveWork(
+    ctx: AuthContext,
+    input: {
+      mutationId: string;
+      expectedGuideVersion: number;
+      status?: "completed" | "skipped";
+      routine?: RoutineInput;
+      responsibility?: ResponsibilityInput;
+      previewHouseholdDate?: string;
+    },
+  ): {
+    progress: GuideProgressPublic;
+    routine: RoutineDefinitionPublic | null;
+    responsibility: ResponsibilityDefinitionPublic | null;
+  } {
+    this.requireGrant(ctx, "household.lifecycle.manage");
+    const prior = this.readStructureReceipt(input.mutationId, "guide_work");
+    if (prior) {
+      return prior as {
+        progress: GuideProgressPublic;
+        routine: RoutineDefinitionPublic | null;
+        responsibility: ResponsibilityDefinitionPublic | null;
+      };
+    }
+    return this.db.transaction(() => {
+      this.assertExpectedGuideVersion(ctx.householdId, input.expectedGuideVersion);
+      if (input.previewHouseholdDate) {
+        const today = this.householdDateNow(ctx);
+        if (input.previewHouseholdDate !== today) {
+          fail(
+            "CONFLICT",
+            "Household date changed since review; preview again before saving",
+          );
+        }
+      }
+      let routine: RoutineDefinitionPublic | null = null;
+      let responsibility: ResponsibilityDefinitionPublic | null = null;
+      const workIds: string[] = [];
+      if (input.routine) {
+        routine = this.createRoutine(ctx, input.routine);
+        workIds.push(routine.id);
+      }
+      if (input.responsibility) {
+        responsibility = this.createResponsibility(ctx, input.responsibility);
+        workIds.push(responsibility.id);
+      }
+      const status: GuideStepStatus =
+        input.status ??
+        (workIds.length > 0 ? "completed" : "skipped");
+      this.guideSaveFailureHook?.();
+      const progress = this.bumpGuideProgress(ctx.householdId, {
+        firstWorkStatus: status,
+        appendWorkIds: workIds,
+      });
+      const payload = { progress, routine, responsibility };
+      this.writeStructureReceipt(input.mutationId, "guide_work", payload);
+      return payload;
+    })();
+  }
+
+  guideFinish(
+    ctx: AuthContext,
+    input: { mutationId: string; expectedGuideVersion: number; dismiss?: boolean },
+  ): GuideProgressPublic {
+    this.requireGrant(ctx, "household.lifecycle.manage");
+    const prior = this.readStructureReceipt(input.mutationId, "guide_progress");
+    if (prior) return prior as GuideProgressPublic;
+    return this.db.transaction(() => {
+      this.assertExpectedGuideVersion(ctx.householdId, input.expectedGuideVersion);
+      this.guideSaveFailureHook?.();
+      const now = nowUtcIso();
+      const progress = this.bumpGuideProgress(ctx.householdId, {
+        finishedAt: now,
+        dismissedAt: input.dismiss ? now : undefined,
+      });
+      this.writeStructureReceipt(input.mutationId, "guide_progress", progress);
+      return progress;
+    })();
+  }
+
+  guideDismiss(
+    ctx: AuthContext,
+    input: { mutationId: string; expectedGuideVersion: number },
+  ): GuideProgressPublic {
+    this.requireGrant(ctx, "household.lifecycle.manage");
+    const prior = this.readStructureReceipt(input.mutationId, "guide_dismiss");
+    if (prior) return prior as GuideProgressPublic;
+    return this.db.transaction(() => {
+      this.assertExpectedGuideVersion(ctx.householdId, input.expectedGuideVersion);
+      this.guideSaveFailureHook?.();
+      const progress = this.bumpGuideProgress(ctx.householdId, {
+        dismissedAt: nowUtcIso(),
+      });
+      this.writeStructureReceipt(input.mutationId, "guide_dismiss", progress);
+      return progress;
+    })();
+  }
+
+  /**
+   * Read-only draft routine preview. Zero materialization / locks / reports.
+   */
+  previewDraftRoutine(
+    ctx: AuthContext,
+    input: RoutineInput,
+    days = 7,
+  ): {
+    preview: RoutineDraftPreviewDay[];
+    nextKnownDate: string | null;
+    noKnownReason: string | null;
+  } {
+    this.requireGrant(ctx, "routine.shared.manage");
+    this.validateRoutineInput(ctx, input);
+    const audienceInput: RoutineInput = {
+      ...input,
+      assigneeMemberIds: input.assigneeMemberIds ?? [],
+      assigneeGroupIds: input.assigneeGroupIds ?? [],
+    };
+    const today = this.householdDateNow(ctx);
+    const previewDays = Math.max(1, Math.min(days, 31));
+    const normalized = this.normalizeRoutineAudience(
+      ctx,
+      this.withDefaultRoutineApplicability(audienceInput),
+      today,
+    );
+    const stepsNeedSchool = normalized.steps.some((step) =>
+      ruleNeedsSchoolCalendar(step.applicability ?? DEFAULT_APPLICABILITY),
+    );
+    const nameById = new Map(
+      (
+        this.db
+          .prepare(
+            `SELECT id, display_name FROM household_memberships
+             WHERE household_id = ? AND departed_at IS NULL`,
+          )
+          .all(ctx.householdId) as Array<{ id: string; display_name: string }>
+      ).map((r) => [r.id, r.display_name]),
+    );
+    const preview: RoutineDraftPreviewDay[] = [];
+    for (let offset = 0; offset < previewDays; offset += 1) {
+      const householdDate = addHouseholdDays(today, offset);
+      const weekdayOk = isDateApplicable(householdDate, normalized.weekdays);
+      let schoolFiltered = false;
+      let applicable = weekdayOk;
+      let stepCount = 0;
+      if (weekdayOk) {
+        const edition = this.loadCalendarEditionForDate(ctx.householdId, householdDate);
+        const calendarShape = edition
+          ? { years: edition.years }
+          : null;
+        const iso = isoWeekdayForHouseholdDate(householdDate);
+        const nextDate = addHouseholdDays(householdDate, 1);
+        const schoolToday = isSchoolDayForDate(householdDate, calendarShape, iso);
+        const schoolTomorrow = isSchoolDayForDate(
+          nextDate,
+          calendarShape,
+          isoWeekdayForHouseholdDate(nextDate),
+        );
+        if (stepsNeedSchool && schoolToday.status === "unconfigured") {
+          applicable = false;
+          schoolFiltered = true;
+        } else {
+          for (const step of normalized.steps) {
+            const decision = evaluateApplicability({
+              rule: step.applicability ?? DEFAULT_APPLICABILITY,
+              date: householdDate,
+              isoWeekday: iso,
+              nextDate,
+              nextIsoWeekday: isoWeekdayForHouseholdDate(nextDate),
+              schoolToday,
+              schoolTomorrow,
+            });
+            if (decision.include) stepCount += 1;
+            if ("unresolved" in decision && decision.unresolved) {
+              schoolFiltered = true;
+            }
+          }
+          if (stepCount === 0 && stepsNeedSchool) {
+            applicable = false;
+            schoolFiltered = true;
+          }
+        }
+      }
+      const participantMemberIds = applicable ? [...normalized.assigneeMemberIds] : [];
+      preview.push({
+        householdDate,
+        applicable,
+        title: applicable ? normalized.title.trim() : null,
+        daypart: applicable ? normalized.daypart : null,
+        participantMemberIds,
+        participantNames: participantMemberIds.map(
+          (id) => nameById.get(id) ?? "Unknown",
+        ),
+        stepCount: applicable ? stepCount || normalized.steps.length : 0,
+        schoolFiltered,
+      });
+    }
+    let nextKnownDate: string | null = null;
+    let noKnownReason: string | null = null;
+    if (!preview.some((d) => d.applicable)) {
+      for (let offset = previewDays; offset < 120; offset += 1) {
+        const householdDate = addHouseholdDays(today, offset);
+        if (!isDateApplicable(householdDate, normalized.weekdays)) continue;
+        const edition = this.loadCalendarEditionForDate(ctx.householdId, householdDate);
+        const calendarShape = edition ? { years: edition.years } : null;
+        const iso = isoWeekdayForHouseholdDate(householdDate);
+        const schoolToday = isSchoolDayForDate(householdDate, calendarShape, iso);
+        if (stepsNeedSchool && schoolToday.status === "unconfigured") {
+          noKnownReason = "School calendar is not configured";
+          break;
+        }
+        if (stepsNeedSchool && schoolToday.status === "configured" && !schoolToday.isSchoolDay) {
+          continue;
+        }
+        nextKnownDate = householdDate;
+        break;
+      }
+      if (!nextKnownDate && !noKnownReason) {
+        noKnownReason = "No applicable date in the next four months";
+      }
+    }
+    return { preview, nextKnownDate, noKnownReason };
+  }
+
+  /**
+   * Extended responsibility draft preview with next-known date beyond the window.
+   */
+  previewDraftResponsibilityExtended(
+    ctx: AuthContext,
+    input: ResponsibilityInput,
+    days = 7,
+  ): {
+    preview: ResponsibilityPreviewDay[];
+    nextKnownDate: string | null;
+    noKnownReason: string | null;
+  } {
+    const preview = this.previewDraftResponsibility(ctx, input, days);
+    let nextKnownDate: string | null = null;
+    let noKnownReason: string | null = null;
+    if (!preview.some((d) => d.applicable)) {
+      const today = this.householdDateNow(ctx);
+      const plan = this.buildResponsibilityPlan(ctx, input, today);
+      const baseSteps = input.steps.map((step, index) => ({
+        logicalItemId: step.logicalItemId ?? `draft-step-${index}`,
+        text: step.text.trim(),
+        obligation: step.obligation,
+      }));
+      const draftRevisionId = "00000000-0000-0000-0000-000000000000";
+      for (let offset = days; offset < 120; offset += 1) {
+        const householdDate = addHouseholdDays(today, offset);
+        const composed = resolveResponsibilityComposition(
+          {
+            householdDate,
+            revisionId: draftRevisionId,
+            parentWeekdays: input.weekdays,
+            baseSteps,
+            plan,
+          },
+          this.getCompositionDeps(ctx.householdId),
+        );
+        if (composed.applicable) {
+          nextKnownDate = householdDate;
+          break;
+        }
+      }
+      if (!nextKnownDate) {
+        noKnownReason = "No applicable date in the next four months";
+      }
+    }
+    return { preview, nextKnownDate, noKnownReason };
+  }
+
+  private ensureGuideProgressRow(householdId: string): void {
+    const existing = readGuideProgressRow(this.db, householdId);
+    if (existing) return;
+    const manager = this.db
+      .prepare(
+        `SELECT hm.id AS membership_id, hm.user_id, hm.created_at
+         FROM household_memberships hm
+         INNER JOIN membership_grants mg
+           ON mg.membership_id = hm.id AND mg.grant_name = 'household.lifecycle.manage'
+         WHERE hm.household_id = ? AND hm.departed_at IS NULL
+         ORDER BY hm.created_at ASC
+         LIMIT 1`,
+      )
+      .get(householdId) as
+      | { membership_id: string; user_id: string | null; created_at: string }
+      | undefined;
+    const updatedAt = nowUtcIso();
+    // For already-running households without an A progress row, mark required basics
+    // complete using the earliest manager membership timestamp (real record time).
+    const basicsAt = manager?.created_at ?? updatedAt;
+    this.db
+      .prepare(
+        `INSERT INTO setup_progress
+         (household_id, account_completed_at, household_completed_at, membership_id, user_id,
+          guide_version, people_status, school_status, first_work_status,
+          people_membership_ids_json, work_definition_ids_json, finished_at, dismissed_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 0, 'not_chosen', 'not_chosen', 'not_chosen', '[]', '[]', NULL, NULL, ?)`,
+      )
+      .run(
+        householdId,
+        manager ? basicsAt : null,
+        manager ? basicsAt : null,
+        manager?.membership_id ?? null,
+        manager?.user_id ?? null,
+        updatedAt,
+      );
+  }
+
+  private assertExpectedGuideVersion(householdId: string, expected: number): void {
+    this.ensureGuideProgressRow(householdId);
+    const row = readGuideProgressRow(this.db, householdId);
+    if (!row) fail("NOT_FOUND", "Setup progress not found");
+    if (row.guide_version !== expected) {
+      fail("CONFLICT", "Guide was updated elsewhere; reload and try again", {
+        currentGuideVersion: row.guide_version,
+      });
+    }
+  }
+
+  private bumpGuideProgress(
+    householdId: string,
+    patch: {
+      peopleStatus?: GuideStepStatus;
+      schoolStatus?: GuideStepStatus;
+      firstWorkStatus?: GuideStepStatus;
+      appendPeopleId?: string;
+      appendWorkIds?: readonly string[];
+      finishedAt?: string;
+      dismissedAt?: string;
+    },
+  ): GuideProgressPublic {
+    this.ensureGuideProgressRow(householdId);
+    const row = readGuideProgressRow(this.db, householdId);
+    if (!row) fail("NOT_FOUND", "Setup progress not found");
+    const peopleIds = parseIdListJson(row.people_membership_ids_json);
+    if (patch.appendPeopleId && !peopleIds.includes(patch.appendPeopleId)) {
+      peopleIds.push(patch.appendPeopleId);
+    }
+    const workIds = parseIdListJson(row.work_definition_ids_json);
+    for (const id of patch.appendWorkIds ?? []) {
+      if (!workIds.includes(id)) workIds.push(id);
+    }
+    const updatedAt = nowUtcIso();
+    const nextVersion = row.guide_version + 1;
+    this.db
+      .prepare(
+        `UPDATE setup_progress
+         SET guide_version = ?,
+             people_status = ?,
+             school_status = ?,
+             first_work_status = ?,
+             people_membership_ids_json = ?,
+             work_definition_ids_json = ?,
+             finished_at = COALESCE(?, finished_at),
+             dismissed_at = COALESCE(?, dismissed_at),
+             updated_at = ?
+         WHERE household_id = ?`,
+      )
+      .run(
+        nextVersion,
+        patch.peopleStatus ?? row.people_status,
+        patch.schoolStatus ?? row.school_status,
+        patch.firstWorkStatus ?? row.first_work_status,
+        JSON.stringify(peopleIds),
+        JSON.stringify(workIds),
+        patch.finishedAt ?? null,
+        patch.dismissedAt ?? null,
+        updatedAt,
+        householdId,
+      );
+    const next = readGuideProgressRow(this.db, householdId);
+    if (!next) fail("NOT_FOUND", "Setup progress not found");
+    return toGuideProgressPublic(this.db, next, this.setupRequired());
   }
 
   revokeSession(sessionId: string): void {
@@ -3749,6 +4252,7 @@ export class AppStore {
         .run(definitionId);
       this.db.prepare("DELETE FROM routine_revisions WHERE definition_id = ?").run(definitionId);
       this.db.prepare("DELETE FROM routine_definitions WHERE id = ?").run(definitionId);
+      unlinkGuideWorkDefinition(this.db, ctx.householdId, definitionId);
 
       this.writeRoutineMutationReceipt(
         input.mutationId,
@@ -3981,6 +4485,7 @@ export class AppStore {
         .run(definitionId);
       this.db.prepare("DELETE FROM routine_revisions WHERE definition_id = ?").run(definitionId);
       this.db.prepare("DELETE FROM routine_definitions WHERE id = ?").run(definitionId);
+      unlinkGuideWorkDefinition(this.db, ctx.householdId, definitionId);
       this.writeRoutineMutationReceipt(
         input.mutationId,
         ctx.householdId,

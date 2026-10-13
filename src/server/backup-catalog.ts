@@ -398,6 +398,12 @@ export function scrubRestoredAccess(db: Database.Database): void {
        WHERE consumed_at IS NULL`,
     ).run(now);
   }
+  // P0-008D / D-052: retire every C member-access claim purpose after restore.
+  if (has("membership_access_claims")) {
+    db.prepare(
+      `UPDATE membership_access_claims SET revoked_at = COALESCE(revoked_at, ?)`,
+    ).run(now);
+  }
   // Bump session/auth versions when columns exist so restored cookies cannot reuse authority.
   if (has("users")) {
     try {

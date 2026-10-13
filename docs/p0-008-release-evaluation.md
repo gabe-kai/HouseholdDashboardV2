@@ -2,7 +2,7 @@
 
 Prepared by Architecture on 2026-10-12 for **P0-008D r2**. This is the release/evaluation plan, not a record of completed checks. Engineering updates actual routes and records local evidence in its Build Report. Product/Project Lead owns hands-on judgment.
 
-**Current evidence:** A–C are technically accepted and merged at `1709097`. D r2 local implementation is delivered on `brief/p0-008d-guided-first-household-day` (see `reports/P0-008D-r2-build-report.md`). Hosted adoption/reset/restore and the uninterrupted full Product session remain **NOT RUN**. The actual Railway dataset, storage layout and deployed commit have not been inspected for this release.
+**Current evidence:** A–C are technically accepted and merged at `1709097`. D r2 implementation at `b90cd7f` is **FIX REQUIRED**; see `reports/P0-008D-r2-architecture-review.md`. Close local contract/evidence gaps before selecting a release candidate. Hosted adoption/reset/restore and the uninterrupted full Product session remain **NOT RUN**. The actual Railway dataset, storage layout and deployed commit have not been inspected for this release.
 
 ### Runnable local paths (after D r2 implementation)
 

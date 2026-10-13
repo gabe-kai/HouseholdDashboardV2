@@ -21,7 +21,7 @@
 
 Inspected 2026-10-12: clean local `main` / `origin/main` are **1709097** (PR **#26**), through household migration 019 plus B's installation-control catalog migration 001. P0-008A r1, P0-008B r2 and P0-008C r1 are technically accepted and integrated. C's accepted correction is `90de153`. No live Railway reset/restore or hosted Product evaluation is claimed.
 
-**P0-008D r2** is **IMPLEMENTED — awaiting Architecture acceptance** on `brief/p0-008d-guided-first-household-day` against integrated A–C at `1709097`. Build Report: `reports/P0-008D-r2-build-report.md`. Hosted backup/reset/restore and hands-on Product evaluation remain subsequent release checkpoints; `docs/p0-008-release-evaluation.md` records runnable local paths. The whole Product journey remains one card: **Set up and manage my household without operator help**.
+**P0-008D r2** is **FIX REQUIRED** at implementation `b90cd7f` on `brief/p0-008d-guided-first-household-day`. Architecture's consolidated R1–R7 findings are in `reports/P0-008D-r2-architecture-review.md`: the parent journey is incomplete, school saves can discard calendar facts, and retry/preview/live recovery plus required evidence need correction. Contract unchanged; Engineering owns same-r2 corrections. Reported PR/RC gates pass; Architecture independently reran D integration (6/6) and reproduced two contract violations with disposable probes. Hosted and hands-on Product evaluation remain later checkpoints. The shared card **Set up and manage my household without operator help** stays In Progress.
 
 P0-007C's outstanding physical/Product judgments remain distinct from its technical acceptance and from approval to begin P0-008. Old reports retain their inspected SHAs.
 
@@ -47,7 +47,7 @@ P0-007C's outstanding physical/Product judgments remain distinct from its techni
 | P0-008A - Protected First-Manager Setup and Repeatable Reset | r1 | ACCEPTED | Integrated foundation | Merged to `main` at `405c5db` via PR #24 | Hosted/Product evaluation remains separate |
 | P0-008B - Household Backups and In-App Restore | r2 | ACCEPTED | Integrated foundation | Merged to `main` at `f80d47b` via PR #25 | Hosted and Product evaluation remain separate |
 | P0-008C - Understandable Member Access and Safe Removal | r1 | ACCEPTED | Integrated foundation | Merged to `main` at `1709097` via PR #26; correction `90de153` | Hosted/Product evaluation remains separate |
-| P0-008D - Guided Setup to the First Useful Household Day | r2 | IMPLEMENTED | Architecture acceptance | `brief/p0-008d-guided-first-household-day`; Build Report `reports/P0-008D-r2-build-report.md` | Architecture review of Build Report + exact PR/RC evidence |
+| P0-008D - Guided Setup to the First Useful Household Day | r2 | FIX REQUIRED | Engineering corrections | `brief/p0-008d-guided-first-household-day` at `b90cd7f` | Close R1–R7; updated Build Report and corrected-tree PR/RC evidence |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -76,7 +76,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Known blockers
 
-- A–C technical acceptance is recorded. D r2 closes the staged-restore `membership_access_claims` scrub gap locally (AT11 evidence in the D Build Report). Actual Railway schema, volume layout, installed commit and backup inventory remain uninspected release checks; hosted setup/reset/restore is not yet proven.
+- A–C technical acceptance is recorded. D's claim-scrub repair is implemented and focused-tested, but full staged restore compatibility is still required along with R1–R7. Actual Railway schema, volume layout, installed commit and backup inventory remain uninspected release checks; hosted setup/reset/restore is not yet proven.
 - A deliberately provides reset without a new backup; B supplies the optional backup/restore choice. C/D preserve all remaining P0-008 member and guided-first-day requirements; no partial slice closes the shared Product outcome.
 
 ## Next Project Lead decision
@@ -85,7 +85,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Architecture reviews `reports/P0-008D-r2-build-report.md` (exact local `validate:pr` / `validate:rc` EXIT 0) for technical acceptance of **P0-008D r2**. Hosted backup/reset/restore and Product evaluation remain separately authorized checkpoints. No deployment/live database operation is implied. Detailed coverage: `reports/P0-008-architecture-sequencing.md`.
+Engineering closes R1–R7 in `reports/P0-008D-r2-architecture-review.md` against **P0-008D r2**, updates its evidence-mapped Build Report with commit metadata and exact corrected-tree PR/RC results, then returns for Architecture re-review. Hosted backup/reset/restore and Product evaluation remain separately authorized checkpoints. No deployment/live database operation is implied.
 
 ## Notes for all teams
 

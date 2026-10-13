@@ -1,7 +1,7 @@
 # BRIEF P0-008D - Guided Setup to the First Useful Household Day
 
 **Revision:** 2
-**Status:** IMPLEMENTED — awaiting Architecture acceptance; Build Report `reports/P0-008D-r2-build-report.md`
+**Status:** FIX REQUIRED — Architecture review of implementation `b90cd7f` is recorded in `reports/P0-008D-r2-architecture-review.md`; contract remains revision 2
 **Inspected baseline:** integrated `main` / `origin/main` at `1709097` (PR #26), 2026-10-12
 
 This is the final slice of the approved P0-008 journey. A r1, B r2 and C r1 are technically accepted and integrated. This revision replaces the pre-A r1 successor draft; no earlier readiness applies. Local technical acceptance and the hosted/Project Lead evaluation checkpoint are separate.
@@ -121,9 +121,10 @@ Source inspected on clean integrated `main` at `1709097`. C's accepted correctio
 ## Engineering readiness
 
 **Reviewed revision:** 2
-**Readiness:** READY (historical) — Architecture **ACCEPT / PROCEED** on 2026-10-12. Engineering implemented r2; see `reports/P0-008D-r2-build-report.md`. Awaiting Architecture acceptance of the Build Report. Hosted/live-data and Product checkpoints remain separate.
+**Readiness:** READY (historical) — Architecture **ACCEPT / PROCEED** on 2026-10-12. Implementation `b90cd7f` returned **FIX REQUIRED** against the same r2 contract; close R1–R7 in `reports/P0-008D-r2-architecture-review.md` and return the corrected Build Report. No new readiness cycle is required. Hosted/live-data and Product checkpoints remain separate.
 
 ## Revision history
 
 - **r1:** Pre-A successor draft preserving the guided first-day and complete P0-008 intent; never reviewed or implemented.
 - **r2:** Released against merged A–C. Makes household progress/atomic save recovery, missing draft previews, upgrade/reference/restore compatibility and authority explicit; separates local technical gates from the required subsequent hosted/Product checkpoint. Engineering readiness READY at `f0f89b6`; Architecture ACCEPT / PROCEED recorded 2026-10-12 with no contract change.
+  - Implementation `b90cd7f` reviewed on 2026-10-12: FIX REQUIRED for the complete guide, calendar preservation, operation/preview/live recovery guards and acceptance evidence. Contract unchanged.

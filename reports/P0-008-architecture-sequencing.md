@@ -4,7 +4,7 @@
 **Role:** Architecture
 **Source:** Approved `PRODUCT.md`, P0-008 First-Run Setup and Household Member Management; Project Lead's handoff in this task.
 **Original assessment baseline:** `member-management-first-run-setup` @ `4f07593`; `main` @ `415d930` (PR #23), through migration 017.
-**Current inspected baseline:** merged `main` / `origin/main` @ `1709097` (PR #26), through household migration 019 and B's installation-control catalog migration 001. A r1, B r2 and C r1 are technically accepted and merged. C's accepted correction is `90de153`; Architecture's fresh PR/RC results are in its reacceptance report. **D r2 is READY and authorized for implementation** after Architecture ACCEPT / PROCEED on readiness `f0f89b6`; that branch's code still matches the integrated baseline. Hosted/Product evaluation remains separate. No live-data operation or deployment performed by Architecture.
+**Current inspected state:** merged A–C baseline `1709097` remains integrated `main` / `origin/main`; D implementation `b90cd7f` on its brief branch adds household migration 020. Architecture returned **FIX REQUIRED** against D r2; all R1–R7 corrections are recorded in `reports/P0-008D-r2-architecture-review.md`. Contract unchanged. The preceding A–C acceptance records remain valid; D and hosted/Product acceptance remain pending. No live-data operation or deployment was performed by Architecture.
 
 This report records reasoning, traceability and release preparation. The four brief files are the authoritative implementation contracts; this report is not a contract addendum.
 
@@ -29,7 +29,7 @@ These points describe the original pre-A baseline, not current code. A now suppl
 | **P0-008A r1** — `briefs/p0-008a-protected-first-run-reset.md` | Create first manager/household through protected browser access; reset repeatedly and recover Welcome after interruption | Technically ACCEPTED, merged via PR #24 at `405c5db`; hosted/Product evidence separate |
 | **P0-008B r2** — `briefs/p0-008b-household-backups-in-app-restore.md` | Save a backup, reset with backup off, restore from protected Welcome or Settings | Technically accepted at evidence tip `34179f7`, merged via PR #25 at `f80d47b`; see `reports/P0-008B-r2-architecture-review.md` |
 | **P0-008C r1** — `briefs/p0-008c-member-access-removal.md` | Invite, edit permissions, maintain/revoke/restore sign-in, remove a used member, and clean selected sample people without losing real work | Technically ACCEPTED after `90de153`, merged via PR #26 at `1709097`; see C reacceptance report |
-| **P0-008D r2** — `briefs/p0-008d-guided-first-household-day.md` | Complete the named setup steps and the uninterrupted setup→management→backup→reset→restore journey | IMPLEMENTED — awaiting Architecture acceptance; Build Report `reports/P0-008D-r2-build-report.md` |
+| **P0-008D r2** — `briefs/p0-008d-guided-first-household-day.md` | Complete the named setup steps and the uninterrupted setup→management→backup→reset→restore journey | FIX REQUIRED at `b90cd7f`; same-r2 corrections R1–R7, then Architecture re-review |
 
 All slices contribute to **Set up and manage my household without operator help**. The shared card is In Progress after accepted A and reaches Ready to Evaluate after all four technical contracts pass. Intermediate parent checkpoints supply evidence without declaring complete Product acceptance. Each later draft receives a source-baseline refresh and fresh Engineering readiness; materially changed contracts receive a new revision. No automatic bulk implementation is authorized.
 
@@ -84,7 +84,7 @@ These are a release plan, not commands to run now. Authoritative transition requ
 
 ## Handoff for Engineering
 
-> Architecture **ACCEPT / PROCEED** for **P0-008D r2** in `briefs/p0-008d-guided-first-household-day.md`. Engineering's READY review at `f0f89b6` is accepted with no contract change. Implement on `brief/p0-008d-guided-first-household-day`; all five IMPORTANT findings are in-scope delivery work. Return `reports/P0-008D-r2-build-report.md` with named AT evidence and exact local PR/RC results. Use local/disposable test data and explicit D browser/CI selection. Suggest a commit message but do not commit; no deployment/live database operation is authorized. The shared card remains In Progress.
+> Architecture **FIX REQUIRED** for **P0-008D r2** at `b90cd7f`. Close R1–R7 in `reports/P0-008D-r2-architecture-review.md` on the existing brief branch without a new readiness cycle or contract revision. Return a corrected evidence-mapped Build Report and exact corrected-tree PR/RC results. Use local/disposable data; no deploy/live database operation is authorized. Suggest a commit message but do not commit. The shared card remains In Progress.
 
 Suggested branch: `brief/p0-008d-guided-first-household-day`. Architecture has not created a branch.
 
@@ -92,4 +92,4 @@ Suggested branch: `brief/p0-008d-guided-first-household-day`. Architecture has n
 
 The original planning package was documentation-only. A–C are merged; D r2 is refreshed and released against their actual source. This refresh changes Architecture-owned documentation/briefs and confirmed coordination state, and supplies the release evaluation plan; application code and approved Product content are unchanged.
 
-Application tests were not run because no production/test code changed. No release success or Product acceptance is claimed. Engineering must produce implementation evidence against each released revision.
+The earlier planning/readiness refreshes required documentation checks only. During the implementation review on 2026-10-12, Architecture reran D integration (6/6 PASS) and reproduced changed-payload replay and group-only preview defects using disposable probes. Full PR/RC results remain Engineering-reported; no release success or Product acceptance is claimed. The detailed implementation disposition is in the D Architecture review.

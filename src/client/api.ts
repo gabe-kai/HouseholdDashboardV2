@@ -564,49 +564,62 @@ export async function fetchGuideProgress() {
   return request<GuideProgress>("/api/v1/guide/progress");
 }
 
-export async function guideSavePerson(body: {
+export type GuideCommandGuard = {
   mutationId: string;
   expectedGuideVersion: number;
-  displayName: string;
-  classification: "adult" | "child";
-}) {
+  installationEpoch: number;
+};
+
+export type GuideWorkPreviewBasis = {
+  householdDate: string;
+  calendarVersion: number;
+  audienceGroupIds: string[];
+  reviewedRoutineParticipantIds?: string[];
+  reviewedResponsibilityOwnerId?: string | null;
+};
+
+export async function guideSavePerson(
+  body: GuideCommandGuard & {
+    displayName: string;
+    classification: "adult" | "child";
+  },
+) {
   return request<{ progress: GuideProgress; person: MemberPublic }>(
     "/api/v1/guide/people",
     { method: "POST", body: JSON.stringify(body) },
   );
 }
 
-export async function guideCompletePeople(body: {
-  mutationId: string;
-  expectedGuideVersion: number;
-  status: "completed" | "skipped";
-}) {
+export async function guideCompletePeople(
+  body: GuideCommandGuard & { status: "completed" | "skipped" },
+) {
   return request<{ progress: GuideProgress }>("/api/v1/guide/people/complete", {
     method: "POST",
     body: JSON.stringify(body),
   });
 }
 
-export async function guideSaveSchool(body: {
-  mutationId: string;
-  expectedGuideVersion: number;
-  status: "completed" | "skipped";
-  calendar?: SaveSchoolCalendarInput;
-}) {
+export async function guideSaveSchool(
+  body: GuideCommandGuard & {
+    status: "completed" | "skipped";
+    calendar?: SaveSchoolCalendarInput;
+  },
+) {
   return request<{ progress: GuideProgress; calendar: SchoolCalendarPublic | null }>(
     "/api/v1/guide/school",
     { method: "POST", body: JSON.stringify(body) },
   );
 }
 
-export async function guideSaveWork(body: {
-  mutationId: string;
-  expectedGuideVersion: number;
-  status?: "completed" | "skipped";
-  routine?: RoutineMutationBody;
-  responsibility?: ResponsibilityMutationBody;
-  previewHouseholdDate?: string;
-}) {
+export async function guideSaveWork(
+  body: GuideCommandGuard & {
+    status?: "completed" | "skipped";
+    routine?: RoutineMutationBody;
+    responsibility?: ResponsibilityMutationBody;
+    previewHouseholdDate?: string;
+    previewBasis?: GuideWorkPreviewBasis;
+  },
+) {
   return request<{
     progress: GuideProgress;
     routine: Routine | null;
@@ -617,23 +630,43 @@ export async function guideSaveWork(body: {
   });
 }
 
-export async function guideFinish(body: {
-  mutationId: string;
-  expectedGuideVersion: number;
-  dismiss?: boolean;
-}) {
+export async function guideFinish(
+  body: GuideCommandGuard & { dismiss?: boolean },
+) {
   return request<{ progress: GuideProgress }>("/api/v1/guide/finish", {
     method: "POST",
     body: JSON.stringify(body),
   });
 }
 
-export async function guideDismiss(body: {
-  mutationId: string;
-  expectedGuideVersion: number;
-}) {
+export async function guideDismiss(body: GuideCommandGuard) {
   return request<{ progress: GuideProgress }>("/api/v1/guide/dismiss", {
     method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function fetchHouseholdDetails() {
+  return request<{
+    householdId: string;
+    name: string;
+    timezone: string;
+    timezoneLocked: boolean;
+  }>("/api/v1/household/details");
+}
+
+export async function updateHouseholdDetails(body: {
+  mutationId: string;
+  expectedName: string;
+  name: string;
+}) {
+  return request<{
+    householdId: string;
+    name: string;
+    timezone: string;
+    timezoneLocked: boolean;
+  }>("/api/v1/household/details", {
+    method: "PATCH",
     body: JSON.stringify(body),
   });
 }

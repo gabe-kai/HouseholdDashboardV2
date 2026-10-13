@@ -8,6 +8,7 @@ import {
   GuidePeopleSaveSchema,
   GuideSchoolSaveSchema,
   GuideWorkSaveSchema,
+  UpdateHouseholdDetailsSchema,
   HouseholdBackupCreateSchema,
   HouseholdBackupDeleteSchema,
   HouseholdResetSchema,
@@ -433,12 +434,35 @@ export function registerLifecycleRoutes(app: FastifyInstance, deps: LifecycleRou
     const result = deps.getStore().guideSaveWork(session, {
       mutationId: parsed.data.mutationId,
       expectedGuideVersion: parsed.data.expectedGuideVersion,
+      installationEpoch: parsed.data.installationEpoch,
       status: parsed.data.status,
       routine: parsed.data.routine,
       responsibility: parsed.data.responsibility,
       previewHouseholdDate: parsed.data.previewHouseholdDate,
+      previewBasis: parsed.data.previewBasis,
     });
     broadcastGuideProgress(session, result.progress.guideVersion);
+    reply.header("Cache-Control", "no-store");
+    return result;
+  });
+
+  app.get("/api/v1/household/details", async (request, reply) => {
+    const session = requireLifecycleManager(request, reply);
+    if (!session) return;
+    reply.header("Cache-Control", "no-store");
+    return deps.getStore().householdDetails(session);
+  });
+
+  app.patch("/api/v1/household/details", async (request, reply) => {
+    const session = requireLifecycleManager(request, reply);
+    if (!session) return;
+    const parsed = UpdateHouseholdDetailsSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(deps.errorBody("VALIDATION", "Invalid household details payload", request.id));
+    }
+    const result = deps.getStore().updateHouseholdDetails(session, parsed.data);
     reply.header("Cache-Control", "no-store");
     return result;
   });

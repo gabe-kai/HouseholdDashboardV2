@@ -44,6 +44,12 @@ test.describe("P0-008D desktop guided setup", () => {
     await page.getByTestId("setup-continue-guide").click();
     await expect(page.getByTestId("guided-setup")).toBeVisible({ timeout: 20_000 });
     await expect(page.locator(".guided-setup-rail")).toBeVisible();
+    await expect(page.getByTestId("guide-rail")).toBeVisible();
     await expect(page.getByTestId("guide-step-people")).toHaveClass(/is-current/);
+    await page.getByTestId("guide-rail-school").click();
+    await expect(page.getByTestId("guide-school")).toBeVisible();
+    await page.getByTestId("guide-rail-people").click();
+    await expect(page.getByTestId("guide-step-people")).toBeVisible();
   });
 });
+

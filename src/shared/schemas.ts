@@ -916,6 +916,8 @@ export type GuideProgressPublic = {
 export const GuideVersionGuardSchema = z.object({
   mutationId: UuidSchema,
   expectedGuideVersion: z.number().int().nonnegative(),
+  /** Originating installation epoch for the guide command identity. */
+  installationEpoch: z.number().int().positive(),
 });
 
 export const GuidePeopleSaveSchema = GuideVersionGuardSchema.extend({
@@ -932,12 +934,25 @@ export const GuideSchoolSaveSchema = GuideVersionGuardSchema.extend({
   status: z.enum(["completed", "skipped"]),
 });
 
+/** Authoritative preview basis that Save must recheck atomically. */
+export const GuideWorkPreviewBasisSchema = z.object({
+  householdDate: HouseholdDateSchema,
+  calendarVersion: z.number().int().nonnegative(),
+  /** Sorted group IDs that contributed to the reviewed audience. */
+  audienceGroupIds: z.array(UuidSchema).default([]),
+  /** Participant membership IDs shown in the reviewed routine preview (when routine saved). */
+  reviewedRoutineParticipantIds: z.array(UuidSchema).optional(),
+  /** Final owner membership ID reviewed for responsibility (null = Unassigned). */
+  reviewedResponsibilityOwnerId: UuidSchema.nullable().optional(),
+});
+
 export const GuideWorkSaveSchema = GuideVersionGuardSchema.extend({
   routine: CreateRoutineSchema.optional(),
   responsibility: CreateResponsibilitySchema.optional(),
   status: z.enum(["completed", "skipped"]).optional(),
-  /** Household date the review was consented against. */
+  /** @deprecated Prefer previewBasis.householdDate */
   previewHouseholdDate: HouseholdDateSchema.optional(),
+  previewBasis: GuideWorkPreviewBasisSchema.optional(),
 });
 
 export const GuideFinishSchema = GuideVersionGuardSchema.extend({
@@ -945,6 +960,12 @@ export const GuideFinishSchema = GuideVersionGuardSchema.extend({
 });
 
 export const GuideDismissSchema = GuideVersionGuardSchema;
+
+export const UpdateHouseholdDetailsSchema = z.object({
+  mutationId: UuidSchema,
+  expectedName: z.string().trim().min(1).max(120),
+  name: z.string().trim().min(1).max(120),
+});
 
 /** Read-only draft routine preview day (does not materialize). */
 export type RoutineDraftPreviewDay = {

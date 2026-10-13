@@ -701,6 +701,25 @@ export function physicallyDeleteUnusedMembership(
     `UPDATE structure_mutation_receipts SET response_json = ? WHERE mutation_id = ?`,
   );
   for (const row of owned) retire.run(JSON.stringify({ retired: true }), row.mutation_id);
+  // Bound guide receipts (migration 021) may also name this membership.
+  const guideTable = db
+    .prepare(
+      `SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'guide_mutation_receipts'`,
+    )
+    .get() as { ok: number } | undefined;
+  if (guideTable) {
+    const guideRows = db
+      .prepare(`SELECT mutation_id, response_json FROM guide_mutation_receipts`)
+      .all() as Array<{ mutation_id: string; response_json: string }>;
+    const retireGuide = db.prepare(
+      `UPDATE guide_mutation_receipts SET response_json = ? WHERE mutation_id = ?`,
+    );
+    for (const row of guideRows) {
+      if (row.response_json.includes(membershipId)) {
+        retireGuide.run(JSON.stringify({ retired: true }), row.mutation_id);
+      }
+    }
+  }
   // Drop stable guide links so progress never blocks unused-person deletion (P0-008D AT7).
   const progress = db
     .prepare(

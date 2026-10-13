@@ -154,6 +154,14 @@ import {
   toGuideProgressPublic,
   unlinkGuideWorkDefinition,
 } from "./guide-progress.js";
+import {
+  guidePayloadDigest,
+  readGuideMutationReceipt,
+  retireGuideReceiptsForWorkDefinition,
+  writeGuideMutationReceipt,
+  type GuideMutationKind,
+  type GuideReceiptScope,
+} from "./guide-receipts.js";
 import { SEED } from "./seeds/evaluation.js";
 
 export type AuthContext = {
@@ -892,12 +900,18 @@ export class AppStore {
     if (this.countHouseholds() === 0) return true;
     const row = this.db
       .prepare(
-        `SELECT household_completed_at FROM setup_progress
+        `SELECT account_completed_at, household_completed_at FROM setup_progress
          ORDER BY updated_at DESC LIMIT 1`,
       )
-      .get() as { household_completed_at: string | null } | undefined;
-    if (!row) return !this.hasActiveLifecycleManager();
-    return !row.household_completed_at;
+      .get() as
+      | { account_completed_at: string | null; household_completed_at: string | null }
+      | undefined;
+    if (row?.household_completed_at) return false;
+    // Mid A wizard: account stamped, household not yet confirmed.
+    if (row?.account_completed_at) return true;
+    // Adopted households without fabricated A timestamps: ordinary use, no forced wizard.
+    if (this.hasActiveLifecycleManager()) return false;
+    return true;
   }
 
   async createFirstManagerForSetup(input: {
@@ -1036,25 +1050,74 @@ export class AppStore {
     return toGuideProgressPublic(this.db, row, this.setupRequired());
   }
 
-  /** Atomic guide people add: domain person + progress link + guide receipt. */
+  private guideReceiptScope(ctx: AuthContext): GuideReceiptScope {
+    return {
+      householdId: ctx.householdId,
+      actorMembershipId: ctx.membershipId,
+      installationEpoch: ctx.installationEpoch,
+    };
+  }
+
+  private assertGuideCommandEpoch(
+    ctx: AuthContext,
+    installationEpoch: number,
+  ): void {
+    if (installationEpoch !== ctx.installationEpoch) {
+      fail("CONFLICT", "Guide command belongs to a previous installation epoch");
+    }
+  }
+
+  private readBoundGuideReceipt(
+    ctx: AuthContext,
+    mutationId: string,
+    kind: GuideMutationKind,
+    digest: string,
+    installationEpoch: number,
+  ): unknown | null {
+    this.assertGuideCommandEpoch(ctx, installationEpoch);
+    // Re-check underlying authority before returning a prior successful receipt.
+    this.requireGrant(ctx, "household.lifecycle.manage");
+    return readGuideMutationReceipt(
+      this.db,
+      mutationId,
+      kind,
+      this.guideReceiptScope(ctx),
+      digest,
+    );
+  }
+
+  /** Atomic guide people add: domain person + progress link + bound guide receipt. */
   guideSavePerson(
     ctx: AuthContext,
     input: {
       mutationId: string;
       expectedGuideVersion: number;
+      installationEpoch: number;
       displayName: string;
       classification: PersonClassification;
     },
   ): { progress: GuideProgressPublic; person: MemberPublic } {
     this.requireGrant(ctx, "household.lifecycle.manage");
-    const prior = this.readStructureReceipt(input.mutationId, "guide_people");
+    this.requireGrant(ctx, "household.structure.manage");
+    const digest = guidePayloadDigest({
+      expectedGuideVersion: input.expectedGuideVersion,
+      displayName: input.displayName.trim(),
+      classification: input.classification,
+    });
+    const prior = this.readBoundGuideReceipt(
+      ctx,
+      input.mutationId,
+      "guide_person_create",
+      digest,
+      input.installationEpoch,
+    );
     if (prior) {
       return prior as { progress: GuideProgressPublic; person: MemberPublic };
     }
     const result = this.db.transaction(() => {
       this.assertExpectedGuideVersion(ctx.householdId, input.expectedGuideVersion);
       const person = this.createPerson(ctx, {
-        mutationId: randomUUID(),
+        mutationId: input.mutationId,
         displayName: input.displayName,
         classification: input.classification,
       });
@@ -1064,7 +1127,14 @@ export class AppStore {
         appendPeopleId: person.id,
       });
       const payload = { progress, person };
-      this.writeStructureReceipt(input.mutationId, "guide_people", payload);
+      writeGuideMutationReceipt(
+        this.db,
+        input.mutationId,
+        "guide_person_create",
+        this.guideReceiptScope(ctx),
+        digest,
+        payload,
+      );
       return payload;
     })();
     return result;
@@ -1076,15 +1146,23 @@ export class AppStore {
     input: {
       mutationId: string;
       expectedGuideVersion: number;
+      installationEpoch: number;
       status: "completed" | "skipped";
     },
   ): GuideProgressPublic {
     this.requireGrant(ctx, "household.lifecycle.manage");
-    const prior = this.readStructureReceipt(input.mutationId, "guide_people");
-    if (prior && typeof prior === "object" && prior !== null && "progress" in prior) {
-      return (prior as { progress: GuideProgressPublic }).progress;
-    }
-    if (prior && typeof prior === "object" && prior !== null && "guideVersion" in prior) {
+    const digest = guidePayloadDigest({
+      expectedGuideVersion: input.expectedGuideVersion,
+      status: input.status,
+    });
+    const prior = this.readBoundGuideReceipt(
+      ctx,
+      input.mutationId,
+      "guide_people_complete",
+      digest,
+      input.installationEpoch,
+    );
+    if (prior) {
       return prior as GuideProgressPublic;
     }
     return this.db.transaction(() => {
@@ -1093,23 +1171,50 @@ export class AppStore {
       const progress = this.bumpGuideProgress(ctx.householdId, {
         peopleStatus: input.status,
       });
-      this.writeStructureReceipt(input.mutationId, "guide_people", progress);
+      writeGuideMutationReceipt(
+        this.db,
+        input.mutationId,
+        "guide_people_complete",
+        this.guideReceiptScope(ctx),
+        digest,
+        progress,
+      );
       return progress;
     })();
   }
 
-  /** Save school calendar through guide, or record Not now. */
+  /** Save school calendar through guide, or record Not now (without clearing existing calendar). */
   guideSaveSchool(
     ctx: AuthContext,
     input: {
       mutationId: string;
       expectedGuideVersion: number;
+      installationEpoch: number;
       status: "completed" | "skipped";
       calendar?: SaveSchoolCalendarInput;
     },
   ): { progress: GuideProgressPublic; calendar: SchoolCalendarPublic | null } {
     this.requireGrant(ctx, "household.lifecycle.manage");
-    const prior = this.readStructureReceipt(input.mutationId, "guide_school");
+    if (input.status === "completed") {
+      this.requireGrant(ctx, "household.schedule.manage");
+    }
+    const digest = guidePayloadDigest({
+      expectedGuideVersion: input.expectedGuideVersion,
+      status: input.status,
+      calendar: input.calendar
+        ? {
+            expectedVersion: input.calendar.expectedVersion,
+            years: input.calendar.years,
+          }
+        : null,
+    });
+    const prior = this.readBoundGuideReceipt(
+      ctx,
+      input.mutationId,
+      "guide_school",
+      digest,
+      input.installationEpoch,
+    );
     if (prior) {
       return prior as { progress: GuideProgressPublic; calendar: SchoolCalendarPublic | null };
     }
@@ -1121,12 +1226,20 @@ export class AppStore {
       } else if (input.status === "completed" && !input.calendar) {
         fail("VALIDATION", "School calendar payload is required when completing school setup");
       }
+      // status skipped: progress only — never clears an existing calendar.
       this.guideSaveFailureHook?.();
       const progress = this.bumpGuideProgress(ctx.householdId, {
         schoolStatus: input.status,
       });
       const payload = { progress, calendar };
-      this.writeStructureReceipt(input.mutationId, "guide_school", payload);
+      writeGuideMutationReceipt(
+        this.db,
+        input.mutationId,
+        "guide_school",
+        this.guideReceiptScope(ctx),
+        digest,
+        payload,
+      );
       return payload;
     })();
   }
@@ -1137,10 +1250,18 @@ export class AppStore {
     input: {
       mutationId: string;
       expectedGuideVersion: number;
+      installationEpoch: number;
       status?: "completed" | "skipped";
       routine?: RoutineInput;
       responsibility?: ResponsibilityInput;
       previewHouseholdDate?: string;
+      previewBasis?: {
+        householdDate: string;
+        calendarVersion: number;
+        audienceGroupIds: string[];
+        reviewedRoutineParticipantIds?: string[];
+        reviewedResponsibilityOwnerId?: string | null;
+      };
     },
   ): {
     progress: GuideProgressPublic;
@@ -1148,7 +1269,41 @@ export class AppStore {
     responsibility: ResponsibilityDefinitionPublic | null;
   } {
     this.requireGrant(ctx, "household.lifecycle.manage");
-    const prior = this.readStructureReceipt(input.mutationId, "guide_work");
+    if (input.routine) this.requireGrant(ctx, "routine.shared.manage");
+    if (input.responsibility) this.requireGrant(ctx, "responsibility.manage");
+    const digest = guidePayloadDigest({
+      expectedGuideVersion: input.expectedGuideVersion,
+      status: input.status ?? null,
+      routine: input.routine
+        ? {
+            title: input.routine.title,
+            daypart: input.routine.daypart,
+            weekdays: input.routine.weekdays,
+            assigneeMemberIds: input.routine.assigneeMemberIds,
+            assigneeGroupIds: input.routine.assigneeGroupIds,
+            steps: input.routine.steps,
+          }
+        : null,
+      responsibility: input.responsibility
+        ? {
+            title: input.responsibility.title,
+            daypart: input.responsibility.daypart,
+            weekdays: input.responsibility.weekdays,
+            assignment: input.responsibility.assignment ?? null,
+            accountableMemberId: input.responsibility.accountableMemberId ?? null,
+            steps: input.responsibility.steps,
+          }
+        : null,
+      previewBasis: input.previewBasis ?? null,
+      previewHouseholdDate: input.previewHouseholdDate ?? null,
+    });
+    const prior = this.readBoundGuideReceipt(
+      ctx,
+      input.mutationId,
+      "guide_work",
+      digest,
+      input.installationEpoch,
+    );
     if (prior) {
       return prior as {
         progress: GuideProgressPublic;
@@ -1158,13 +1313,48 @@ export class AppStore {
     }
     return this.db.transaction(() => {
       this.assertExpectedGuideVersion(ctx.householdId, input.expectedGuideVersion);
-      if (input.previewHouseholdDate) {
+      const basis = input.previewBasis;
+      const reviewedDate = basis?.householdDate ?? input.previewHouseholdDate;
+      if (reviewedDate) {
         const today = this.householdDateNow(ctx);
-        if (input.previewHouseholdDate !== today) {
+        if (reviewedDate !== today) {
           fail(
             "CONFLICT",
             "Household date changed since review; preview again before saving",
           );
+        }
+      }
+      if (basis && (input.routine || input.responsibility)) {
+        const calendar = this.getSchoolCalendar(ctx);
+        if (calendar.version !== basis.calendarVersion) {
+          fail(
+            "CONFLICT",
+            "School calendar changed since review; preview again before saving",
+          );
+        }
+        if (input.routine) {
+          const preview = this.previewDraftRoutine(ctx, input.routine, 7);
+          const firstApplicable = preview.preview.find((d) => d.applicable);
+          const currentIds = firstApplicable?.participantMemberIds ?? [];
+          const reviewed = [...(basis.reviewedRoutineParticipantIds ?? [])].sort();
+          const live = [...currentIds].sort();
+          if (JSON.stringify(reviewed) !== JSON.stringify(live)) {
+            fail(
+              "CONFLICT",
+              "Routine participants changed since review; preview again before saving",
+            );
+          }
+        }
+        if (input.responsibility && basis.reviewedResponsibilityOwnerId !== undefined) {
+          const preview = this.previewDraftResponsibility(ctx, input.responsibility, 7);
+          const firstApplicable = preview.find((d) => d.applicable);
+          const liveOwner = firstApplicable?.accountableMemberId ?? null;
+          if (liveOwner !== basis.reviewedResponsibilityOwnerId) {
+            fail(
+              "CONFLICT",
+              "Responsibility owner changed since review; preview again before saving",
+            );
+          }
         }
       }
       let routine: RoutineDefinitionPublic | null = null;
@@ -1179,25 +1369,46 @@ export class AppStore {
         workIds.push(responsibility.id);
       }
       const status: GuideStepStatus =
-        input.status ??
-        (workIds.length > 0 ? "completed" : "skipped");
+        input.status ?? (workIds.length > 0 ? "completed" : "skipped");
       this.guideSaveFailureHook?.();
       const progress = this.bumpGuideProgress(ctx.householdId, {
         firstWorkStatus: status,
         appendWorkIds: workIds,
       });
       const payload = { progress, routine, responsibility };
-      this.writeStructureReceipt(input.mutationId, "guide_work", payload);
+      writeGuideMutationReceipt(
+        this.db,
+        input.mutationId,
+        "guide_work",
+        this.guideReceiptScope(ctx),
+        digest,
+        payload,
+      );
       return payload;
     })();
   }
 
   guideFinish(
     ctx: AuthContext,
-    input: { mutationId: string; expectedGuideVersion: number; dismiss?: boolean },
+    input: {
+      mutationId: string;
+      expectedGuideVersion: number;
+      installationEpoch: number;
+      dismiss?: boolean;
+    },
   ): GuideProgressPublic {
     this.requireGrant(ctx, "household.lifecycle.manage");
-    const prior = this.readStructureReceipt(input.mutationId, "guide_progress");
+    const digest = guidePayloadDigest({
+      expectedGuideVersion: input.expectedGuideVersion,
+      dismiss: Boolean(input.dismiss),
+    });
+    const prior = this.readBoundGuideReceipt(
+      ctx,
+      input.mutationId,
+      "guide_finish",
+      digest,
+      input.installationEpoch,
+    );
     if (prior) return prior as GuideProgressPublic;
     return this.db.transaction(() => {
       this.assertExpectedGuideVersion(ctx.householdId, input.expectedGuideVersion);
@@ -1207,17 +1418,37 @@ export class AppStore {
         finishedAt: now,
         dismissedAt: input.dismiss ? now : undefined,
       });
-      this.writeStructureReceipt(input.mutationId, "guide_progress", progress);
+      writeGuideMutationReceipt(
+        this.db,
+        input.mutationId,
+        "guide_finish",
+        this.guideReceiptScope(ctx),
+        digest,
+        progress,
+      );
       return progress;
     })();
   }
 
   guideDismiss(
     ctx: AuthContext,
-    input: { mutationId: string; expectedGuideVersion: number },
+    input: {
+      mutationId: string;
+      expectedGuideVersion: number;
+      installationEpoch: number;
+    },
   ): GuideProgressPublic {
     this.requireGrant(ctx, "household.lifecycle.manage");
-    const prior = this.readStructureReceipt(input.mutationId, "guide_dismiss");
+    const digest = guidePayloadDigest({
+      expectedGuideVersion: input.expectedGuideVersion,
+    });
+    const prior = this.readBoundGuideReceipt(
+      ctx,
+      input.mutationId,
+      "guide_dismiss",
+      digest,
+      input.installationEpoch,
+    );
     if (prior) return prior as GuideProgressPublic;
     return this.db.transaction(() => {
       this.assertExpectedGuideVersion(ctx.householdId, input.expectedGuideVersion);
@@ -1225,13 +1456,85 @@ export class AppStore {
       const progress = this.bumpGuideProgress(ctx.householdId, {
         dismissedAt: nowUtcIso(),
       });
-      this.writeStructureReceipt(input.mutationId, "guide_dismiss", progress);
+      writeGuideMutationReceipt(
+        this.db,
+        input.mutationId,
+        "guide_dismiss",
+        this.guideReceiptScope(ctx),
+        digest,
+        progress,
+      );
       return progress;
     })();
   }
 
+  /** Safe household name correction after required basics. Timezone stays relocation-bound. */
+  updateHouseholdDetails(
+    ctx: AuthContext,
+    input: { mutationId: string; expectedName: string; name: string },
+  ): { householdId: string; name: string; timezone: string; timezoneLocked: boolean } {
+    this.requireGrant(ctx, "household.lifecycle.manage");
+    const household = this.db
+      .prepare(`SELECT id, name, timezone FROM households WHERE id = ?`)
+      .get(ctx.householdId) as { id: string; name: string; timezone: string } | undefined;
+    if (!household) fail("NOT_FOUND", "Household not found");
+    if (household.name !== input.expectedName) {
+      fail("CONFLICT", "Household details were updated elsewhere; reload and try again");
+    }
+    const timezoneLocked = this.householdHasDatedDependencies(ctx.householdId);
+    const name = input.name.trim();
+    if (!name) fail("VALIDATION", "Household name is required");
+    this.db
+      .prepare(`UPDATE households SET name = ? WHERE id = ?`)
+      .run(name, ctx.householdId);
+    return {
+      householdId: ctx.householdId,
+      name,
+      timezone: household.timezone,
+      timezoneLocked,
+    };
+  }
+
+  householdDetails(ctx: AuthContext): {
+    householdId: string;
+    name: string;
+    timezone: string;
+    timezoneLocked: boolean;
+  } {
+    this.requireGrant(ctx, "household.lifecycle.manage");
+    const household = this.db
+      .prepare(`SELECT id, name, timezone FROM households WHERE id = ?`)
+      .get(ctx.householdId) as { id: string; name: string; timezone: string } | undefined;
+    if (!household) fail("NOT_FOUND", "Household not found");
+    return {
+      householdId: household.id,
+      name: household.name,
+      timezone: household.timezone,
+      timezoneLocked: this.householdHasDatedDependencies(ctx.householdId),
+    };
+  }
+
+  private householdHasDatedDependencies(householdId: string): boolean {
+    const calendar = this.db
+      .prepare(`SELECT 1 AS ok FROM household_calendars WHERE household_id = ? LIMIT 1`)
+      .get(householdId);
+    if (calendar) return true;
+    const work = this.db
+      .prepare(
+        `SELECT 1 AS ok FROM routine_definitions
+         WHERE household_id = ? AND deleted_at IS NULL LIMIT 1`,
+      )
+      .get(householdId);
+    if (work) return true;
+    const activity = this.db
+      .prepare(`SELECT 1 AS ok FROM occurrences WHERE household_id = ? LIMIT 1`)
+      .get(householdId);
+    return Boolean(activity);
+  }
+
   /**
    * Read-only draft routine preview. Zero materialization / locks / reports.
+   * Matches execution: dated group union + eligibility + per-step applicability.
    */
   previewDraftRoutine(
     ctx: AuthContext,
@@ -1256,9 +1559,6 @@ export class AppStore {
       this.withDefaultRoutineApplicability(audienceInput),
       today,
     );
-    const stepsNeedSchool = normalized.steps.some((step) =>
-      ruleNeedsSchoolCalendar(step.applicability ?? DEFAULT_APPLICABILITY),
-    );
     const nameById = new Map(
       (
         this.db
@@ -1269,87 +1569,114 @@ export class AppStore {
           .all(ctx.householdId) as Array<{ id: string; display_name: string }>
       ).map((r) => [r.id, r.display_name]),
     );
+
+    const evaluateDate = (
+      householdDate: string,
+    ): {
+      applicable: boolean;
+      schoolFiltered: boolean;
+      stepCount: number;
+      participantMemberIds: string[];
+    } => {
+      const weekdayOk = isDateApplicable(householdDate, normalized.weekdays);
+      if (!weekdayOk) {
+        return {
+          applicable: false,
+          schoolFiltered: false,
+          stepCount: 0,
+          participantMemberIds: [],
+        };
+      }
+      const edition = this.loadCalendarEditionForDate(ctx.householdId, householdDate);
+      const calendarShape = edition ? { years: edition.years } : null;
+      const iso = isoWeekdayForHouseholdDate(householdDate);
+      const nextDate = addHouseholdDays(householdDate, 1);
+      const schoolToday = isSchoolDayForDate(householdDate, calendarShape, iso);
+      const schoolTomorrow = isSchoolDayForDate(
+        nextDate,
+        calendarShape,
+        isoWeekdayForHouseholdDate(nextDate),
+      );
+      let schoolFiltered = false;
+      let stepCount = 0;
+      let anyUnresolved = false;
+      for (const step of normalized.steps) {
+        const decision = evaluateApplicability({
+          rule: step.applicability ?? DEFAULT_APPLICABILITY,
+          date: householdDate,
+          isoWeekday: iso,
+          nextDate,
+          nextIsoWeekday: isoWeekdayForHouseholdDate(nextDate),
+          schoolToday,
+          schoolTomorrow,
+        });
+        if (decision.include) stepCount += 1;
+        if ("unresolved" in decision && decision.unresolved) {
+          schoolFiltered = true;
+          anyUnresolved = true;
+        }
+      }
+      if (stepCount === 0) {
+        return {
+          applicable: false,
+          schoolFiltered: schoolFiltered || anyUnresolved,
+          stepCount: 0,
+          participantMemberIds: [],
+        };
+      }
+      const participantMemberIds = resolveAccountableMembers("routine", {
+        directMemberIds: normalized.assigneeMemberIds,
+        groupMemberIdSets: normalized.assigneeGroupIds.map((groupId) =>
+          this.groupMembersOnDate(groupId, householdDate),
+        ),
+      }).filter((membershipId) =>
+        this.isMemberEligible(ctx.householdId, membershipId, householdDate),
+      );
+      return {
+        applicable: participantMemberIds.length > 0,
+        schoolFiltered,
+        stepCount,
+        participantMemberIds,
+      };
+    };
+
     const preview: RoutineDraftPreviewDay[] = [];
     for (let offset = 0; offset < previewDays; offset += 1) {
       const householdDate = addHouseholdDays(today, offset);
-      const weekdayOk = isDateApplicable(householdDate, normalized.weekdays);
-      let schoolFiltered = false;
-      let applicable = weekdayOk;
-      let stepCount = 0;
-      if (weekdayOk) {
-        const edition = this.loadCalendarEditionForDate(ctx.householdId, householdDate);
-        const calendarShape = edition
-          ? { years: edition.years }
-          : null;
-        const iso = isoWeekdayForHouseholdDate(householdDate);
-        const nextDate = addHouseholdDays(householdDate, 1);
-        const schoolToday = isSchoolDayForDate(householdDate, calendarShape, iso);
-        const schoolTomorrow = isSchoolDayForDate(
-          nextDate,
-          calendarShape,
-          isoWeekdayForHouseholdDate(nextDate),
-        );
-        if (stepsNeedSchool && schoolToday.status === "unconfigured") {
-          applicable = false;
-          schoolFiltered = true;
-        } else {
-          for (const step of normalized.steps) {
-            const decision = evaluateApplicability({
-              rule: step.applicability ?? DEFAULT_APPLICABILITY,
-              date: householdDate,
-              isoWeekday: iso,
-              nextDate,
-              nextIsoWeekday: isoWeekdayForHouseholdDate(nextDate),
-              schoolToday,
-              schoolTomorrow,
-            });
-            if (decision.include) stepCount += 1;
-            if ("unresolved" in decision && decision.unresolved) {
-              schoolFiltered = true;
-            }
-          }
-          if (stepCount === 0 && stepsNeedSchool) {
-            applicable = false;
-            schoolFiltered = true;
-          }
-        }
-      }
-      const participantMemberIds = applicable ? [...normalized.assigneeMemberIds] : [];
+      const day = evaluateDate(householdDate);
       preview.push({
         householdDate,
-        applicable,
-        title: applicable ? normalized.title.trim() : null,
-        daypart: applicable ? normalized.daypart : null,
-        participantMemberIds,
-        participantNames: participantMemberIds.map(
+        applicable: day.applicable,
+        title: day.applicable ? normalized.title.trim() : null,
+        daypart: day.applicable ? normalized.daypart : null,
+        participantMemberIds: day.participantMemberIds,
+        participantNames: day.participantMemberIds.map(
           (id) => nameById.get(id) ?? "Unknown",
         ),
-        stepCount: applicable ? stepCount || normalized.steps.length : 0,
-        schoolFiltered,
+        stepCount: day.applicable ? day.stepCount : 0,
+        schoolFiltered: day.schoolFiltered,
       });
     }
     let nextKnownDate: string | null = null;
     let noKnownReason: string | null = null;
     if (!preview.some((d) => d.applicable)) {
+      let sawUnconfiguredSchool = false;
       for (let offset = previewDays; offset < 120; offset += 1) {
         const householdDate = addHouseholdDays(today, offset);
-        if (!isDateApplicable(householdDate, normalized.weekdays)) continue;
-        const edition = this.loadCalendarEditionForDate(ctx.householdId, householdDate);
-        const calendarShape = edition ? { years: edition.years } : null;
-        const iso = isoWeekdayForHouseholdDate(householdDate);
-        const schoolToday = isSchoolDayForDate(householdDate, calendarShape, iso);
-        if (stepsNeedSchool && schoolToday.status === "unconfigured") {
-          noKnownReason = "School calendar is not configured";
+        const day = evaluateDate(householdDate);
+        if (day.schoolFiltered && day.stepCount === 0) {
+          const edition = this.loadCalendarEditionForDate(ctx.householdId, householdDate);
+          if (!edition) sawUnconfiguredSchool = true;
+        }
+        if (day.applicable) {
+          nextKnownDate = householdDate;
           break;
         }
-        if (stepsNeedSchool && schoolToday.status === "configured" && !schoolToday.isSchoolDay) {
-          continue;
-        }
-        nextKnownDate = householdDate;
-        break;
       }
-      if (!nextKnownDate && !noKnownReason) {
-        noKnownReason = "No applicable date in the next four months";
+      if (!nextKnownDate) {
+        noKnownReason = sawUnconfiguredSchool
+          ? "School calendar is not configured"
+          : "No applicable date in the next four months";
       }
     }
     return { preview, nextKnownDate, noKnownReason };
@@ -1408,7 +1735,7 @@ export class AppStore {
     if (existing) return;
     const manager = this.db
       .prepare(
-        `SELECT hm.id AS membership_id, hm.user_id, hm.created_at
+        `SELECT hm.id AS membership_id, hm.user_id
          FROM household_memberships hm
          INNER JOIN membership_grants mg
            ON mg.membership_id = hm.id AND mg.grant_name = 'household.lifecycle.manage'
@@ -1417,24 +1744,22 @@ export class AppStore {
          LIMIT 1`,
       )
       .get(householdId) as
-      | { membership_id: string; user_id: string | null; created_at: string }
+      | { membership_id: string; user_id: string | null }
       | undefined;
     const updatedAt = nowUtcIso();
-    // For already-running households without an A progress row, mark required basics
-    // complete using the earliest manager membership timestamp (real record time).
-    const basicsAt = manager?.created_at ?? updatedAt;
+    // Adopted households without A progress: create optional guide row without inventing
+    // Account/Household completion timestamps. setupRequired() treats an active manager
+    // as already past required basics.
     this.db
       .prepare(
         `INSERT INTO setup_progress
          (household_id, account_completed_at, household_completed_at, membership_id, user_id,
           guide_version, people_status, school_status, first_work_status,
           people_membership_ids_json, work_definition_ids_json, finished_at, dismissed_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, 0, 'not_chosen', 'not_chosen', 'not_chosen', '[]', '[]', NULL, NULL, ?)`,
+         VALUES (?, NULL, NULL, ?, ?, 0, 'not_chosen', 'not_chosen', 'not_chosen', '[]', '[]', NULL, NULL, ?)`,
       )
       .run(
         householdId,
-        manager ? basicsAt : null,
-        manager ? basicsAt : null,
         manager?.membership_id ?? null,
         manager?.user_id ?? null,
         updatedAt,
@@ -4253,6 +4578,7 @@ export class AppStore {
       this.db.prepare("DELETE FROM routine_revisions WHERE definition_id = ?").run(definitionId);
       this.db.prepare("DELETE FROM routine_definitions WHERE id = ?").run(definitionId);
       unlinkGuideWorkDefinition(this.db, ctx.householdId, definitionId);
+      retireGuideReceiptsForWorkDefinition(this.db, definitionId);
 
       this.writeRoutineMutationReceipt(
         input.mutationId,
@@ -4486,6 +4812,7 @@ export class AppStore {
       this.db.prepare("DELETE FROM routine_revisions WHERE definition_id = ?").run(definitionId);
       this.db.prepare("DELETE FROM routine_definitions WHERE id = ?").run(definitionId);
       unlinkGuideWorkDefinition(this.db, ctx.householdId, definitionId);
+      retireGuideReceiptsForWorkDefinition(this.db, definitionId);
       this.writeRoutineMutationReceipt(
         input.mutationId,
         ctx.householdId,

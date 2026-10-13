@@ -95,6 +95,10 @@ invalidation/reconciliation semantics.
 | PB-58 | Full reset advances installation epoch; sessions fence; operator scripts resolve active DB | `tests/integration/p0-008a.test.ts` | Developer |
 | PB-59 | Backup catalog create/delete/list; optional pre-reset backup; restore scrub + fresh epoch; reset continuation cannot enumerate | `tests/integration/p0-008b.test.ts` | Developer |
 | PB-60 | Owner Welcome restore and legacy BACKUP_DIR register; corrupt/unsafe paths rejected | `tests/integration/p0-008b.test.ts` | Developer |
+| PB-61 | Guide progress is optional and independent of `setupRequired`; adopted households do not invent Account/Household completion timestamps | `tests/integration/p0-008d.test.ts` AT1/AT8 | Developer |
+| PB-62 | Guide saves bind mutation identity to actor/household/installation epoch/payload digest; changed payload/action rejected; same command recovers | `tests/integration/p0-008d.test.ts` R3/AT4 | Developer |
+| PB-63 | Draft routine preview matches execution audience/eligibility/applicability with zero materialization; Save rechecks reviewed preview basis | `tests/integration/p0-008d.test.ts` AT5/R4 | Developer |
+| PB-64 | Guide school Not now preserves calendar years/exceptions; unused guide people/work remain deletable and retired retries stay denied; restore scrubs all C claim purposes | `tests/integration/p0-008d.test.ts` R2/AT7/AT11 | Developer |
 
 ### Environment-specific (not counted as automated acceptance)
 
@@ -156,8 +160,13 @@ Duplicate, late, and missed events must be safe.
 | GET/POST/DELETE `/household/backups` | catalog metadata / create / delete | none | Settings Backups | n/a | lifecycle.manage + reauth (mutations); owner list allowed | Settings / Welcome (owner) |
 | POST `/household/restore` | verified restore + scrub + epoch advance | WS close `restore` | all household views | epoch-fenced outboxes | backup id/digest + epoch; member reauth or owner CSRF | Settings / Welcome |
 | GET `/meta` | exposes `ownerConfigured`, `installationEpoch`, `setupRequired` without secrets | *(none)* | — | — | read | n/a |
+| GET `/guide/progress` | optional guide projection | *(none)* | — | dirty guide draft retained | lifecycle.manage | guided setup |
+| POST `/guide/people`, `/guide/people/complete`, `/guide/school`, `/guide/work`, `/guide/finish`, `/guide/dismiss` | domain + guide progress + bound guide receipt | `setup_progress` | guided setup (clean only) | dirty draft retained; conflict hint | mutationId + epoch + digest; expectedGuideVersion conflict | fetch guide progress |
+| POST `/routines/preview-draft` | read-only draft routine preview | *(none)* | — | — | zero definitions/occurrences | n/a |
+| GET/PATCH `/household/details` | name correction; timezone lock when dated deps exist | *(none)* | Settings | dirty name retained | expectedName conflict; timezone not relocated | Settings |
 
 WebSocket `GET /api/v1/sync` delivers invalidations only. Connect also sends a synthetic
 `routine`/`connected` notice. Recovery: reconnect, `visibilitychange`, and online handlers
-re-read `/today` and supporting data; pending outbox flushes under the active membership only.
+re-read `/today` and supporting data (including guide progress when clean); pending outbox
+flushes under the active membership only.
 Activity generation must be established before replaying outbox after `activity_reset`.

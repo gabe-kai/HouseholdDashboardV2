@@ -38,6 +38,18 @@ async function completeRequiredBasics(
   await expect(page.getByTestId("setup-complete")).toBeVisible({ timeout: 20_000 });
 }
 
+async function addGuidePerson(
+  page: Page,
+  name: string,
+  classification: "adult" | "child",
+): Promise<void> {
+  await page.getByTestId("guide-add-another").click();
+  await page.getByTestId("guide-person-name").fill(name);
+  await page.getByTestId("guide-person-class").selectOption(classification);
+  await page.getByTestId("guide-add-person").locator("button[type=submit]").click();
+  await expect(page.getByTestId("guide-people-list")).toContainText(name, { timeout: 15_000 });
+}
+
 test.describe("P0-008D guided first household day", () => {
   test.beforeEach(async ({ baseURL, context }) => {
     test.skip(
@@ -48,10 +60,10 @@ test.describe("P0-008D guided first household day", () => {
     await wipeAndRebindE2eServer(baseURL!);
   });
 
-  test("P0-008D AT2: phone journey through guide people → school skip → work skip → Today", async ({
+  test("P0-008D AT2: phone journey people+school+routine+responsibility review → Today", async ({
     page,
   }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(240_000);
     const inviteLink = await ownerIssueInvite(page);
     await page.goto(inviteLink);
     const displayName = "Guide Parent";
@@ -66,39 +78,68 @@ test.describe("P0-008D guided first household day", () => {
     await expect(page.getByTestId("guided-setup")).toBeVisible({ timeout: 20_000 });
     await expect(page.getByTestId("guide-manager-once")).toContainText(displayName);
 
-    await page.getByTestId("guide-add-another").click();
-    await page.getByTestId("guide-person-name").fill("Alex");
-    await page.getByTestId("guide-person-class").selectOption("child");
-    await page.getByTestId("guide-add-person").locator("button[type=submit]").click();
-    await expect(page.getByTestId("guide-people-list")).toContainText("Alex", { timeout: 15_000 });
+    await addGuidePerson(page, "Jordan", "adult");
+    await addGuidePerson(page, "Alex", "child");
+    await addGuidePerson(page, "Sam", "child");
+    await addGuidePerson(page, "Riley", "child");
+    await addGuidePerson(page, "Casey", "child");
 
     await page.getByTestId("guide-people-continue").click();
     await expect(page.getByTestId("guide-school")).toBeVisible({ timeout: 15_000 });
-    await page.getByTestId("guide-school-not-now").click();
+    await page.getByTestId("guide-school-start").fill("2025-09-02");
+    await page.getByTestId("guide-school-end").fill("2026-06-12");
+    await page.getByTestId("guide-school-save").click();
 
     await expect(page.getByTestId("guide-work")).toBeVisible({ timeout: 15_000 });
-    await page.getByTestId("guide-work-finish-for-now").click();
+    await page.getByTestId("guide-work-kind").selectOption("both");
+    await page.getByTestId("guide-work-title").fill("Morning checklist");
+    await page.getByTestId("guide-work-daypart").selectOption("morning");
+    await page.getByTestId("guide-work-step").fill("Get dressed");
+    await page.getByTestId("guide-work-review").click();
+    await expect(page.getByTestId("guide-work-preview")).toBeVisible({ timeout: 20_000 });
+    await page.getByTestId("guide-work-title").fill("Family morning");
+    await expect(page.getByTestId("guide-work-save")).toBeDisabled();
+    await page.getByTestId("guide-work-review").click();
+    await expect(page.getByTestId("guide-work-preview")).toContainText("Family morning", {
+      timeout: 20_000,
+    });
+    const saveWork = page.getByTestId("guide-work-save");
+    await saveWork.scrollIntoViewIfNeeded();
+    await expect(saveWork).toBeEnabled();
+    await saveWork.click({ force: true });
 
     await expect(page.getByTestId("guide-recap")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("guide-recap-work")).toBeVisible();
     await page.getByTestId("guide-go-today").click();
     await expectSignedInAs(page, displayName);
   });
 
-  test("P0-008D AT3: account Back shows review; Settings Finish setup reopens guide", async ({
+  test("P0-008D AT3: account Back review; Settings Finish setup; save and finish later", async ({
     page,
   }) => {
     test.setTimeout(180_000);
     const inviteLink = await ownerIssueInvite(page);
     await page.goto(inviteLink);
     const displayName = "Return Parent";
-    await completeRequiredBasics(
-      page,
-      `mgrd2.${Date.now().toString(36)}`,
-      displayName,
-      "Return Household",
-    );
+    const loginName = `mgrd2.${Date.now().toString(36)}`;
 
-    // From done, go Today then Settings → Finish setup
+    await expect(page.getByTestId("setup-account-form")).toBeVisible({ timeout: 20_000 });
+    await page.getByTestId("setup-display-name").fill(displayName);
+    await page.getByTestId("setup-login-name").fill(loginName);
+    await page.getByTestId("setup-passphrase").fill(MANAGER_PASS);
+    await page.getByTestId("setup-account-form").locator("button[type=submit]").click();
+    await expect(page.getByTestId("setup-household-form")).toBeVisible({ timeout: 20_000 });
+
+    await page.getByTestId("setup-household-back").click();
+    await expect(page.getByTestId("setup-account-review")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("setup-account-form")).toHaveCount(0);
+    await page.getByTestId("setup-account-review-continue").click();
+    await expect(page.getByTestId("setup-household-form")).toBeVisible({ timeout: 15_000 });
+    await page.getByTestId("setup-household-name").fill("Return Household");
+    await page.getByTestId("setup-timezone-confirm").check();
+    await page.getByTestId("setup-household-form").locator("button[type=submit]").click();
+    await expect(page.getByTestId("setup-complete")).toBeVisible({ timeout: 20_000 });
+
     await page.getByTestId("setup-go-today").click();
     await expectSignedInAs(page, displayName);
 
@@ -111,6 +152,7 @@ test.describe("P0-008D guided first household day", () => {
       .getByRole("button", { name: /Settings/ })
       .click();
     await expect(page.getByTestId("finish-setup-section")).toBeVisible();
+    await expect(page.getByTestId("household-details-section")).toBeVisible();
     await page.getByTestId("settings-finish-setup").click();
     await expect(page.getByTestId("guided-setup")).toBeVisible({ timeout: 20_000 });
     await page.getByTestId("guide-save-finish-later").click();

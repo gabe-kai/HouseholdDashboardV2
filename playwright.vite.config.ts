@@ -15,6 +15,7 @@ export default defineConfig({
     "**/z-p0-006a-vite-deeplink.spec.ts",
     "**/z-p0-007a-vite-deeplink.spec.ts",
     "**/z-p0-007c-2-vite-deeplink.spec.ts",
+    "**/z-p0-008d-vite-deeplink.spec.ts",
   ],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,

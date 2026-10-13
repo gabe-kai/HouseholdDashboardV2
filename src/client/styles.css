@@ -2002,6 +2002,13 @@ textarea {
   text-decoration: none;
 }
 
+.guide-progress-phone {
+  pointer-events: none;
+  margin: 0 0 var(--space-2);
+  color: var(--muted, #666);
+  font-size: 0.9rem;
+}
+
 .guided-setup-layout {
   display: grid;
   gap: var(--space-4);
@@ -2013,7 +2020,8 @@ textarea {
     align-items: start;
   }
 
-  .guided-setup-phone-progress {
+  .guided-setup-phone-progress,
+  .guide-progress-phone {
     display: none;
   }
 }

@@ -947,6 +947,7 @@ export function App() {
           // Missed WS notifications: refresh Plan/History tokens with Today.
           setRoutineRefreshToken((n) => n + 1);
           setHistoryRefreshToken((n) => n + 1);
+          setGuideRefreshToken((n) => n + 1);
           refreshAuthoritative({ urgentSupporting: true });
         }
       },
@@ -959,6 +960,7 @@ export function App() {
       // behind startTransition (same class of bug as deferred proposal status).
       setRoutineRefreshToken((n) => n + 1);
       setHistoryRefreshToken((n) => n + 1);
+      setGuideRefreshToken((n) => n + 1);
       void refreshToday(membershipId).catch((caught) => setError(errorMessage(caught)));
       void refreshSupportingData(session);
       void flushOutbox(membershipId);

@@ -140,6 +140,7 @@ export default defineConfig({
       testIgnore: [
         "**/z-p0-008a-desktop-setup.spec.ts",
         "**/z-p0-008d-desktop-setup.spec.ts",
+        "**/z-p0-008d-vite-deeplink.spec.ts",
       ],
       use: { ...devices["Pixel 7"], baseURL: chromium008aURL },
     },
@@ -207,6 +208,7 @@ export default defineConfig({
         "**/z-p0-008c-people-access.spec.ts",
         "**/z-p0-008d-guided-setup.spec.ts",
       ],
+      testIgnore: ["**/z-p0-008d-vite-deeplink.spec.ts"],
       use: { ...devices["iPhone 13"], baseURL: webkit008aURL },
     },
   ],

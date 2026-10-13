@@ -600,7 +600,7 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run desktop geometry e2e
-        run: npx playwright test --project=chromium-desktop --project=chromium-display
+        run: npx playwright test --project=chromium-desktop --project=chromium-display --project=chromium-008a-desktop
         env:
           CI: true
           E2E_SKIP_BUILD: "1"

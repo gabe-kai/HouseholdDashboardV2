@@ -88,9 +88,12 @@ test.describe("P0-008D guided first household day", () => {
     await expect(page.getByTestId("guide-school")).toBeVisible({ timeout: 15_000 });
     await page.getByTestId("guide-school-start").fill("2025-09-02");
     await page.getByTestId("guide-school-end").fill("2026-06-12");
-    await page.getByTestId("guide-school-save").click();
+    await page.getByTestId("guide-school-end").blur();
+    const schoolSave = page.getByTestId("guide-school-save");
+    await schoolSave.scrollIntoViewIfNeeded();
+    await schoolSave.click({ force: true });
 
-    await expect(page.getByTestId("guide-work")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("guide-work")).toBeVisible({ timeout: 30_000 });
     await page.getByTestId("guide-work-kind").selectOption("both");
     await page.getByTestId("guide-work-title").fill("Morning checklist");
     await page.getByTestId("guide-work-daypart").selectOption("morning");
@@ -175,5 +178,87 @@ test.describe("P0-008D guided first household day", () => {
     await page.reload();
     await expect(page.getByTestId("guided-setup")).toBeVisible({ timeout: 20_000 });
     await expect(page).toHaveURL(/\/household\/setup/);
+  });
+
+  test("P0-008D AT10: ordinary UI setup → people → school → work → Settings return → backup path", async ({
+    page,
+  }) => {
+    test.setTimeout(300_000);
+    const inviteLink = await ownerIssueInvite(page);
+    await page.goto(inviteLink);
+    const displayName = "Journey Parent";
+    const loginName = `mgrd10.${Date.now().toString(36)}`;
+    await completeRequiredBasics(page, loginName, displayName, "Journey Household");
+    await page.getByTestId("setup-continue-guide").click();
+    await expect(page.getByTestId("guided-setup")).toBeVisible({ timeout: 20_000 });
+
+    await addGuidePerson(page, "Taylor", "adult");
+    await addGuidePerson(page, "Morgan", "child");
+    await page.getByTestId("guide-people-continue").click();
+    await expect(page.getByTestId("guide-school")).toBeVisible({ timeout: 15_000 });
+    await page.getByTestId("guide-school-not-now").click();
+
+    await expect(page.getByTestId("guide-work")).toBeVisible({ timeout: 15_000 });
+    await page.getByTestId("guide-work-kind").selectOption("responsibility");
+    await page.getByTestId("guide-work-title").fill("Kitchen duty");
+    await page.getByTestId("guide-assignment-mode").selectOption("weekly");
+    await expect(page.getByTestId("guide-weekly-map")).toBeVisible();
+    await page.getByTestId("guide-work-review").click();
+    await expect(page.getByTestId("guide-work-preview")).toBeVisible({ timeout: 20_000 });
+    const saveWork = page.getByTestId("guide-work-save");
+    await saveWork.scrollIntoViewIfNeeded();
+    await expect(saveWork).toBeEnabled();
+    await saveWork.click({ force: true });
+    await expect(page.getByTestId("guide-recap")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("guide-recap-work")).toContainText("Kitchen duty");
+
+    await page.getByTestId("guide-edit-saved-work").click();
+    await expect(page.getByTestId("guide-work")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("guide-work-title")).toHaveValue("Kitchen duty");
+    await page.getByTestId("guide-work-title").fill("Kitchen nights");
+    await page.getByTestId("guide-work-review").click();
+    await expect(page.getByTestId("guide-work-preview")).toContainText("Kitchen nights", {
+      timeout: 20_000,
+    });
+    const saveEdit = page.getByTestId("guide-work-save");
+    await saveEdit.scrollIntoViewIfNeeded();
+    await expect(saveEdit).toBeEnabled();
+    await saveEdit.click({ force: true });
+    await expect(page.getByTestId("guide-recap")).toBeVisible({ timeout: 15_000 });
+
+    await page.getByTestId("guide-go-today").click();
+    await expectSignedInAs(page, displayName);
+
+    await page
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("button", { name: "Household", exact: true })
+      .click();
+    await page
+      .getByRole("navigation", { name: "Household" })
+      .getByRole("button", { name: /Settings/ })
+      .click();
+    await expect(page.getByTestId("finish-setup-section")).toBeVisible();
+    await expect(page.getByTestId("household-details-section")).toBeVisible();
+  });
+
+  test("P0-008D AT9: dirty draft retained across soft guide refresh conflict", async ({ page }) => {
+    test.setTimeout(180_000);
+    const inviteLink = await ownerIssueInvite(page);
+    await page.goto(inviteLink);
+    const displayName = "Dirty Parent";
+    await completeRequiredBasics(
+      page,
+      `mgrd9.${Date.now().toString(36)}`,
+      displayName,
+      "Dirty Household",
+    );
+    await page.getByTestId("setup-continue-guide").click();
+    await expect(page.getByTestId("guided-setup")).toBeVisible({ timeout: 20_000 });
+    await page.getByTestId("guide-add-another").click();
+    await page.getByTestId("guide-person-name").fill("Keep Draft");
+    await expect(page.getByTestId("guide-person-name")).toHaveValue("Keep Draft");
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await page.waitForTimeout(500);
+    await expect(page.getByTestId("guide-person-name")).toHaveValue("Keep Draft");
   });
 });

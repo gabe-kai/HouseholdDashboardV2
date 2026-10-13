@@ -1259,8 +1259,20 @@ export class AppStore {
         householdDate: string;
         calendarVersion: number;
         audienceGroupIds: string[];
+        audienceGroupVersions?: Record<string, number>;
         reviewedRoutineParticipantIds?: string[];
         reviewedResponsibilityOwnerId?: string | null;
+        reviewedRoutineDays?: Array<{
+          householdDate: string;
+          participantMemberIds: string[];
+          stepTexts?: string[];
+        }>;
+        reviewedResponsibilityDays?: Array<{
+          householdDate: string;
+          accountableMemberId: string | null;
+          stepTexts?: string[];
+          scheduledAdditionNames?: string[];
+        }>;
       };
     },
   ): {
@@ -1271,6 +1283,9 @@ export class AppStore {
     this.requireGrant(ctx, "household.lifecycle.manage");
     if (input.routine) this.requireGrant(ctx, "routine.shared.manage");
     if (input.responsibility) this.requireGrant(ctx, "responsibility.manage");
+    if ((input.routine || input.responsibility) && !input.previewBasis) {
+      fail("VALIDATION", "Review work before saving");
+    }
     const digest = guidePayloadDigest({
       expectedGuideVersion: input.expectedGuideVersion,
       status: input.status ?? null,
@@ -1292,6 +1307,7 @@ export class AppStore {
             assignment: input.responsibility.assignment ?? null,
             accountableMemberId: input.responsibility.accountableMemberId ?? null,
             steps: input.responsibility.steps,
+            scheduledAdditions: input.responsibility.scheduledAdditions ?? [],
           }
         : null,
       previewBasis: input.previewBasis ?? null,
@@ -1332,28 +1348,81 @@ export class AppStore {
             "School calendar changed since review; preview again before saving",
           );
         }
-        if (input.routine) {
-          const preview = this.previewDraftRoutine(ctx, input.routine, 7);
-          const firstApplicable = preview.preview.find((d) => d.applicable);
-          const currentIds = firstApplicable?.participantMemberIds ?? [];
-          const reviewed = [...(basis.reviewedRoutineParticipantIds ?? [])].sort();
-          const live = [...currentIds].sort();
-          if (JSON.stringify(reviewed) !== JSON.stringify(live)) {
+        const groupVersions = basis.audienceGroupVersions ?? {};
+        for (const groupId of basis.audienceGroupIds ?? []) {
+          const group = this.listGroups(ctx.householdId).find((g) => g.id === groupId);
+          const reviewedVersion = groupVersions[groupId];
+          if (
+            reviewedVersion !== undefined &&
+            (!group || group.version !== reviewedVersion)
+          ) {
             fail(
               "CONFLICT",
-              "Routine participants changed since review; preview again before saving",
+              "Audience group changed since review; preview again before saving",
             );
           }
         }
-        if (input.responsibility && basis.reviewedResponsibilityOwnerId !== undefined) {
+        if (input.routine) {
+          const preview = this.previewDraftRoutine(ctx, input.routine, 7);
+          const applicable = preview.preview.filter((d) => d.applicable);
+          if (basis.reviewedRoutineDays && basis.reviewedRoutineDays.length > 0) {
+            const live = applicable.map((d) => ({
+              householdDate: d.householdDate,
+              participantMemberIds: [...d.participantMemberIds].sort(),
+            }));
+            const reviewed = basis.reviewedRoutineDays.map((d) => ({
+              householdDate: d.householdDate,
+              participantMemberIds: [...d.participantMemberIds].sort(),
+            }));
+            if (JSON.stringify(live) !== JSON.stringify(reviewed)) {
+              fail(
+                "CONFLICT",
+                "Routine participants changed since review; preview again before saving",
+              );
+            }
+          } else {
+            const firstApplicable = applicable[0];
+            const currentIds = firstApplicable?.participantMemberIds ?? [];
+            const reviewed = [...(basis.reviewedRoutineParticipantIds ?? [])].sort();
+            const live = [...currentIds].sort();
+            if (JSON.stringify(reviewed) !== JSON.stringify(live)) {
+              fail(
+                "CONFLICT",
+                "Routine participants changed since review; preview again before saving",
+              );
+            }
+          }
+        }
+        if (input.responsibility) {
           const preview = this.previewDraftResponsibility(ctx, input.responsibility, 7);
-          const firstApplicable = preview.find((d) => d.applicable);
-          const liveOwner = firstApplicable?.accountableMemberId ?? null;
-          if (liveOwner !== basis.reviewedResponsibilityOwnerId) {
-            fail(
-              "CONFLICT",
-              "Responsibility owner changed since review; preview again before saving",
-            );
+          const applicable = preview.filter((d) => d.applicable);
+          if (
+            basis.reviewedResponsibilityDays &&
+            basis.reviewedResponsibilityDays.length > 0
+          ) {
+            const live = applicable.map((d) => ({
+              householdDate: d.householdDate,
+              accountableMemberId: d.accountableMemberId ?? null,
+            }));
+            const reviewed = basis.reviewedResponsibilityDays.map((d) => ({
+              householdDate: d.householdDate,
+              accountableMemberId: d.accountableMemberId,
+            }));
+            if (JSON.stringify(live) !== JSON.stringify(reviewed)) {
+              fail(
+                "CONFLICT",
+                "Responsibility owner changed since review; preview again before saving",
+              );
+            }
+          } else if (basis.reviewedResponsibilityOwnerId !== undefined) {
+            const firstApplicable = applicable[0];
+            const liveOwner = firstApplicable?.accountableMemberId ?? null;
+            if (liveOwner !== basis.reviewedResponsibilityOwnerId) {
+              fail(
+                "CONFLICT",
+                "Responsibility owner changed since review; preview again before saving",
+              );
+            }
           }
         }
       }

@@ -940,10 +940,33 @@ export const GuideWorkPreviewBasisSchema = z.object({
   calendarVersion: z.number().int().nonnegative(),
   /** Sorted group IDs that contributed to the reviewed audience. */
   audienceGroupIds: z.array(UuidSchema).default([]),
+  /** Group source versions at review time (id → version). */
+  audienceGroupVersions: z.record(z.string(), z.number().int().nonnegative()).default({}),
   /** Participant membership IDs shown in the reviewed routine preview (when routine saved). */
   reviewedRoutineParticipantIds: z.array(UuidSchema).optional(),
   /** Final owner membership ID reviewed for responsibility (null = Unassigned). */
   reviewedResponsibilityOwnerId: UuidSchema.nullable().optional(),
+  /** Full reviewed routine window (all applicable days in the preview horizon). */
+  reviewedRoutineDays: z
+    .array(
+      z.object({
+        householdDate: HouseholdDateSchema,
+        participantMemberIds: z.array(UuidSchema),
+        stepTexts: z.array(z.string()).optional(),
+      }),
+    )
+    .optional(),
+  /** Full reviewed responsibility window (owners per applicable day). */
+  reviewedResponsibilityDays: z
+    .array(
+      z.object({
+        householdDate: HouseholdDateSchema,
+        accountableMemberId: UuidSchema.nullable(),
+        stepTexts: z.array(z.string()).optional(),
+        scheduledAdditionNames: z.array(z.string()).optional(),
+      }),
+    )
+    .optional(),
 });
 
 export const GuideWorkSaveSchema = GuideVersionGuardSchema.extend({
@@ -953,6 +976,14 @@ export const GuideWorkSaveSchema = GuideVersionGuardSchema.extend({
   /** @deprecated Prefer previewBasis.householdDate */
   previewHouseholdDate: HouseholdDateSchema.optional(),
   previewBasis: GuideWorkPreviewBasisSchema.optional(),
+}).superRefine((data, ctx) => {
+  if ((data.routine || data.responsibility) && !data.previewBasis) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Review work before saving",
+      path: ["previewBasis"],
+    });
+  }
 });
 
 export const GuideFinishSchema = GuideVersionGuardSchema.extend({

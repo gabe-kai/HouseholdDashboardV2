@@ -1,9 +1,21 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import type { Daypart, MemberPublic } from "../shared/schemas";
+import type {
+  ApplicabilityRule,
+  AssignmentSpec,
+  Daypart,
+  GroupPublic,
+  MemberPublic,
+  ScheduledAdditionSpec,
+} from "../shared/schemas";
 import { DEFAULT_APPLICABILITY } from "../domain/applicability";
 import {
+  createResponsibilityRevision,
+  createRevision,
+  fetchGroups,
   fetchGuideProgress,
   fetchPeople,
+  fetchResponsibility,
+  fetchRoutine,
   fetchSchoolCalendar,
   guideCompletePeople,
   guideDismiss,
@@ -15,6 +27,8 @@ import {
   previewDraftRoutine,
   type GuideProgress,
   type GuideWorkPreviewBasis,
+  type Responsibility,
+  type Routine,
   type SchoolCalendarPublic,
   type SchoolYearPublic,
   type SessionInfo,
@@ -49,7 +63,38 @@ type YearDraft = {
   }>;
 };
 
-type WorkStepDraft = { text: string; obligation: "required" | "optional" };
+type WorkStepDraft = {
+  text: string;
+  obligation: "required" | "optional" | "as_needed";
+  applicability: ApplicabilityRule;
+};
+
+type ScheduledAdditionDraft = {
+  clientKey: string;
+  name: string;
+  weekdays: number[];
+  inheritAssignment: boolean;
+  steps: Array<{ text: string; obligation: "required" | "optional" | "as_needed" }>;
+};
+
+type PendingPersonCommand = {
+  mutationId: string;
+  expectedGuideVersion: number;
+  installationEpoch: number;
+  displayName: string;
+  classification: "adult" | "child";
+};
+
+type PendingWorkCommand = {
+  mutationId: string;
+  expectedGuideVersion: number;
+  installationEpoch: number;
+  status: "completed" | "skipped";
+  routine?: Parameters<typeof guideSaveWork>[0]["routine"];
+  responsibility?: Parameters<typeof guideSaveWork>[0]["responsibility"];
+  previewHouseholdDate?: string;
+  previewBasis?: GuideWorkPreviewBasis;
+};
 
 function errorMessage(caught: unknown): string {
   if (caught && typeof caught === "object" && "message" in caught) {
@@ -106,8 +151,83 @@ function workSnapshot(input: {
   audienceGroupIds: string[];
   ownerId: string;
   assignmentMode: string;
+  cycleOrder: string[];
+  weeklyMap: Record<number, string>;
+  scheduledAdditions: ScheduledAdditionDraft[];
+  editingDefinitionId: string | null;
 }): string {
   return JSON.stringify(input);
+}
+
+function defaultWeeklyMap(ownerId: string): Record<number, string> {
+  const map: Record<number, string> = {};
+  for (let day = 1; day <= 7; day += 1) map[day] = ownerId;
+  return map;
+}
+
+function buildAssignmentSpec(
+  mode: "fixed" | "take_turns" | "weekly",
+  anchorDate: string,
+  fields: {
+    accountableMemberId: string;
+    cycleOrder: string[];
+    weeklyMap: Record<number, string>;
+  },
+): AssignmentSpec {
+  if (mode === "fixed") {
+    return {
+      mode: "fixed",
+      anchorDate,
+      fixedMemberId: fields.accountableMemberId || null,
+      cycleOrder: [],
+      weeklyMap: {},
+      excludedMemberIds: [],
+      savedRingOrder: [],
+    };
+  }
+  if (mode === "take_turns") {
+    return {
+      mode: "take_turns",
+      anchorDate,
+      cycleOrder: fields.cycleOrder,
+      weeklyMap: {},
+      excludedMemberIds: [],
+      savedRingOrder: fields.cycleOrder,
+    };
+  }
+  const weeklyMap: Record<string, string> = {};
+  for (let day = 1; day <= 7; day += 1) {
+    weeklyMap[String(day)] = fields.weeklyMap[day] ?? "";
+  }
+  return {
+    mode: "weekly",
+    anchorDate,
+    weeklyMap,
+    cycleOrder: [],
+    excludedMemberIds: [],
+    savedRingOrder: [],
+  };
+}
+
+function scheduledAdditionsPayload(
+  drafts: ScheduledAdditionDraft[],
+  assignment: AssignmentSpec,
+): ScheduledAdditionSpec[] {
+  return drafts
+    .filter((draft) => draft.name.trim() && draft.steps.some((s) => s.text.trim()))
+    .map((draft) => ({
+      name: draft.name.trim(),
+      weekdays: draft.weekdays.length > 0 ? draft.weekdays : [1, 2, 3, 4, 5],
+      inheritAssignment: draft.inheritAssignment,
+      assignment: draft.inheritAssignment ? undefined : assignment,
+      steps: draft.steps
+        .filter((s) => s.text.trim())
+        .map((s) => ({
+          text: s.text.trim(),
+          obligation: s.obligation,
+          applicability: DEFAULT_APPLICABILITY,
+        })),
+    }));
 }
 
 export type GuidedSetupProps = {
@@ -129,6 +249,7 @@ export function GuidedSetupView(props: GuidedSetupProps) {
   const [error, setError] = useState<string | null>(null);
   const [conflictHint, setConflictHint] = useState<string | null>(null);
   const [people, setPeople] = useState<MemberPublic[]>(props.memberships);
+  const [groups, setGroups] = useState<GroupPublic[]>([]);
 
   const [personName, setPersonName] = useState("");
   const [personClass, setPersonClass] = useState<"adult" | "child">("child");
@@ -146,7 +267,7 @@ export function GuidedSetupView(props: GuidedSetupProps) {
   const [daypart, setDaypart] = useState<Daypart>("morning");
   const [weekdays, setWeekdays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [workSteps, setWorkSteps] = useState<WorkStepDraft[]>([
-    { text: "Get ready", obligation: "required" },
+    { text: "Get ready", obligation: "required", applicability: DEFAULT_APPLICABILITY },
   ]);
   const [audienceIds, setAudienceIds] = useState<string[]>([]);
   const [audienceGroupIds, setAudienceGroupIds] = useState<string[]>([]);
@@ -154,12 +275,18 @@ export function GuidedSetupView(props: GuidedSetupProps) {
   const [assignmentMode, setAssignmentMode] = useState<"fixed" | "take_turns" | "weekly">(
     "fixed",
   );
+  const [cycleOrder, setCycleOrder] = useState<string[]>([]);
+  const [weeklyMap, setWeeklyMap] = useState<Record<number, string>>({});
+  const [scheduledAdditions, setScheduledAdditions] = useState<ScheduledAdditionDraft[]>([]);
+  const [editingDefinitionId, setEditingDefinitionId] = useState<string | null>(null);
+  const [editingKind, setEditingKind] = useState<"routine" | "responsibility" | null>(null);
+  const [editingVersion, setEditingVersion] = useState<number | null>(null);
+  const [createAnother, setCreateAnother] = useState(false);
   const [workBaseline, setWorkBaseline] = useState("");
   const [previewText, setPreviewText] = useState<string | null>(null);
   const [previewBasis, setPreviewBasis] = useState<GuideWorkPreviewBasis | null>(null);
   const [savedWorkSummary, setSavedWorkSummary] = useState<string[]>([]);
 
-  // Stable mutation IDs retained until the ambiguous result resolves.
   const personMutationRef = useRef(newClientId());
   const peopleCompleteMutationRef = useRef(newClientId());
   const schoolMutationRef = useRef(newClientId());
@@ -169,6 +296,13 @@ export function GuidedSetupView(props: GuidedSetupProps) {
   const dismissMutationRef = useRef(newClientId());
   const dirtyRef = useRef(false);
   const loadGenerationRef = useRef(0);
+  const previewGenerationRef = useRef(0);
+  const sessionEpochRef = useRef(props.session.installationEpoch);
+  const pendingPersonRef = useRef<PendingPersonCommand | null>(null);
+  const pendingWorkRef = useRef<PendingWorkCommand | null>(null);
+  const mountedOnceRef = useRef(false);
+  /** Skip one soft reload after a local save that already advanced the step. */
+  const suppressSoftLoadRef = useRef(false);
 
   const schoolDirty =
     schoolBaseline !== "" &&
@@ -186,6 +320,10 @@ export function GuidedSetupView(props: GuidedSetupProps) {
       audienceGroupIds,
       ownerId,
       assignmentMode,
+      cycleOrder,
+      weeklyMap,
+      scheduledAdditions,
+      editingDefinitionId,
     }) !== workBaseline;
   const peopleDirty = personName.trim().length > 0;
   const dirty =
@@ -197,6 +335,10 @@ export function GuidedSetupView(props: GuidedSetupProps) {
     dirtyRef.current = dirty;
     props.onDirtyChange(step === "recap" ? false : dirty);
   }, [dirty, step, props]);
+
+  useEffect(() => {
+    sessionEpochRef.current = props.session.installationEpoch;
+  }, [props.session.installationEpoch]);
 
   function applyLoadedCalendar(calendar: SchoolCalendarPublic | null | undefined) {
     const version = calendar?.version ?? 0;
@@ -210,19 +352,35 @@ export function GuidedSetupView(props: GuidedSetupProps) {
     setSchoolBaseline(schoolSnapshot(years, version));
   }
 
-  function resetWorkBaseline(nextPeople: MemberPublic[]) {
+  function resetWorkBaseline(nextPeople: MemberPublic[], keepEditing = false) {
     const managerId = props.session.member.id;
     const defaults = {
       workKind: "routine" as const,
       workTitle: "Morning checklist",
       daypart: "morning" as Daypart,
       weekdays: [1, 2, 3, 4, 5],
-      steps: [{ text: "Get ready", obligation: "required" as const }],
+      steps: [
+        {
+          text: "Get ready",
+          obligation: "required" as const,
+          applicability: DEFAULT_APPLICABILITY,
+        },
+      ],
       audienceIds: nextPeople.filter((p) => !p.departed).map((p) => p.id),
       audienceGroupIds: [] as string[],
       ownerId: managerId,
       assignmentMode: "fixed" as const,
+      cycleOrder: nextPeople.filter((p) => !p.departed).map((p) => p.id),
+      weeklyMap: defaultWeeklyMap(managerId),
+      scheduledAdditions: [] as ScheduledAdditionDraft[],
+      editingDefinitionId: keepEditing ? editingDefinitionId : null,
     };
+    if (!keepEditing) {
+      setEditingDefinitionId(null);
+      setEditingKind(null);
+      setEditingVersion(null);
+      setCreateAnother(false);
+    }
     setWorkKind(defaults.workKind);
     setWorkTitle(defaults.workTitle);
     setDaypart(defaults.daypart);
@@ -232,41 +390,226 @@ export function GuidedSetupView(props: GuidedSetupProps) {
     setAudienceGroupIds(defaults.audienceGroupIds);
     setOwnerId(defaults.ownerId);
     setAssignmentMode(defaults.assignmentMode);
+    setCycleOrder(defaults.cycleOrder);
+    setWeeklyMap(defaults.weeklyMap);
+    setScheduledAdditions(defaults.scheduledAdditions);
     setPreviewText(null);
     setPreviewBasis(null);
     setWorkBaseline(workSnapshot(defaults));
   }
 
+  async function resolveSavedWorkSummary(
+    guide: GuideProgress,
+    nextPeople: MemberPublic[],
+  ): Promise<string[]> {
+    const lines: string[] = [];
+    for (const id of guide.workDefinitionIds) {
+      try {
+        const routineResult = await fetchRoutine(id);
+        const revision = routineResult.routine.revisions[0];
+        if (revision) {
+          const names = revision.assigneeMemberIds
+            .map((memberId) => nextPeople.find((p) => p.id === memberId)?.displayName ?? memberId.slice(0, 8))
+            .join(", ");
+          lines.push(
+            `Routine “${revision.title}” · ${names || "no participants"} · next from ${revision.effectiveDate}`,
+          );
+          continue;
+        }
+      } catch {
+        /* try responsibility */
+      }
+      try {
+        const respResult = await fetchResponsibility(id);
+        const revision = respResult.responsibility.revisions[0];
+        if (revision) {
+          const owner =
+            revision.assignment?.mode === "fixed"
+              ? nextPeople.find((p) => p.id === revision.assignment?.fixedMemberId)?.displayName
+              : revision.assignment?.mode ?? "assignment";
+          lines.push(
+            `Responsibility “${revision.title}” · ${owner ?? "Unassigned"} · next from ${revision.effectiveDate}`,
+          );
+        }
+      } catch {
+        lines.push(`Saved work ${id.slice(0, 8)}… (unavailable)`);
+      }
+    }
+    return lines;
+  }
+
+  function hydrateFromRevision(
+    kind: "routine" | "responsibility",
+    definition: Routine | Responsibility,
+    nextPeople: MemberPublic[],
+  ) {
+    const revision = definition.revisions[definition.revisions.length - 1];
+    if (!revision) return;
+    setEditingDefinitionId(definition.id);
+    setEditingKind(kind);
+    setEditingVersion(definition.version);
+    setCreateAnother(false);
+    setWorkKind(kind);
+    setWorkTitle(revision.title);
+    setDaypart(revision.daypart);
+    setWeekdays([...revision.weekdays]);
+    setWorkSteps(
+      revision.steps.map((stepRow) => ({
+        text: stepRow.text,
+        obligation: stepRow.obligation,
+        applicability: stepRow.applicability ?? DEFAULT_APPLICABILITY,
+      })),
+    );
+    if (kind === "routine") {
+      setAudienceIds([...revision.assigneeMemberIds]);
+      setAudienceGroupIds([...revision.assigneeGroupIds]);
+      setOwnerId(props.session.member.id);
+      setAssignmentMode("fixed");
+      setCycleOrder(nextPeople.filter((p) => !p.departed).map((p) => p.id));
+      setWeeklyMap(defaultWeeklyMap(props.session.member.id));
+      setScheduledAdditions([]);
+    } else {
+      const assignment = revision.assignment;
+      const mode = assignment?.mode ?? "fixed";
+      setAssignmentMode(mode);
+      setOwnerId(
+        mode === "fixed"
+          ? (assignment?.fixedMemberId ?? revision.assigneeMemberIds[0] ?? props.session.member.id)
+          : props.session.member.id,
+      );
+      setCycleOrder(
+        assignment?.cycleOrder?.length
+          ? [...assignment.cycleOrder]
+          : nextPeople.filter((p) => !p.departed).map((p) => p.id),
+      );
+      const map = defaultWeeklyMap(props.session.member.id);
+      if (assignment?.weeklyMap) {
+        for (const [day, memberId] of Object.entries(assignment.weeklyMap)) {
+          map[Number(day)] = memberId;
+        }
+      }
+      setWeeklyMap(map);
+      setAudienceIds(nextPeople.filter((p) => !p.departed).map((p) => p.id));
+      setAudienceGroupIds([]);
+      setScheduledAdditions(
+        (revision.scheduledAdditions ?? []).map((addition) => ({
+          clientKey: addition.id ?? newClientId(),
+          name: addition.name,
+          weekdays: [...addition.weekdays],
+          inheritAssignment: addition.inheritAssignment,
+          steps: addition.steps.map((s) => ({
+            text: s.text,
+            obligation: s.obligation,
+          })),
+        })),
+      );
+    }
+    setPreviewText(null);
+    setPreviewBasis(null);
+    setWorkBaseline(
+      workSnapshot({
+        workKind: kind,
+        workTitle: revision.title,
+        daypart: revision.daypart,
+        weekdays: [...revision.weekdays],
+        steps: revision.steps.map((stepRow) => ({
+          text: stepRow.text,
+          obligation: stepRow.obligation,
+          applicability: stepRow.applicability ?? DEFAULT_APPLICABILITY,
+        })),
+        audienceIds: kind === "routine" ? [...revision.assigneeMemberIds] : audienceIds,
+        audienceGroupIds: kind === "routine" ? [...revision.assigneeGroupIds] : [],
+        ownerId:
+          kind === "responsibility" && revision.assignment?.mode === "fixed"
+            ? (revision.assignment.fixedMemberId ?? props.session.member.id)
+            : props.session.member.id,
+        assignmentMode:
+          kind === "responsibility" ? (revision.assignment?.mode ?? "fixed") : "fixed",
+        cycleOrder:
+          revision.assignment?.cycleOrder?.length
+            ? [...revision.assignment.cycleOrder]
+            : nextPeople.filter((p) => !p.departed).map((p) => p.id),
+        weeklyMap: defaultWeeklyMap(props.session.member.id),
+        scheduledAdditions: (revision.scheduledAdditions ?? []).map((addition) => ({
+          clientKey: addition.id ?? newClientId(),
+          name: addition.name,
+          weekdays: [...addition.weekdays],
+          inheritAssignment: addition.inheritAssignment,
+          steps: addition.steps.map((s) => ({
+            text: s.text,
+            obligation: s.obligation,
+          })),
+        })),
+        editingDefinitionId: definition.id,
+      }),
+    );
+  }
+
+  async function hydrateSavedWork(guide: GuideProgress, nextPeople: MemberPublic[]) {
+    if (guide.workDefinitionIds.length === 0 || createAnother) {
+      resetWorkBaseline(nextPeople);
+      return;
+    }
+    const id = guide.workDefinitionIds[0]!;
+    try {
+      const routineResult = await fetchRoutine(id);
+      hydrateFromRevision("routine", routineResult.routine, nextPeople);
+      return;
+    } catch {
+      /* try responsibility */
+    }
+    try {
+      const respResult = await fetchResponsibility(id);
+      hydrateFromRevision("responsibility", respResult.responsibility, nextPeople);
+    } catch {
+      resetWorkBaseline(nextPeople);
+    }
+  }
+
   async function loadGuide(options?: { force?: boolean }) {
     const generation = ++loadGenerationRef.current;
-    const [guide, list, calendar] = await Promise.all([
+    const epochAtStart = sessionEpochRef.current;
+    const [guide, list, calendar, groupList] = await Promise.all([
       fetchGuideProgress(),
       fetchPeople(),
       fetchSchoolCalendar().catch(() => null),
+      fetchGroups().catch(() => ({ groups: [] as GroupPublic[] })),
     ]);
     if (generation !== loadGenerationRef.current) return;
+    if (epochAtStart !== sessionEpochRef.current) return;
+    if (!options?.force && suppressSoftLoadRef.current) {
+      suppressSoftLoadRef.current = false;
+      setProgress(guide);
+      setPeople(list.people);
+      setGroups(groupList.groups);
+      props.onMembershipsChange(list.people);
+      setSavedWorkSummary(await resolveSavedWorkSummary(guide, list.people));
+      return;
+    }
     if (!options?.force && dirtyRef.current) {
       setConflictHint(
         "Someone else updated setup while you were editing. Keep your draft, or discard to refresh.",
       );
+      setProgress(guide);
       return;
     }
     setConflictHint(null);
     setProgress(guide);
     setStep(initialStep(guide));
     setPeople(list.people);
+    setGroups(groupList.groups);
     props.onMembershipsChange(list.people);
     applyLoadedCalendar(calendar?.calendar ?? null);
-    resetWorkBaseline(list.people);
+    await hydrateSavedWork(guide, list.people);
     setPersonName("");
-    setSavedWorkSummary(
-      guide.workDefinitionIds.map((id) => `Saved work ${id.slice(0, 8)}…`),
-    );
+    setSavedWorkSummary(await resolveSavedWorkSummary(guide, list.people));
   }
 
   useEffect(() => {
-    void loadGuide({ force: true }).catch((caught) => setError(errorMessage(caught)));
-    // Dirty retention is enforced inside loadGuide; force:true is only used on mount/token bumps.
+    const force = !mountedOnceRef.current;
+    mountedOnceRef.current = true;
+    void loadGuide({ force }).catch((caught) => setError(errorMessage(caught)));
+    // Soft load on refresh/reconnect/visibility; force only first mount and discard.
   }, [props.guideRefreshToken, props.session.member.id, props.session.installationEpoch]);
 
   const others = useMemo(
@@ -274,8 +617,10 @@ export function GuidedSetupView(props: GuidedSetupProps) {
     [people, props.session.member.id],
   );
   const manager = people.find((p) => p.id === props.session.member.id) ?? null;
+  const activePeople = useMemo(() => people.filter((p) => !p.departed), [people]);
 
   function invalidatePreview() {
+    previewGenerationRef.current += 1;
     setPreviewText(null);
     setPreviewBasis(null);
   }
@@ -288,19 +633,44 @@ export function GuidedSetupView(props: GuidedSetupProps) {
     };
   }
 
+  function requestStep(next: GuideStep) {
+    if (next === step) return;
+    if (dirty) {
+      setConflictHint(
+        "You have unsaved changes on this step. Discard to leave, or keep editing.",
+      );
+      return;
+    }
+    setStep(next);
+  }
+
+  function buildResponsibilityAssignment(): AssignmentSpec {
+    return buildAssignmentSpec(assignmentMode, props.session.householdDate, {
+      accountableMemberId: ownerId,
+      cycleOrder: cycleOrder.length > 0 ? cycleOrder : audienceIds,
+      weeklyMap,
+    });
+  }
+
   async function savePerson(event: FormEvent) {
     event.preventDefault();
     if (!progress) return;
     setBusy(true);
     setError(null);
     try {
-      const result = await guideSavePerson({
-        mutationId: personMutationRef.current,
-        ...guard(),
-        displayName: personName.trim(),
-        classification: personClass,
-      });
+      const pending =
+        pendingPersonRef.current ??
+        ({
+          mutationId: personMutationRef.current,
+          ...guard(),
+          displayName: personName.trim(),
+          classification: personClass,
+        } satisfies PendingPersonCommand);
+      pendingPersonRef.current = pending;
+      const result = await guideSavePerson(pending);
+      pendingPersonRef.current = null;
       personMutationRef.current = newClientId();
+      suppressSoftLoadRef.current = true;
       setProgress(result.progress);
       const list = await fetchPeople();
       setPeople(list.people);
@@ -325,6 +695,7 @@ export function GuidedSetupView(props: GuidedSetupProps) {
         status,
       });
       peopleCompleteMutationRef.current = newClientId();
+      suppressSoftLoadRef.current = true;
       setProgress(result.progress);
       setPersonName("");
       setStep("school");
@@ -367,11 +738,11 @@ export function GuidedSetupView(props: GuidedSetupProps) {
       });
       schoolMutationRef.current = newClientId();
       schoolInnerMutationRef.current = newClientId();
+      suppressSoftLoadRef.current = true;
       setProgress(result.progress);
       if (result.calendar) {
         applyLoadedCalendar(result.calendar);
       } else {
-        // Not now: keep existing calendar facts; only progress advances.
         setSchoolBaseline(schoolSnapshot(yearDrafts, pinnedCalendarVersion));
       }
       setStep("work");
@@ -388,20 +759,62 @@ export function GuidedSetupView(props: GuidedSetupProps) {
 
   async function runPreview() {
     if (!progress || workKind === "skip") return;
+    const generation = ++previewGenerationRef.current;
+    const snapshot = workSnapshot({
+      workKind,
+      workTitle,
+      daypart,
+      weekdays,
+      steps: workSteps,
+      audienceIds,
+      audienceGroupIds,
+      ownerId,
+      assignmentMode,
+      cycleOrder,
+      weeklyMap,
+      scheduledAdditions,
+      editingDefinitionId,
+    });
     setBusy(true);
     setError(null);
     try {
       const calendar = await fetchSchoolCalendar();
+      if (generation !== previewGenerationRef.current) return;
+      const liveSnapshot = workSnapshot({
+        workKind,
+        workTitle,
+        daypart,
+        weekdays,
+        steps: workSteps,
+        audienceIds,
+        audienceGroupIds,
+        ownerId,
+        assignmentMode,
+        cycleOrder,
+        weeklyMap,
+        scheduledAdditions,
+        editingDefinitionId,
+      });
+      if (liveSnapshot !== snapshot) {
+        invalidatePreview();
+        setError("Draft changed while reviewing; review again");
+        return;
+      }
       const lines: string[] = [];
       let reviewedRoutineParticipantIds: string[] | undefined;
       let reviewedResponsibilityOwnerId: string | null | undefined;
+      let reviewedRoutineDays: GuideWorkPreviewBasis["reviewedRoutineDays"];
+      let reviewedResponsibilityDays: GuideWorkPreviewBasis["reviewedResponsibilityDays"];
       const steps = workSteps
         .filter((s) => s.text.trim())
         .map((s) => ({
           text: s.text.trim(),
           obligation: s.obligation,
-          applicability: DEFAULT_APPLICABILITY,
+          applicability:
+            workKind === "responsibility" ? DEFAULT_APPLICABILITY : s.applicability,
         }));
+      const assignment = buildResponsibilityAssignment();
+      const additions = scheduledAdditionsPayload(scheduledAdditions, assignment);
       if (workKind === "routine" || workKind === "both") {
         const routinePreview = await previewDraftRoutine({
           mutationId: newClientId(),
@@ -412,14 +825,21 @@ export function GuidedSetupView(props: GuidedSetupProps) {
           assigneeGroupIds: audienceGroupIds,
           steps,
         });
-        const first = routinePreview.preview.find((d) => d.applicable);
+        if (generation !== previewGenerationRef.current) return;
+        const applicable = routinePreview.preview.filter((d) => d.applicable);
+        const first = applicable[0];
         reviewedRoutineParticipantIds = first?.participantMemberIds ?? [];
+        reviewedRoutineDays = applicable.map((day) => ({
+          householdDate: day.householdDate,
+          participantMemberIds: day.participantMemberIds,
+          stepTexts: steps.map((s) => s.text),
+        }));
         lines.push(
           `Routine “${workTitle.trim()}”: ${first ? `${first.householdDate} · ${first.participantNames.join(", ") || "no participants"} · ${first.stepCount} steps` : routinePreview.nextKnownDate ? `next ${routinePreview.nextKnownDate}` : routinePreview.noKnownReason ?? "no known date"}`,
         );
-        for (const day of routinePreview.preview.filter((d) => d.applicable).slice(0, 7)) {
+        for (const day of applicable.slice(0, 7)) {
           lines.push(
-            `  ${day.householdDate}: ${day.participantNames.join(", ") || "—"} (${day.stepCount} steps)`,
+            `  ${day.householdDate}: ${day.participantNames.join(", ") || "—"} · steps: ${steps.map((s) => s.text).join(" → ") || "—"}`,
           );
         }
       }
@@ -430,34 +850,53 @@ export function GuidedSetupView(props: GuidedSetupProps) {
           daypart: workKind === "both" ? "anytime" : daypart,
           weekdays,
           accountableMemberId: assignmentMode === "fixed" ? ownerId || undefined : undefined,
-          assignment: {
-            mode: assignmentMode,
-            anchorDate: props.session.householdDate,
-            fixedMemberId: assignmentMode === "fixed" ? ownerId || null : null,
-            cycleOrder: assignmentMode === "take_turns" ? audienceIds : undefined,
-            weeklyMap: {},
-          },
-          steps,
-          scheduledAdditions: [],
+          assignment,
+          steps: steps.map((s) => ({ ...s, applicability: DEFAULT_APPLICABILITY })),
+          scheduledAdditions: additions,
         });
-        const first = respPreview.preview.find((d) => d.applicable);
+        if (generation !== previewGenerationRef.current) return;
+        const applicable = respPreview.preview.filter((d) => d.applicable);
+        const first = applicable[0];
         reviewedResponsibilityOwnerId = first?.accountableMemberId ?? null;
+        reviewedResponsibilityDays = applicable.map((day) => ({
+          householdDate: day.householdDate,
+          accountableMemberId: day.accountableMemberId ?? null,
+          stepTexts: steps.map((s) => s.text),
+          scheduledAdditionNames: additions.map((a) => a.name),
+        }));
         lines.push(
           `Responsibility “${workTitle.trim() || "Shared responsibility"}”: ${first ? `${first.householdDate} · ${first.accountableMemberName ?? "Unassigned"}` : respPreview.nextKnownDate ? `next ${respPreview.nextKnownDate}` : respPreview.noKnownReason ?? "no known date"}`,
         );
-        for (const day of respPreview.preview.filter((d) => d.applicable).slice(0, 7)) {
-          lines.push(`  ${day.householdDate}: ${day.accountableMemberName ?? "Unassigned"}`);
+        if (additions.length > 0) {
+          lines.push(
+            `  Scheduled work: ${additions.map((a) => a.name).join(", ")}`,
+          );
         }
+        for (const day of applicable.slice(0, 7)) {
+          lines.push(
+            `  ${day.householdDate}: ${day.accountableMemberName ?? "Unassigned"} · steps: ${steps.map((s) => s.text).join(" → ") || "—"}`,
+          );
+        }
+      }
+      if (generation !== previewGenerationRef.current) return;
+      const groupVersions: Record<string, number> = {};
+      for (const groupId of audienceGroupIds) {
+        const group = groups.find((g) => g.id === groupId);
+        if (group) groupVersions[groupId] = group.version;
       }
       setPreviewText(lines.join("\n"));
       setPreviewBasis({
         householdDate: props.session.householdDate,
         calendarVersion: calendar.calendar.version,
         audienceGroupIds: [...audienceGroupIds],
+        audienceGroupVersions: groupVersions,
         reviewedRoutineParticipantIds,
         reviewedResponsibilityOwnerId,
+        reviewedRoutineDays,
+        reviewedResponsibilityDays,
       });
     } catch (caught) {
+      if (generation !== previewGenerationRef.current) return;
       setError(errorMessage(caught));
       invalidatePreview();
     } finally {
@@ -479,8 +918,78 @@ export function GuidedSetupView(props: GuidedSetupProps) {
         .map((s) => ({
           text: s.text.trim(),
           obligation: s.obligation,
-          applicability: DEFAULT_APPLICABILITY,
+          applicability:
+            workKind === "responsibility" ? DEFAULT_APPLICABILITY : s.applicability,
         }));
+      const assignment = buildResponsibilityAssignment();
+      const additions = scheduledAdditionsPayload(scheduledAdditions, assignment);
+
+      if (
+        status === "completed" &&
+        editingDefinitionId &&
+        editingKind &&
+        editingVersion != null &&
+        !createAnother
+      ) {
+        if (editingKind === "routine") {
+          const result = await createRevision(editingDefinitionId, {
+            mutationId: newClientId(),
+            title: workTitle.trim(),
+            daypart,
+            weekdays,
+            assigneeMemberIds: audienceIds,
+            assigneeGroupIds: audienceGroupIds,
+            steps,
+            expectedVersion: editingVersion,
+            mode: "current",
+          });
+          setEditingVersion(result.routine.version);
+          setSavedWorkSummary(
+            await resolveSavedWorkSummary(
+              { ...progress, workDefinitionIds: progress.workDefinitionIds },
+              people,
+            ),
+          );
+        } else {
+          const result = await createResponsibilityRevision(editingDefinitionId, {
+            mutationId: newClientId(),
+            title: workTitle.trim() || "Shared responsibility",
+            daypart,
+            weekdays,
+            accountableMemberId: assignmentMode === "fixed" ? ownerId || undefined : undefined,
+            assignment,
+            steps: steps.map((s) => ({ ...s, applicability: DEFAULT_APPLICABILITY })),
+            scheduledAdditions: additions,
+            expectedVersion: editingVersion,
+            mode: "current",
+          });
+          setEditingVersion(result.responsibility.version);
+          setSavedWorkSummary(
+            await resolveSavedWorkSummary(progress, people),
+          );
+        }
+        invalidatePreview();
+        setWorkBaseline(
+          workSnapshot({
+            workKind,
+            workTitle,
+            daypart,
+            weekdays,
+            steps: workSteps,
+            audienceIds,
+            audienceGroupIds,
+            ownerId,
+            assignmentMode,
+            cycleOrder,
+            weeklyMap,
+            scheduledAdditions,
+            editingDefinitionId,
+          }),
+        );
+        setStep("recap");
+        return;
+      }
+
       const routine =
         status === "completed" && (workKind === "routine" || workKind === "both")
           ? {
@@ -501,39 +1010,52 @@ export function GuidedSetupView(props: GuidedSetupProps) {
               daypart: workKind === "both" ? ("anytime" as Daypart) : daypart,
               weekdays,
               accountableMemberId: assignmentMode === "fixed" ? ownerId || undefined : undefined,
-              assignment: {
-                mode: assignmentMode,
-                anchorDate: props.session.householdDate,
-                fixedMemberId: assignmentMode === "fixed" ? ownerId || null : null,
-                cycleOrder: assignmentMode === "take_turns" ? audienceIds : undefined,
-                weeklyMap: {},
-              },
-              steps,
-              scheduledAdditions: [],
+              assignment,
+              steps: steps.map((s) => ({ ...s, applicability: DEFAULT_APPLICABILITY })),
+              scheduledAdditions: additions,
             }
           : undefined;
-      const result = await guideSaveWork({
-        mutationId: workMutationRef.current,
-        ...guard(),
-        status: status === "skipped" || workKind === "skip" ? "skipped" : "completed",
-        routine,
-        responsibility,
-        previewHouseholdDate: previewBasis?.householdDate,
-        previewBasis: previewBasis ?? undefined,
-      });
+
+      const pending =
+        pendingWorkRef.current ??
+        ({
+          mutationId: workMutationRef.current,
+          ...guard(),
+          status: status === "skipped" || workKind === "skip" ? "skipped" : "completed",
+          routine,
+          responsibility,
+          previewHouseholdDate: previewBasis?.householdDate,
+          previewBasis: previewBasis ?? undefined,
+        } satisfies PendingWorkCommand);
+      pendingWorkRef.current = pending;
+      const result = await guideSaveWork(pending);
+      pendingWorkRef.current = null;
       workMutationRef.current = newClientId();
+      suppressSoftLoadRef.current = true;
       setProgress(result.progress);
-      const summary: string[] = [];
-      if (result.routine) {
-        const title = result.routine.revisions[0]?.title ?? (workTitle.trim() || "Routine");
-        summary.push(`Routine “${title}”`);
-      }
-      if (result.responsibility) {
-        const title =
-          result.responsibility.revisions[0]?.title ?? (workTitle.trim() || "Responsibility");
-        summary.push(`Responsibility “${title}”`);
+      const summary = await resolveSavedWorkSummary(result.progress, people);
+      if (summary.length === 0) {
+        if (result.routine) {
+          const title = result.routine.revisions[0]?.title ?? (workTitle.trim() || "Routine");
+          summary.push(`Routine “${title}”`);
+        }
+        if (result.responsibility) {
+          const title =
+            result.responsibility.revisions[0]?.title ??
+            (workTitle.trim() || "Responsibility");
+          summary.push(`Responsibility “${title}”`);
+        }
       }
       setSavedWorkSummary(summary);
+      if (result.routine) {
+        setEditingDefinitionId(result.routine.id);
+        setEditingKind("routine");
+        setEditingVersion(result.routine.version);
+      } else if (result.responsibility) {
+        setEditingDefinitionId(result.responsibility.id);
+        setEditingKind("responsibility");
+        setEditingVersion(result.responsibility.version);
+      }
       invalidatePreview();
       setStep("recap");
     } catch (caught) {
@@ -564,7 +1086,6 @@ export function GuidedSetupView(props: GuidedSetupProps) {
     }
   }
 
-  /** Save and finish later: leave at the saved boundary without marking finished. */
   function saveAndFinishLater() {
     if (dirty) {
       setError("Keep editing or discard your draft before leaving");
@@ -593,6 +1114,10 @@ export function GuidedSetupView(props: GuidedSetupProps) {
 
   async function discardDraftAndRefresh() {
     dirtyRef.current = false;
+    pendingPersonRef.current = null;
+    pendingWorkRef.current = null;
+    personMutationRef.current = newClientId();
+    workMutationRef.current = newClientId();
     setPersonName("");
     setError(null);
     try {
@@ -600,6 +1125,17 @@ export function GuidedSetupView(props: GuidedSetupProps) {
     } catch (caught) {
       setError(errorMessage(caught));
     }
+  }
+
+  function beginCreateAnother() {
+    pendingWorkRef.current = null;
+    workMutationRef.current = newClientId();
+    setCreateAnother(true);
+    setEditingDefinitionId(null);
+    setEditingKind(null);
+    setEditingVersion(null);
+    resetWorkBaseline(people, false);
+    setStep("work");
   }
 
   if (!progress) {
@@ -640,7 +1176,7 @@ export function GuidedSetupView(props: GuidedSetupProps) {
               className={step === item ? "guide-rail-active is-current" : undefined}
               data-testid={`guide-rail-${item}`}
               data-step={item}
-              onClick={() => setStep(item)}
+              onClick={() => requestStep(item)}
             >
               {item === "people"
                 ? "Your people"
@@ -867,7 +1403,17 @@ export function GuidedSetupView(props: GuidedSetupProps) {
           <p className="meta">
             Routine: each selected person gets a checklist. Responsibility: one owner per
             applicable day.
+            {editingDefinitionId && !createAnother
+              ? " Editing the saved definition (current plan)."
+              : null}
           </p>
+          {progress.workDefinitionIds.length > 0 && !createAnother ? (
+            <div className="button-row">
+              <button type="button" data-testid="guide-create-another" onClick={beginCreateAnother}>
+                Create different work
+              </button>
+            </div>
+          ) : null}
           <label>
             Kind
             <select
@@ -877,11 +1423,16 @@ export function GuidedSetupView(props: GuidedSetupProps) {
                 invalidatePreview();
               }}
               data-testid="guide-work-kind"
+              disabled={Boolean(editingDefinitionId && !createAnother)}
             >
               <option value="routine">Routine</option>
               <option value="responsibility">Responsibility</option>
-              <option value="both">Both</option>
-              <option value="skip">Finish setup for now</option>
+              {!editingDefinitionId || createAnother ? (
+                <>
+                  <option value="both">Both</option>
+                  <option value="skip">Finish setup for now</option>
+                </>
+              ) : null}
             </select>
           </label>
           {workKind !== "skip" ? (
@@ -939,30 +1490,128 @@ export function GuidedSetupView(props: GuidedSetupProps) {
               <fieldset>
                 <legend>Ordered steps</legend>
                 {workSteps.map((stepRow, index) => (
-                  <label key={`step-${index}`}>
-                    Step {index + 1}
-                    <input
-                      value={stepRow.text}
-                      onChange={(event) => {
-                        setWorkSteps((current) =>
-                          current.map((item, itemIndex) =>
-                            itemIndex === index
-                              ? { ...item, text: event.target.value }
-                              : item,
-                          ),
-                        );
-                        invalidatePreview();
-                      }}
-                      data-testid={index === 0 ? "guide-work-step" : undefined}
-                    />
-                  </label>
+                  <div key={`step-${index}`} className="guide-step-row">
+                    <label>
+                      Step {index + 1}
+                      <input
+                        value={stepRow.text}
+                        onChange={(event) => {
+                          setWorkSteps((current) =>
+                            current.map((item, itemIndex) =>
+                              itemIndex === index
+                                ? { ...item, text: event.target.value }
+                                : item,
+                            ),
+                          );
+                          invalidatePreview();
+                        }}
+                        data-testid={index === 0 ? "guide-work-step" : undefined}
+                      />
+                    </label>
+                    <label>
+                      Obligation
+                      <select
+                        value={stepRow.obligation}
+                        onChange={(event) => {
+                          setWorkSteps((current) =>
+                            current.map((item, itemIndex) =>
+                              itemIndex === index
+                                ? {
+                                    ...item,
+                                    obligation: event.target.value as "required" | "optional",
+                                  }
+                                : item,
+                            ),
+                          );
+                          invalidatePreview();
+                        }}
+                        data-testid={index === 0 ? "guide-work-step-obligation" : undefined}
+                      >
+                        <option value="required">Required</option>
+                        <option value="optional">Optional</option>
+                      </select>
+                    </label>
+                    {workKind === "routine" || workKind === "both" ? (
+                      <label>
+                        Applicability
+                        <select
+                          value={stepRow.applicability.kind}
+                          onChange={(event) => {
+                            const kind = event.target.value as ApplicabilityRule["kind"];
+                            setWorkSteps((current) =>
+                              current.map((item, itemIndex) =>
+                                itemIndex === index
+                                  ? { ...item, applicability: { kind } as ApplicabilityRule }
+                                  : item,
+                              ),
+                            );
+                            invalidatePreview();
+                          }}
+                        >
+                          <option value="every_time">Every time</option>
+                          <option value="school_days">School days</option>
+                          <option value="no_school_days">No school days</option>
+                        </select>
+                      </label>
+                    ) : null}
+                    <div className="button-row">
+                      <button
+                        type="button"
+                        disabled={index === 0}
+                        onClick={() => {
+                          setWorkSteps((current) => {
+                            if (index === 0) return current;
+                            const next = [...current];
+                            const tmp = next[index - 1]!;
+                            next[index - 1] = next[index]!;
+                            next[index] = tmp;
+                            return next;
+                          });
+                          invalidatePreview();
+                        }}
+                      >
+                        Up
+                      </button>
+                      <button
+                        type="button"
+                        disabled={index === workSteps.length - 1}
+                        onClick={() => {
+                          setWorkSteps((current) => {
+                            if (index >= current.length - 1) return current;
+                            const next = [...current];
+                            const tmp = next[index + 1]!;
+                            next[index + 1] = next[index]!;
+                            next[index] = tmp;
+                            return next;
+                          });
+                          invalidatePreview();
+                        }}
+                      >
+                        Down
+                      </button>
+                      <button
+                        type="button"
+                        disabled={workSteps.length <= 1}
+                        onClick={() => {
+                          setWorkSteps((current) => current.filter((_, i) => i !== index));
+                          invalidatePreview();
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
                 ))}
                 <button
                   type="button"
                   onClick={() => {
                     setWorkSteps((current) => [
                       ...current,
-                      { text: "New step", obligation: "required" },
+                      {
+                        text: "New step",
+                        obligation: "required",
+                        applicability: DEFAULT_APPLICABILITY,
+                      },
                     ]);
                     invalidatePreview();
                   }}
@@ -971,11 +1620,10 @@ export function GuidedSetupView(props: GuidedSetupProps) {
                 </button>
               </fieldset>
               {(workKind === "routine" || workKind === "both") && (
-                <fieldset>
-                  <legend>Routine audience</legend>
-                  {people
-                    .filter((person) => !person.departed)
-                    .map((person) => (
+                <>
+                  <fieldset>
+                    <legend>Routine audience</legend>
+                    {activePeople.map((person) => (
                       <label key={person.id}>
                         <input
                           type="checkbox"
@@ -992,7 +1640,30 @@ export function GuidedSetupView(props: GuidedSetupProps) {
                         {person.displayName}
                       </label>
                     ))}
-                </fieldset>
+                  </fieldset>
+                  {groups.length > 0 ? (
+                    <fieldset data-testid="guide-audience-groups">
+                      <legend>Audience groups</legend>
+                      {groups.map((group) => (
+                        <label key={group.id}>
+                          <input
+                            type="checkbox"
+                            checked={audienceGroupIds.includes(group.id)}
+                            onChange={(event) => {
+                              setAudienceGroupIds((current) =>
+                                event.target.checked
+                                  ? [...current, group.id]
+                                  : current.filter((id) => id !== group.id),
+                              );
+                              invalidatePreview();
+                            }}
+                          />
+                          {group.name}
+                        </label>
+                      ))}
+                    </fieldset>
+                  ) : null}
+                </>
               )}
               {(workKind === "responsibility" || workKind === "both") && (
                 <>
@@ -1023,16 +1694,131 @@ export function GuidedSetupView(props: GuidedSetupProps) {
                         data-testid="guide-work-owner"
                       >
                         <option value="">Unassigned</option>
-                        {people
-                          .filter((person) => !person.departed)
-                          .map((person) => (
-                            <option key={person.id} value={person.id}>
-                              {person.displayName}
-                            </option>
-                          ))}
+                        {activePeople.map((person) => (
+                          <option key={person.id} value={person.id}>
+                            {person.displayName}
+                          </option>
+                        ))}
                       </select>
                     </label>
                   ) : null}
+                  {assignmentMode === "take_turns" ? (
+                    <fieldset data-testid="guide-cycle-order">
+                      <legend>Take-turns order</legend>
+                      {activePeople.map((person) => (
+                        <label key={person.id}>
+                          <input
+                            type="checkbox"
+                            checked={cycleOrder.includes(person.id)}
+                            onChange={(event) => {
+                              setCycleOrder((current) =>
+                                event.target.checked
+                                  ? [...current, person.id]
+                                  : current.filter((id) => id !== person.id),
+                              );
+                              invalidatePreview();
+                            }}
+                          />
+                          {person.displayName}
+                        </label>
+                      ))}
+                    </fieldset>
+                  ) : null}
+                  {assignmentMode === "weekly" ? (
+                    <fieldset data-testid="guide-weekly-map">
+                      <legend>Weekly ownership</legend>
+                      {WEEKDAYS.map((day) => (
+                        <label key={day.value}>
+                          {day.label}
+                          <select
+                            value={weeklyMap[day.value] ?? ""}
+                            onChange={(event) => {
+                              setWeeklyMap((current) => ({
+                                ...current,
+                                [day.value]: event.target.value,
+                              }));
+                              invalidatePreview();
+                            }}
+                          >
+                            <option value="">Unassigned</option>
+                            {activePeople.map((person) => (
+                              <option key={person.id} value={person.id}>
+                                {person.displayName}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ))}
+                    </fieldset>
+                  ) : null}
+                  <fieldset data-testid="guide-scheduled-additions">
+                    <legend>Scheduled additions</legend>
+                    {scheduledAdditions.map((addition, index) => (
+                      <div key={addition.clientKey} className="stack-form">
+                        <label>
+                          Name
+                          <input
+                            value={addition.name}
+                            onChange={(event) => {
+                              setScheduledAdditions((current) =>
+                                current.map((item, i) =>
+                                  i === index ? { ...item, name: event.target.value } : item,
+                                ),
+                              );
+                              invalidatePreview();
+                            }}
+                          />
+                        </label>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={addition.inheritAssignment}
+                            onChange={(event) => {
+                              setScheduledAdditions((current) =>
+                                current.map((item, i) =>
+                                  i === index
+                                    ? { ...item, inheritAssignment: event.target.checked }
+                                    : item,
+                                ),
+                              );
+                              invalidatePreview();
+                            }}
+                          />
+                          Inherit assignment
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setScheduledAdditions((current) =>
+                              current.filter((_, i) => i !== index),
+                            );
+                            invalidatePreview();
+                          }}
+                        >
+                          Remove addition
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      data-testid="guide-add-scheduled"
+                      onClick={() => {
+                        setScheduledAdditions((current) => [
+                          ...current,
+                          {
+                            clientKey: newClientId(),
+                            name: "Deep clean",
+                            weekdays: [6],
+                            inheritAssignment: true,
+                            steps: [{ text: "Extra wipe", obligation: "required" }],
+                          },
+                        ]);
+                        invalidatePreview();
+                      }}
+                    >
+                      Add scheduled work
+                    </button>
+                  </fieldset>
                 </>
               )}
               {previewText ? (
@@ -1056,7 +1842,7 @@ export function GuidedSetupView(props: GuidedSetupProps) {
                   data-testid="guide-work-save"
                   onClick={() => void saveWork("completed")}
                 >
-                  Save work
+                  {editingDefinitionId && !createAnother ? "Save changes" : "Save work"}
                 </button>
               </div>
             </div>
@@ -1095,6 +1881,17 @@ export function GuidedSetupView(props: GuidedSetupProps) {
           ) : (
             <p className="meta">No first work saved yet — you can return from Settings.</p>
           )}
+          {progress.workDefinitionIds.length > 0 ? (
+            <button
+              type="button"
+              data-testid="guide-edit-saved-work"
+              onClick={() => {
+                void hydrateSavedWork(progress, people).then(() => setStep("work"));
+              }}
+            >
+              Edit saved work
+            </button>
+          ) : null}
           <div className="button-row">
             <button
               type="button"

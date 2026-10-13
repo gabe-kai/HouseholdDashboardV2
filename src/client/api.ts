@@ -574,8 +574,20 @@ export type GuideWorkPreviewBasis = {
   householdDate: string;
   calendarVersion: number;
   audienceGroupIds: string[];
+  audienceGroupVersions?: Record<string, number>;
   reviewedRoutineParticipantIds?: string[];
   reviewedResponsibilityOwnerId?: string | null;
+  reviewedRoutineDays?: Array<{
+    householdDate: string;
+    participantMemberIds: string[];
+    stepTexts?: string[];
+  }>;
+  reviewedResponsibilityDays?: Array<{
+    householdDate: string;
+    accountableMemberId: string | null;
+    stepTexts?: string[];
+    scheduledAdditionNames?: string[];
+  }>;
 };
 
 export async function guideSavePerson(

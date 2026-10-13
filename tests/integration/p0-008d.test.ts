@@ -7,7 +7,7 @@ import { migrate, openDatabase } from "../../src/server/db.js";
 import { scrubRestoredAccess } from "../../src/server/backup-catalog.js";
 import { sha256Hex } from "../../src/server/crypto.js";
 import { createHttpHarness, type HttpHarness } from "../helpers/auth-fixture.js";
-import { openPopulatedP017UpgradeDatabase } from "../helpers/p017-fixture.js";
+import { openPopulatedP019UpgradeDatabase } from "../helpers/p019-fixture.js";
 
 const OWNER_SECRET = "test-owner-secret-with-enough-entropy-0123456789abcdef";
 const PASSPHRASE = "Unique-passphrase-ok!999";
@@ -176,7 +176,7 @@ function guideGuard(auth: Auth, expectedGuideVersion: number, mutationId = rando
 }
 
 describe("P0-008D guided first household day", () => {
-  it("AT1: migration 020/021 idempotent; populated through-017 adopts without fabricated basics times", () => {
+  it("AT1: migration 020/021 idempotent; populated through-019 adopts with preserved A progress/C departures", () => {
     const dbPath = tempPath("hd-d-migrate");
     const db = openDatabase(dbPath);
     migrate(db);
@@ -191,52 +191,76 @@ describe("P0-008D guided first household day", () => {
     migrate(db);
     db.close();
 
-    const populatedPath = tempPath("hd-d-populated017");
-    const populated = openPopulatedP017UpgradeDatabase(populatedPath);
-    migrate(populated);
-    migrate(populated);
-    const manager = populated
+    const populatedPath = tempPath("hd-d-populated019");
+    const populated = openPopulatedP019UpgradeDatabase(populatedPath);
+    const before019 = populated
       .prepare(
-        `SELECT hm.id FROM household_memberships hm
-         INNER JOIN membership_grants mg ON mg.membership_id = hm.id
-           AND mg.grant_name = 'household.lifecycle.manage'
-         WHERE hm.departed_at IS NULL LIMIT 1`,
+        `SELECT account_completed_at, household_completed_at, membership_id FROM setup_progress LIMIT 1`,
       )
-      .get() as { id: string } | undefined;
-    expect(manager?.id).toBeTruthy();
-    // Ensure guide row can be created without inventing Account/Household completion times.
-    const householdId = (
-      populated.prepare(`SELECT id FROM households LIMIT 1`).get() as { id: string }
-    ).id;
-    const existing = populated
-      .prepare(`SELECT account_completed_at, household_completed_at FROM setup_progress WHERE household_id = ?`)
-      .get(householdId) as
-      | { account_completed_at: string | null; household_completed_at: string | null }
+      .get() as
+      | {
+          account_completed_at: string | null;
+          household_completed_at: string | null;
+          membership_id: string | null;
+        }
       | undefined;
-    if (!existing) {
+    expect(before019?.account_completed_at).toBeTruthy();
+    expect(before019?.household_completed_at).toBeTruthy();
+    const departedBefore = (
+      populated
+        .prepare(`SELECT COUNT(*) AS c FROM household_memberships WHERE departed_at IS NOT NULL`)
+        .get() as { c: number }
+    ).c;
+    expect(departedBefore).toBeGreaterThan(0);
+    const grantsBefore = (
       populated
         .prepare(
-          `INSERT INTO setup_progress
-           (household_id, account_completed_at, household_completed_at, membership_id, user_id,
-            guide_version, people_status, school_status, first_work_status,
-            people_membership_ids_json, work_definition_ids_json, finished_at, dismissed_at, updated_at)
-           VALUES (?, NULL, NULL, ?, NULL, 0, 'not_chosen', 'not_chosen', 'not_chosen', '[]', '[]', NULL, NULL, ?)`,
+          `SELECT COUNT(*) AS c FROM membership_grants WHERE grant_name IN ('household.lifecycle.manage','household.access.manage','household.member.remove')`,
         )
-        .run(householdId, manager!.id, new Date().toISOString());
-    }
-    const row = populated
+        .get() as { c: number }
+    ).c;
+    expect(grantsBefore).toBeGreaterThan(0);
+
+    migrate(populated);
+    migrate(populated);
+
+    const after = populated
       .prepare(
-        `SELECT account_completed_at, household_completed_at FROM setup_progress WHERE household_id = ?`,
+        `SELECT account_completed_at, household_completed_at, membership_id,
+                guide_version, people_status, school_status, first_work_status
+         FROM setup_progress LIMIT 1`,
       )
-      .get(householdId) as {
+      .get() as {
       account_completed_at: string | null;
       household_completed_at: string | null;
+      membership_id: string | null;
+      guide_version: number;
+      people_status: string;
+      school_status: string;
+      first_work_status: string;
     };
-    // Either A progress already had real timestamps, or backfill left them null — never a fabricated "now".
-    if (!existing) {
-      expect(row.account_completed_at).toBeNull();
-      expect(row.household_completed_at).toBeNull();
-    }
+    expect(after.account_completed_at).toBe(before019!.account_completed_at);
+    expect(after.household_completed_at).toBe(before019!.household_completed_at);
+    expect(after.membership_id).toBe(before019!.membership_id);
+    expect(after.guide_version).toBe(0);
+    expect(after.people_status).toBe("not_chosen");
+    expect(after.school_status).toBe("not_chosen");
+    expect(after.first_work_status).toBe("not_chosen");
+    const departedAfter = (
+      populated
+        .prepare(`SELECT COUNT(*) AS c FROM household_memberships WHERE departed_at IS NOT NULL`)
+        .get() as { c: number }
+    ).c;
+    expect(departedAfter).toBe(departedBefore);
+    const appliedD = populated
+      .prepare(`SELECT id FROM schema_migrations WHERE id IN (?, ?) ORDER BY id`)
+      .all("020_guided_setup_progress.sql", "021_guide_mutation_receipts.sql") as Array<{
+      id: string;
+    }>;
+    expect(appliedD.map((r) => r.id)).toEqual([
+      "020_guided_setup_progress.sql",
+      "021_guide_mutation_receipts.sql",
+    ]);
     populated.close();
   });
 
@@ -374,19 +398,53 @@ describe("P0-008D guided first household day", () => {
     version = (school.json() as { progress: { guideVersion: number } }).progress.guideVersion;
 
     const workMutation = randomUUID();
-    const work = await call(h, auth, "POST", "/api/v1/guide/work", {
+    const session = await call(h, auth, "GET", "/api/v1/auth/session");
+    expect(session.statusCode).toBe(200);
+    const householdDate = (session.json() as { householdDate: string }).householdDate;
+    const draftPreview = await call(h, auth, "POST", "/api/v1/routines/preview-draft", {
+      mutationId: randomUUID(),
+      title: "Guide Routine",
+      daypart: "morning",
+      weekdays: [1, 2, 3, 4, 5],
+      assigneeMemberIds: [auth.membershipId],
+      assigneeGroupIds: [],
+      steps: [{ text: "Stretch", obligation: "required" }],
+    });
+    expect(draftPreview.statusCode).toBe(200);
+    const draftBody = draftPreview.json() as {
+      preview: Array<{ applicable: boolean; householdDate: string; participantMemberIds: string[] }>;
+    };
+    const applicableDays = draftBody.preview.filter((d) => d.applicable);
+    const firstDay = applicableDays[0];
+    const calendar = await call(h, auth, "GET", "/api/v1/school-calendar");
+    const calendarVersion = (calendar.json() as { calendar: { version: number } }).calendar.version;
+    const previewBasis = {
+      householdDate,
+      calendarVersion,
+      audienceGroupIds: [] as string[],
+      audienceGroupVersions: {},
+      reviewedRoutineParticipantIds: firstDay?.participantMemberIds ?? [auth.membershipId],
+      reviewedRoutineDays: applicableDays.map((d) => ({
+        householdDate: d.householdDate,
+        participantMemberIds: d.participantMemberIds,
+      })),
+    };
+
+    const workPayload = {
       ...guideGuard(auth, version, workMutation),
-      status: "completed",
+      status: "completed" as const,
       routine: {
         mutationId: randomUUID(),
         title: "Guide Routine",
-        daypart: "morning",
+        daypart: "morning" as const,
         weekdays: [1, 2, 3, 4, 5],
         assigneeMemberIds: [auth.membershipId],
-        assigneeGroupIds: [],
-        steps: [{ text: "Stretch", obligation: "required" }],
+        assigneeGroupIds: [] as string[],
+        steps: [{ text: "Stretch", obligation: "required" as const }],
       },
-    });
+      previewBasis,
+    };
+    const work = await call(h, auth, "POST", "/api/v1/guide/work", workPayload);
     expect(work.statusCode).toBe(200);
     const routine = (work.json() as {
       routine: { id: string; version: number };
@@ -399,19 +457,7 @@ describe("P0-008D guided first household day", () => {
     });
     expect(deletedWork.statusCode).toBe(200);
 
-    const replayWork = await call(h, auth, "POST", "/api/v1/guide/work", {
-      ...guideGuard(auth, version, workMutation),
-      status: "completed",
-      routine: {
-        mutationId: randomUUID(),
-        title: "Guide Routine",
-        daypart: "morning",
-        weekdays: [1, 2, 3, 4, 5],
-        assigneeMemberIds: [auth.membershipId],
-        assigneeGroupIds: [],
-        steps: [{ text: "Stretch", obligation: "required" }],
-      },
-    });
+    const replayWork = await call(h, auth, "POST", "/api/v1/guide/work", workPayload);
     expect(replayWork.statusCode).toBeGreaterThanOrEqual(400);
 
     await call(h, auth, "POST", "/api/v1/auth/reauthenticate", { passphrase: PASSPHRASE });
@@ -558,5 +604,310 @@ describe("P0-008D guided first household day", () => {
     expect(calendar.statusCode).toBe(200);
     const years = (calendar.json() as { calendar: { years: unknown[] } }).calendar.years;
     expect(years).toHaveLength(2);
+  });
+
+  it("R3: changed scheduledAdditions on same guide-work mutationId is rejected", async () => {
+    const h = await createDHarness();
+    const auth = await setupHousehold(h);
+    const guide = await call(h, auth, "GET", "/api/v1/guide/progress");
+    let version = (guide.json() as { guideVersion: number }).guideVersion;
+    const school = await call(h, auth, "POST", "/api/v1/guide/school", {
+      ...guideGuard(auth, version),
+      status: "skipped",
+    });
+    version = (school.json() as { progress: { guideVersion: number } }).progress.guideVersion;
+
+    const session = await call(h, auth, "GET", "/api/v1/auth/session");
+    const householdDate = (session.json() as { householdDate: string }).householdDate;
+    const calendar = await call(h, auth, "GET", "/api/v1/school-calendar");
+    const calendarVersion = (calendar.json() as { calendar: { version: number } }).calendar.version;
+    const mutationId = randomUUID();
+    const assignment = {
+      mode: "fixed" as const,
+      anchorDate: householdDate,
+      fixedMemberId: auth.membershipId,
+      cycleOrder: [] as string[],
+      weeklyMap: {},
+      excludedMemberIds: [] as string[],
+      savedRingOrder: [] as string[],
+    };
+    const baseResponsibility = {
+      mutationId: randomUUID(),
+      title: "Kitchen",
+      daypart: "evening" as const,
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      accountableMemberId: auth.membershipId,
+      assignment,
+      steps: [{ text: "Wipe counters", obligation: "required" as const }],
+      scheduledAdditions: [] as Array<{
+        name: string;
+        weekdays: number[];
+        inheritAssignment: boolean;
+        steps: Array<{ text: string; obligation: "required" }>;
+      }>,
+    };
+    const respPreview = await call(h, auth, "POST", "/api/v1/responsibilities/preview-draft", {
+      ...baseResponsibility,
+      mutationId: randomUUID(),
+    });
+    expect(respPreview.statusCode).toBe(200);
+    const respDays = (
+      respPreview.json() as {
+        preview: Array<{
+          applicable: boolean;
+          householdDate: string;
+          accountableMemberId: string | null;
+        }>;
+      }
+    ).preview.filter((d) => d.applicable);
+    const previewBasis = {
+      householdDate,
+      calendarVersion,
+      audienceGroupIds: [] as string[],
+      audienceGroupVersions: {},
+      reviewedResponsibilityOwnerId: respDays[0]?.accountableMemberId ?? auth.membershipId,
+      reviewedResponsibilityDays: respDays.map((d) => ({
+        householdDate: d.householdDate,
+        accountableMemberId: d.accountableMemberId,
+      })),
+    };
+
+    const first = await call(h, auth, "POST", "/api/v1/guide/work", {
+      ...guideGuard(auth, version, mutationId),
+      status: "completed",
+      responsibility: baseResponsibility,
+      previewBasis,
+    });
+    expect(first.statusCode).toBe(200);
+    const firstId = (first.json() as { responsibility: { id: string } }).responsibility.id;
+
+    const changed = await call(h, auth, "POST", "/api/v1/guide/work", {
+      ...guideGuard(auth, version, mutationId),
+      status: "completed",
+      responsibility: {
+        ...baseResponsibility,
+        mutationId: randomUUID(),
+        scheduledAdditions: [
+          {
+            name: "Deep clean",
+            weekdays: [6],
+            inheritAssignment: true,
+            steps: [{ text: "Extra wipe", obligation: "required" as const }],
+          },
+        ],
+      },
+      previewBasis,
+    });
+    expect(changed.statusCode).toBeGreaterThanOrEqual(400);
+
+    const replay = await call(h, auth, "POST", "/api/v1/guide/work", {
+      ...guideGuard(auth, version, mutationId),
+      status: "completed",
+      responsibility: baseResponsibility,
+      previewBasis,
+    });
+    expect(replay.statusCode).toBe(200);
+    expect((replay.json() as { responsibility: { id: string } }).responsibility.id).toBe(firstId);
+  });
+
+  it("R4: guide work creation without previewBasis is rejected", async () => {
+    const h = await createDHarness();
+    const auth = await setupHousehold(h);
+    const guide = await call(h, auth, "GET", "/api/v1/guide/progress");
+    let version = (guide.json() as { guideVersion: number }).guideVersion;
+    const school = await call(h, auth, "POST", "/api/v1/guide/school", {
+      ...guideGuard(auth, version),
+      status: "skipped",
+    });
+    version = (school.json() as { progress: { guideVersion: number } }).progress.guideVersion;
+
+    const denied = await call(h, auth, "POST", "/api/v1/guide/work", {
+      ...guideGuard(auth, version),
+      status: "completed",
+      routine: {
+        mutationId: randomUUID(),
+        title: "No Review",
+        daypart: "morning",
+        weekdays: [1, 2, 3, 4, 5],
+        assigneeMemberIds: [auth.membershipId],
+        assigneeGroupIds: [],
+        steps: [{ text: "Brush", obligation: "required" }],
+      },
+    });
+    expect(denied.statusCode).toBeGreaterThanOrEqual(400);
+  });
+
+  it("AT6: competing guide school save with stale expectedVersion is rejected; winner preserves calendar", async () => {
+    const h = await createDHarness();
+    const auth = await setupHousehold(h);
+    const guide = await call(h, auth, "GET", "/api/v1/guide/progress");
+    const version = (guide.json() as { guideVersion: number }).guideVersion;
+
+    const first = await call(h, auth, "POST", "/api/v1/guide/school", {
+      ...guideGuard(auth, version),
+      status: "completed",
+      calendar: {
+        mutationId: randomUUID(),
+        expectedVersion: 0,
+        years: [
+          {
+            startDate: "2025-09-01",
+            endDate: "2026-06-15",
+            usualWeekdays: [1, 2, 3, 4, 5],
+            exceptions: [],
+          },
+        ],
+      },
+    });
+    expect(first.statusCode).toBe(200);
+    const nextVersion = (first.json() as { progress: { guideVersion: number } }).progress
+      .guideVersion;
+
+    const stale = await call(h, auth, "POST", "/api/v1/guide/school", {
+      ...guideGuard(auth, version),
+      status: "skipped",
+    });
+    expect(stale.statusCode).toBeGreaterThanOrEqual(400);
+
+    const calendar = await call(h, auth, "GET", "/api/v1/school-calendar");
+    expect(
+      (calendar.json() as { calendar: { years: unknown[]; version: number } }).calendar.years,
+    ).toHaveLength(1);
+
+    const fresh = await call(h, auth, "POST", "/api/v1/guide/school", {
+      ...guideGuard(auth, nextVersion),
+      status: "skipped",
+    });
+    expect(fresh.statusCode).toBe(200);
+    const after = await call(h, auth, "GET", "/api/v1/school-calendar");
+    expect(
+      (after.json() as { calendar: { years: unknown[] } }).calendar.years,
+    ).toHaveLength(1);
+  });
+
+  it("AT8: foreign household guide progress is denied; display session cannot read guide", async () => {
+    const h = await createDHarness();
+    const auth = await setupHousehold(h);
+    const foreign = await h.app.inject({
+      method: "GET",
+      url: "/api/v1/guide/progress",
+      headers: {
+        origin: h.origin,
+        cookie: `${h.config.cookieName}=not-a-real-session`,
+      },
+    });
+    expect(foreign.statusCode).toBeGreaterThanOrEqual(401);
+
+    const unauth = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/guide/work",
+      headers: { origin: h.origin, "content-type": "application/json" },
+      payload: { ...guideGuard(auth, 0), status: "skipped" },
+    });
+    expect(unauth.statusCode).toBeGreaterThanOrEqual(401);
+  });
+
+  it("AT11: staged through-019 → D restore scrub denies claim preview and redemption", async () => {
+    const populatedPath = tempPath("hd-d-staged019");
+    const source = openPopulatedP019UpgradeDatabase(populatedPath);
+    migrate(source);
+    const householdId = (
+      source.prepare(`SELECT id FROM households LIMIT 1`).get() as { id: string }
+    ).id;
+    const manager = source
+      .prepare(
+        `SELECT id FROM household_memberships WHERE household_id = ? AND departed_at IS NULL LIMIT 1`,
+      )
+      .get(householdId) as { id: string };
+    const now = new Date().toISOString();
+    const expires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const token = `staged-claim-${randomUUID()}`;
+    source
+      .prepare(
+        `INSERT INTO membership_access_claims
+         (id, household_id, membership_id, purpose, token_digest, created_by_membership_id,
+          created_at, expires_at, consumed_at, revoked_at)
+         VALUES (?, ?, ?, 'invitation', ?, ?, ?, ?, NULL, NULL)`,
+      )
+      .run(randomUUID(), householdId, manager.id, sha256Hex(token), manager.id, now, expires);
+    source
+      .prepare(
+        `UPDATE setup_progress SET people_status = 'skipped', school_status = 'skipped',
+         first_work_status = 'skipped', finished_at = ?, dismissed_at = ?, guide_version = 3
+         WHERE household_id = ?`,
+      )
+      .run(now, now, householdId);
+    const progressBefore = source
+      .prepare(
+        `SELECT people_status, school_status, first_work_status, finished_at, dismissed_at, guide_version
+         FROM setup_progress WHERE household_id = ?`,
+      )
+      .get(householdId) as {
+      people_status: string;
+      school_status: string;
+      first_work_status: string;
+      finished_at: string | null;
+      dismissed_at: string | null;
+      guide_version: number;
+    };
+    expect(progressBefore.guide_version).toBe(3);
+    expect(progressBefore.finished_at).toBeTruthy();
+
+    scrubRestoredAccess(source);
+
+    const claim = source
+      .prepare(`SELECT revoked_at FROM membership_access_claims WHERE token_digest = ?`)
+      .get(sha256Hex(token)) as { revoked_at: string | null };
+    expect(claim.revoked_at).toBeTruthy();
+
+    const progressAfter = source
+      .prepare(
+        `SELECT people_status, school_status, first_work_status, finished_at, dismissed_at, guide_version
+         FROM setup_progress WHERE household_id = ?`,
+      )
+      .get(householdId) as typeof progressBefore;
+    expect(progressAfter).toEqual(progressBefore);
+    source.close();
+
+    const h = await createDHarness();
+    const auth = await setupHousehold(h);
+    const hh = (h.db.prepare(`SELECT id FROM households LIMIT 1`).get() as { id: string }).id;
+    const liveToken = `live-claim-${randomUUID()}`;
+    h.db
+      .prepare(
+        `INSERT INTO membership_access_claims
+         (id, household_id, membership_id, purpose, token_digest, created_by_membership_id,
+          created_at, expires_at, consumed_at, revoked_at)
+         VALUES (?, ?, ?, 'restore_sign_in', ?, ?, ?, ?, NULL, NULL)`,
+      )
+      .run(
+        randomUUID(),
+        hh,
+        auth.membershipId,
+        sha256Hex(liveToken),
+        auth.membershipId,
+        now,
+        expires,
+      );
+    const beforeScrub = await h.app.inject({
+      method: "GET",
+      url: `/api/v1/auth/access-claims/preview?token=${encodeURIComponent(liveToken)}`,
+      headers: { origin: h.origin },
+    });
+    expect(beforeScrub.statusCode).toBe(200);
+    scrubRestoredAccess(h.db);
+    const afterPreview = await h.app.inject({
+      method: "GET",
+      url: `/api/v1/auth/access-claims/preview?token=${encodeURIComponent(liveToken)}`,
+      headers: { origin: h.origin },
+    });
+    expect(afterPreview.statusCode).toBeGreaterThanOrEqual(400);
+    const redeem = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/auth/access-claims/redeem",
+      headers: { origin: h.origin, "content-type": "application/json" },
+      payload: { claimToken: liveToken, passphrase: PASSPHRASE },
+    });
+    expect(redeem.statusCode).toBeGreaterThanOrEqual(400);
   });
 });

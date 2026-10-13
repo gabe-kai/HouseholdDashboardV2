@@ -2052,6 +2052,13 @@ textarea {
   color: inherit;
 }
 
+.guide-preview {
+  max-height: 12rem;
+  overflow: auto;
+  pointer-events: none;
+  white-space: pre-wrap;
+}
+
 .guide-people-list {
   list-style: none;
   margin: 0 0 var(--space-4);

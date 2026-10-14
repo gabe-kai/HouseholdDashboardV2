@@ -1274,6 +1274,14 @@ export class AppStore {
           scheduledAdditionNames?: string[];
         }>;
       };
+      reviseTarget?: {
+        kind: "routine" | "responsibility";
+        definitionId: string;
+        expectedVersion: number;
+        mode?: "current" | "schedule";
+        effectiveDate?: string;
+        scheduleEntryId?: string;
+      };
     },
   ): {
     progress: GuideProgressPublic;
@@ -1289,6 +1297,7 @@ export class AppStore {
     const digest = guidePayloadDigest({
       expectedGuideVersion: input.expectedGuideVersion,
       status: input.status ?? null,
+      reviseTarget: input.reviseTarget ?? null,
       routine: input.routine
         ? {
             title: input.routine.title,
@@ -1352,10 +1361,13 @@ export class AppStore {
         for (const groupId of basis.audienceGroupIds ?? []) {
           const group = this.listGroups(ctx.householdId).find((g) => g.id === groupId);
           const reviewedVersion = groupVersions[groupId];
-          if (
-            reviewedVersion !== undefined &&
-            (!group || group.version !== reviewedVersion)
-          ) {
+          if (reviewedVersion === undefined) {
+            fail(
+              "CONFLICT",
+              "Audience group versions missing from review; preview again before saving",
+            );
+          }
+          if (!group || group.version !== reviewedVersion) {
             fail(
               "CONFLICT",
               "Audience group changed since review; preview again before saving",
@@ -1366,13 +1378,18 @@ export class AppStore {
           const preview = this.previewDraftRoutine(ctx, input.routine, 7);
           const applicable = preview.preview.filter((d) => d.applicable);
           if (basis.reviewedRoutineDays && basis.reviewedRoutineDays.length > 0) {
+            const compareSteps = basis.reviewedRoutineDays.some(
+              (d) => d.stepTexts !== undefined,
+            );
             const live = applicable.map((d) => ({
               householdDate: d.householdDate,
               participantMemberIds: [...d.participantMemberIds].sort(),
+              ...(compareSteps ? { stepTexts: d.stepTexts ?? [] } : {}),
             }));
             const reviewed = basis.reviewedRoutineDays.map((d) => ({
               householdDate: d.householdDate,
               participantMemberIds: [...d.participantMemberIds].sort(),
+              ...(compareSteps ? { stepTexts: d.stepTexts ?? [] } : {}),
             }));
             if (JSON.stringify(live) !== JSON.stringify(reviewed)) {
               fail(
@@ -1429,16 +1446,44 @@ export class AppStore {
       let routine: RoutineDefinitionPublic | null = null;
       let responsibility: ResponsibilityDefinitionPublic | null = null;
       const workIds: string[] = [];
-      if (input.routine) {
-        routine = this.createRoutine(ctx, input.routine);
-        workIds.push(routine.id);
-      }
-      if (input.responsibility) {
-        responsibility = this.createResponsibility(ctx, input.responsibility);
-        workIds.push(responsibility.id);
+      const revise = input.reviseTarget;
+      if (revise) {
+        if (revise.kind === "routine") {
+          if (!input.routine) fail("VALIDATION", "Routine payload required for revise");
+          const result = this.createRevision(ctx, revise.definitionId, {
+            ...input.routine,
+            expectedVersion: revise.expectedVersion,
+            mode: revise.mode ?? "current",
+            effectiveDate: revise.effectiveDate,
+            scheduleEntryId: revise.scheduleEntryId,
+          });
+          routine = result.routine;
+        } else {
+          if (!input.responsibility) {
+            fail("VALIDATION", "Responsibility payload required for revise");
+          }
+          const result = this.createResponsibilityRevision(ctx, revise.definitionId, {
+            ...input.responsibility,
+            expectedVersion: revise.expectedVersion,
+            mode: revise.mode ?? "current",
+            effectiveDate: revise.effectiveDate,
+            scheduleEntryId: revise.scheduleEntryId,
+          });
+          responsibility = result.responsibility;
+        }
+      } else {
+        if (input.routine) {
+          routine = this.createRoutine(ctx, input.routine);
+          workIds.push(routine.id);
+        }
+        if (input.responsibility) {
+          responsibility = this.createResponsibility(ctx, input.responsibility);
+          workIds.push(responsibility.id);
+        }
       }
       const status: GuideStepStatus =
-        input.status ?? (workIds.length > 0 ? "completed" : "skipped");
+        input.status ??
+        (revise || workIds.length > 0 ? "completed" : "skipped");
       this.guideSaveFailureHook?.();
       const progress = this.bumpGuideProgress(ctx.householdId, {
         firstWorkStatus: status,
@@ -1645,6 +1690,7 @@ export class AppStore {
       applicable: boolean;
       schoolFiltered: boolean;
       stepCount: number;
+      stepTexts: string[];
       participantMemberIds: string[];
     } => {
       const weekdayOk = isDateApplicable(householdDate, normalized.weekdays);
@@ -1653,6 +1699,7 @@ export class AppStore {
           applicable: false,
           schoolFiltered: false,
           stepCount: 0,
+          stepTexts: [],
           participantMemberIds: [],
         };
       }
@@ -1667,7 +1714,7 @@ export class AppStore {
         isoWeekdayForHouseholdDate(nextDate),
       );
       let schoolFiltered = false;
-      let stepCount = 0;
+      const stepTexts: string[] = [];
       let anyUnresolved = false;
       for (const step of normalized.steps) {
         const decision = evaluateApplicability({
@@ -1679,17 +1726,19 @@ export class AppStore {
           schoolToday,
           schoolTomorrow,
         });
-        if (decision.include) stepCount += 1;
+        if (decision.include) stepTexts.push(step.text.trim());
         if ("unresolved" in decision && decision.unresolved) {
           schoolFiltered = true;
           anyUnresolved = true;
         }
       }
+      const stepCount = stepTexts.length;
       if (stepCount === 0) {
         return {
           applicable: false,
           schoolFiltered: schoolFiltered || anyUnresolved,
           stepCount: 0,
+          stepTexts: [],
           participantMemberIds: [],
         };
       }
@@ -1705,6 +1754,7 @@ export class AppStore {
         applicable: participantMemberIds.length > 0,
         schoolFiltered,
         stepCount,
+        stepTexts,
         participantMemberIds,
       };
     };
@@ -1723,6 +1773,7 @@ export class AppStore {
           (id) => nameById.get(id) ?? "Unknown",
         ),
         stepCount: day.applicable ? day.stepCount : 0,
+        stepTexts: day.applicable ? day.stepTexts : [],
         schoolFiltered: day.schoolFiltered,
       });
     }

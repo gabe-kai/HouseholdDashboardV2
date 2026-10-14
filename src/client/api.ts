@@ -628,6 +628,14 @@ export async function guideSaveWork(
     status?: "completed" | "skipped";
     routine?: RoutineMutationBody;
     responsibility?: ResponsibilityMutationBody;
+    reviseTarget?: {
+      kind: "routine" | "responsibility";
+      definitionId: string;
+      expectedVersion: number;
+      mode?: "current" | "schedule";
+      effectiveDate?: string;
+      scheduleEntryId?: string;
+    };
     previewHouseholdDate?: string;
     previewBasis?: GuideWorkPreviewBasis;
   },
@@ -693,6 +701,7 @@ export async function previewDraftRoutine(body: RoutineMutationBody) {
       participantMemberIds: string[];
       participantNames: string[];
       stepCount: number;
+      stepTexts?: string[];
       schoolFiltered: boolean;
     }>;
     nextKnownDate: string | null;

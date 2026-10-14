@@ -438,6 +438,7 @@ export function registerLifecycleRoutes(app: FastifyInstance, deps: LifecycleRou
       status: parsed.data.status,
       routine: parsed.data.routine,
       responsibility: parsed.data.responsibility,
+      reviseTarget: parsed.data.reviseTarget,
       previewHouseholdDate: parsed.data.previewHouseholdDate,
       previewBasis: parsed.data.previewBasis,
     });

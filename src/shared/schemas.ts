@@ -969,9 +969,20 @@ export const GuideWorkPreviewBasisSchema = z.object({
     .optional(),
 });
 
+export const GuideWorkReviseTargetSchema = z.object({
+  kind: z.enum(["routine", "responsibility"]),
+  definitionId: UuidSchema,
+  expectedVersion: z.number().int().positive(),
+  mode: z.enum(["current", "schedule"]).default("current"),
+  effectiveDate: HouseholdDateSchema.optional(),
+  scheduleEntryId: UuidSchema.optional(),
+});
+
 export const GuideWorkSaveSchema = GuideVersionGuardSchema.extend({
   routine: CreateRoutineSchema.optional(),
   responsibility: CreateResponsibilitySchema.optional(),
+  /** When set, Save revises an existing guide-linked definition instead of creating. */
+  reviseTarget: GuideWorkReviseTargetSchema.optional(),
   status: z.enum(["completed", "skipped"]).optional(),
   /** @deprecated Prefer previewBasis.householdDate */
   previewHouseholdDate: HouseholdDateSchema.optional(),
@@ -982,6 +993,20 @@ export const GuideWorkSaveSchema = GuideVersionGuardSchema.extend({
       code: z.ZodIssueCode.custom,
       message: "Review work before saving",
       path: ["previewBasis"],
+    });
+  }
+  if (data.reviseTarget?.kind === "routine" && !data.routine) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Routine payload required for revise",
+      path: ["routine"],
+    });
+  }
+  if (data.reviseTarget?.kind === "responsibility" && !data.responsibility) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Responsibility payload required for revise",
+      path: ["responsibility"],
     });
   }
 });
@@ -1007,6 +1032,8 @@ export type RoutineDraftPreviewDay = {
   participantMemberIds: string[];
   participantNames: string[];
   stepCount: number;
+  /** Ordered step texts that remain after applicability filtering for this date. */
+  stepTexts?: string[];
   schoolFiltered: boolean;
 };
 

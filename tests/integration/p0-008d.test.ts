@@ -66,6 +66,7 @@ type Auth = {
   csrf: string;
   membershipId: string;
   installationEpoch: number;
+  loginName?: string;
 };
 
 function authHeaders(h: HttpHarness, a: Auth, withCsrf = true): Record<string, string> {
@@ -96,7 +97,9 @@ async function call(
   });
 }
 
-async function setupHousehold(harness: HttpHarness): Promise<Auth & { loginName: string }> {
+async function setupHousehold(
+  harness: HttpHarness,
+): Promise<Auth & { loginName: string }> {
   const owner = await harness.app.inject({
     method: "POST",
     url: "/api/v1/owner/session",
@@ -173,6 +176,13 @@ function guideGuard(auth: Auth, expectedGuideVersion: number, mutationId = rando
     expectedGuideVersion,
     installationEpoch: auth.installationEpoch,
   };
+}
+
+async function reauth(h: HttpHarness, auth: Auth): Promise<void> {
+  const res = await call(h, auth, "POST", "/api/v1/auth/reauthenticate", {
+    passphrase: PASSPHRASE,
+  });
+  expect(res.statusCode).toBe(200);
 }
 
 describe("P0-008D guided first household day", () => {
@@ -427,6 +437,7 @@ describe("P0-008D guided first household day", () => {
       reviewedRoutineDays: applicableDays.map((d) => ({
         householdDate: d.householdDate,
         participantMemberIds: d.participantMemberIds,
+        stepTexts: (d as { stepTexts?: string[] }).stepTexts ?? ["Stretch"],
       })),
     };
 
@@ -785,7 +796,7 @@ describe("P0-008D guided first household day", () => {
     ).toHaveLength(1);
   });
 
-  it("AT8: foreign household guide progress is denied; display session cannot read guide", async () => {
+  it("AT8: foreign/display principals cannot read guide; unauthenticated write denied", async () => {
     const h = await createDHarness();
     const auth = await setupHousehold(h);
     const foreign = await h.app.inject({
@@ -805,44 +816,161 @@ describe("P0-008D guided first household day", () => {
       payload: { ...guideGuard(auth, 0), status: "skipped" },
     });
     expect(unauth.statusCode).toBeGreaterThanOrEqual(401);
+
+    const displayCreate = await call(h, auth, "POST", "/api/v1/displays", {
+      mutationId: randomUUID(),
+      label: "Guide Wall",
+    });
+    expect(displayCreate.statusCode).toBe(200);
+    const code = (displayCreate.json() as { enrollment: { code: string } }).enrollment.code;
+    const claim = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/display/claim",
+      headers: { origin: h.origin, "content-type": "application/json" },
+      payload: { code },
+    });
+    expect(claim.statusCode).toBe(200);
+    const displayCookie = claim.cookies.find((c) =>
+      c.name.includes("display"),
+    )?.value;
+    expect(displayCookie).toBeTruthy();
+    const displayGuide = await h.app.inject({
+      method: "GET",
+      url: "/api/v1/guide/progress",
+      headers: {
+        origin: h.origin,
+        cookie: `${h.config.displayCookieName}=${displayCookie}`,
+      },
+    });
+    expect(displayGuide.statusCode).toBeGreaterThanOrEqual(401);
   });
 
-  it("AT11: staged through-019 → D restore scrub denies claim preview and redemption", async () => {
-    const populatedPath = tempPath("hd-d-staged019");
-    const source = openPopulatedP019UpgradeDatabase(populatedPath);
-    migrate(source);
-    const householdId = (
-      source.prepare(`SELECT id FROM households LIMIT 1`).get() as { id: string }
-    ).id;
-    const manager = source
-      .prepare(
-        `SELECT id FROM household_memberships WHERE household_id = ? AND departed_at IS NULL LIMIT 1`,
-      )
-      .get(householdId) as { id: string };
+  it("AT11: B restore of D household preserves guide progress, scrubs claims, keeps source bytes", async () => {
+    const h = await createDHarness();
+    const auth = await setupHousehold(h);
+    const guide = await call(h, auth, "GET", "/api/v1/guide/progress");
+    let version = (guide.json() as { guideVersion: number }).guideVersion;
+    const people = await call(h, auth, "POST", "/api/v1/guide/people/complete", {
+      ...guideGuard(auth, version),
+      status: "skipped",
+    });
+    version = (people.json() as { progress: { guideVersion: number } }).progress.guideVersion;
+    const school = await call(h, auth, "POST", "/api/v1/guide/school", {
+      ...guideGuard(auth, version),
+      status: "skipped",
+    });
+    version = (school.json() as { progress: { guideVersion: number } }).progress.guideVersion;
+    const work = await call(h, auth, "POST", "/api/v1/guide/work", {
+      ...guideGuard(auth, version),
+      status: "skipped",
+    });
+    version = (work.json() as { progress: { guideVersion: number } }).progress.guideVersion;
+    const finish = await call(h, auth, "POST", "/api/v1/guide/finish", {
+      ...guideGuard(auth, version),
+      dismiss: true,
+    });
+    expect(finish.statusCode).toBe(200);
+    const progressBefore = finish.json() as {
+      progress: {
+        peopleStatus: string;
+        schoolStatus: string;
+        firstWorkStatus: string;
+        finishedAt: string | null;
+        dismissedAt: string | null;
+        guideVersion: number;
+      };
+    };
+    expect(progressBefore.progress.dismissedAt).toBeTruthy();
+    expect(progressBefore.progress.firstWorkStatus).toBe("skipped");
+
+    const hh = (h.db.prepare(`SELECT id FROM households LIMIT 1`).get() as { id: string }).id;
     const now = new Date().toISOString();
     const expires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    const token = `staged-claim-${randomUUID()}`;
-    source
-      .prepare(
-        `INSERT INTO membership_access_claims
-         (id, household_id, membership_id, purpose, token_digest, created_by_membership_id,
-          created_at, expires_at, consumed_at, revoked_at)
-         VALUES (?, ?, ?, 'invitation', ?, ?, ?, ?, NULL, NULL)`,
-      )
-      .run(randomUUID(), householdId, manager.id, sha256Hex(token), manager.id, now, expires);
-    source
-      .prepare(
-        `UPDATE setup_progress SET people_status = 'skipped', school_status = 'skipped',
-         first_work_status = 'skipped', finished_at = ?, dismissed_at = ?, guide_version = 3
-         WHERE household_id = ?`,
-      )
-      .run(now, now, householdId);
-    const progressBefore = source
+    const purposes = ["invitation", "password_reset", "restore_sign_in"] as const;
+    const tokens: string[] = [];
+    for (const purpose of purposes) {
+      const token = `d-restore-${purpose}-${randomUUID()}`;
+      tokens.push(token);
+      h.db
+        .prepare(
+          `INSERT INTO membership_access_claims
+           (id, household_id, membership_id, purpose, token_digest, created_by_membership_id,
+            created_at, expires_at, consumed_at, revoked_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)`,
+        )
+        .run(
+          randomUUID(),
+          hh,
+          auth.membershipId,
+          purpose,
+          sha256Hex(token),
+          auth.membershipId,
+          now,
+          expires,
+        );
+    }
+    for (const token of tokens) {
+      const preview = await h.app.inject({
+        method: "GET",
+        url: `/api/v1/auth/access-claims/preview?token=${encodeURIComponent(token)}`,
+        headers: { origin: h.origin },
+      });
+      expect(preview.statusCode).toBe(200);
+    }
+
+    await reauth(h, auth);
+    const created = await call(h, auth, "POST", "/api/v1/household/backups", {
+      mutationId: randomUUID(),
+      label: "D guide restore source",
+    });
+    expect(created.statusCode).toBe(200);
+    const backup = (
+      created.json() as { backup: { id: string; contentDigest: string; relativePath?: string } }
+    ).backup;
+    const listed = h.runtime.control.listBackups();
+    const row = listed.find((b) => b.id === backup.id);
+    expect(row).toBeTruthy();
+    const abs = path.join(h.config.backupDir, row!.relativePath);
+    const sourceBytes = fs.readFileSync(abs);
+
+    const owner = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/owner/session",
+      headers: { origin: h.origin, "content-type": "application/json" },
+      payload: { secret: OWNER_SECRET },
+    });
+    expect(owner.statusCode).toBe(200);
+    const ownerCsrf = (owner.json() as { csrfToken: string }).csrfToken;
+    const ownerCookie = owner.cookies.find((c) => c.name.includes("owner"))!.value;
+    const meta = await h.app.inject({ method: "GET", url: "/api/v1/meta" });
+    const epoch = (meta.json() as { installationEpoch: number }).installationEpoch;
+    const restore = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/household/restore",
+      headers: {
+        origin: h.origin,
+        "content-type": "application/json",
+        "x-csrf-token": ownerCsrf,
+        cookie: `${h.config.ownerCookieName}=${ownerCookie}`,
+      },
+      payload: {
+        mutationId: randomUUID(),
+        backupId: backup.id,
+        expectedDigest: backup.contentDigest,
+        expectedEpoch: epoch,
+        confirmationText: "RESTORE",
+        saveBackupBeforeRestore: false,
+      },
+    });
+    expect(restore.statusCode).toBe(200);
+    expect(fs.readFileSync(abs)).toEqual(sourceBytes);
+
+    const progressAfter = h.runtime.db
       .prepare(
         `SELECT people_status, school_status, first_work_status, finished_at, dismissed_at, guide_version
-         FROM setup_progress WHERE household_id = ?`,
+         FROM setup_progress LIMIT 1`,
       )
-      .get(householdId) as {
+      .get() as {
       people_status: string;
       school_status: string;
       first_work_status: string;
@@ -850,64 +978,66 @@ describe("P0-008D guided first household day", () => {
       dismissed_at: string | null;
       guide_version: number;
     };
-    expect(progressBefore.guide_version).toBe(3);
-    expect(progressBefore.finished_at).toBeTruthy();
+    expect(progressAfter.people_status).toBe("skipped");
+    expect(progressAfter.school_status).toBe("skipped");
+    expect(progressAfter.first_work_status).toBe("skipped");
+    expect(progressAfter.finished_at).toBeTruthy();
+    expect(progressAfter.dismissed_at).toBeTruthy();
+    expect(progressAfter.guide_version).toBe(progressBefore.progress.guideVersion);
 
-    scrubRestoredAccess(source);
+    for (const token of tokens) {
+      const preview = await h.app.inject({
+        method: "GET",
+        url: `/api/v1/auth/access-claims/preview?token=${encodeURIComponent(token)}`,
+        headers: { origin: h.origin },
+      });
+      expect(preview.statusCode).toBeGreaterThanOrEqual(400);
+      const redeem = await h.app.inject({
+        method: "POST",
+        url: "/api/v1/auth/access-claims/redeem",
+        headers: { origin: h.origin, "content-type": "application/json" },
+        payload: { claimToken: token, passphrase: PASSPHRASE },
+      });
+      expect(redeem.statusCode).toBeGreaterThanOrEqual(400);
+    }
 
-    const claim = source
-      .prepare(`SELECT revoked_at FROM membership_access_claims WHERE token_digest = ?`)
-      .get(sha256Hex(token)) as { revoked_at: string | null };
-    expect(claim.revoked_at).toBeTruthy();
-
-    const progressAfter = source
-      .prepare(
-        `SELECT people_status, school_status, first_work_status, finished_at, dismissed_at, guide_version
-         FROM setup_progress WHERE household_id = ?`,
-      )
-      .get(householdId) as typeof progressBefore;
-    expect(progressAfter).toEqual(progressBefore);
-    source.close();
-
-    const h = await createDHarness();
-    const auth = await setupHousehold(h);
-    const hh = (h.db.prepare(`SELECT id FROM households LIMIT 1`).get() as { id: string }).id;
-    const liveToken = `live-claim-${randomUUID()}`;
-    h.db
-      .prepare(
-        `INSERT INTO membership_access_claims
-         (id, household_id, membership_id, purpose, token_digest, created_by_membership_id,
-          created_at, expires_at, consumed_at, revoked_at)
-         VALUES (?, ?, ?, 'restore_sign_in', ?, ?, ?, ?, NULL, NULL)`,
-      )
-      .run(
-        randomUUID(),
-        hh,
-        auth.membershipId,
-        sha256Hex(liveToken),
-        auth.membershipId,
-        now,
-        expires,
-      );
-    const beforeScrub = await h.app.inject({
-      method: "GET",
-      url: `/api/v1/auth/access-claims/preview?token=${encodeURIComponent(liveToken)}`,
-      headers: { origin: h.origin },
-    });
-    expect(beforeScrub.statusCode).toBe(200);
-    scrubRestoredAccess(h.db);
-    const afterPreview = await h.app.inject({
-      method: "GET",
-      url: `/api/v1/auth/access-claims/preview?token=${encodeURIComponent(liveToken)}`,
-      headers: { origin: h.origin },
-    });
-    expect(afterPreview.statusCode).toBeGreaterThanOrEqual(400);
-    const redeem = await h.app.inject({
+    // Fresh sign-in after restore; issue a new invitation claim that previews successfully.
+    const login = await h.app.inject({
       method: "POST",
-      url: "/api/v1/auth/access-claims/redeem",
+      url: "/api/v1/auth/login",
       headers: { origin: h.origin, "content-type": "application/json" },
-      payload: { claimToken: liveToken, passphrase: PASSPHRASE },
+      payload: { loginName: auth.loginName, passphrase: PASSPHRASE },
     });
-    expect(redeem.statusCode).toBeGreaterThanOrEqual(400);
+    expect(login.statusCode).toBe(200);
+    const freshCookie = login.cookies.find((c) => c.name === h.config.cookieName)!.value;
+    const freshCsrf = (login.json() as { csrfToken: string }).csrfToken;
+    const freshAuth: Auth = {
+      cookie: freshCookie,
+      csrf: freshCsrf,
+      membershipId: (login.json() as { member: { id: string } }).member.id,
+      installationEpoch:
+        (login.json() as { installationEpoch?: number }).installationEpoch ??
+        h.runtime.epoch,
+    };
+    const child = await call(h, freshAuth, "POST", "/api/v1/people", {
+      mutationId: randomUUID(),
+      displayName: "Fresh Link Child",
+      classification: "child",
+    });
+    expect(child.statusCode).toBe(200);
+    const childId = (child.json() as { person: { id: string } }).person.id;
+    await reauth(h, freshAuth);
+    const issue = await call(h, freshAuth, "POST", `/api/v1/people/${childId}/access-claims`, {
+      mutationId: randomUUID(),
+      purpose: "invitation",
+    });
+    expect(issue.statusCode).toBe(200);
+    const freshToken = (issue.json() as { claim: { token: string } }).claim.token;
+    const freshPreview = await h.app.inject({
+      method: "GET",
+      url: `/api/v1/auth/access-claims/preview?token=${encodeURIComponent(freshToken)}`,
+      headers: { origin: h.origin },
+    });
+    expect(freshPreview.statusCode).toBe(200);
   });
 });

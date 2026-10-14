@@ -7,6 +7,8 @@
 **Contract:** `briefs/p0-008d-guided-first-household-day.md`
 **Build Report:** `reports/P0-008D-r2-build-report.md`
 
+**Latest follow-up:** Correction `6d427ff` reviewed 2026-10-13; **FIX REQUIRED remains**, with materially improved AT10/AT11 evidence. The original `3320033` review below is historical; the follow-up at the end is the current closure checklist.
+
 ## Verified improvements and evidence boundary
 
 Architecture inspected the committed delta, guide/store/schema code, new through-019 fixture and named tests. Independently reran `npx vitest run tests/integration/p0-008d.test.ts --silent`: **13/13 PASS**, exit 0. Inspected Engineering's PR/RC log summaries: 329 unit/integration, 111 Chromium, 176 RC Playwright and 6 Vite. Full gates were not rerun by Architecture; these are Engineering evidence, not an independently repeated gate. No live database/deployment/Git mutation occurred.
@@ -64,3 +66,28 @@ The report now labels these broader ATs PASS despite narrower evidence. Restore 
 **Engineering — FIX REQUIRED, unchanged P0-008D r2.** Close the remaining requirements above; no new readiness/revision or Product decision is needed. The parent end-to-end lifecycle has been required in the brief and both prior reviews; do not replace it with another narrower test using the same AT number. If a required scenario cannot be delivered, return the concrete limitation instead of claiming closure.
 
 No production code was edited by Architecture. Shared card **Set up and manage my household without operator help** remains **In Progress**. No merge, deployment, live reset or Product acceptance is implied. Suggest a commit message but do not commit.
+
+## Follow-up on committed correction `6d427ff` — 2026-10-13
+
+**Disposition: FIX REQUIRED, same r2.** Clean branch at inspection. Architecture independently reran the D integration suite: **13/13 PASS**. Engineering reports exact PR/RC passes (329 unit/integration, 111 Chromium, 176 RC Playwright, 6 Vite); those full gates were not independently rerun. No live data, deployment or production edits occurred.
+
+### Closed/improved portions — retain them
+
+- Saved hydration now selects a dated current/upcoming entry, retains logical/addition IDs, null owners and assignment metadata, offers saved-item selection and derives a matching baseline. Edits use `guideSaveWork`/`reviseTarget` under the same transaction/receipt/preview path instead of bypassing it. These source repairs address the previously identified lossy/current-edit path; preservation regression evidence remains part of the required map.
+- Routine preview now returns filtered per-day step texts. Dirty soft refresh preserves the guide-version baseline. Definitive-error handling was added. These are useful repairs, not reasons to rebuild the guide.
+- AT11 now invokes **actual B backup and restore** through HTTP on a disposable D household, checks source bytes, preserved skip/dismissal progress and all three claim-purpose preview/redemption denials, then obtains a fresh invitation. The previous helper-only restore finding is closed for this demonstrated D case. Do not repeat it as though no actual restore exists.
+- AT10 now really invites/redeems in a separate context, revokes access, issues a restore link, removes people, creates a backup, resets with backup off, restores through protected Welcome after restart and signs in. This closes the prior setup→Settings-only substitution. The remaining assertions below are narrower than the original missing journey.
+
+### Current bounded closure checklist
+
+1. **Complete AT10's missing assertions.** `z-p0-008d-guided-setup.spec.ts:185–378` never changes permissions, never redeems the restore-sign-in link, and never records work for the enrolled person before removal. Its removal assertion accepts either Depart or Delete; it does not prove used-person history preservation. Setup immediately exits to Today, so the backup contains no configured optional guide/work to verify after restore. Add these existing-contract steps/assertions, catalog count/no hidden backup and stale-access checks, retaining the working backup/reset/Welcome sequence. Chromium and WebKit are required; use A–C lower-level reuse only for matrices genuinely already demonstrated.
+
+2. **Finish async arbitration/retry, not just dirty-branch behavior.** `hydrateSavedWork` still applies nested fetch results without generation/epoch/dirty rechecks (`GuidedSetup.tsx:663–689`), while `loadGuide` checks only before awaiting it (`693–728`). Save continuations also apply results without a shared scope/order check (`803–824`, `1144` onward). The one-soft-event suppression remains. An older/held hydration or save can overwrite a newer draft/progress. Input edits can clear unresolved pending work (`749`) before an ambiguous successful command is recovered; retain/reconcile that result before allowing a distinct create. Finish/progress/calendar retry paths still need the original durable-save assertions. Supply deterministic held-response, lost-success and actual two-manager socket recovery evidence, not only a single synthetic visibility event and fixed sleep.
+
+3. **Finish responsibility preview truth and consent.** Client responsibility review still uses base step texts plus addition names (`1007–1029`), not the composed addition steps; store compares owner/date only (`1413–1445`). Return and compare actual ordered composed work/final-owner meaning and bind relevant source/draft fields. Complete the controlled-date/phase/Unassigned/scheduled-owner, held-review and day/source-change AT5 evidence. The filtered-routine repair is retained.
+
+4. **Close the report's required PARTIALs with named evidence.** AT6 still lacks the guide calendar/first-action race; AT9 lacks real two-manager outage/convergence. AT1's no-A-progress/catalog preservation, AT7's both-kind and used/departed/ended returns, AT8's actual foreign/lifecycle-only and held-epoch cases, AT11's supported older snapshot/record-link and fresh redemption/reset-clear cases, and AT12's guide-specific geometry/keyboard/touch remain partial. These were already required in r2 and the previous reviews. Reuse unchanged lower-level coverage where it proves the exact assertion, and identify it precisely; do not rerun all prior scenarios merely to increase counts.
+
+5. **Pin/report the real correction.** Current correction is committed at `6d427ff`, not an uncommitted tree. Keep partial subcases honest and distinguish them from the successfully demonstrated AT10/AT11 portions. After substantive changes, return exact corrected-tree PR/RC results. Metadata-only pinning does not require another gate run.
+
+**Next owner: Engineering.** No new brief, readiness cycle or deployment is needed. Return evidence for this closure checklist; if a required scenario cannot be delivered, state the concrete limitation rather than claiming the entire second reassessment closed. Shared card remains **In Progress**; technical/Product acceptance and merge remain pending. Suggest a commit message but do not commit.

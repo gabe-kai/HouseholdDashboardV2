@@ -8,6 +8,7 @@ import { scrubRestoredAccess } from "../../src/server/backup-catalog.js";
 import { sha256Hex } from "../../src/server/crypto.js";
 import { createHttpHarness, type HttpHarness } from "../helpers/auth-fixture.js";
 import { openPopulatedP019UpgradeDatabase } from "../helpers/p019-fixture.js";
+import { createThrough017BackupFile } from "../helpers/through-017-backup-fixture.js";
 
 const OWNER_SECRET = "test-owner-secret-with-enough-entropy-0123456789abcdef";
 const PASSPHRASE = "Unique-passphrase-ok!999";
@@ -1039,5 +1040,524 @@ describe("P0-008D guided first household day", () => {
       headers: { origin: h.origin },
     });
     expect(freshPreview.statusCode).toBe(200);
+  });
+
+  it("AT1: no-A-progress adoption creates guide row with null account/household timestamps", async () => {
+    const h = await createDHarness();
+    const auth = await setupHousehold(h);
+    h.db.prepare(`DELETE FROM setup_progress`).run();
+    const before = h.db.prepare(`SELECT COUNT(*) AS c FROM setup_progress`).get() as {
+      c: number;
+    };
+    expect(before.c).toBe(0);
+    const guide = await call(h, auth, "GET", "/api/v1/guide/progress");
+    expect(guide.statusCode).toBe(200);
+    const row = h.db
+      .prepare(
+        `SELECT account_completed_at, household_completed_at, people_status, guide_version
+         FROM setup_progress LIMIT 1`,
+      )
+      .get() as {
+      account_completed_at: string | null;
+      household_completed_at: string | null;
+      people_status: string;
+      guide_version: number;
+    };
+    expect(row.account_completed_at).toBeNull();
+    expect(row.household_completed_at).toBeNull();
+    expect(row.people_status).toBe("not_chosen");
+    expect(row.guide_version).toBe(0);
+  });
+
+  it("AT5/R4: responsibility draft preview returns composed stepTexts and guideSaveWork compares them", async () => {
+    const h = await createDHarness();
+    const auth = await setupHousehold(h);
+    const guide = await call(h, auth, "GET", "/api/v1/guide/progress");
+    let version = (guide.json() as { guideVersion: number }).guideVersion;
+    const school = await call(h, auth, "POST", "/api/v1/guide/school", {
+      ...guideGuard(auth, version),
+      status: "skipped",
+    });
+    version = (school.json() as { progress: { guideVersion: number } }).progress.guideVersion;
+    const session = await call(h, auth, "GET", "/api/v1/auth/session");
+    const householdDate = (session.json() as { householdDate: string }).householdDate;
+    const calendar = await call(h, auth, "GET", "/api/v1/school-calendar");
+    const calendarVersion = (calendar.json() as { calendar: { version: number } }).calendar.version;
+
+    const draft = await call(h, auth, "POST", "/api/v1/responsibilities/preview-draft", {
+      mutationId: randomUUID(),
+      title: "Composed Chore",
+      daypart: "anytime",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      accountableMemberId: auth.membershipId,
+      steps: [{ text: "Base step", obligation: "required" }],
+      scheduledAdditions: [
+        {
+          name: "Extra wipe",
+          weekdays: [1, 2, 3, 4, 5, 6, 7],
+          inheritAssignment: true,
+          steps: [{ text: "Wipe counters", obligation: "required" }],
+        },
+      ],
+    });
+    expect(draft.statusCode).toBe(200);
+    const preview = (
+      draft.json() as {
+        preview: Array<{
+          applicable: boolean;
+          householdDate: string;
+          accountableMemberId: string | null;
+          stepTexts?: string[];
+        }>;
+      }
+    ).preview.filter((d) => d.applicable);
+    expect(preview.length).toBeGreaterThan(0);
+    expect(preview[0]!.stepTexts).toEqual(["Base step", "Wipe counters"]);
+
+    const basis = {
+      householdDate,
+      calendarVersion,
+      audienceGroupIds: [] as string[],
+      audienceGroupVersions: {},
+      reviewedResponsibilityOwnerId: auth.membershipId,
+      reviewedResponsibilityDays: preview.map((d) => ({
+        householdDate: d.householdDate,
+        accountableMemberId: d.accountableMemberId,
+        stepTexts: d.stepTexts,
+      })),
+    };
+    const staleBasis = {
+      ...basis,
+      reviewedResponsibilityDays: basis.reviewedResponsibilityDays.map((d) => ({
+        ...d,
+        stepTexts: ["Base step"],
+      })),
+    };
+    const denied = await call(h, auth, "POST", "/api/v1/guide/work", {
+      ...guideGuard(auth, version),
+      status: "completed",
+      responsibility: {
+        mutationId: randomUUID(),
+        title: "Composed Chore",
+        daypart: "anytime",
+        weekdays: [1, 2, 3, 4, 5, 6, 7],
+        accountableMemberId: auth.membershipId,
+        steps: [{ text: "Base step", obligation: "required" }],
+        scheduledAdditions: [
+          {
+            name: "Extra wipe",
+            weekdays: [1, 2, 3, 4, 5, 6, 7],
+            inheritAssignment: true,
+            steps: [{ text: "Wipe counters", obligation: "required" }],
+          },
+        ],
+      },
+      previewBasis: staleBasis,
+    });
+    expect(denied.statusCode).toBeGreaterThanOrEqual(400);
+
+    const ok = await call(h, auth, "POST", "/api/v1/guide/work", {
+      ...guideGuard(auth, version),
+      status: "completed",
+      responsibility: {
+        mutationId: randomUUID(),
+        title: "Composed Chore",
+        daypart: "anytime",
+        weekdays: [1, 2, 3, 4, 5, 6, 7],
+        accountableMemberId: auth.membershipId,
+        steps: [{ text: "Base step", obligation: "required" }],
+        scheduledAdditions: [
+          {
+            name: "Extra wipe",
+            weekdays: [1, 2, 3, 4, 5, 6, 7],
+            inheritAssignment: true,
+            steps: [{ text: "Wipe counters", obligation: "required" }],
+          },
+        ],
+      },
+      previewBasis: basis,
+    });
+    expect(ok.statusCode).toBe(200);
+  });
+
+  it("AT6: guide calendar change after first action preserves started occurrence history", async () => {
+    const h = await createDHarness();
+    const auth = await setupHousehold(h);
+    const guide = await call(h, auth, "GET", "/api/v1/guide/progress");
+    let version = (guide.json() as { guideVersion: number }).guideVersion;
+    const school = await call(h, auth, "POST", "/api/v1/guide/school", {
+      ...guideGuard(auth, version),
+      status: "completed",
+      calendar: {
+        mutationId: randomUUID(),
+        expectedVersion: 0,
+        years: [
+          {
+            startDate: "2020-01-01",
+            endDate: "2030-12-31",
+            usualWeekdays: [1, 2, 3, 4, 5, 6, 7],
+            exceptions: [],
+          },
+        ],
+      },
+    });
+    expect(school.statusCode).toBe(200);
+    version = (school.json() as { progress: { guideVersion: number } }).progress.guideVersion;
+    const session = await call(h, auth, "GET", "/api/v1/auth/session");
+    const householdDate = (session.json() as { householdDate: string }).householdDate;
+    const calendar = await call(h, auth, "GET", "/api/v1/school-calendar");
+    const calendarVersion = (calendar.json() as { calendar: { version: number } }).calendar.version;
+    const draftPreview = await call(h, auth, "POST", "/api/v1/routines/preview-draft", {
+      mutationId: randomUUID(),
+      title: "Lock Routine",
+      daypart: "morning",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      assigneeMemberIds: [auth.membershipId],
+      assigneeGroupIds: [],
+      steps: [{ text: "Stretch", obligation: "required" }],
+    });
+    const applicable = (
+      draftPreview.json() as {
+        preview: Array<{
+          applicable: boolean;
+          householdDate: string;
+          participantMemberIds: string[];
+          stepTexts?: string[];
+        }>;
+      }
+    ).preview.filter((d) => d.applicable);
+    const work = await call(h, auth, "POST", "/api/v1/guide/work", {
+      ...guideGuard(auth, version),
+      status: "completed",
+      routine: {
+        mutationId: randomUUID(),
+        title: "Lock Routine",
+        daypart: "morning",
+        weekdays: [1, 2, 3, 4, 5, 6, 7],
+        assigneeMemberIds: [auth.membershipId],
+        assigneeGroupIds: [],
+        steps: [{ text: "Stretch", obligation: "required" }],
+      },
+      previewBasis: {
+        householdDate,
+        calendarVersion,
+        audienceGroupIds: [],
+        audienceGroupVersions: {},
+        reviewedRoutineParticipantIds: applicable[0]?.participantMemberIds ?? [auth.membershipId],
+        reviewedRoutineDays: applicable.map((d) => ({
+          householdDate: d.householdDate,
+          participantMemberIds: d.participantMemberIds,
+          stepTexts: d.stepTexts ?? ["Stretch"],
+        })),
+      },
+    });
+    expect(work.statusCode).toBe(200);
+    version = (work.json() as { progress: { guideVersion: number } }).progress.guideVersion;
+    const routineId = (work.json() as { routine: { id: string } }).routine.id;
+
+    const today = await call(h, auth, "GET", `/api/v1/today?date=${householdDate}`);
+    expect(today.statusCode).toBe(200);
+    const occ = (
+      today.json() as {
+        occurrences: Array<{
+          id: string;
+          definitionId: string;
+          householdDate: string;
+          revisionId: string;
+          steps: Array<{ id: string; logicalItemId: string; status: string; text: string }>;
+        }>;
+      }
+    ).occurrences.find((o) => o.definitionId === routineId);
+    expect(occ).toBeTruthy();
+    const firstAction = await call(
+      h,
+      auth,
+      "POST",
+      `/api/v1/occurrences/${occ!.id}/steps/${occ!.steps[0]!.id}/status`,
+      {
+        mutationId: randomUUID(),
+        status: "completed",
+        performedAt: new Date().toISOString(),
+        householdDate: occ!.householdDate,
+        kind: "routine",
+        intendedStructure: {
+          revisionId: occ!.revisionId,
+          accountableMemberId: auth.membershipId,
+          stepLogicalIds: occ!.steps.map((s) => s.logicalItemId),
+        },
+      },
+    );
+    expect(firstAction.statusCode).toBe(200);
+    expect(
+      (firstAction.json() as { occurrence: { startedAt: string | null } }).occurrence.startedAt,
+    ).toBeTruthy();
+
+    const calAfterAction = await call(h, auth, "GET", "/api/v1/school-calendar");
+    const calVersion = (calAfterAction.json() as { calendar: { version: number } }).calendar
+      .version;
+    const schoolChange = await call(h, auth, "POST", "/api/v1/guide/school", {
+      ...guideGuard(auth, version),
+      status: "completed",
+      calendar: {
+        mutationId: randomUUID(),
+        expectedVersion: calVersion,
+        years: [
+          {
+            startDate: "2020-01-01",
+            endDate: "2030-12-31",
+            usualWeekdays: [1, 2, 3, 4, 5],
+            exceptions: [],
+          },
+        ],
+      },
+    });
+    expect(schoolChange.statusCode).toBe(200);
+
+    const history = await call(h, auth, "GET", `/api/v1/history/occurrences/${occ!.id}`);
+    expect(history.statusCode).toBe(200);
+    const hist = history.json() as {
+      occurrence: { startedAt: string | null; steps: Array<{ text: string; status: string }> };
+    };
+    expect(hist.occurrence.startedAt).toBeTruthy();
+    expect(hist.occurrence.steps[0]?.text).toBe("Stretch");
+    expect(hist.occurrence.steps[0]?.status).toBe("completed");
+  });
+
+  it("AT7: unused responsibility deletes; used enrolled person departs with history", async () => {
+    const h = await createDHarness();
+    const auth = await setupHousehold(h);
+    const guide = await call(h, auth, "GET", "/api/v1/guide/progress");
+    let version = (guide.json() as { guideVersion: number }).guideVersion;
+    const school = await call(h, auth, "POST", "/api/v1/guide/school", {
+      ...guideGuard(auth, version),
+      status: "skipped",
+    });
+    version = (school.json() as { progress: { guideVersion: number } }).progress.guideVersion;
+    const session = await call(h, auth, "GET", "/api/v1/auth/session");
+    const householdDate = (session.json() as { householdDate: string }).householdDate;
+    const calendar = await call(h, auth, "GET", "/api/v1/school-calendar");
+    const calendarVersion = (calendar.json() as { calendar: { version: number } }).calendar.version;
+    const draft = await call(h, auth, "POST", "/api/v1/responsibilities/preview-draft", {
+      mutationId: randomUUID(),
+      title: "Guide Responsibility",
+      daypart: "anytime",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      accountableMemberId: auth.membershipId,
+      steps: [{ text: "Do chore", obligation: "required" }],
+    });
+    const applicable = (
+      draft.json() as {
+        preview: Array<{
+          applicable: boolean;
+          householdDate: string;
+          accountableMemberId: string | null;
+          stepTexts?: string[];
+        }>;
+      }
+    ).preview.filter((d) => d.applicable);
+    const work = await call(h, auth, "POST", "/api/v1/guide/work", {
+      ...guideGuard(auth, version),
+      status: "completed",
+      responsibility: {
+        mutationId: randomUUID(),
+        title: "Guide Responsibility",
+        daypart: "anytime",
+        weekdays: [1, 2, 3, 4, 5, 6, 7],
+        accountableMemberId: auth.membershipId,
+        steps: [{ text: "Do chore", obligation: "required" }],
+      },
+      previewBasis: {
+        householdDate,
+        calendarVersion,
+        audienceGroupIds: [],
+        audienceGroupVersions: {},
+        reviewedResponsibilityOwnerId: auth.membershipId,
+        reviewedResponsibilityDays: applicable.map((d) => ({
+          householdDate: d.householdDate,
+          accountableMemberId: d.accountableMemberId,
+          stepTexts: d.stepTexts ?? ["Do chore"],
+        })),
+      },
+    });
+    expect(work.statusCode).toBe(200);
+    const responsibility = (
+      work.json() as { responsibility: { id: string; version: number } }
+    ).responsibility;
+    const deleted = await call(
+      h,
+      auth,
+      "POST",
+      `/api/v1/responsibilities/${responsibility.id}/delete`,
+      {
+        mutationId: randomUUID(),
+        expectedVersion: responsibility.version,
+      },
+    );
+    expect(deleted.statusCode).toBe(200);
+
+    const child = await call(h, auth, "POST", "/api/v1/people", {
+      mutationId: randomUUID(),
+      displayName: "Used Enrolled",
+      classification: "adult",
+    });
+    expect(child.statusCode).toBe(200);
+    const person = (
+      child.json() as {
+        person: { id: string; version: number; authorityVersion: number };
+      }
+    ).person;
+    await reauth(h, auth);
+    const claim = await call(h, auth, "POST", `/api/v1/people/${person.id}/access-claims`, {
+      mutationId: randomUUID(),
+      purpose: "invitation",
+    });
+    expect(claim.statusCode).toBe(200);
+    const token = (claim.json() as { claim: { token: string } }).claim.token;
+    const redeem = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/auth/access-claims/redeem",
+      headers: { origin: h.origin, "content-type": "application/json" },
+      payload: {
+        claimToken: token,
+        displayName: "Used Enrolled",
+        loginName: `used.${Date.now().toString(36)}`,
+        passphrase: PASSPHRASE,
+      },
+    });
+    expect(redeem.statusCode).toBe(200);
+    await reauth(h, auth);
+    const people = await call(h, auth, "GET", `/api/v1/people/${person.id}`);
+    const fresh = (
+      people.json() as {
+        person: { id: string; version: number; authorityVersion: number };
+      }
+    ).person;
+    const preview = await call(h, auth, "POST", `/api/v1/people/${fresh.id}/removal/preview`, {
+      expectedVersion: fresh.version,
+      expectedAuthorityVersion: fresh.authorityVersion,
+    });
+    expect(preview.statusCode).toBe(200);
+    expect((preview.json() as { impact: { mode: string } }).impact.mode).toBe("depart");
+    const removed = await call(h, auth, "POST", `/api/v1/people/${fresh.id}/removal`, {
+      mutationId: randomUUID(),
+      expectedVersion: fresh.version,
+      expectedAuthorityVersion: fresh.authorityVersion,
+      previewDigest: (preview.json() as { previewDigest: string }).previewDigest,
+      passphrase: PASSPHRASE,
+      confirmationText: "REMOVE",
+    });
+    expect(removed.statusCode).toBe(200);
+    expect((removed.json() as { mode: string }).mode).toBe("departed");
+  });
+
+  it("AT8: enrolled member without lifecycle.manage cannot read guide", async () => {
+    const h = await createDHarness();
+    const auth = await setupHousehold(h);
+    const created = await call(h, auth, "POST", "/api/v1/people", {
+      mutationId: randomUUID(),
+      displayName: "Plain Member",
+      classification: "adult",
+    });
+    expect(created.statusCode).toBe(200);
+    const person = (
+      created.json() as {
+        person: { id: string; version: number; authorityVersion: number };
+      }
+    ).person;
+    await reauth(h, auth);
+    const claim = await call(h, auth, "POST", `/api/v1/people/${person.id}/access-claims`, {
+      mutationId: randomUUID(),
+      purpose: "invitation",
+    });
+    const token = (claim.json() as { claim: { token: string } }).claim.token;
+    const loginName = `plain.${Date.now().toString(36)}`;
+    const redeem = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/auth/access-claims/redeem",
+      headers: { origin: h.origin, "content-type": "application/json" },
+      payload: {
+        claimToken: token,
+        displayName: "Plain Member",
+        loginName,
+        passphrase: PASSPHRASE,
+      },
+    });
+    expect(redeem.statusCode).toBe(200);
+    const memberCookie = redeem.cookies.find((c) => c.name === h.config.cookieName)!.value;
+    const memberCsrf = (redeem.json() as { csrfToken: string }).csrfToken;
+    const memberAuth: Auth = {
+      cookie: memberCookie,
+      csrf: memberCsrf,
+      membershipId: (redeem.json() as { member: { id: string } }).member.id,
+      installationEpoch: auth.installationEpoch,
+    };
+    const denied = await call(h, memberAuth, "GET", "/api/v1/guide/progress");
+    expect(denied.statusCode).toBe(403);
+  });
+
+  it("AT11: through-017 aged snapshot B restore migrates forward and keeps source bytes", async () => {
+    const h = await createDHarness();
+    await setupHousehold(h);
+    const fixture = await createThrough017BackupFile(h.config.backupDir);
+    const owner = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/owner/session",
+      headers: { origin: h.origin, "content-type": "application/json" },
+      payload: { secret: OWNER_SECRET },
+    });
+    expect(owner.statusCode).toBe(200);
+    const ownerCsrf = (owner.json() as { csrfToken: string }).csrfToken;
+    const ownerCookie = owner.cookies.find((c) => c.name.includes("owner"))!.value;
+    const registered = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/owner/backups/register",
+      headers: {
+        origin: h.origin,
+        "content-type": "application/json",
+        "x-csrf-token": ownerCsrf,
+        cookie: `${h.config.ownerCookieName}=${ownerCookie}`,
+      },
+      payload: { fileName: fixture.fileName, label: "Through017-on-D" },
+    });
+    expect(registered.statusCode).toBe(200);
+    const backup = (
+      registered.json() as { backup: { id: string; contentDigest: string } }
+    ).backup;
+    const sourceBytes = fs.readFileSync(fixture.absPath);
+    const meta = await h.app.inject({ method: "GET", url: "/api/v1/meta" });
+    const epoch = (meta.json() as { installationEpoch: number }).installationEpoch;
+    const restore = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/household/restore",
+      headers: {
+        origin: h.origin,
+        "content-type": "application/json",
+        "x-csrf-token": ownerCsrf,
+        cookie: `${h.config.ownerCookieName}=${ownerCookie}`,
+      },
+      payload: {
+        mutationId: randomUUID(),
+        backupId: backup.id,
+        expectedDigest: backup.contentDigest,
+        expectedEpoch: epoch,
+        confirmationText: "RESTORE",
+        saveBackupBeforeRestore: false,
+      },
+    });
+    expect(restore.statusCode).toBe(200);
+    expect(fs.readFileSync(fixture.absPath)).toEqual(sourceBytes);
+    expect(
+      (
+        h.runtime.db.prepare(`SELECT name FROM households LIMIT 1`).get() as {
+          name: string;
+        }
+      ).name,
+    ).toBe("Through017 Household");
+    const tip = (
+      h.runtime.db
+        .prepare(`SELECT id FROM schema_migrations WHERE id LIKE '02%' ORDER BY id DESC LIMIT 1`)
+        .get() as { id: string } | undefined
+    )?.id;
+    expect(tip).toMatch(/^02/);
   });
 });

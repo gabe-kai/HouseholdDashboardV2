@@ -346,8 +346,9 @@ export function GuidedSetupView(props: GuidedSetupProps) {
   const pendingPersonRef = useRef<PendingPersonCommand | null>(null);
   const pendingWorkRef = useRef<PendingWorkCommand | null>(null);
   const mountedOnceRef = useRef(false);
-  /** Skip one soft reload after a local save that already advanced the step. */
-  const suppressSoftLoadRef = useRef(false);
+  /** Last guide version applied from a local save; soft loads at or below this are ours. */
+  const localSaveVersionRef = useRef<number | null>(null);
+  const applyScopeRef = useRef(0);
 
   const schoolDirty =
     schoolBaseline !== "" &&
@@ -660,22 +661,36 @@ export function GuidedSetupView(props: GuidedSetupProps) {
     );
   }
 
+  function loadFenceStillValid(generation: number, epochAtStart: number): boolean {
+    return (
+      generation === loadGenerationRef.current &&
+      epochAtStart === sessionEpochRef.current
+    );
+  }
+
   async function hydrateSavedWork(
     guide: GuideProgress,
     nextPeople: MemberPublic[],
     preferredId?: string | null,
+    fence?: { generation: number; epochAtStart: number },
   ) {
     if (guide.workDefinitionIds.length === 0 || createAnother) {
+      if (fence && !loadFenceStillValid(fence.generation, fence.epochAtStart)) return;
+      if (dirtyRef.current && fence) return;
       resetWorkBaseline(nextPeople);
       return;
     }
     const id = preferredId ?? selectedWorkId ?? guide.workDefinitionIds[0]!;
     if (!guide.workDefinitionIds.includes(id)) {
+      if (fence && !loadFenceStillValid(fence.generation, fence.epochAtStart)) return;
+      if (dirtyRef.current && fence) return;
       resetWorkBaseline(nextPeople);
       return;
     }
     try {
       const routineResult = await fetchRoutine(id);
+      if (fence && !loadFenceStillValid(fence.generation, fence.epochAtStart)) return;
+      if (fence && dirtyRef.current) return;
       hydrateFromRevision("routine", routineResult.routine, nextPeople);
       return;
     } catch {
@@ -683,8 +698,12 @@ export function GuidedSetupView(props: GuidedSetupProps) {
     }
     try {
       const respResult = await fetchResponsibility(id);
+      if (fence && !loadFenceStillValid(fence.generation, fence.epochAtStart)) return;
+      if (fence && dirtyRef.current) return;
       hydrateFromRevision("responsibility", respResult.responsibility, nextPeople);
     } catch {
+      if (fence && !loadFenceStillValid(fence.generation, fence.epochAtStart)) return;
+      if (fence && dirtyRef.current) return;
       resetWorkBaseline(nextPeople);
     }
   }
@@ -698,15 +717,19 @@ export function GuidedSetupView(props: GuidedSetupProps) {
       fetchSchoolCalendar().catch(() => null),
       fetchGroups().catch(() => ({ groups: [] as GroupPublic[] })),
     ]);
-    if (generation !== loadGenerationRef.current) return;
-    if (epochAtStart !== sessionEpochRef.current) return;
-    if (!options?.force && suppressSoftLoadRef.current) {
-      suppressSoftLoadRef.current = false;
-      setProgress(guide);
+    if (!loadFenceStillValid(generation, epochAtStart)) return;
+    if (
+      !options?.force &&
+      localSaveVersionRef.current != null &&
+      guide.guideVersion <= localSaveVersionRef.current &&
+      !dirtyRef.current
+    ) {
       setPeople(list.people);
       setGroups(groupList.groups);
       props.onMembershipsChange(list.people);
-      setSavedWorkSummary(await resolveSavedWorkSummary(guide, list.people));
+      const summary = await resolveSavedWorkSummary(guide, list.people);
+      if (!loadFenceStillValid(generation, epochAtStart)) return;
+      setSavedWorkSummary(summary);
       return;
     }
     if (!options?.force && dirtyRef.current) {
@@ -723,9 +746,12 @@ export function GuidedSetupView(props: GuidedSetupProps) {
     setGroups(groupList.groups);
     props.onMembershipsChange(list.people);
     applyLoadedCalendar(calendar?.calendar ?? null);
-    await hydrateSavedWork(guide, list.people);
+    await hydrateSavedWork(guide, list.people, undefined, { generation, epochAtStart });
+    if (!loadFenceStillValid(generation, epochAtStart) || dirtyRef.current) return;
     setPersonName("");
-    setSavedWorkSummary(await resolveSavedWorkSummary(guide, list.people));
+    const summary = await resolveSavedWorkSummary(guide, list.people);
+    if (!loadFenceStillValid(generation, epochAtStart) || dirtyRef.current) return;
+    setSavedWorkSummary(summary);
   }
 
   useEffect(() => {
@@ -746,10 +772,8 @@ export function GuidedSetupView(props: GuidedSetupProps) {
     previewGenerationRef.current += 1;
     setPreviewText(null);
     setPreviewBasis(null);
-    if (pendingWorkRef.current) {
-      pendingWorkRef.current = null;
-      workMutationRef.current = newClientId();
-    }
+    // Keep pending work command for ambiguous retry; definitive errors / explicit
+    // discard retire it. Form edits must not mint a new mutationId mid-flight.
   }
 
   function guard() {
@@ -809,12 +833,27 @@ export function GuidedSetupView(props: GuidedSetupProps) {
           classification: personClass,
         } satisfies PendingPersonCommand);
       pendingPersonRef.current = pending;
+      const scope = ++applyScopeRef.current;
+      const epochAtStart = sessionEpochRef.current;
       const result = await guideSavePerson(pending);
+      if (
+        scope !== applyScopeRef.current ||
+        epochAtStart !== sessionEpochRef.current ||
+        pendingPersonRef.current?.mutationId !== pending.mutationId
+      ) {
+        return;
+      }
       pendingPersonRef.current = null;
       personMutationRef.current = newClientId();
-      suppressSoftLoadRef.current = true;
+      localSaveVersionRef.current = result.progress.guideVersion;
       setProgress(result.progress);
       const list = await fetchPeople();
+      if (
+        scope !== applyScopeRef.current ||
+        epochAtStart !== sessionEpochRef.current
+      ) {
+        return;
+      }
       setPeople(list.people);
       props.onMembershipsChange(list.people);
       setPersonName("");
@@ -832,13 +871,18 @@ export function GuidedSetupView(props: GuidedSetupProps) {
     setBusy(true);
     setError(null);
     try {
+      const scope = ++applyScopeRef.current;
+      const epochAtStart = sessionEpochRef.current;
       const result = await guideCompletePeople({
         mutationId: peopleCompleteMutationRef.current,
         ...guard(),
         status,
       });
+      if (scope !== applyScopeRef.current || epochAtStart !== sessionEpochRef.current) {
+        return;
+      }
       peopleCompleteMutationRef.current = newClientId();
-      suppressSoftLoadRef.current = true;
+      localSaveVersionRef.current = result.progress.guideVersion;
       setProgress(result.progress);
       setPersonName("");
       setStep("school");
@@ -854,6 +898,8 @@ export function GuidedSetupView(props: GuidedSetupProps) {
     setBusy(true);
     setError(null);
     try {
+      const scope = ++applyScopeRef.current;
+      const epochAtStart = sessionEpochRef.current;
       const result = await guideSaveSchool({
         mutationId: schoolMutationRef.current,
         ...guard(),
@@ -879,9 +925,12 @@ export function GuidedSetupView(props: GuidedSetupProps) {
             }
           : {}),
       });
+      if (scope !== applyScopeRef.current || epochAtStart !== sessionEpochRef.current) {
+        return;
+      }
       schoolMutationRef.current = newClientId();
       schoolInnerMutationRef.current = newClientId();
-      suppressSoftLoadRef.current = true;
+      localSaveVersionRef.current = result.progress.guideVersion;
       setProgress(result.progress);
       if (result.calendar) {
         applyLoadedCalendar(result.calendar);
@@ -1008,23 +1057,15 @@ export function GuidedSetupView(props: GuidedSetupProps) {
         reviewedResponsibilityDays = applicable.map((day) => ({
           householdDate: day.householdDate,
           accountableMemberId: day.accountableMemberId ?? null,
-          stepTexts: steps.map((s) => s.text),
-          scheduledAdditionNames: additions
-            .filter((a) => a.weekdays.includes(((new Date(day.householdDate + "T12:00:00").getDay() + 6) % 7) + 1))
-            .map((a) => a.name),
+          stepTexts: day.stepTexts ?? [],
         }));
         lines.push(
-          `Responsibility “${workTitle.trim() || "Shared responsibility"}”: ${first ? `${first.householdDate} · ${first.accountableMemberName ?? "Unassigned"}` : respPreview.nextKnownDate ? `next ${respPreview.nextKnownDate}` : respPreview.noKnownReason ?? "no known date"}`,
+          `Responsibility “${workTitle.trim() || "Shared responsibility"}”: ${first ? `${first.householdDate} · ${first.accountableMemberName ?? "Unassigned"} · ${(first.stepTexts ?? []).join(" → ") || "—"}` : respPreview.nextKnownDate ? `next ${respPreview.nextKnownDate}` : respPreview.noKnownReason ?? "no known date"}`,
         );
         for (const day of applicable.slice(0, 7)) {
-          const dayAdditions = additions
-            .filter((a) =>
-              a.weekdays.includes(((new Date(day.householdDate + "T12:00:00").getDay() + 6) % 7) + 1),
-            )
-            .map((a) => a.name);
+          const daySteps = (day.stepTexts ?? []).join(" → ") || "—";
           lines.push(
-            `  ${day.householdDate}: ${day.accountableMemberName ?? "Unassigned"} · steps: ${steps.map((s) => s.text).join(" → ") || "—"}` +
-              (dayAdditions.length ? ` · scheduled: ${dayAdditions.join(", ")}` : ""),
+            `  ${day.householdDate}: ${day.accountableMemberName ?? "Unassigned"} · steps: ${daySteps}`,
           );
         }
         if (!applicable.length && respPreview.nextKnownDate) {
@@ -1141,14 +1182,29 @@ export function GuidedSetupView(props: GuidedSetupProps) {
           previewBasis: previewBasis ?? undefined,
         } satisfies PendingWorkCommand);
       pendingWorkRef.current = pending;
+      const scope = ++applyScopeRef.current;
+      const epochAtStart = sessionEpochRef.current;
       const result = await guideSaveWork(pending);
+      if (
+        scope !== applyScopeRef.current ||
+        epochAtStart !== sessionEpochRef.current ||
+        pendingWorkRef.current?.mutationId !== pending.mutationId
+      ) {
+        return;
+      }
       pendingWorkRef.current = null;
       workMutationRef.current = newClientId();
-      suppressSoftLoadRef.current = true;
+      localSaveVersionRef.current = result.progress.guideVersion;
       setProgress(result.progress);
       if (result.routine) setEditingVersion(result.routine.version);
       if (result.responsibility) setEditingVersion(result.responsibility.version);
       const summary = await resolveSavedWorkSummary(result.progress, people);
+      if (
+        scope !== applyScopeRef.current ||
+        epochAtStart !== sessionEpochRef.current
+      ) {
+        return;
+      }
       if (summary.length === 0) {
         if (result.routine) {
           const title = result.routine.revisions[0]?.title ?? (workTitle.trim() || "Routine");
@@ -1203,12 +1259,18 @@ export function GuidedSetupView(props: GuidedSetupProps) {
     setBusy(true);
     setError(null);
     try {
+      const scope = ++applyScopeRef.current;
+      const epochAtStart = sessionEpochRef.current;
       const result = await guideFinish({
         mutationId: finishMutationRef.current,
         ...guard(),
         dismiss,
       });
+      if (scope !== applyScopeRef.current || epochAtStart !== sessionEpochRef.current) {
+        return;
+      }
       finishMutationRef.current = newClientId();
+      localSaveVersionRef.current = result.progress.guideVersion;
       setProgress(result.progress);
       if (target === "today") props.onNavigateToday();
       else props.onNavigateHousehold();
@@ -1232,11 +1294,17 @@ export function GuidedSetupView(props: GuidedSetupProps) {
     setBusy(true);
     setError(null);
     try {
+      const scope = ++applyScopeRef.current;
+      const epochAtStart = sessionEpochRef.current;
       const result = await guideDismiss({
         mutationId: dismissMutationRef.current,
         ...guard(),
       });
+      if (scope !== applyScopeRef.current || epochAtStart !== sessionEpochRef.current) {
+        return;
+      }
       dismissMutationRef.current = newClientId();
+      localSaveVersionRef.current = result.progress.guideVersion;
       setProgress(result.progress);
     } catch (caught) {
       setError(errorMessage(caught));

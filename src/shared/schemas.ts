@@ -804,6 +804,8 @@ export type ResponsibilityPreviewDay = {
   occurrenceId: string | null;
   unassignedReason?: string | null;
   stepCount?: number;
+  /** Ordered composed step texts for the day (base + applicable additions). */
+  stepTexts?: string[];
 };
 
 /** Outcome of a plan reconcile for truthful save feedback. */

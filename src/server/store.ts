@@ -1417,18 +1417,23 @@ export class AppStore {
             basis.reviewedResponsibilityDays &&
             basis.reviewedResponsibilityDays.length > 0
           ) {
+            const compareSteps = basis.reviewedResponsibilityDays.some(
+              (d) => d.stepTexts !== undefined,
+            );
             const live = applicable.map((d) => ({
               householdDate: d.householdDate,
               accountableMemberId: d.accountableMemberId ?? null,
+              ...(compareSteps ? { stepTexts: d.stepTexts ?? [] } : {}),
             }));
             const reviewed = basis.reviewedResponsibilityDays.map((d) => ({
               householdDate: d.householdDate,
               accountableMemberId: d.accountableMemberId,
+              ...(compareSteps ? { stepTexts: d.stepTexts ?? [] } : {}),
             }));
             if (JSON.stringify(live) !== JSON.stringify(reviewed)) {
               fail(
                 "CONFLICT",
-                "Responsibility owner changed since review; preview again before saving",
+                "Responsibility review changed since preview; preview again before saving",
               );
             }
           } else if (basis.reviewedResponsibilityOwnerId !== undefined) {
@@ -3930,6 +3935,7 @@ export class AppStore {
           revisionId: null,
           startedProtected: false,
           occurrenceId: null,
+          stepTexts: [],
         });
         continue;
       }
@@ -3957,6 +3963,7 @@ export class AppStore {
         occurrenceId: null,
         unassignedReason: composed.unassignedReason,
         stepCount: composed.steps.length,
+        stepTexts: composed.steps.map((step) => step.text.trim()),
       });
     }
     return results;

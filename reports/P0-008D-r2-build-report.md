@@ -1,66 +1,73 @@
-# Build Report - BRIEF P0-008D r2 (second reassessment correction)
+# Build Report - BRIEF P0-008D r2 (follow-up on `6d427ff`)
 
 **Brief revision implemented:** 2  
 **Engineering status:** IMPLEMENTED — awaiting Architecture re-review  
 **Branch:** `brief/p0-008d-guided-first-household-day`  
-**Prior correction reviewed:** `3320033` (Architecture FIX REQUIRED in `reports/P0-008D-r2-architecture-second-reassessment.md`)  
-**Second reassessment docs tip:** `101df9f`  
+**Prior correction reviewed:** `6d427ff` (Architecture FIX REQUIRED follow-up in `reports/P0-008D-r2-architecture-second-reassessment.md`)  
+**Docs tip at follow-up:** `f4d68da`  
 **This correction tip:** uncommitted working tree on this branch (suggest commit; do not auto-commit)  
 **Authorization:** same r2; no contract revision / readiness cycle  
 **Pull request:** not opened by this Build Report  
 
-## What changed (second reassessment)
+## Retained from `6d427ff`
 
-| Finding | Correction |
+- Saved-edit hydration (`selectCurrentRevision`), domain ID/null-owner/assignment preservation, `guideSaveWork`/`reviseTarget`
+- Filtered routine `stepTexts` preview; dirty soft-load baseline retain; definitive-error pending clear
+- AT11 actual B restore of D household (source bytes, scrub, fresh invite)
+- AT10 ordinary UI invite/redeem/revoke/backup/reset/Welcome restore sequence
+
+## What this correction adds
+
+| Checklist | Correction |
 | --- | --- |
-| **R1** | `selectCurrentRevision` hydrates current/upcoming schedule entry (not last revision); preserve logical step IDs, addition IDs/assignment, null owners, assignment anchor/exclusion/ring; multi-item selector; baselines from hydrated object; recap uses dated preview/next-known + deleted/ended truth |
-| **R4** | Draft preview returns per-day filtered `stepTexts`; review lines use composed day steps/additions; edits go through `guideSaveWork` + `reviseTarget` with the same previewBasis enforcement |
-| **R3/R5** | Dirty soft-load no longer overwrites progress baselines; definitive errors clear pending commands; form edits after pending retire the old command; hydrate/select fences retained |
-| **AT10** | Ordinary UI: invite→redeem (fresh browser context)→revoke→restore-link→used/unused removal→backup→reset (backup off)→protected Welcome restore→fresh sign-in |
-| **AT11** | Real `POST /household/backups` + owner `POST /household/restore`; source byte immutability; guide progress/dismissal preserved; all three claim purposes preview+redeem denied; fresh invitation recovery |
+| **1 AT10** | Permissions edit; restore-sign-in redeem; enrolled work before Depart; guide work before backup; catalog label + no hidden reset backup; stale invitation; restored guide work assertion |
+| **2 R3/R5** | Nested hydrate/save fences (generation/epoch/dirty); version-causal soft load (replaces one-shot suppress); pending retained across preview invalidation |
+| **3 R4** | Responsibility preview returns composed `stepTexts`; client review uses them; `guideSaveWork` compares stepTexts when present |
+| **4 PARTIALs** | Named tests for AT1 no-A, AT5 composed consent, AT6 first-action+calendar, AT7 responsibility+depart, AT8 member without lifecycle.manage, AT9 two-manager socket, AT11 through-017 on D, AT12 phone/keyboard |
 
 ## Acceptance / finding evidence (honest mappings)
 
 | AT / Finding | Named evidence | Result |
 | --- | --- | --- |
-| AT1 / R6 | `tests/integration/p0-008d.test.ts` — `AT1: migration 020/021…through-019 adopts…`; helper `tests/helpers/p019-fixture.ts` | **PASS** (through-019 adopt + A progress/C departures). Remaining no-A-progress / full catalog matrix: **PARTIAL** |
-| AT2 / R1 / R7 | `tests/e2e/z-p0-008d-guided-setup.spec.ts` — `P0-008D AT2: phone journey…` | **PASS** (exact PR/RC) |
-| AT3 / R1 / R5 | same file — `P0-008D AT3: account Back…` | **PASS** (exact PR/RC) |
-| AT4 / R3 | integration — `AT4: guide person save rolls back…`; `R3: changed-payload…`; `R3: changed scheduledAdditions…` | **PASS** |
-| AT5 / R4 | integration — `AT5/R4: draft routine preview unions…`; `R4: guide work creation without previewBasis…` (stepTexts compared when present on AT7 path) | **PASS** for group-union + no-basis + composed stepTexts. Full controlled-date / held-review matrix: **PARTIAL** |
-| AT6 / R2 | integration — `AT6: competing guide school save…`; `R2: guide school Not now…` | **PASS** (guide-version race + calendar preserve). Occurrence first-action vs calendar: **PARTIAL** |
-| AT7 / R6 | integration — `AT7: unused guide person and work can be deleted…` | **PASS** (unused person + routine delete + retired replay). Both-kinds / used / departed / ended: **PARTIAL** |
-| AT8 | integration — `AT8: guide progress requires lifecycle.manage`; `AT8: foreign/display principals cannot read guide…` | **PASS** for unauth + foreign cookie + display principal. Lifecycle-only member / epoch-held: **PARTIAL** |
-| AT9 / R5 | e2e — `P0-008D AT9: dirty draft retained across soft guide refresh conflict` | **PARTIAL** (single-context visibility soft-load). Two-manager / socket outage: **PARTIAL** |
-| AT10 | e2e — `P0-008D AT10: invite/access/removal/backup/reset/Welcome restore UI journey` | **PASS** (Chromium + WebKit under exact RC; also focused Chromium) |
-| AT11 / R6 | integration — `AT11: B restore of D household preserves guide progress, scrubs claims, keeps source bytes` (+ `AT11: scrubRestoredAccess…`) | **PASS** (staged B restore of D household + scrub + source bytes + three-purpose denial + fresh invite). Separate aged 017/018/019 snapshot matrix beyond D: **PARTIAL** |
-| AT12 / R7 | e2e — `P0-008D AT12: direct /household/setup reload…`; desktop — `P0-008D AT12 desktop…` | **PASS** (reload + desktop rail). Broader keyboard/touch geometry: **PARTIAL** |
-| AT13 | local release paths in ARCHITECTURE | **PASS** (local). Hosted: **NOT RUN** |
-| AT14 | Exact `validate:pr` / `validate:rc` | **PASS** — see Verification |
+| AT1 / R6 | `AT1: migration 020/021…through-019…`; `AT1: no-A-progress adoption creates guide row…` | **PASS** for with-A adopt + no-A null timestamps. Custom-grant/history/calendar/control-catalog matrix beyond grants-in-AT1: **PARTIAL** (REUSE B `AT6: control catalog…` for catalog-only) |
+| AT2 | e2e `P0-008D AT2: phone journey…` | **PASS** |
+| AT3 | e2e `P0-008D AT3: account Back…` | **PASS** |
+| AT4 / R3 | integration AT4 + R3 digest tests | **PASS** |
+| AT5 / R4 | `AT5/R4: draft routine preview…`; `AT5/R4: responsibility draft preview returns composed stepTexts…`; `R4: …without previewBasis…` | **PASS** for group-union, no-basis, composed stepTexts consent. Broader controlled-date/phase/Unassigned matrix: **PARTIAL** |
+| AT6 / R2 | `AT6: competing guide school…`; `AT6: guide calendar change after first action preserves…`; `R2: guide school Not now…` | **PASS** (version race + first-action history after calendar change) |
+| AT7 / R6 | prior unused person+routine; `AT7: unused responsibility deletes; used enrolled person departs…` | **PASS** for both kinds unused delete + used depart. Ended-definition return matrix: **PARTIAL** (REUSE P0-005 end/delete) |
+| AT8 | lifecycle.manage; foreign/display; `AT8: enrolled member without lifecycle.manage…` | **PASS** for unauth/fake/display/member-without-lifecycle. Held-epoch after reset: **PARTIAL** |
+| AT9 / R5 | soft visibility retain; `P0-008D AT9: two managers converge after actual socket loss on guide` | **PASS** (dual-manager + `__hdSync.closeForTest` + visibility recover) |
+| AT10 | `P0-008D AT10: invite/access/removal/backup/reset/Welcome restore UI journey` | **PASS** (expanded assertions; Chromium focused + exact PR/RC Chromium+WebKit) |
+| AT11 / R6 | D B restore AT11; `AT11: through-017 aged snapshot B restore…`; scrub helper | **PASS** for D restore + through-017 aged image. Separate through-018/019 labeled images: **PARTIAL** (REUSE B through-017; D through-019 adopt is AT1) |
+| AT12 / R7 | reload AT12; desktop rail; `P0-008D AT12: guide controls remain usable at phone width…` | **PASS** for reload/desktop/phone+keyboard focus. Full 768/200%/touch suite: **PARTIAL** |
+| AT13 | local release paths | **PASS** (local). Hosted: **NOT RUN** |
+| AT14 | Exact `validate:pr` / `validate:rc` | See Verification |
 
 ## Verification performed
 
 - `npx tsc --noEmit -p tsconfig.json` — PASS  
-- `npx vitest run tests/integration/p0-008d.test.ts` — **13 passed**  
-- Focused AT10: `npx playwright test tests/e2e/z-p0-008d-guided-setup.spec.ts -g "AT10" --project=chromium-008a` — **1 passed**  
-- Exact `npm run validate:pr` — **PASS** — `reports/_local-validate-pr-008d-r2c.log`  
-  - Unit/integration: **329** passed (46 files)  
-  - Chromium Playwright: **111** passed  
+- `npm run lint` — PASS  
+- `npx vitest run tests/integration/p0-008d.test.ts` — **19 passed**  
+- Focused Chromium AT10 / AT9 dual / AT12 phone — PASS  
+- Focused WebKit AT10 — PASS  
+- Exact `npm run validate:pr` — **PASS** — `reports/_local-validate-pr-008d-r2d.log`  
+  - Unit/integration: **335** passed (46 files)  
+  - Chromium Playwright: **113** passed  
   - Vite deep-link: **6** passed  
-- Exact `npm run validate:rc` — **PASS** — `reports/_local-validate-rc-008d-r2c.log`  
-  - Unit/integration: **329** passed (46 files)  
-  - Chromium+WebKit Playwright: **176** passed (includes AT10 on `chromium-008a` and `webkit-008a`)  
+- Exact `npm run validate:rc` — **PASS** — `reports/_local-validate-rc-008d-r2d.log`  
+  - Unit/integration: **335** passed (46 files)  
+  - Chromium+WebKit Playwright: **180** passed (AT10 on `chromium-008a` + `webkit-008a`)  
   - Vite deep-link: **6** passed  
-- Hosted Railway / live DB — **NOT RUN** (disposable local only)
+- Hosted Railway / live DB — **NOT RUN**
 
 ## Suggested commit message (do not commit unless authorized)
 
 ```
-fix(P0-008D): close second r2 reassessment with full AT10/AT11 restore journeys
+fix(P0-008D): close 6d427ff follow-up AT10 assertions, fences, preview, and PARTIALs
 ```
 
 ## Notes for Architecture
 
-- Foundations retained from `3320033`: digest/scheduledAdditions, require previewBasis, soft dirty load, weekly/cycle/group controls.
 - Shared card **Set up and manage my household without operator help** remains **In Progress**.
 - Pin this Build Report to the forthcoming correction commit SHA after Project Lead commit.

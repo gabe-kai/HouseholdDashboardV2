@@ -187,42 +187,71 @@ test.describe("P0-008D guided first household day", () => {
     page,
     baseURL,
   }) => {
-    test.setTimeout(420_000);
+    test.setTimeout(480_000);
     const inviteLink = await ownerIssueInvite(page);
     await page.goto(inviteLink);
     const displayName = "Journey Parent";
     const loginName = `mgrd10.${Date.now().toString(36)}`;
     await completeRequiredBasics(page, loginName, displayName, "Journey Household");
-    await page.getByTestId("setup-go-today").click();
+
+    // Configure optional guide/work so the backup has restorable guide state.
+    await page.getByTestId("setup-continue-guide").click();
+    await expect(page.getByTestId("guided-setup")).toBeVisible({ timeout: 20_000 });
+    await addGuidePerson(page, "Unused Child", "child");
+    await addGuidePerson(page, "Invited Adult", "adult");
+    await page.getByTestId("guide-people-continue").click();
+    await expect(page.getByTestId("guide-school")).toBeVisible({ timeout: 15_000 });
+    await page.getByTestId("guide-school-not-now").click();
+    await expect(page.getByTestId("guide-work")).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId("guide-work-kind").selectOption("routine");
+    await page.getByTestId("guide-work-title").fill("Journey Morning");
+    await page.getByTestId("guide-work-daypart").selectOption("morning");
+    await page.getByTestId("guide-work-step").fill("Stretch together");
+    await page.getByTestId("guide-work-review").click();
+    await expect(page.getByTestId("guide-work-preview")).toBeVisible({ timeout: 20_000 });
+    const saveWork = page.getByTestId("guide-work-save");
+    await saveWork.scrollIntoViewIfNeeded();
+    await expect(saveWork).toBeEnabled();
+    await saveWork.click({ force: true });
+    await expect(page.getByTestId("guide-recap")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("guide-recap-work")).toContainText("Journey Morning");
+    await page.getByTestId("guide-go-today").click();
     await expectSignedInAs(page, displayName);
 
-    // People: add unused + invitee; issue invitation; redeem; revoke; restore; remove both modes.
-    await page
-      .getByRole("navigation", { name: "Primary" })
-      .getByRole("button", { name: "Household", exact: true })
-      .click();
-    await page
-      .getByRole("navigation", { name: "Household" })
-      .getByRole("button", { name: /People & Groups/ })
-      .click();
-    await expect(page.getByRole("heading", { name: "People & Groups" })).toBeVisible();
+    async function openPeople() {
+      await page
+        .getByRole("navigation", { name: "Primary" })
+        .getByRole("button", { name: "Household", exact: true })
+        .click();
+      await page
+        .getByRole("navigation", { name: "Household" })
+        .getByRole("button", { name: /People & Groups/ })
+        .click();
+      await expect(page.getByRole("heading", { name: "People & Groups" })).toBeVisible({
+        timeout: 15_000,
+      });
+    }
 
-    await page.getByRole("button", { name: "Add person", exact: true }).click();
-    await page.getByLabel("Friendly name").fill("Unused Child");
-    await page.getByRole("radio", { name: "Child" }).check();
-    await page.getByRole("button", { name: "Add person", exact: true }).click();
-    await expect(page.locator("#person-detail-heading")).toHaveText("Unused Child", {
-      timeout: 15_000,
-    });
-
-    await page.getByRole("button", { name: /Back to People/i }).click();
-    await page.getByRole("button", { name: "Add person", exact: true }).click();
-    await page.getByLabel("Friendly name").fill("Invited Adult");
-    await page.getByRole("radio", { name: "Adult" }).check();
-    await page.getByRole("button", { name: "Add person", exact: true }).click();
+    await openPeople();
+    await page.getByRole("button", { name: /Invited Adult/ }).first().click();
     await expect(page.locator("#person-detail-heading")).toHaveText("Invited Adult", {
       timeout: 15_000,
     });
+
+    // Permissions change before access lifecycle.
+    await page.getByRole("button", { name: "Edit permissions" }).click();
+    await expect(page.getByTestId("person-permissions-section")).toBeVisible();
+    await page
+      .locator("label.choice-row")
+      .filter({ hasText: /Manage household displays/i })
+      .locator("input")
+      .check();
+    await page.getByRole("button", { name: "Preview & save" }).click();
+    await page.getByRole("button", { name: "Confirm save" }).click();
+    await expect(page.locator("#person-detail-heading")).toHaveText("Invited Adult", {
+      timeout: 15_000,
+    });
+
     await page.getByRole("button", { name: "Manage sign-in" }).click();
     await page.getByRole("button", { name: "Set up sign-in" }).click();
     await expect(page.getByTestId("access-invite-link")).toBeVisible({ timeout: 15_000 });
@@ -230,33 +259,39 @@ test.describe("P0-008D guided first household day", () => {
     expect(accessLink).toContain("access=");
 
     const inviteeLogin = `invd10.${Date.now().toString(36)}`;
-    // Fresh browser context so the invitee is not already signed in as the manager.
     const inviteeContext = await page.context().browser()!.newContext();
     const inviteePage = await inviteeContext.newPage();
     try {
       await inviteePage.goto(accessLink.trim());
-      await expect(inviteePage.getByTestId("access-claim-summary")).toBeVisible({ timeout: 20_000 });
+      await expect(inviteePage.getByTestId("access-claim-summary")).toBeVisible({
+        timeout: 20_000,
+      });
       await inviteePage.getByLabel("Display name").fill("Invited Adult");
       await inviteePage.getByLabel("Login name").fill(inviteeLogin);
       await inviteePage.getByLabel("Passphrase").fill(MANAGER_PASS);
       await inviteePage.getByRole("button", { name: "Create account and sign in" }).click();
       await expectSignedInAs(inviteePage, "Invited Adult");
+
+      // Record enrolled-person work so removal is Depart-with-history, not Delete.
+      await inviteePage
+        .getByRole("navigation", { name: "Primary" })
+        .getByRole("button", { name: "Today", exact: true })
+        .click();
+      const stretch = inviteePage.getByRole("checkbox", { name: /Stretch together/i }).first();
+      if (await stretch.isVisible({ timeout: 8_000 }).catch(() => false)) {
+        await stretch.check();
+      } else {
+        const anyStep = inviteePage.locator('[data-testid^="step-"], input[type="checkbox"]').first();
+        if (await anyStep.isVisible({ timeout: 5_000 }).catch(() => false)) {
+          await anyStep.click();
+        }
+      }
     } finally {
       await inviteeContext.close();
     }
 
     await page.reload();
-    await page
-      .getByRole("navigation", { name: "Primary" })
-      .getByRole("button", { name: "Household", exact: true })
-      .click();
-    await page
-      .getByRole("navigation", { name: "Household" })
-      .getByRole("button", { name: /People & Groups/ })
-      .click();
-    await expect(page.getByRole("heading", { name: "People & Groups" })).toBeVisible({
-      timeout: 15_000,
-    });
+    await openPeople();
     await page.getByRole("button", { name: /Invited Adult/ }).first().click();
     await expect(page.getByTestId("people-sign-in-status")).toBeVisible({ timeout: 15_000 });
     await page.getByRole("button", { name: "Manage sign-in" }).click();
@@ -267,12 +302,40 @@ test.describe("P0-008D guided first household day", () => {
     });
     await page.getByRole("button", { name: "Restore sign-in link" }).click();
     await expect(page.getByTestId("access-invite-link")).toBeVisible({ timeout: 15_000 });
+    const restoreLink = (await page.getByTestId("access-invite-link").textContent()) ?? "";
+    expect(restoreLink).toContain("access=");
+
+    // Stale invitation and restore redeem each need a fresh document/module so
+    // `#access=` is read once per load (StrictMode-safe hash consume).
+    const staleContext = await page.context().browser()!.newContext();
+    const stalePage = await staleContext.newPage();
+    try {
+      await stalePage.goto(accessLink.trim());
+      await expect(stalePage.getByTestId("access-claim-summary")).toHaveCount(0, {
+        timeout: 8_000,
+      });
+    } finally {
+      await staleContext.close();
+    }
+
+    const restoreContext = await page.context().browser()!.newContext();
+    const restorePage = await restoreContext.newPage();
+    try {
+      await restorePage.goto(restoreLink.trim());
+      await expect(restorePage.getByTestId("access-claim-summary")).toBeVisible({
+        timeout: 20_000,
+      });
+      await restorePage.getByRole("button", { name: "Restore sign-in" }).click();
+      await expectSignedInAs(restorePage, "Invited Adult");
+    } finally {
+      await restoreContext.close();
+    }
 
     await page.getByRole("button", { name: /Back to Invited Adult/i }).click();
     await expect(page.locator("#person-detail-heading")).toHaveText("Invited Adult");
     await page.getByRole("button", { name: "Remove from household" }).click();
     await expect(page.getByTestId("removal-preview")).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByTestId("removal-preview")).toContainText(/Depart|Delete/i);
+    await expect(page.getByTestId("removal-preview")).toContainText("Depart and keep history");
     await page.getByLabel("Your password").fill(MANAGER_PASS);
     await page.getByRole("button", { name: /Confirm REMOVE/i }).click();
     await expect(page.getByRole("heading", { name: "People & Groups" })).toBeVisible({
@@ -290,14 +353,18 @@ test.describe("P0-008D guided first household day", () => {
       timeout: 20_000,
     });
 
-    // Backup → reset with backup off → protected Welcome restore → fresh sign-in.
+    // Backup (catalog lists the labeled household; reset-with-backup-off adds none) → Welcome restore.
     await page.goto("/household/settings");
     await expect(page.getByTestId("backups-section")).toBeVisible();
+    await expect(page.getByTestId("backup-list")).not.toContainText("D journey backup");
     await page.getByTestId("backup-label").fill("D journey backup");
     await page.getByTestId("backup-passphrase").fill(MANAGER_PASS);
     await page.getByTestId("backup-create").click();
     await expect(page.getByTestId("backup-list")).toContainText("Journey Household", {
       timeout: 30_000,
+    });
+    await expect(page.getByTestId("backup-list")).toContainText("D journey backup", {
+      timeout: 15_000,
     });
 
     await page.getByRole("button", { name: /Reset household/i }).click();
@@ -346,6 +413,12 @@ test.describe("P0-008D guided first household day", () => {
         "Journey Household",
         { timeout: 20_000 },
       );
+      // Reset-with-backup-off must not invent a second catalog entry for this household.
+      const welcomeRows = afterRestart
+        .getByTestId("welcome-backup-list")
+        .locator("li")
+        .filter({ hasText: "Journey Household" });
+      await expect(welcomeRows).toHaveCount(1);
       await afterRestart.getByRole("button", { name: /Restore/i }).first().click();
       await expect(afterRestart.getByTestId("welcome-restore-confirm")).toBeVisible();
       await afterRestart.getByTestId("welcome-restore-submit").click();
@@ -360,6 +433,21 @@ test.describe("P0-008D guided first household day", () => {
       await afterRestart.getByLabel("Passphrase").fill(MANAGER_PASS);
       await afterRestart.getByRole("button", { name: "Sign in" }).click();
       await expectSignedInAs(afterRestart, displayName);
+
+      // Restored household still carries guide work configured before backup.
+      await afterRestart
+        .getByRole("navigation", { name: "Primary" })
+        .getByRole("button", { name: "Household", exact: true })
+        .click();
+      await afterRestart
+        .getByRole("navigation", { name: "Household" })
+        .getByRole("button", { name: /Settings/ })
+        .click();
+      await afterRestart.getByTestId("settings-finish-setup").click();
+      await expect(afterRestart.getByTestId("guided-setup")).toBeVisible({ timeout: 20_000 });
+      await expect(afterRestart.getByTestId("guide-recap-work")).toContainText("Journey Morning", {
+        timeout: 15_000,
+      });
     } finally {
       await afterRestart.close();
     }
@@ -384,5 +472,82 @@ test.describe("P0-008D guided first household day", () => {
     await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
     await page.waitForTimeout(500);
     await expect(page.getByTestId("guide-person-name")).toHaveValue("Keep Draft");
+  });
+
+  test("P0-008D AT9: two managers converge after actual socket loss on guide", async ({
+    page,
+    browser,
+  }) => {
+    test.setTimeout(240_000);
+    const inviteLink = await ownerIssueInvite(page);
+    await page.goto(inviteLink);
+    const displayName = "Socket Parent";
+    const loginName = `mgrd9b.${Date.now().toString(36)}`;
+    await completeRequiredBasics(page, loginName, displayName, "Socket Household");
+    await page.getByTestId("setup-continue-guide").click();
+    await expect(page.getByTestId("guided-setup")).toBeVisible({ timeout: 20_000 });
+    await addGuidePerson(page, "Socket Child", "child");
+    await page.getByTestId("guide-people-continue").click();
+    await expect(page.getByTestId("guide-school")).toBeVisible({ timeout: 15_000 });
+
+    const peer = await browser.newContext();
+    const peerPage = await peer.newPage();
+    try {
+      await peerPage.goto("/login");
+      await peerPage.getByLabel("Login name").fill(loginName);
+      await peerPage.getByLabel("Passphrase").fill(MANAGER_PASS);
+      await peerPage.getByRole("button", { name: "Sign in" }).click();
+      await expectSignedInAs(peerPage, displayName);
+      await peerPage.goto("/household/setup");
+      await expect(peerPage.getByTestId("guided-setup")).toBeVisible({ timeout: 20_000 });
+
+      await page.evaluate(() => {
+        const sync = (window as unknown as { __hdSync?: { closeForTest?: () => void } }).__hdSync;
+        sync?.closeForTest?.();
+      });
+
+      await peerPage.getByTestId("guide-school-not-now").click();
+      await expect(peerPage.getByTestId("guide-work")).toBeVisible({ timeout: 30_000 });
+
+      await expect
+        .poll(
+          async () => {
+            await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+            return page.getByTestId("guide-work").isVisible().catch(() => false);
+          },
+          { timeout: 60_000, intervals: [1_000, 2_000] },
+        )
+        .toBe(true);
+    } finally {
+      await peer.close();
+    }
+  });
+
+  test("P0-008D AT12: guide controls remain usable at phone width with keyboard focus", async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    await page.setViewportSize({ width: 360, height: 800 });
+    const inviteLink = await ownerIssueInvite(page);
+    await page.goto(inviteLink);
+    await completeRequiredBasics(
+      page,
+      `mgrd12.${Date.now().toString(36)}`,
+      "Geometry Parent",
+      "Geometry Household",
+    );
+    await page.getByTestId("setup-continue-guide").click();
+    await expect(page.getByTestId("guided-setup")).toBeVisible({ timeout: 20_000 });
+    const addAnother = page.getByTestId("guide-add-another");
+    await expect(addAnother).toBeVisible();
+    const box = await addAnother.boundingBox();
+    expect(box).toBeTruthy();
+    expect(box!.height).toBeGreaterThanOrEqual(36);
+    await addAnother.focus();
+    await expect(addAnother).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page.getByTestId("guide-person-name")).toBeVisible();
+    await page.getByTestId("guide-person-name").focus();
+    await expect(page.getByTestId("guide-person-name")).toBeFocused();
   });
 });

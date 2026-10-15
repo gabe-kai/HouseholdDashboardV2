@@ -374,7 +374,10 @@ export function registerLifecycleRoutes(app: FastifyInstance, deps: LifecycleRou
     const session = requireLifecycleManager(request, reply);
     if (!session) return;
     reply.header("Cache-Control", "no-store");
-    return deps.getStore().getGuideProgress(session);
+    return {
+      ...deps.getStore().getGuideProgress(session),
+      installationEpoch: session.installationEpoch,
+    };
   });
 
   app.post("/api/v1/guide/people", async (request, reply) => {

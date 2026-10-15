@@ -5,10 +5,21 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { migrate, openDatabase } from "../../src/server/db.js";
 import { scrubRestoredAccess } from "../../src/server/backup-catalog.js";
-import { sha256Hex } from "../../src/server/crypto.js";
+import { hashPassphrase, sha256Hex } from "../../src/server/crypto.js";
+import {
+  addHouseholdDays,
+  householdDateFromInstant,
+  isoWeekdayForHouseholdDate,
+} from "../../src/domain/time.js";
 import { createHttpHarness, type HttpHarness } from "../helpers/auth-fixture.js";
+import { P009_FIXTURE_IDS } from "../helpers/p009-fixture.js";
+import { P013_FIXTURE_IDS } from "../helpers/p013-fixture.js";
+import { P014_FIXTURE_IDS } from "../helpers/p014-fixture.js";
 import { openPopulatedP019UpgradeDatabase } from "../helpers/p019-fixture.js";
-import { createThrough017BackupFile } from "../helpers/through-017-backup-fixture.js";
+import {
+  createThrough017BackupFile,
+  createThroughTipBackupFile,
+} from "../helpers/through-017-backup-fixture.js";
 
 const OWNER_SECRET = "test-owner-secret-with-enough-entropy-0123456789abcdef";
 const PASSPHRASE = "Unique-passphrase-ok!999";
@@ -1559,5 +1570,1010 @@ describe("P0-008D guided first household day", () => {
         .get() as { id: string } | undefined
     )?.id;
     expect(tip).toMatch(/^02/);
+  });
+
+  it("C1/AT1: populated through-019 upgrade preserves actual grants, history, calendar, and departures", async () => {
+    const dbPath = tempPath("hd-d-c1");
+    const db = openPopulatedP019UpgradeDatabase(dbPath);
+    const customGrant = "custom.archive.review";
+    db.prepare(
+      `INSERT INTO membership_grants (membership_id, grant_name) VALUES (?, ?)`,
+    ).run(P014_FIXTURE_IDS.morganId, customGrant);
+    const exceptionId = "99999999-9999-4999-8999-999999999903";
+    db.prepare(
+      `INSERT INTO school_exceptions (id, year_id, name, start_date, end_date, position)
+       VALUES (?, ?, 'Winter break', '2026-12-21', '2027-01-02', 0)`,
+    ).run(exceptionId, P009_FIXTURE_IDS.calendarYearId);
+
+    const before = {
+      grants: db
+        .prepare(
+          `SELECT membership_id, grant_name FROM membership_grants ORDER BY membership_id, grant_name`,
+        )
+        .all(),
+      departed: db
+        .prepare(
+          `SELECT id, departed_at, departed_household_date FROM household_memberships
+           WHERE departed_at IS NOT NULL ORDER BY id`,
+        )
+        .all(),
+      year: db
+        .prepare(
+          `SELECT id, start_date, end_date, usual_weekdays_json FROM school_years WHERE id = ?`,
+        )
+        .get(P009_FIXTURE_IDS.calendarYearId),
+      exception: db
+        .prepare(`SELECT id, name, start_date, end_date FROM school_exceptions WHERE id = ?`)
+        .get(exceptionId),
+      started: db
+        .prepare(
+          `SELECT id, title, started_at, accountable_member_id FROM occurrences WHERE id = ?`,
+        )
+        .get(P013_FIXTURE_IDS.catsOccStartedId),
+      steps: db
+        .prepare(
+          `SELECT id, occurrence_id, text, status FROM occurrence_steps
+           WHERE occurrence_id = ? ORDER BY id`,
+        )
+        .all(P013_FIXTURE_IDS.catsOccStartedId),
+      reports: db
+        .prepare(
+          `SELECT occurrence_id, occurrence_step_id, resulting_state FROM step_reports
+           WHERE occurrence_id = ? ORDER BY occurrence_step_id, resulting_state`,
+        )
+        .all(P013_FIXTURE_IDS.catsOccStartedId),
+      people: db
+        .prepare(
+          `SELECT id, display_name, user_id FROM household_memberships ORDER BY id`,
+        )
+        .all(),
+      progress: db
+        .prepare(
+          `SELECT account_completed_at, household_completed_at FROM setup_progress LIMIT 1`,
+        )
+        .get(),
+    };
+    expect((before.reports as unknown[]).length).toBeGreaterThan(0);
+    expect((before.steps as unknown[]).length).toBeGreaterThan(0);
+    expect(before.grants).toEqual(
+      expect.arrayContaining([
+        { membership_id: P014_FIXTURE_IDS.morganId, grant_name: customGrant },
+      ]),
+    );
+    expect(before.departed.length).toBeGreaterThan(0);
+    expect(before.year).toBeTruthy();
+    expect(before.exception).toMatchObject({ name: "Winter break" });
+    expect(before.started).toBeTruthy();
+    expect(
+      (before.progress as { account_completed_at: string | null }).account_completed_at,
+    ).toBeTruthy();
+
+    migrate(db);
+    migrate(db);
+    expect(db.prepare(`PRAGMA foreign_key_check`).all()).toEqual([]);
+    expect(
+      db
+        .prepare(
+          `SELECT membership_id, grant_name FROM membership_grants ORDER BY membership_id, grant_name`,
+        )
+        .all(),
+    ).toEqual(before.grants);
+    expect(
+      db
+        .prepare(
+          `SELECT id, departed_at, departed_household_date FROM household_memberships
+           WHERE departed_at IS NOT NULL ORDER BY id`,
+        )
+        .all(),
+    ).toEqual(before.departed);
+    expect(
+      db
+        .prepare(
+          `SELECT id, start_date, end_date, usual_weekdays_json FROM school_years WHERE id = ?`,
+        )
+        .get(P009_FIXTURE_IDS.calendarYearId),
+    ).toEqual(before.year);
+    expect(
+      db
+        .prepare(`SELECT id, name, start_date, end_date FROM school_exceptions WHERE id = ?`)
+        .get(exceptionId),
+    ).toEqual(before.exception);
+    expect(
+      db
+        .prepare(
+          `SELECT id, title, started_at, accountable_member_id FROM occurrences WHERE id = ?`,
+        )
+        .get(P013_FIXTURE_IDS.catsOccStartedId),
+    ).toEqual(before.started);
+    expect(
+      db
+        .prepare(
+          `SELECT id, occurrence_id, text, status FROM occurrence_steps
+           WHERE occurrence_id = ? ORDER BY id`,
+        )
+        .all(P013_FIXTURE_IDS.catsOccStartedId),
+    ).toEqual(before.steps);
+    expect(
+      db
+        .prepare(
+          `SELECT occurrence_id, occurrence_step_id, resulting_state FROM step_reports
+           WHERE occurrence_id = ? ORDER BY occurrence_step_id, resulting_state`,
+        )
+        .all(P013_FIXTURE_IDS.catsOccStartedId),
+    ).toEqual(before.reports);
+    expect(
+      db
+        .prepare(`SELECT id, display_name, user_id FROM household_memberships ORDER BY id`)
+        .all(),
+    ).toEqual(before.people);
+    const progressAfter = db
+      .prepare(
+        `SELECT account_completed_at, household_completed_at, people_status, guide_version
+         FROM setup_progress LIMIT 1`,
+      )
+      .get() as {
+      account_completed_at: string | null;
+      household_completed_at: string | null;
+      people_status: string;
+      guide_version: number;
+    };
+    expect(progressAfter.account_completed_at).toBe(
+      (before.progress as { account_completed_at: string }).account_completed_at,
+    );
+    expect(progressAfter.household_completed_at).toBe(
+      (before.progress as { household_completed_at: string }).household_completed_at,
+    );
+    expect(progressAfter.people_status).toBe("not_chosen");
+    expect(progressAfter.guide_version).toBe(0);
+    const phc = await hashPassphrase(PASSPHRASE);
+    const managerUser = db
+      .prepare(
+        `SELECT u.id AS id, u.login_name AS login_name
+         FROM users u
+         INNER JOIN household_memberships hm ON hm.user_id = u.id
+         WHERE hm.id = ?`,
+      )
+      .get(P014_FIXTURE_IDS.morganId) as { id: string; login_name: string };
+    expect(managerUser.login_name).toBeTruthy();
+    db.prepare(`UPDATE user_credentials SET passphrase_phc = ? WHERE user_id = ?`).run(
+      phc,
+      managerUser.id,
+    );
+    db.close();
+
+    const h = await createHttpHarness({
+      AUTO_SEED: "0",
+      INSTALLATION_OWNER_SECRET: OWNER_SECRET,
+      DB_PATH: dbPath,
+      INSTALLATION_CONTROL_PATH: tempPath("hd-d-c1-control"),
+      BACKUP_DIR: backupDirForTest(),
+    });
+    harnesses.push(h);
+    const epochBefore = h.runtime.epoch;
+    const login = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      headers: { origin: h.origin, "content-type": "application/json" },
+      payload: { loginName: managerUser.login_name, passphrase: PASSPHRASE },
+    });
+    expect(login.statusCode, login.body).toBe(200);
+    const cookie = login.cookies.find((c) => c.name === h.config.cookieName)!.value;
+    const csrf = (login.json() as { csrfToken: string }).csrfToken;
+    const auth: Auth = {
+      cookie,
+      csrf,
+      membershipId: P014_FIXTURE_IDS.morganId,
+      installationEpoch: epochBefore,
+    };
+    const guide = await call(h, auth, "GET", "/api/v1/guide/progress");
+    expect(guide.statusCode).toBe(200);
+    const meta = await h.app.inject({ method: "GET", url: "/api/v1/meta" });
+    expect((meta.json() as { setupRequired: boolean }).setupRequired).toBe(false);
+    await reauth(h, auth);
+    const created = await call(h, auth, "POST", "/api/v1/household/backups", {
+      mutationId: randomUUID(),
+      label: "adoption catalog",
+    });
+    expect(created.statusCode).toBe(200);
+    const backupId = (created.json() as { backup: { id: string } }).backup.id;
+    migrate(h.db);
+    expect(h.runtime.control.listBackups().some((b) => b.id === backupId)).toBe(true);
+    expect(h.runtime.epoch).toBe(epochBefore);
+  });
+
+  it("C1/AT1: through-019 without A progress does not invent completion timestamps", async () => {
+    const dbPath = tempPath("hd-d-c1-noa");
+    const db = openPopulatedP019UpgradeDatabase(dbPath);
+    db.prepare(`DELETE FROM setup_progress`).run();
+    migrate(db);
+    migrate(db);
+    expect(db.prepare(`SELECT COUNT(*) AS c FROM setup_progress`).get()).toEqual({ c: 0 });
+    const phc = await hashPassphrase(PASSPHRASE);
+    const managerUser = db
+      .prepare(
+        `SELECT u.id AS id, u.login_name AS login_name
+         FROM users u
+         INNER JOIN household_memberships hm ON hm.user_id = u.id
+         WHERE hm.id = ?`,
+      )
+      .get(P014_FIXTURE_IDS.morganId) as { id: string; login_name: string };
+    db.prepare(`UPDATE user_credentials SET passphrase_phc = ? WHERE user_id = ?`).run(
+      phc,
+      managerUser.id,
+    );
+    db.close();
+    const h = await createHttpHarness({
+      AUTO_SEED: "0",
+      INSTALLATION_OWNER_SECRET: OWNER_SECRET,
+      DB_PATH: dbPath,
+      INSTALLATION_CONTROL_PATH: tempPath("hd-d-c1-noa-control"),
+      BACKUP_DIR: backupDirForTest(),
+    });
+    harnesses.push(h);
+    const login = await h.app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      headers: { origin: h.origin, "content-type": "application/json" },
+      payload: { loginName: managerUser.login_name, passphrase: PASSPHRASE },
+    });
+    expect(login.statusCode, login.body).toBe(200);
+    const cookie = login.cookies.find((c) => c.name === h.config.cookieName)!.value;
+    const csrf = (login.json() as { csrfToken: string }).csrfToken;
+    const guide = await call(
+      h,
+      {
+        cookie,
+        csrf,
+        membershipId: P014_FIXTURE_IDS.morganId,
+        installationEpoch: h.runtime.epoch,
+      },
+      "GET",
+      "/api/v1/guide/progress",
+    );
+    expect(guide.statusCode).toBe(200);
+    const row = h.db
+      .prepare(
+        `SELECT account_completed_at, household_completed_at, people_status FROM setup_progress LIMIT 1`,
+      )
+      .get() as {
+      account_completed_at: string | null;
+      household_completed_at: string | null;
+      people_status: string;
+    };
+    expect(row.account_completed_at).toBeNull();
+    expect(row.household_completed_at).toBeNull();
+    expect(row.people_status).toBe("not_chosen");
+    const meta = await h.app.inject({ method: "GET", url: "/api/v1/meta" });
+    expect((meta.json() as { setupRequired: boolean }).setupRequired).toBe(false);
+  });
+
+  it("C2/AT5: controlled-date preview agrees with saved work and stale consent conflicts", async () => {
+    const h = await createDHarness();
+    const auth = await setupHousehold(h);
+    const today = householdDateFromInstant(new Date(), "America/New_York");
+    const weekday = isoWeekdayForHouseholdDate(today);
+    const other = weekday === 1 ? 2 : 1;
+    const counts = () => ({
+      routines: (h.db.prepare(`SELECT COUNT(*) AS c FROM routine_definitions`).get() as { c: number }).c,
+      occurrences: (h.db.prepare(`SELECT COUNT(*) AS c FROM occurrences`).get() as { c: number }).c,
+    });
+
+    const child = await call(h, auth, "POST", "/api/v1/people", {
+      mutationId: randomUUID(),
+      displayName: "Only Child",
+      classification: "child",
+    });
+    expect(child.statusCode).toBe(200);
+    const childId = (child.json() as { person: { id: string } }).person.id;
+    const before = counts();
+    const routinePreview = await call(h, auth, "POST", "/api/v1/routines/preview-draft", {
+      mutationId: randomUUID(),
+      title: "Weekday Later",
+      daypart: "morning",
+      weekdays: [other],
+      assigneeMemberIds: [childId],
+      assigneeGroupIds: [],
+      steps: [
+        { text: "First", obligation: "required" },
+        { text: "Second", obligation: "required" },
+      ],
+    });
+    expect(routinePreview.statusCode).toBe(200);
+    expect(counts()).toEqual(before);
+    const body = routinePreview.json() as {
+      preview: Array<{
+        applicable: boolean;
+        householdDate: string;
+        participantMemberIds: string[];
+        stepTexts?: string[];
+      }>;
+      nextKnownDate: string | null;
+    };
+    const applicable = body.preview.filter((d) => d.applicable);
+    expect(body.preview.find((d) => d.householdDate === today)?.applicable).toBe(false);
+    expect(applicable.length > 0 || body.nextKnownDate != null).toBe(true);
+    if (applicable[0]) {
+      expect(applicable[0].participantMemberIds).toEqual([childId]);
+      expect(applicable[0].stepTexts).toEqual(["First", "Second"]);
+    }
+
+    const guide = await call(h, auth, "GET", "/api/v1/guide/progress");
+    let version = (guide.json() as { guideVersion: number }).guideVersion;
+    const calendar = await call(h, auth, "GET", "/api/v1/school-calendar");
+    const calendarVersion = (calendar.json() as { calendar: { version: number } }).calendar.version;
+    const basis = {
+      householdDate: today,
+      calendarVersion,
+      audienceGroupIds: [] as string[],
+      audienceGroupVersions: {},
+      reviewedRoutineParticipantIds: applicable[0]?.participantMemberIds ?? [],
+      reviewedRoutineDays: (applicable.length ? applicable : body.preview).map((d) => ({
+        householdDate: d.householdDate,
+        participantMemberIds: d.participantMemberIds,
+        stepTexts: d.stepTexts ?? [],
+      })),
+    };
+    const staleDate = await call(h, auth, "POST", "/api/v1/guide/work", {
+      ...guideGuard(auth, version),
+      status: "completed",
+      routine: {
+        mutationId: randomUUID(),
+        title: "Weekday Later",
+        daypart: "morning",
+        weekdays: [other],
+        assigneeMemberIds: [childId],
+        assigneeGroupIds: [],
+        steps: [
+          { text: "First", obligation: "required" },
+          { text: "Second", obligation: "required" },
+        ],
+      },
+      previewBasis: { ...basis, householdDate: addHouseholdDays(today, -1) },
+    });
+    expect(staleDate.statusCode).toBeGreaterThanOrEqual(400);
+    expect(counts().routines).toBe(before.routines);
+
+    const absent = await call(h, auth, "POST", "/api/v1/routines/preview-draft", {
+      mutationId: randomUUID(),
+      title: "No Calendar",
+      daypart: "morning",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      assigneeMemberIds: [childId],
+      assigneeGroupIds: [],
+      steps: [{ text: "Pack", obligation: "required", applicability: { kind: "school_days" } }],
+    });
+    expect(absent.statusCode, absent.body).toBe(200);
+    const absentBody = absent.json() as {
+      preview: Array<{ applicable: boolean; householdDate: string }>;
+      nextKnownDate: string | null;
+      noKnownReason: string | null;
+    };
+    expect(absentBody.preview.every((d) => !d.applicable)).toBe(true);
+    expect(absentBody.nextKnownDate).toBeNull();
+    expect(absentBody.noKnownReason).toBe("No applicable date in the next four months");
+    expect(counts()).toEqual(before);
+
+    const schoolStart = addHouseholdDays(today, 10);
+    const schoolEnd = addHouseholdDays(today, 40);
+    const school = await call(h, auth, "POST", "/api/v1/guide/school", {
+      ...guideGuard(auth, version),
+      status: "completed",
+      calendar: {
+        mutationId: randomUUID(),
+        expectedVersion: calendarVersion,
+        years: [
+          {
+            startDate: schoolStart,
+            endDate: schoolEnd,
+            usualWeekdays: [1, 2, 3, 4, 5, 6, 7],
+            exceptions: [],
+          },
+        ],
+      },
+    });
+    expect(school.statusCode).toBe(200);
+    version = (school.json() as { progress: { guideVersion: number } }).progress.guideVersion;
+    const schoolPreview = await call(h, auth, "POST", "/api/v1/routines/preview-draft", {
+      mutationId: randomUUID(),
+      title: "School Later",
+      daypart: "morning",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      assigneeMemberIds: [childId],
+      assigneeGroupIds: [],
+      steps: [{ text: "Pack", obligation: "required", applicability: { kind: "school_days" } }],
+    });
+    expect(schoolPreview.statusCode, schoolPreview.body).toBe(200);
+    const schoolBody = schoolPreview.json() as {
+      preview: Array<{ applicable: boolean; householdDate: string }>;
+      nextKnownDate: string | null;
+      noKnownReason: string | null;
+    };
+    expect(schoolBody.preview.every((d) => !d.applicable || d.householdDate >= schoolStart)).toBe(
+      true,
+    );
+    expect(schoolBody.nextKnownDate === schoolStart || schoolBody.nextKnownDate === null).toBe(
+      true,
+    );
+
+    const group = await call(h, auth, "POST", "/api/v1/groups", {
+      mutationId: randomUUID(),
+      name: "Empty ring",
+      membershipIds: [childId],
+    });
+    expect(group.statusCode, group.body).toBe(200);
+    const groupId = (group.json() as { group: { id: string } }).group.id;
+    const unassigned = await call(h, auth, "POST", "/api/v1/responsibilities/preview-draft", {
+      mutationId: randomUUID(),
+      title: "Unassigned Chore",
+      daypart: "anytime",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      assignment: {
+        mode: "take_turns",
+        anchorDate: today,
+        sourceGroupId: groupId,
+        savedRingOrder: [childId],
+        excludedMemberIds: [childId],
+      },
+      steps: [{ text: "Sweep", obligation: "required" }],
+    });
+    expect(unassigned.statusCode, unassigned.body).toBe(200);
+    const unassignedDay = (
+      unassigned.json() as {
+        preview: Array<{ applicable: boolean; accountableMemberId: string | null; stepTexts?: string[] }>;
+      }
+    ).preview.find((d) => d.applicable);
+    expect(unassignedDay?.accountableMemberId ?? null).toBeNull();
+    expect(unassignedDay?.stepTexts).toEqual(["Sweep"]);
+
+    const cyclic = await call(h, auth, "POST", "/api/v1/responsibilities/preview-draft", {
+      mutationId: randomUUID(),
+      title: "Cyclic Chore",
+      daypart: "anytime",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      assignment: {
+        mode: "take_turns",
+        anchorDate: today,
+        sourceGroupId: groupId,
+        savedRingOrder: [childId],
+        excludedMemberIds: [],
+      },
+      steps: [{ text: "Rotate", obligation: "required" }],
+    });
+    expect(cyclic.statusCode, cyclic.body).toBe(200);
+    const cyclicDay = (
+      cyclic.json() as {
+        preview: Array<{ applicable: boolean; accountableMemberId: string | null; stepTexts?: string[] }>;
+      }
+    ).preview.find((d) => d.applicable);
+    expect(cyclicDay?.accountableMemberId).toBe(childId);
+    expect(cyclicDay?.accountableMemberId).not.toBe(auth.membershipId);
+    expect(cyclicDay?.stepTexts).toEqual(["Rotate"]);
+
+    const grouped = await call(h, auth, "POST", "/api/v1/routines/preview-draft", {
+      mutationId: randomUUID(),
+      title: "Child Group",
+      daypart: "morning",
+      weekdays: [weekday],
+      assigneeMemberIds: [],
+      assigneeGroupIds: [groupId],
+      steps: [
+        { text: "First", obligation: "required" },
+        { text: "Second", obligation: "required" },
+      ],
+    });
+    expect(grouped.statusCode, grouped.body).toBe(200);
+    const groupedDay = (
+      grouped.json() as {
+        preview: Array<{ applicable: boolean; participantMemberIds: string[]; stepTexts?: string[] }>;
+      }
+    ).preview.find((d) => d.applicable);
+    expect(groupedDay?.participantMemberIds).toEqual([childId]);
+    expect(groupedDay?.participantMemberIds ?? []).not.toContain(auth.membershipId);
+    expect(groupedDay?.stepTexts).toEqual(["First", "Second"]);
+
+    const fixed = await call(h, auth, "POST", "/api/v1/responsibilities/preview-draft", {
+      mutationId: randomUUID(),
+      title: "Fixed Chore",
+      daypart: "anytime",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      accountableMemberId: childId,
+      assignment: { mode: "fixed", anchorDate: today, fixedMemberId: childId },
+      steps: [{ text: "Wipe", obligation: "required" }],
+      scheduledAdditions: [
+        {
+          name: "Extra",
+          weekdays: [1, 2, 3, 4, 5, 6, 7],
+          inheritAssignment: false,
+          assignment: { mode: "fixed", anchorDate: today, fixedMemberId: auth.membershipId },
+          steps: [{ text: "Parent extra", obligation: "required" }],
+        },
+      ],
+    });
+    expect(fixed.statusCode, fixed.body).toBe(200);
+    const fixedDay = (
+      fixed.json() as {
+        preview: Array<{ applicable: boolean; accountableMemberId: string | null; stepTexts?: string[] }>;
+      }
+    ).preview.find((d) => d.applicable);
+    expect(fixedDay?.stepTexts).toEqual(["Wipe", "Parent extra"]);
+    const weeklyMap: Record<string, string> = {};
+    for (const day of [1, 2, 3, 4, 5, 6, 7]) weeklyMap[String(day)] = childId;
+    const weekly = await call(h, auth, "POST", "/api/v1/responsibilities/preview-draft", {
+      mutationId: randomUUID(),
+      title: "Weekly Chore",
+      daypart: "anytime",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      assignment: { mode: "weekly", anchorDate: today, weeklyMap },
+      steps: [{ text: "Weekly wipe", obligation: "required" }],
+    });
+    expect(weekly.statusCode, weekly.body).toBe(200);
+    const weeklyToday = (
+      weekly.json() as {
+        preview: Array<{ householdDate: string; accountableMemberId: string | null; stepTexts?: string[] }>;
+      }
+    ).preview.find((d) => d.householdDate === today);
+    expect(weeklyToday?.accountableMemberId).toBe(childId);
+    expect(weeklyToday?.stepTexts).toEqual(["Weekly wipe"]);
+    expect(counts().routines).toBe(before.routines);
+    expect(
+      (h.db.prepare(`SELECT COUNT(*) AS c FROM step_reports`).get() as { c: number }).c,
+    ).toBe(0);
+
+    const sourceChanged = await call(h, auth, "POST", "/api/v1/guide/work", {
+      ...guideGuard(auth, version),
+      status: "completed",
+      routine: {
+        mutationId: randomUUID(),
+        title: "Weekday Later",
+        daypart: "morning",
+        weekdays: [other],
+        assigneeMemberIds: [childId],
+        assigneeGroupIds: [],
+        steps: [
+          { text: "First", obligation: "required" },
+          { text: "Second", obligation: "required" },
+        ],
+      },
+      previewBasis: basis,
+    });
+    expect(sourceChanged.statusCode).toBeGreaterThanOrEqual(400);
+    expect(counts().routines).toBe(before.routines);
+    expect((await call(h, auth, "GET", "/api/v1/guide/progress")).json()).toMatchObject({
+      guideVersion: version,
+    });
+
+    const freshCal = await call(h, auth, "GET", "/api/v1/school-calendar");
+    const freshVersion = (freshCal.json() as { calendar: { version: number } }).calendar.version;
+    const saved = await call(h, auth, "POST", "/api/v1/guide/work", {
+      ...guideGuard(auth, version),
+      status: "completed",
+      routine: {
+        mutationId: randomUUID(),
+        title: "Weekday Later",
+        daypart: "morning",
+        weekdays: [other],
+        assigneeMemberIds: [childId],
+        assigneeGroupIds: [],
+        steps: [
+          { text: "First", obligation: "required" },
+          { text: "Second", obligation: "required" },
+        ],
+      },
+      previewBasis: { ...basis, calendarVersion: freshVersion },
+    });
+    expect(saved.statusCode, saved.body).toBe(200);
+    const savedBody = saved.json() as {
+      routine: { id: string; version: number };
+      progress: { guideVersion: number };
+    };
+    const routineId = savedBody.routine.id;
+    const todayView = await call(h, auth, "GET", `/api/v1/today?date=${today}`);
+    const occIds = (
+      todayView.json() as { occurrences: Array<{ definitionId: string }> }
+    ).occurrences.map((o) => o.definitionId);
+    expect(occIds).not.toContain(routineId);
+
+    const futureDate = addHouseholdDays(today, 1);
+    const futureEdit = await call(h, auth, "POST", "/api/v1/guide/work", {
+      ...guideGuard(auth, savedBody.progress.guideVersion),
+      reviseTarget: {
+        kind: "routine",
+        definitionId: routineId,
+        expectedVersion: savedBody.routine.version,
+        mode: "schedule",
+        effectiveDate: futureDate,
+      },
+      routine: {
+        mutationId: randomUUID(),
+        title: "Future Edit",
+        daypart: "morning",
+        weekdays: [other],
+        assigneeMemberIds: [childId],
+        assigneeGroupIds: [],
+        steps: [
+          { text: "First", obligation: "required" },
+          { text: "Second", obligation: "required" },
+        ],
+      },
+      previewBasis: { ...basis, calendarVersion: freshVersion },
+    });
+    expect(futureEdit.statusCode, futureEdit.body).toBe(200);
+    const afterFuture = await call(h, auth, "GET", `/api/v1/routines/${routineId}`);
+    const revisions = (
+      afterFuture.json() as {
+        routine: { revisions: Array<{ title: string; effectiveDate: string }> };
+      }
+    ).routine.revisions;
+    const current = revisions
+      .filter((revision) => revision.effectiveDate <= today)
+      .sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate))
+      .at(-1);
+    expect(current?.title).toBe("Weekday Later");
+    expect(revisions.some((revision) => revision.title === "Future Edit" && revision.effectiveDate === futureDate)).toBe(
+      true,
+    );
+    const todayAfter = await call(h, auth, "GET", `/api/v1/today?date=${today}`);
+    expect(
+      (todayAfter.json() as { occurrences: Array<{ definitionId: string }> }).occurrences.map(
+        (o) => o.definitionId,
+      ),
+    ).not.toContain(routineId);
+  });
+
+  it("C4/AT11: through-018 and through-019 snapshots restore through B and keep source bytes", async () => {
+    for (const tip of ["018_household_lifecycle.sql", "019_member_access_removal.sql"] as const) {
+      const h = await createDHarness();
+      await setupHousehold(h);
+      const fixture = await createThroughTipBackupFile(h.config.backupDir, tip);
+      expect(fixture.schemaManifest.at(-1)).toBe(tip);
+      expect(fixture.schemaManifest.some((id) => id.startsWith("020_"))).toBe(false);
+      const owner = await h.app.inject({
+        method: "POST",
+        url: "/api/v1/owner/session",
+        headers: { origin: h.origin, "content-type": "application/json" },
+        payload: { secret: OWNER_SECRET },
+      });
+      const ownerCsrf = (owner.json() as { csrfToken: string }).csrfToken;
+      const ownerCookie = owner.cookies.find((c) => c.name.includes("owner"))!.value;
+      const registered = await h.app.inject({
+        method: "POST",
+        url: "/api/v1/owner/backups/register",
+        headers: {
+          origin: h.origin,
+          "content-type": "application/json",
+          "x-csrf-token": ownerCsrf,
+          cookie: `${h.config.ownerCookieName}=${ownerCookie}`,
+        },
+        payload: { fileName: fixture.fileName, label: tip },
+      });
+      expect(registered.statusCode, registered.body).toBe(200);
+      const backup = (
+        registered.json() as { backup: { id: string; contentDigest: string } }
+      ).backup;
+      const meta = await h.app.inject({ method: "GET", url: "/api/v1/meta" });
+      const epoch = (meta.json() as { installationEpoch: number }).installationEpoch;
+      const catalogBefore = h.runtime.control.listBackups().map((b) => b.id);
+      const restore = await h.app.inject({
+        method: "POST",
+        url: "/api/v1/household/restore",
+        headers: {
+          origin: h.origin,
+          "content-type": "application/json",
+          "x-csrf-token": ownerCsrf,
+          cookie: `${h.config.ownerCookieName}=${ownerCookie}`,
+        },
+        payload: {
+          mutationId: randomUUID(),
+          backupId: backup.id,
+          expectedDigest: backup.contentDigest,
+          expectedEpoch: epoch,
+          confirmationText: "RESTORE",
+          saveBackupBeforeRestore: false,
+        },
+      });
+      expect(restore.statusCode, restore.body).toBe(200);
+      expect(fs.readFileSync(fixture.absPath)).toEqual(fixture.sourceBytes);
+      expect((h.runtime.db.prepare(`SELECT name FROM households LIMIT 1`).get() as { name: string }).name).toBe(
+        fixture.householdName,
+      );
+      expect(
+        (
+          h.runtime.db
+            .prepare(`SELECT id FROM schema_migrations WHERE id = ?`)
+            .get("020_guided_setup_progress.sql") as { id: string } | undefined
+        )?.id,
+      ).toBe("020_guided_setup_progress.sql");
+      expect(h.runtime.epoch).toBeGreaterThan(epoch);
+      expect(h.runtime.control.listBackups().map((b) => b.id)).toEqual(
+        expect.arrayContaining(catalogBefore),
+      );
+    }
+  });
+
+  it("C4/AT11: reset during incomplete guide leaves no carried progress", async () => {
+    const h = await createDHarness();
+    const auth = await setupHousehold(h);
+    const guide = await call(h, auth, "GET", "/api/v1/guide/progress");
+    const version = (guide.json() as { guideVersion: number }).guideVersion;
+    const skipped = await call(h, auth, "POST", "/api/v1/guide/people/complete", {
+      ...guideGuard(auth, version),
+      status: "skipped",
+    });
+    expect(skipped.statusCode).toBe(200);
+    expect((skipped.json() as { progress: { peopleStatus: string } }).progress.peopleStatus).toBe(
+      "skipped",
+    );
+    await reauth(h, auth);
+    const meta = await h.app.inject({ method: "GET", url: "/api/v1/meta" });
+    const reset = await call(h, auth, "POST", "/api/v1/household/reset", {
+      mutationId: randomUUID(),
+      confirmationText: "RESET",
+      expectedEpoch: (meta.json() as { installationEpoch: number }).installationEpoch,
+      saveBackupBeforeReset: false,
+    });
+    expect(reset.statusCode).toBe(200);
+    const metaAfter = await h.app.inject({ method: "GET", url: "/api/v1/meta" });
+    expect((metaAfter.json() as { setupRequired: boolean }).setupRequired).toBe(true);
+    expect(
+      (h.runtime.db.prepare(`SELECT COUNT(*) AS c FROM setup_progress`).get() as { c: number }).c,
+    ).toBe(0);
+  });
+
+  it("C3/AT8: a guide command from the previous epoch cannot write", async () => {
+    const h = await createDHarness();
+    const auth = await setupHousehold(h);
+    const guide = await call(h, auth, "GET", "/api/v1/guide/progress");
+    const version = (guide.json() as { guideVersion: number }).guideVersion;
+    const denied = await call(h, auth, "POST", "/api/v1/guide/people/complete", {
+      mutationId: randomUUID(),
+      expectedGuideVersion: version,
+      installationEpoch: auth.installationEpoch + 9,
+      status: "skipped",
+    });
+    expect(denied.statusCode).toBeGreaterThanOrEqual(400);
+    const after = await call(h, auth, "GET", "/api/v1/guide/progress");
+    expect((after.json() as { guideVersion: number; peopleStatus: string }).guideVersion).toBe(
+      version,
+    );
+    expect((after.json() as { peopleStatus: string }).peopleStatus).toBe("not_chosen");
+  });
+
+  it("C4/AT11: reset and clear activity leave the expected guide progress", async () => {
+    const h = await createDHarness();
+    const auth = await setupHousehold(h);
+    const guide = await call(h, auth, "GET", "/api/v1/guide/progress");
+    let version = (guide.json() as { guideVersion: number }).guideVersion;
+    const person = await call(h, auth, "POST", "/api/v1/guide/people", {
+      ...guideGuard(auth, version),
+      displayName: "Kept Child",
+      classification: "child",
+    });
+    expect(person.statusCode).toBe(200);
+    const personId = (person.json() as { person: { id: string }; progress: { guideVersion: number } })
+      .person.id;
+    version = (person.json() as { progress: { guideVersion: number } }).progress.guideVersion;
+    const completed = await call(h, auth, "POST", "/api/v1/guide/people/complete", {
+      ...guideGuard(auth, version),
+      status: "completed",
+    });
+    expect(completed.statusCode).toBe(200);
+    version = (completed.json() as { progress: { guideVersion: number } }).progress.guideVersion;
+    const skipped = await call(h, auth, "POST", "/api/v1/guide/school", {
+      ...guideGuard(auth, version),
+      status: "skipped",
+    });
+    version = (skipped.json() as { progress: { guideVersion: number } }).progress.guideVersion;
+    const finish = await call(h, auth, "POST", "/api/v1/guide/finish", {
+      ...guideGuard(auth, version),
+      dismiss: true,
+    });
+    expect(finish.statusCode).toBe(200);
+    const session = await call(h, auth, "GET", "/api/v1/auth/session");
+    const generation = (session.json() as { activityGeneration: number }).activityGeneration;
+    const cleared = await call(h, auth, "POST", "/api/v1/household/activity/clear", {
+      mutationId: randomUUID(),
+      expectedGeneration: generation,
+      acknowledgedScope: "routines_and_responsibilities",
+    });
+    expect(cleared.statusCode).toBe(200);
+    const afterClear = await call(h, auth, "GET", "/api/v1/guide/progress");
+    const progress = afterClear.json() as {
+      peopleStatus: string;
+      schoolStatus: string;
+      dismissedAt: string | null;
+      guideVersion: number;
+      peopleMembershipIds: string[];
+    };
+    expect(progress.peopleStatus).toBe("completed");
+    expect(progress.schoolStatus).toBe("skipped");
+    expect(progress.peopleMembershipIds).toContain(personId);
+    expect(progress.dismissedAt).toBeTruthy();
+
+    await reauth(h, auth);
+    const meta = await h.app.inject({ method: "GET", url: "/api/v1/meta" });
+    const epoch = (meta.json() as { installationEpoch: number }).installationEpoch;
+    const reset = await call(h, auth, "POST", "/api/v1/household/reset", {
+      mutationId: randomUUID(),
+      confirmationText: "RESET",
+      expectedEpoch: epoch,
+      saveBackupBeforeReset: false,
+    });
+    expect(reset.statusCode).toBe(200);
+    const metaAfter = await h.app.inject({ method: "GET", url: "/api/v1/meta" });
+    expect((metaAfter.json() as { setupRequired: boolean }).setupRequired).toBe(true);
+    expect(
+      (h.runtime.db.prepare(`SELECT COUNT(*) AS c FROM setup_progress`).get() as { c: number }).c,
+    ).toBe(0);
+  });
+
+  it("C5/AT7: ended linked work stays truthful and a same-title definition is not adopted", async () => {
+    const h = await createDHarness();
+    const auth = await setupHousehold(h);
+    const guide = await call(h, auth, "GET", "/api/v1/guide/progress");
+    let version = (guide.json() as { guideVersion: number }).guideVersion;
+    const school = await call(h, auth, "POST", "/api/v1/guide/school", {
+      ...guideGuard(auth, version),
+      status: "skipped",
+    });
+    version = (school.json() as { progress: { guideVersion: number } }).progress.guideVersion;
+    const session = await call(h, auth, "GET", "/api/v1/auth/session");
+    const householdDate = (session.json() as { householdDate: string }).householdDate;
+    const calendar = await call(h, auth, "GET", "/api/v1/school-calendar");
+    const calendarVersion = (calendar.json() as { calendar: { version: number } }).calendar.version;
+    const draft = await call(h, auth, "POST", "/api/v1/routines/preview-draft", {
+      mutationId: randomUUID(),
+      title: "Shared Title",
+      daypart: "morning",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      assigneeMemberIds: [auth.membershipId],
+      assigneeGroupIds: [],
+      steps: [{ text: "Original", obligation: "required" }],
+    });
+    const applicable = (
+      draft.json() as {
+        preview: Array<{
+          applicable: boolean;
+          householdDate: string;
+          participantMemberIds: string[];
+          stepTexts?: string[];
+        }>;
+      }
+    ).preview.filter((d) => d.applicable);
+    const workMutation = randomUUID();
+    const work = await call(h, auth, "POST", "/api/v1/guide/work", {
+      ...guideGuard(auth, version, workMutation),
+      status: "completed",
+      routine: {
+        mutationId: randomUUID(),
+        title: "Shared Title",
+        daypart: "morning",
+        weekdays: [1, 2, 3, 4, 5, 6, 7],
+        assigneeMemberIds: [auth.membershipId],
+        assigneeGroupIds: [],
+        steps: [{ text: "Original", obligation: "required" }],
+      },
+      previewBasis: {
+        householdDate,
+        calendarVersion,
+        audienceGroupIds: [],
+        audienceGroupVersions: {},
+        reviewedRoutineDays: applicable.map((d) => ({
+          householdDate: d.householdDate,
+          participantMemberIds: d.participantMemberIds,
+          stepTexts: d.stepTexts ?? ["Original"],
+        })),
+      },
+    });
+    expect(work.statusCode).toBe(200);
+    const routine = (work.json() as { routine: { id: string; version: number } }).routine;
+    const ended = await call(h, auth, "POST", `/api/v1/routines/${routine.id}/end`, {
+      mutationId: randomUUID(),
+      expectedVersion: routine.version,
+    });
+    expect(ended.statusCode).toBe(200);
+    const linked = await call(h, auth, "GET", `/api/v1/routines/${routine.id}`);
+    expect((linked.json() as { routine: { ended: boolean; id: string } }).routine.ended).toBe(true);
+    const other = await call(h, auth, "POST", "/api/v1/routines", {
+      mutationId: randomUUID(),
+      title: "Shared Title",
+      daypart: "morning",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      assigneeMemberIds: [auth.membershipId],
+      assigneeGroupIds: [],
+      steps: [{ text: "Different", obligation: "required" }],
+    });
+    expect(other.statusCode).toBe(200);
+    const otherId = (other.json() as { routine: { id: string } }).routine.id;
+    expect(otherId).not.toBe(routine.id);
+    const progress = await call(h, auth, "GET", "/api/v1/guide/progress");
+    expect((progress.json() as { workDefinitionIds: string[] }).workDefinitionIds).toContain(
+      routine.id,
+    );
+    expect((progress.json() as { workDefinitionIds: string[] }).workDefinitionIds).not.toContain(
+      otherId,
+    );
+    const beforeReplay = (
+      h.db.prepare(`SELECT COUNT(*) AS c FROM routine_definitions`).get() as { c: number }
+    ).c;
+    const replay = await call(h, auth, "POST", "/api/v1/guide/work", {
+      ...guideGuard(auth, version, workMutation),
+      status: "completed",
+      routine: {
+        mutationId: randomUUID(),
+        title: "Shared Title",
+        daypart: "morning",
+        weekdays: [1, 2, 3, 4, 5, 6, 7],
+        assigneeMemberIds: [auth.membershipId],
+        assigneeGroupIds: [],
+        steps: [{ text: "Original", obligation: "required" }],
+      },
+      previewBasis: {
+        householdDate,
+        calendarVersion,
+        audienceGroupIds: [],
+        reviewedRoutineDays: applicable.map((d) => ({
+          householdDate: d.householdDate,
+          participantMemberIds: d.participantMemberIds,
+          stepTexts: d.stepTexts ?? ["Original"],
+        })),
+      },
+    });
+    expect(
+      (h.db.prepare(`SELECT COUNT(*) AS c FROM routine_definitions`).get() as { c: number }).c,
+    ).toBe(beforeReplay);
+    const still = await call(h, auth, "GET", `/api/v1/routines/${routine.id}`);
+    expect(still.statusCode).toBe(200);
+    expect((still.json() as { routine: { ended: boolean } }).routine.ended).toBe(true);
+    if (replay.statusCode === 200) {
+      expect((replay.json() as { routine: { id: string } }).routine.id).toBe(routine.id);
+    } else {
+      expect(replay.statusCode).toBeGreaterThanOrEqual(400);
+    }
+
+    const removed = await call(h, auth, "POST", `/api/v1/routines/${routine.id}/delete`, {
+      mutationId: randomUUID(),
+      expectedVersion: (still.json() as { routine: { version: number } }).routine.version,
+    });
+    expect(removed.statusCode).toBe(200);
+    const afterDelete = await call(h, auth, "GET", "/api/v1/guide/progress");
+    expect((afterDelete.json() as { workDefinitionIds: string[] }).workDefinitionIds).not.toContain(
+      routine.id,
+    );
+    expect((afterDelete.json() as { workDefinitionIds: string[] }).workDefinitionIds).not.toContain(
+      otherId,
+    );
+    const replayAfterDelete = await call(h, auth, "POST", "/api/v1/guide/work", {
+      ...guideGuard(auth, version, workMutation),
+      status: "completed",
+      routine: {
+        mutationId: randomUUID(),
+        title: "Shared Title",
+        daypart: "morning",
+        weekdays: [1, 2, 3, 4, 5, 6, 7],
+        assigneeMemberIds: [auth.membershipId],
+        assigneeGroupIds: [],
+        steps: [{ text: "Original", obligation: "required" }],
+      },
+      previewBasis: {
+        householdDate,
+        calendarVersion,
+        audienceGroupIds: [],
+        reviewedRoutineDays: applicable.map((d) => ({
+          householdDate: d.householdDate,
+          participantMemberIds: d.participantMemberIds,
+          stepTexts: d.stepTexts ?? ["Original"],
+        })),
+      },
+    });
+    expect(
+      (h.db.prepare(`SELECT COUNT(*) AS c FROM routine_definitions`).get() as { c: number }).c,
+    ).toBe(beforeReplay - 1);
+    const deletedRow = h.db
+      .prepare(`SELECT deleted_at AS deletedAt FROM routine_definitions WHERE id = ?`)
+      .get(routine.id) as { deletedAt: string | null } | undefined;
+    expect(deletedRow == null || deletedRow.deletedAt != null).toBe(true);
+    if (replayAfterDelete.statusCode === 200) {
+      expect((replayAfterDelete.json() as { routine: { id: string } }).routine.id).toBe(routine.id);
+    }
   });
 });

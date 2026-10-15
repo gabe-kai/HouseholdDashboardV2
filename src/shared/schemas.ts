@@ -913,6 +913,8 @@ export type GuideProgressPublic = {
   workDefinitionIds: string[];
   finishedAt: string | null;
   dismissedAt: string | null;
+  /** Epoch that produced this payload. Clients must ignore it after reset or restore. */
+  installationEpoch?: number;
 };
 
 export const GuideVersionGuardSchema = z.object({

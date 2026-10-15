@@ -11,6 +11,7 @@ import { DEFAULT_APPLICABILITY } from "../domain/applicability";
 import {
   fetchGroups,
   fetchGuideProgress,
+  fetchMeta,
   fetchPeople,
   fetchResponsibility,
   fetchRoutine,
@@ -25,6 +26,7 @@ import {
   previewDraftRoutine,
   type GuideProgress,
   type GuideWorkPreviewBasis,
+  type MetaInfo,
   type Responsibility,
   type Routine,
   type SchoolCalendarPublic,
@@ -343,6 +345,8 @@ export function GuidedSetupView(props: GuidedSetupProps) {
   const loadGenerationRef = useRef(0);
   const previewGenerationRef = useRef(0);
   const sessionEpochRef = useRef(props.session.installationEpoch);
+  /** Installation epoch of the progress currently shown; used to drop held/stale replies after reset/restore. */
+  const loadedEpochRef = useRef<number | null>(props.session.installationEpoch);
   const pendingPersonRef = useRef<PendingPersonCommand | null>(null);
   const pendingWorkRef = useRef<PendingWorkCommand | null>(null);
   const mountedOnceRef = useRef(false);
@@ -668,6 +672,58 @@ export function GuidedSetupView(props: GuidedSetupProps) {
     );
   }
 
+  function applyGuideProgress(next: GuideProgress) {
+    setProgress(next);
+    loadedEpochRef.current =
+      next.installationEpoch ?? sessionEpochRef.current;
+  }
+
+  function clearGuideForEpochMove(latestMeta: MetaInfo | null, epochAtStart: number) {
+    dirtyRef.current = false;
+    loadedEpochRef.current = null;
+    pendingPersonRef.current = null;
+    pendingWorkRef.current = null;
+    setProgress(null);
+    setPeople([]);
+    setSavedWorkSummary([]);
+    setConflictHint(null);
+    setPersonName("");
+    setError(null);
+    if (latestMeta && latestMeta.installationEpoch !== epochAtStart) {
+      window.location.assign("/welcome");
+    }
+  }
+
+  function epochMovedSince(
+    epochAtStart: number,
+    latestMeta: MetaInfo | null,
+    payloadEpoch?: number | null,
+  ): boolean {
+    if (!latestMeta) return true;
+    if (latestMeta.installationEpoch !== epochAtStart) return true;
+    // Session prop may advance while a held fetch is in flight.
+    if (sessionEpochRef.current !== epochAtStart) return true;
+    if (payloadEpoch != null && payloadEpoch !== latestMeta.installationEpoch) return true;
+    // Dirty drafts must not survive reset/restore even if a later soft-load
+    // captured the new epoch at start.
+    if (
+      loadedEpochRef.current != null &&
+      loadedEpochRef.current !== latestMeta.installationEpoch
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  async function heldDetailStillCurrent(epochAtStart: number): Promise<boolean> {
+    const latestMeta = await fetchMeta().catch(() => null);
+    if (epochMovedSince(epochAtStart, latestMeta)) {
+      clearGuideForEpochMove(latestMeta, epochAtStart);
+      return false;
+    }
+    return true;
+  }
+
   async function hydrateSavedWork(
     guide: GuideProgress,
     nextPeople: MemberPublic[],
@@ -689,6 +745,7 @@ export function GuidedSetupView(props: GuidedSetupProps) {
     }
     try {
       const routineResult = await fetchRoutine(id);
+      if (fence && !(await heldDetailStillCurrent(fence.epochAtStart))) return;
       if (fence && !loadFenceStillValid(fence.generation, fence.epochAtStart)) return;
       if (fence && dirtyRef.current) return;
       hydrateFromRevision("routine", routineResult.routine, nextPeople);
@@ -698,6 +755,7 @@ export function GuidedSetupView(props: GuidedSetupProps) {
     }
     try {
       const respResult = await fetchResponsibility(id);
+      if (fence && !(await heldDetailStillCurrent(fence.epochAtStart))) return;
       if (fence && !loadFenceStillValid(fence.generation, fence.epochAtStart)) return;
       if (fence && dirtyRef.current) return;
       hydrateFromRevision("responsibility", respResult.responsibility, nextPeople);
@@ -711,8 +769,15 @@ export function GuidedSetupView(props: GuidedSetupProps) {
   async function loadGuide(options?: { force?: boolean }) {
     const generation = ++loadGenerationRef.current;
     const epochAtStart = sessionEpochRef.current;
-    const [guide, list, calendar, groupList] = await Promise.all([
-      fetchGuideProgress(),
+    const guide = await fetchGuideProgress();
+    const latestMeta = await fetchMeta().catch(() => null);
+    if (epochMovedSince(epochAtStart, latestMeta, guide.installationEpoch)) {
+      // Even a superseded generation must drop prior-epoch UI; otherwise a held
+      // reply can leave After-reset/restore draft state on screen.
+      clearGuideForEpochMove(latestMeta, epochAtStart);
+      return;
+    }
+    const [list, calendar, groupList] = await Promise.all([
       fetchPeople(),
       fetchSchoolCalendar().catch(() => null),
       fetchGroups().catch(() => ({ groups: [] as GroupPublic[] })),
@@ -740,7 +805,7 @@ export function GuidedSetupView(props: GuidedSetupProps) {
       return;
     }
     setConflictHint(null);
-    setProgress(guide);
+    applyGuideProgress(guide);
     setStep(initialStep(guide));
     setPeople(list.people);
     setGroups(groupList.groups);
@@ -846,7 +911,7 @@ export function GuidedSetupView(props: GuidedSetupProps) {
       pendingPersonRef.current = null;
       personMutationRef.current = newClientId();
       localSaveVersionRef.current = result.progress.guideVersion;
-      setProgress(result.progress);
+      applyGuideProgress(result.progress);
       const list = await fetchPeople();
       if (
         scope !== applyScopeRef.current ||
@@ -883,7 +948,7 @@ export function GuidedSetupView(props: GuidedSetupProps) {
       }
       peopleCompleteMutationRef.current = newClientId();
       localSaveVersionRef.current = result.progress.guideVersion;
-      setProgress(result.progress);
+      applyGuideProgress(result.progress);
       setPersonName("");
       setStep("school");
     } catch (caught) {
@@ -931,7 +996,7 @@ export function GuidedSetupView(props: GuidedSetupProps) {
       schoolMutationRef.current = newClientId();
       schoolInnerMutationRef.current = newClientId();
       localSaveVersionRef.current = result.progress.guideVersion;
-      setProgress(result.progress);
+      applyGuideProgress(result.progress);
       if (result.calendar) {
         applyLoadedCalendar(result.calendar);
       } else {
@@ -1195,7 +1260,7 @@ export function GuidedSetupView(props: GuidedSetupProps) {
       pendingWorkRef.current = null;
       workMutationRef.current = newClientId();
       localSaveVersionRef.current = result.progress.guideVersion;
-      setProgress(result.progress);
+      applyGuideProgress(result.progress);
       if (result.routine) setEditingVersion(result.routine.version);
       if (result.responsibility) setEditingVersion(result.responsibility.version);
       const summary = await resolveSavedWorkSummary(result.progress, people);
@@ -1271,7 +1336,7 @@ export function GuidedSetupView(props: GuidedSetupProps) {
       }
       finishMutationRef.current = newClientId();
       localSaveVersionRef.current = result.progress.guideVersion;
-      setProgress(result.progress);
+      applyGuideProgress(result.progress);
       if (target === "today") props.onNavigateToday();
       else props.onNavigateHousehold();
     } catch (caught) {
@@ -1305,7 +1370,7 @@ export function GuidedSetupView(props: GuidedSetupProps) {
       }
       dismissMutationRef.current = newClientId();
       localSaveVersionRef.current = result.progress.guideVersion;
-      setProgress(result.progress);
+      applyGuideProgress(result.progress);
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
@@ -1795,6 +1860,7 @@ export function GuidedSetupView(props: GuidedSetupProps) {
                       </button>
                       <button
                         type="button"
+                        data-testid={index === 0 ? "guide-step-down" : undefined}
                         disabled={index === workSteps.length - 1}
                         onClick={() => {
                           setWorkSteps((current) => {
@@ -1825,6 +1891,7 @@ export function GuidedSetupView(props: GuidedSetupProps) {
                 ))}
                 <button
                   type="button"
+                  data-testid="guide-add-step"
                   onClick={() => {
                     setWorkSteps((current) => [
                       ...current,
@@ -2107,7 +2174,15 @@ export function GuidedSetupView(props: GuidedSetupProps) {
               type="button"
               data-testid="guide-edit-saved-work"
               onClick={() => {
-                void hydrateSavedWork(progress, people).then(() => setStep("work"));
+                const generation = ++loadGenerationRef.current;
+                const epochAtStart = sessionEpochRef.current;
+                void hydrateSavedWork(progress, people, undefined, {
+                  generation,
+                  epochAtStart,
+                }).then(() => {
+                  if (!loadFenceStillValid(generation, epochAtStart)) return;
+                  setStep("work");
+                });
               }}
             >
               Edit saved work

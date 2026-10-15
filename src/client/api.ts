@@ -93,6 +93,7 @@ export type GuideProgress = {
   workDefinitionIds: string[];
   finishedAt: string | null;
   dismissedAt: string | null;
+  installationEpoch?: number;
 };
 
 export type HouseholdBackupMeta = {

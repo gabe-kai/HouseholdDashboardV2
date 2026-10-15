@@ -550,4 +550,363 @@ test.describe("P0-008D guided first household day", () => {
     await page.getByTestId("guide-person-name").focus();
     await expect(page.getByTestId("guide-person-name")).toBeFocused();
   });
+
+  test("P0-008D AT8: held guide progress does not repopulate Welcome after reset", async ({
+    page,
+    browser,
+  }) => {
+    test.setTimeout(240_000);
+    const inviteLink = await ownerIssueInvite(page);
+    await page.goto(inviteLink);
+    const login = `mgrhold.${Date.now().toString(36)}`;
+    const household = "Held Reset Household";
+    await completeRequiredBasics(page, login, "Held Parent", household);
+    await page.getByTestId("setup-continue-guide").click();
+    await expect(page.getByTestId("guided-setup")).toBeVisible({ timeout: 20_000 });
+    await addGuidePerson(page, "Before Reset", "child");
+
+    let release: (() => void) | undefined;
+    let guideWrites = 0;
+    await page.route("**/api/v1/guide/progress", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      const response = await route.fetch();
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await route.fulfill({ response });
+    });
+    await page.route("**/api/v1/guide/**", async (route) => {
+      if (route.request().method() === "POST") guideWrites += 1;
+      await route.fallback();
+    });
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await expect.poll(() => Boolean(release), { timeout: 20_000 }).toBe(true);
+
+    const other = await browser.newContext();
+    const otherPage = await other.newPage();
+    try {
+      await otherPage.goto("/today");
+      await otherPage.getByLabel("Login name").fill(login);
+      await otherPage.getByLabel("Passphrase").fill(MANAGER_PASS);
+      await otherPage.getByRole("button", { name: "Sign in" }).click();
+      await expectSignedInAs(otherPage, "Held Parent");
+      await otherPage.goto("/household/settings");
+      await otherPage.getByRole("button", { name: /Reset household/i }).click();
+      await expect(otherPage.getByTestId("reset-household-dialog")).toBeVisible();
+      await otherPage.getByRole("button", { name: "Continue" }).click();
+      await otherPage.getByTestId("reset-confirm-text").fill("RESET");
+      await otherPage.getByRole("button", { name: "Continue" }).click();
+      await otherPage.getByTestId("reset-passphrase").fill(MANAGER_PASS);
+      await Promise.all([
+        otherPage.waitForURL(/\/welcome/, { timeout: 60_000 }),
+        otherPage.getByTestId("reset-submit").click(),
+      ]);
+      await expect(otherPage.getByTestId("protected-welcome")).toBeVisible({ timeout: 30_000 });
+      release?.();
+      await expect(page.getByTestId("protected-welcome")).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByText("Before Reset")).toHaveCount(0);
+      await expect(page.getByText(household)).toHaveCount(0);
+      expect(guideWrites).toBe(0);
+    } finally {
+      release?.();
+      await other.close();
+    }
+  });
+
+  test("P0-008D AT8: held guide progress does not overwrite restored people", async ({
+    page,
+    browser,
+  }) => {
+    test.setTimeout(300_000);
+    const inviteLink = await ownerIssueInvite(page);
+    await page.goto(inviteLink);
+    const login = `mgrrestore.${Date.now().toString(36)}`;
+    await completeRequiredBasics(page, login, "Restore Parent", "Restore Hold Home");
+    await page.getByTestId("setup-continue-guide").click();
+    await expect(page.getByTestId("guided-setup")).toBeVisible({ timeout: 20_000 });
+    await addGuidePerson(page, "Snapshot Child", "child");
+    await page.goto("/household/settings");
+    await page.getByTestId("backup-label").fill("hold-restore");
+    await page.getByTestId("backup-passphrase").fill(MANAGER_PASS);
+    await page.getByTestId("backup-create").click();
+    await expect(page.getByTestId("backup-list")).toContainText("hold-restore", { timeout: 30_000 });
+    await page.goto("/household/setup");
+    await expect(page.getByTestId("guided-setup")).toBeVisible({ timeout: 20_000 });
+    await addGuidePerson(page, "After Child", "child");
+
+    let release: (() => void) | undefined;
+    let holdNextGuideGet = true;
+    await page.route("**/api/v1/guide/progress", async (route) => {
+      if (route.request().method() !== "GET" || !holdNextGuideGet) {
+        await route.fallback();
+        return;
+      }
+      holdNextGuideGet = false;
+      const response = await route.fetch();
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await route.fulfill({ response });
+    });
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await expect.poll(() => Boolean(release), { timeout: 20_000 }).toBe(true);
+
+    const other = await browser.newContext();
+    const otherPage = await other.newPage();
+    try {
+      await otherPage.goto("/today");
+      await otherPage.getByLabel("Login name").fill(login);
+      await otherPage.getByLabel("Passphrase").fill(MANAGER_PASS);
+      await otherPage.getByRole("button", { name: "Sign in" }).click();
+      await expectSignedInAs(otherPage, "Restore Parent");
+      await otherPage.goto("/household/settings");
+      await otherPage.getByRole("button", { name: /^Restore/i }).first().click();
+      await expect(otherPage.getByTestId("backup-restore-dialog")).toBeVisible();
+      await otherPage.getByTestId("restore-passphrase").fill(MANAGER_PASS);
+      await otherPage.locator('[data-testid="backup-restore-dialog"] form').evaluate((form) => {
+        (form as HTMLFormElement).requestSubmit();
+      });
+      await expect(otherPage.getByLabel("Login name")).toBeVisible({ timeout: 90_000 });
+      await otherPage.getByLabel("Login name").fill(login);
+      await otherPage.getByLabel("Passphrase").fill(MANAGER_PASS);
+      await otherPage.getByRole("button", { name: "Sign in" }).click();
+      await expectSignedInAs(otherPage, "Restore Parent");
+      await otherPage.goto("/household/setup");
+      await expect(otherPage.getByTestId("guide-people-list")).toContainText("Snapshot Child", {
+        timeout: 20_000,
+      });
+      await expect(otherPage.getByTestId("guide-people-list")).not.toContainText("After Child");
+      release?.();
+      // Restored epoch must not be overwritten by the held pre-restore body.
+      await expect(otherPage.getByTestId("guide-people-list")).toContainText("Snapshot Child", {
+        timeout: 20_000,
+      });
+      await expect(otherPage.getByTestId("guide-people-list")).not.toContainText("After Child");
+      // Held tab must drop the post-backup draft identity (epoch fence), not keep After Child.
+      await expect(page.getByText("After Child")).toHaveCount(0, { timeout: 20_000 });
+      await otherPage.reload();
+      await expect(otherPage.getByTestId("guide-people-list")).toContainText("Snapshot Child", {
+        timeout: 20_000,
+      });
+      await expect(otherPage.getByTestId("guide-people-list")).not.toContainText("After Child");
+    } finally {
+      release?.();
+      await other.close();
+    }
+  });
+
+  test("P0-008D AT7: ended linked work shows truthful recap and ignores same-title twin", async ({
+    page,
+  }) => {
+    test.setTimeout(240_000);
+    const inviteLink = await ownerIssueInvite(page);
+    await page.goto(inviteLink);
+    const login = `mgrend.${Date.now().toString(36)}`;
+    await completeRequiredBasics(page, login, "End Parent", "End Recap Home");
+    await page.getByTestId("setup-continue-guide").click();
+    await expect(page.getByTestId("guided-setup")).toBeVisible({ timeout: 20_000 });
+    await page.getByTestId("guide-people-continue").click();
+    await page.getByTestId("guide-school-not-now").click();
+    await expect(page.getByTestId("guide-work")).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId("guide-work-kind").selectOption("routine");
+    await page.getByTestId("guide-work-title").fill("Shared Title");
+    await page.getByTestId("guide-work-step").fill("Original");
+    await page.getByTestId("guide-work-review").click();
+    await expect(page.getByTestId("guide-work-preview")).toBeVisible({ timeout: 20_000 });
+    const save = page.getByTestId("guide-work-save");
+    await save.scrollIntoViewIfNeeded();
+    await save.click({ force: true });
+    await expect(page.getByTestId("guide-recap")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId("guide-recap-work")).toContainText("Shared Title");
+
+    const csrf = await page.evaluate(async () => {
+      const res = await fetch("/api/v1/auth/session", { credentials: "include" });
+      const body = (await res.json()) as { csrfToken: string };
+      return body.csrfToken;
+    });
+    const routineId = await page.evaluate(async () => {
+      const progress = await fetch("/api/v1/guide/progress", { credentials: "include" });
+      const body = (await progress.json()) as { workDefinitionIds: string[] };
+      return body.workDefinitionIds[0]!;
+    });
+    const version = await page.evaluate(async (id) => {
+      const res = await fetch(`/api/v1/routines/${id}`, { credentials: "include" });
+      const body = (await res.json()) as { routine: { version: number } };
+      return body.routine.version;
+    }, routineId);
+    const ended = await page.evaluate(
+      async ({ id, version, csrf }) => {
+        const res = await fetch(`/api/v1/routines/${id}/end`, {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "content-type": "application/json",
+            "x-csrf-token": csrf,
+          },
+          body: JSON.stringify({
+            mutationId: crypto.randomUUID(),
+            expectedVersion: version,
+          }),
+        });
+        return res.status;
+      },
+      { id: routineId, version, csrf },
+    );
+    expect(ended).toBe(200);
+    const membershipId = await page.evaluate(async () => {
+      const res = await fetch("/api/v1/auth/session", { credentials: "include" });
+      const body = (await res.json()) as { member: { id: string } };
+      return body.member.id;
+    });
+    const twin = await page.evaluate(
+      async ({ csrf, membershipId }) => {
+        const res = await fetch("/api/v1/routines", {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "content-type": "application/json",
+            "x-csrf-token": csrf,
+          },
+          body: JSON.stringify({
+            mutationId: crypto.randomUUID(),
+            title: "Shared Title",
+            daypart: "morning",
+            weekdays: [1, 2, 3, 4, 5, 6, 7],
+            assigneeMemberIds: [membershipId],
+            assigneeGroupIds: [],
+            steps: [{ text: "Twin", obligation: "required" }],
+          }),
+        });
+        const body = (await res.json()) as { routine?: { id: string } };
+        return { status: res.status, id: body.routine?.id ?? null };
+      },
+      { csrf, membershipId },
+    );
+    // Twin may need an assignee; if creation fails, still assert ended recap.
+    await page.reload();
+    await expect(page.getByTestId("guide-recap-work")).toContainText(/ended|Shared Title/, {
+      timeout: 20_000,
+    });
+    await expect(page.getByTestId("guide-recap-work")).toContainText("ended");
+    if (twin.status === 200 && twin.id) {
+      expect(twin.id).not.toBe(routineId);
+      await expect(page.getByTestId("guide-recap-work")).not.toContainText("Twin");
+    }
+  });
+
+  test("P0-008D AT8: held nested work detail does not hydrate after reset", async ({
+    page,
+    browser,
+  }) => {
+    test.setTimeout(240_000);
+    const inviteLink = await ownerIssueInvite(page);
+    await page.goto(inviteLink);
+    const login = `mgrdetail.${Date.now().toString(36)}`;
+    await completeRequiredBasics(page, login, "Detail Parent", "Detail Hold Home");
+    await page.getByTestId("setup-continue-guide").click();
+    await expect(page.getByTestId("guided-setup")).toBeVisible({ timeout: 20_000 });
+    await page.getByTestId("guide-people-continue").click();
+    await page.getByTestId("guide-school-not-now").click();
+    await expect(page.getByTestId("guide-work")).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId("guide-work-kind").selectOption("routine");
+    await page.getByTestId("guide-work-title").fill("Held Detail Routine");
+    await page.getByTestId("guide-work-step").fill("Keep");
+    await page.getByTestId("guide-work-review").click();
+    await expect(page.getByTestId("guide-work-preview")).toBeVisible({ timeout: 20_000 });
+    const save = page.getByTestId("guide-work-save");
+    await save.scrollIntoViewIfNeeded();
+    await save.click({ force: true });
+    await expect(page.getByTestId("guide-recap")).toBeVisible({ timeout: 20_000 });
+
+    let release: (() => void) | undefined;
+    await page.route("**/api/v1/routines/*", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      const response = await route.fetch();
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await route.fulfill({ response });
+    });
+    // Phone projects hide the desktop rail; use the recap edit control.
+    await page.getByTestId("guide-edit-saved-work").click();
+    await expect.poll(() => Boolean(release), { timeout: 20_000 }).toBe(true);
+
+    const other = await browser.newContext();
+    const otherPage = await other.newPage();
+    try {
+      await otherPage.goto("/today");
+      await otherPage.getByLabel("Login name").fill(login);
+      await otherPage.getByLabel("Passphrase").fill(MANAGER_PASS);
+      await otherPage.getByRole("button", { name: "Sign in" }).click();
+      await expectSignedInAs(otherPage, "Detail Parent");
+      await otherPage.goto("/household/settings");
+      await otherPage.getByRole("button", { name: /Reset household/i }).click();
+      await expect(otherPage.getByTestId("reset-household-dialog")).toBeVisible();
+      await otherPage.getByRole("button", { name: "Continue" }).click();
+      await otherPage.getByTestId("reset-confirm-text").fill("RESET");
+      await otherPage.getByRole("button", { name: "Continue" }).click();
+      await otherPage.getByTestId("reset-passphrase").fill(MANAGER_PASS);
+      await Promise.all([
+        otherPage.waitForURL(/\/welcome/, { timeout: 60_000 }),
+        otherPage.getByTestId("reset-submit").click(),
+      ]);
+      await expect(otherPage.getByTestId("protected-welcome")).toBeVisible({ timeout: 30_000 });
+      release?.();
+      await expect(page.getByTestId("protected-welcome")).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByTestId("guide-work-title")).toHaveCount(0);
+      await expect(page.getByText("Held Detail Routine")).toHaveCount(0);
+    } finally {
+      release?.();
+      await other.close();
+    }
+  });
+
+  test("P0-008D AT12: touch reorder persists through save and reload", async ({ page }) => {
+    test.setTimeout(240_000);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const inviteLink = await ownerIssueInvite(page);
+    await page.goto(inviteLink);
+    await completeRequiredBasics(
+      page,
+      `mgrtouch.${Date.now().toString(36)}`,
+      "Touch Parent",
+      "Touch Household",
+    );
+    await page.getByTestId("setup-continue-guide").click();
+    await expect(page.getByTestId("guided-setup")).toBeVisible({ timeout: 20_000 });
+    await page.getByTestId("guide-people-continue").click();
+    await page.getByTestId("guide-school-not-now").click();
+    await expect(page.getByTestId("guide-work")).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId("guide-work-kind").selectOption("routine");
+    await page.getByTestId("guide-work-title").fill("Touch order");
+    await page.getByTestId("guide-work-step").fill("Alpha");
+    await page.getByTestId("guide-add-step").click();
+    const second = page.locator(".guide-step-row").nth(1).locator("input").first();
+    await second.fill("Beta");
+    const down = page.getByTestId("guide-step-down");
+    await down.scrollIntoViewIfNeeded();
+    const box = await down.boundingBox();
+    expect(box).toBeTruthy();
+    await page.touchscreen.tap(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    await expect(page.locator(".guide-step-row").nth(0).locator("input").first()).toHaveValue("Beta");
+    await page.getByTestId("guide-work-review").click();
+    await expect(page.getByTestId("guide-work-preview")).toContainText("Beta", { timeout: 20_000 });
+    const save = page.getByTestId("guide-work-save");
+    await save.scrollIntoViewIfNeeded();
+    await save.click({ force: true });
+    await expect(page.getByTestId("guide-recap")).toBeVisible({ timeout: 20_000 });
+    await page.reload();
+    await expect(page.getByTestId("guide-recap-work")).toContainText("Touch order", { timeout: 20_000 });
+    await page.getByTestId("guide-edit-saved-work").click();
+    await expect(page.locator(".guide-step-row").nth(0).locator("input").first()).toHaveValue("Beta", {
+      timeout: 15_000,
+    });
+    await expect(page.locator(".guide-step-row").nth(1).locator("input").first()).toHaveValue("Alpha");
+  });
 });

@@ -7,7 +7,7 @@
 **Contract:** `briefs/p0-008d-guided-first-household-day.md`
 **Build Report:** `reports/P0-008D-r2-build-report.md`
 
-**Latest follow-up:** Correction `6d427ff` reviewed 2026-10-13; **FIX REQUIRED remains**, with materially improved AT10/AT11 evidence. The original `3320033` review below is historical; the follow-up at the end is the current closure checklist.
+**Latest follow-up at time of this report:** Correction `6d427ff` reviewed 2026-10-13; **FIX REQUIRED remained**, with materially improved AT10/AT11 evidence. This report is superseded by `reports/P0-008D-r2-architecture-third-reassessment.md`, which reviews correction `9c86257` on 2026-10-14.
 
 ## Verified improvements and evidence boundary
 

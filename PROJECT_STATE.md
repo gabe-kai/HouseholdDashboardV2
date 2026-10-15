@@ -21,7 +21,7 @@
 
 Inspected 2026-10-12: clean local `main` / `origin/main` are **1709097** (PR **#26**), through household migration 019 plus B's installation-control catalog migration 001. P0-008A r1, P0-008B r2 and P0-008C r1 are technically accepted and integrated. C's accepted correction is `90de153`. No live Railway reset/restore or hosted Product evaluation is claimed.
 
-**P0-008D r2** committed correction `6d427ff` was reviewed on 2026-10-13: **FIX REQUIRED**, same contract. Actual B restore, expanded AT10 UI and saved-edit improvements are retained; 13 focused integration tests pass independently. The latest bounded closure checklist is appended to `reports/P0-008D-r2-architecture-second-reassessment.md`: missing journey assertions, async/retry and responsibility-preview protections plus required partial evidence. Engineering owns the next correction pass. Hosted and hands-on Product evaluation remain later checkpoints. The shared card **Set up and manage my household without operator help** stays In Progress.
+**P0-008D r2** correction `9c86257` was reviewed on 2026-10-14: **FIX REQUIRED**, same contract. AT10, async/preview improvements, and several named subcases are retained; Architecture independently ran the focused D integration suite (19/19 pass). Engineering reports PR/RC gates pass; Architecture did not rerun the full gates. Remaining explicit acceptance gaps are recorded in `reports/P0-008D-r2-architecture-third-reassessment.md`. Engineering owns the next correction pass. Hosted and hands-on Product evaluation remain later checkpoints. The shared card **Set up and manage my household without operator help** stays In Progress.
 
 P0-007C's outstanding physical/Product judgments remain distinct from its technical acceptance and from approval to begin P0-008. Old reports retain their inspected SHAs.
 
@@ -47,7 +47,7 @@ P0-007C's outstanding physical/Product judgments remain distinct from its techni
 | P0-008A - Protected First-Manager Setup and Repeatable Reset | r1 | ACCEPTED | Integrated foundation | Merged to `main` at `405c5db` via PR #24 | Hosted/Product evaluation remains separate |
 | P0-008B - Household Backups and In-App Restore | r2 | ACCEPTED | Integrated foundation | Merged to `main` at `f80d47b` via PR #25 | Hosted and Product evaluation remain separate |
 | P0-008C - Understandable Member Access and Safe Removal | r1 | ACCEPTED | Integrated foundation | Merged to `main` at `1709097` via PR #26; correction `90de153` | Hosted/Product evaluation remains separate |
-| P0-008D - Guided Setup to the First Useful Household Day | r2 | FIX REQUIRED | Engineering | `brief/p0-008d-guided-first-household-day`; reviewed correction `6d427ff` | Latest follow-up checklist in second Architecture reassessment; required partials and exact PR/RC |
+| P0-008D - Guided Setup to the First Useful Household Day | r2 | FIX REQUIRED | Engineering | `brief/p0-008d-guided-first-household-day`; reviewed correction `9c86257` | Third Architecture reassessment: C1–C7 covering AT1/5/7/8/11/12 evidence and Build Report/gates |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -85,7 +85,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Engineering closes the latest follow-up checklist in `reports/P0-008D-r2-architecture-second-reassessment.md`, then returns named evidence and the updated Build Report. Retain the verified actual B restore and expanded AT10 journey; close its remaining assertions rather than rebuilding it. No new readiness cycle is needed. Hosted backup/reset/restore and Product evaluation remain separately authorized checkpoints. No deployment/live database operation is implied.
+Engineering closes the bounded checklist in `reports/P0-008D-r2-architecture-third-reassessment.md`, then returns named evidence and the corrected Build Report. Retain the verified actual B restore and expanded AT10 journey; close only the remaining explicit contract gaps. No new readiness cycle is needed. Hosted backup/reset/restore and Product evaluation remain separately authorized checkpoints. No deployment/live database operation is implied.
 
 ## Notes for all teams
 

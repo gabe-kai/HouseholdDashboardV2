@@ -100,14 +100,14 @@ Both C-3 slices contribute to **Act at the shared display without losing trust**
 
 ### CURRENT
 
-- [x] **P0-008D — Reach the first useful family day without coaching.** Complete the five named setup steps, optional exits/cross-device resume, first-work review/recap and the ordinary app setup→management→backup→reset→restore journey. Technical contract accepted at `c5f9867` on 2026-10-15; Build Report: `reports/P0-008D-r2-build-report.md`; Architecture acceptance: `reports/P0-008D-r2-architecture-acceptance.md`.
-  - **Evidence target:** Atomic saved records/progress/retry, actual next dates/owners without materialization, compact phone/desktop entry, upgrade/removal/restore compatibility, complete UI journey and local PR/RC/CI selection. Include the newly inspected C access-claim sanitation gap in staged restore.
-  - **Card:** **Set up and manage my household without operator help** → **Ready to Evaluate**. Product acceptance remains pending.
+- **P0-008D technical delivery is complete** — accepted at `c5f9867`, merged through PR #27 at `65e1949`; Build Report: `reports/P0-008D-r2-build-report.md`; Architecture acceptance: `reports/P0-008D-r2-architecture-acceptance.md`.
+  - Project Lead reports hosted setup, labeled backup, reset, restore, and post-restart persistence worked. The submitted evaluation also identifies friction in the owner-link handoff, timezone entry, people/work/permission review, and completion summary. Full Product acceptance remains pending.
+- **Next evidence-producing outcome:** Design proposes a bounded improvement to the first-run/reset and household-management experience from the dated evaluation in `evaluations/p0-008-project-lead-evaluation-2026-10-15.md`. Keep the reported `/` route anomaly on a separate Architecture/QA investigation track; it is not a design acceptance item.
 
 ### LIKELY NEXT
 
-- [ ] **Evaluate the complete P0-008 release candidate.** Use an authorized HTTPS candidate for persistence/reset/restore/restart checks and one uninterrupted phone/desktop Project Lead session. Record what was actually observed using `docs/p0-008-release-evaluation.md`; no live reset/remediation is automatic.
-- Let the Project Lead's experience with the complete flow determine corrections or the next Design direction. No new feature sequence is committed before that evaluation. The approved proposal already supplies D's intent; no resubmission from Design is needed to begin it.
+- Reproduce the reported `/` → “view unavailable” behavior on the exact Railway deployment (record deployed SHA and fresh-session steps); repository routing currently maps `/` to Today. Keep this as a focused defect investigation, separate from the Design proposal.
+- After Design returns its bounded proposal, Architecture will assess whether a small implementation brief is warranted. Do not reopen completed security, reset, backup, restore, access, or history contracts unless Product explicitly changes them.
 
 The shared card reaches Product Accepted only after hands-on acceptance. Coverage/release checkpoints: `reports/P0-008-architecture-sequencing.md`.
 

@@ -19,9 +19,9 @@
 
 ## Current focus
 
-Inspected 2026-10-15: current checkout is `brief/p0-008d-guided-first-household-day` at **c5f9867**, clean. Integrated baseline remains `main` / `origin/main` at **1709097** (PR **#26**), through household migration 019 plus B's installation-control catalog migration 001. P0-008A r1, P0-008B r2 and P0-008C r1 are technically accepted and integrated. C's accepted correction is `90de153`. No live Railway reset/restore or hosted Product evaluation is claimed.
+Inspected 2026-10-15: current checkout is `main` at **65e1949** (P0-008D merged via PR **#27**), clean before this evaluation writeback. Integrated baseline includes household migrations through 019 and B's installation-control catalog migration 001. P0-008A r1, P0-008B r2, P0-008C r1, and P0-008D r2 are technically accepted and integrated. The Project Lead reports Railway first-run, backup, reset, restore, and post-container-restart success; exact deployed SHA and operational details were not independently recorded. See the dated evaluation below.
 
-**P0-008D r2** was technically **ACCEPTED** on 2026-10-15 at `c5f9867`. The focused D integration suite independently passed 27/27; the new AT5 evidence covers two-member cyclic rotation and alternating weekly owners across draft/saved previews. Engineering reports `validate:pr` and `validate:rc` PASS; Architecture did not rerun those full gates. Hosted/physical work and hands-on Product acceptance are NOT RUN. The P0-008 card is Ready to Evaluate; see `reports/P0-008D-r2-architecture-acceptance.md`.
+**P0-008D r2** was technically **ACCEPTED** at `c5f9867`; Architecture’s focused D suite passed 27/27, and Engineering reported PR/RC PASS. The Project Lead then reported successful hosted first-run setup, labeled app backup, reset, restore, and persistence after Railway container restart. Usability feedback requests a Design pass; final Product acceptance remains pending. `/` reportedly shows an unavailable view despite the repository’s root-to-Today mapping; exact hosted reproduction is pending. Full report: `evaluations/p0-008-project-lead-evaluation-2026-10-15.md`.
 
 P0-007C's outstanding physical/Product judgments remain distinct from its technical acceptance and from approval to begin P0-008. Old reports retain their inspected SHAs.
 
@@ -47,7 +47,7 @@ P0-007C's outstanding physical/Product judgments remain distinct from its techni
 | P0-008A - Protected First-Manager Setup and Repeatable Reset | r1 | ACCEPTED | Integrated foundation | Merged to `main` at `405c5db` via PR #24 | Hosted/Product evaluation remains separate |
 | P0-008B - Household Backups and In-App Restore | r2 | ACCEPTED | Integrated foundation | Merged to `main` at `f80d47b` via PR #25 | Hosted and Product evaluation remain separate |
 | P0-008C - Understandable Member Access and Safe Removal | r1 | ACCEPTED | Integrated foundation | Merged to `main` at `1709097` via PR #26; correction `90de153` | Hosted/Product evaluation remains separate |
-| P0-008D - Guided Setup to the First Useful Household Day | r2 | ACCEPTED (technical) | Project Lead evaluation | `brief/p0-008d-guided-first-household-day` at `c5f9867` | Hands-on setup/management/backup/reset/restore evaluation; hosted checks remain separate |
+| P0-008D - Guided Setup to the First Useful Household Day | r2 | ACCEPTED (technical) | Product / Design | Merged to `main` via PR #27 at `65e1949` | Design proposal for first-run/management usability; route anomaly triage; overall P0-008 Product acceptance pending |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -76,16 +76,16 @@ This table is the short repository-side coordination index. An external project 
 
 ## Known blockers
 
-- A–D technical acceptance is recorded. Actual Railway schema, volume layout, installed commit and backup inventory remain uninspected release checks; hosted setup/reset/restore is not yet proven.
+- A–D technical acceptance is recorded. Project Lead reports hosted first-run and backup/reset/restore/restart success. Exact deployed SHA, actual Railway schema/active DB path and volume layout were not recorded; the remaining route anomaly and overall Product acceptance are open.
 - A deliberately provides reset without a new backup; B supplies the optional backup/restore choice. C/D preserve all remaining P0-008 member and guided-first-day requirements; no partial slice closes the shared Product outcome.
 
 ## Next Project Lead decision
 
-- Project Lead controls the D Architecture-disposition commit and subsequent Git workflow; suggest a commit message but do not commit. Hosted backup/reset/restore and hands-on Product evaluation remain explicit later checkpoints; live data replacement/remediation remains Project Lead–authorized only.
+- Project Lead has requested that P0-008 first-run/reset usability return to Design. Live data replacement/remediation remains Project Lead–authorized only.
 
 ## Next likely handoff
 
-Project Lead evaluates the complete P0-008 journey using `docs/p0-008-release-evaluation.md`. Engineering's local PR/RC gates are reported PASS; Architecture independently reran only the focused D integration suite. Hosted backup/reset/restore and hands-on Product evaluation remain explicit checkpoints. No deployment or live database operation is implied or authorized by technical acceptance.
+Design proposes a bounded UX revision for the P0-008 first-run and household-management experience. Separately, Architecture/QA should reproduce the root-route “view unavailable” report on the deployed build. The Project Lead’s hosted reset/restore/restart success and usability feedback are recorded in `evaluations/p0-008-project-lead-evaluation-2026-10-15.md`; technical acceptance remains distinct from Product acceptance.
 
 ## Notes for all teams
 

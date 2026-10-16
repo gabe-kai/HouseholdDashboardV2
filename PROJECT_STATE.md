@@ -19,9 +19,9 @@
 
 ## Current focus
 
-Inspected 2026-10-07: local `main` / `origin/main` are **f80d47b** (PR **#25**), through household migration 018 plus B's installation-control catalog migration 001. P0-008A r1 and P0-008B r2 are technically accepted and integrated. No live Railway reset/restore or hosted Product evaluation is claimed.
+Inspected 2026-10-15: current checkout is `brief/p0-008d-guided-first-household-day` at **c5f9867**, clean. Integrated baseline remains `main` / `origin/main` at **1709097** (PR **#26**), through household migration 019 plus B's installation-control catalog migration 001. P0-008A r1, P0-008B r2 and P0-008C r1 are technically accepted and integrated. C's accepted correction is `90de153`. No live Railway reset/restore or hosted Product evaluation is claimed.
 
-**P0-008C r1** is **TECHNICALLY ACCEPTED** on `brief/p0-008c-member-access-removal`; the accepted correction set is uncommitted atop Architecture review commit `7e879d6`, with original implementation `aedd416`. Re-review and fresh local PR/RC gates are recorded in `reports/P0-008C-r1-architecture-reacceptance.md`. Project Lead commit/push/merge remains pending. D remains a successor draft pending C integration and baseline refresh; hosted backup/reset/restore and hands-on Product evaluation remain separate. The whole Product journey remains one card: **Set up and manage my household without operator help**.
+**P0-008D r2** was technically **ACCEPTED** on 2026-10-15 at `c5f9867`. The focused D integration suite independently passed 27/27; the new AT5 evidence covers two-member cyclic rotation and alternating weekly owners across draft/saved previews. Engineering reports `validate:pr` and `validate:rc` PASS; Architecture did not rerun those full gates. Hosted/physical work and hands-on Product acceptance are NOT RUN. The P0-008 card is Ready to Evaluate; see `reports/P0-008D-r2-architecture-acceptance.md`.
 
 P0-007C's outstanding physical/Product judgments remain distinct from its technical acceptance and from approval to begin P0-008. Old reports retain their inspected SHAs.
 
@@ -46,8 +46,8 @@ P0-007C's outstanding physical/Product judgments remain distinct from its techni
 | P0-007C-3B - Owner-Controlled Personal Work on the Wall | r1 | ACCEPTED | Project Lead evaluation | Merged to `main` at `415d930` via PR #23 | Product evaluation of the changed wall remains separate |
 | P0-008A - Protected First-Manager Setup and Repeatable Reset | r1 | ACCEPTED | Integrated foundation | Merged to `main` at `405c5db` via PR #24 | Hosted/Product evaluation remains separate |
 | P0-008B - Household Backups and In-App Restore | r2 | ACCEPTED | Integrated foundation | Merged to `main` at `f80d47b` via PR #25 | Hosted and Product evaluation remain separate |
-| P0-008C - Understandable Member Access and Safe Removal | r1 | ACCEPTED | Project Lead / Git integration | `brief/p0-008c-member-access-removal` (`aedd416` + accepted uncommitted corrections) | Commit, push, merge, cleanup; then refresh P0-008D against integrated C |
-| P0-008D - Guided Setup to the First Useful Household Day | r1 | DRAFT | Architecture | Successor draft | Accepted A–C evidence; baseline refresh and readiness release |
+| P0-008C - Understandable Member Access and Safe Removal | r1 | ACCEPTED | Integrated foundation | Merged to `main` at `1709097` via PR #26; correction `90de153` | Hosted/Product evaluation remains separate |
+| P0-008D - Guided Setup to the First Useful Household Day | r2 | ACCEPTED (technical) | Project Lead evaluation | `brief/p0-008d-guided-first-household-day` at `c5f9867` | Hands-on setup/management/backup/reset/restore evaluation; hosted checks remain separate |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -55,6 +55,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Recently completed
 
+- P0-008C r1 is integrated through PR #26 at `1709097`; accepted corrections in `90de153` cover resolver-based departure impact/reconciliation, display withdrawal and fixture backup/race/rollback evidence. Architecture independently ran exact local PR/RC gates before acceptance; the integration note is in `reports/P0-008C-r1-architecture-reacceptance.md`.
 - P0-007C-3B r1 adds owner-controlled wall promotion, privacy-safe withdrawal sync, and compact promoted-task summaries. Architecture accepted the held-status correction at `57780ce`; integration is PR #23 at `415d930`. Engineering recorded local PR/RC passes; Project Lead physical evaluation remains separately tracked.
 - P0-007C-3A r1 established restricted shared-display execution with truthful device provenance; technically accepted after AT11 correction and merged via PR #22 at `6510fb4`. Project Lead physical readability and usability observations are recorded in `evaluations/p0-007c-3a-project-lead-evaluation-2026-09-29.md`; the complete C experience has not been Product-accepted.
 - P0-007C-2 r1 established the enrolled, revocable, privacy-filtered read-only Household Display; Architecture accepted it after AT6/AT9 and PR/RC evidence corrections, then it merged through PR #21 at `739f7e3`. The later Project Lead real-wall observation is recorded separately from technical acceptance.
@@ -75,16 +76,16 @@ This table is the short repository-side coordination index. An external project 
 
 ## Known blockers
 
-- A/B have no unresolved technical findings. Actual Railway schema, current volume layout, installed commit and backup inventory remain uninspected release-preparation checks; hosted setup/reset/restore is not yet proven. No destructive transition is automatic.
+- A–D technical acceptance is recorded. Actual Railway schema, volume layout, installed commit and backup inventory remain uninspected release checks; hosted setup/reset/restore is not yet proven.
 - A deliberately provides reset without a new backup; B supplies the optional backup/restore choice. C/D preserve all remaining P0-008 member and guided-first-day requirements; no partial slice closes the shared Product outcome.
 
 ## Next Project Lead decision
 
-- Project Lead controls Git commit/PR for the accepted C correction working tree. Hosted backup/reset/restore and hands-on Product evaluation remain explicit later checkpoints; live data replacement/remediation remains Project Lead–authorized only.
+- Project Lead controls the D Architecture-disposition commit and subsequent Git workflow; suggest a commit message but do not commit. Hosted backup/reset/restore and hands-on Product evaluation remain explicit later checkpoints; live data replacement/remediation remains Project Lead–authorized only.
 
 ## Next likely handoff
 
-Project Lead integrates technically accepted **P0-008C r1**; then Architecture refreshes P0-008D against merged A–C and sends it for Engineering readiness. Hosted backup/reset/restore and Product evaluation remain separately authorized checkpoints. No deployment/live database operation is implied. Detailed coverage: `reports/P0-008-architecture-sequencing.md`.
+Project Lead evaluates the complete P0-008 journey using `docs/p0-008-release-evaluation.md`. Engineering's local PR/RC gates are reported PASS; Architecture independently reran only the focused D integration suite. Hosted backup/reset/restore and hands-on Product evaluation remain explicit checkpoints. No deployment or live database operation is implied or authorized by technical acceptance.
 
 ## Notes for all teams
 

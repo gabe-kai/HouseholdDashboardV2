@@ -2,6 +2,13 @@ import { createHash, randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { nowUtcIso } from "../domain/time.js";
 import {
+  GuideDismissSchema,
+  GuideFinishSchema,
+  GuidePeopleCompleteSchema,
+  GuidePeopleSaveSchema,
+  GuideSchoolSaveSchema,
+  GuideWorkSaveSchema,
+  UpdateHouseholdDetailsSchema,
   HouseholdBackupCreateSchema,
   HouseholdBackupDeleteSchema,
   HouseholdResetSchema,
@@ -350,6 +357,148 @@ export function registerLifecycleRoutes(app: FastifyInstance, deps: LifecycleRou
       householdCompletedAt: progress?.householdCompletedAt ?? null,
       setupRequired: deps.getStore().setupRequired(),
     };
+  });
+
+  function broadcastGuideProgress(session: AuthContext, guideVersion: number): void {
+    deps.sync.broadcast({
+      type: "household_change",
+      householdId: session.householdId,
+      resource: "setup_progress",
+      resourceId: session.householdId,
+      version: guideVersion,
+      at: nowUtcIso(),
+    });
+  }
+
+  app.get("/api/v1/guide/progress", async (request, reply) => {
+    const session = requireLifecycleManager(request, reply);
+    if (!session) return;
+    reply.header("Cache-Control", "no-store");
+    return {
+      ...deps.getStore().getGuideProgress(session),
+      installationEpoch: session.installationEpoch,
+    };
+  });
+
+  app.post("/api/v1/guide/people", async (request, reply) => {
+    const session = requireLifecycleManager(request, reply);
+    if (!session) return;
+    const parsed = GuidePeopleSaveSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(deps.errorBody("VALIDATION", "Invalid guide people payload", request.id));
+    }
+    const result = deps.getStore().guideSavePerson(session, parsed.data);
+    broadcastGuideProgress(session, result.progress.guideVersion);
+    reply.header("Cache-Control", "no-store");
+    return result;
+  });
+
+  app.post("/api/v1/guide/people/complete", async (request, reply) => {
+    const session = requireLifecycleManager(request, reply);
+    if (!session) return;
+    const parsed = GuidePeopleCompleteSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(deps.errorBody("VALIDATION", "Invalid guide people complete payload", request.id));
+    }
+    const progress = deps.getStore().guideCompletePeople(session, parsed.data);
+    broadcastGuideProgress(session, progress.guideVersion);
+    reply.header("Cache-Control", "no-store");
+    return { progress };
+  });
+
+  app.post("/api/v1/guide/school", async (request, reply) => {
+    const session = requireLifecycleManager(request, reply);
+    if (!session) return;
+    const parsed = GuideSchoolSaveSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(deps.errorBody("VALIDATION", "Invalid guide school payload", request.id));
+    }
+    const result = deps.getStore().guideSaveSchool(session, parsed.data);
+    broadcastGuideProgress(session, result.progress.guideVersion);
+    reply.header("Cache-Control", "no-store");
+    return result;
+  });
+
+  app.post("/api/v1/guide/work", async (request, reply) => {
+    const session = requireLifecycleManager(request, reply);
+    if (!session) return;
+    const parsed = GuideWorkSaveSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(deps.errorBody("VALIDATION", "Invalid guide work payload", request.id));
+    }
+    const result = deps.getStore().guideSaveWork(session, {
+      mutationId: parsed.data.mutationId,
+      expectedGuideVersion: parsed.data.expectedGuideVersion,
+      installationEpoch: parsed.data.installationEpoch,
+      status: parsed.data.status,
+      routine: parsed.data.routine,
+      responsibility: parsed.data.responsibility,
+      reviseTarget: parsed.data.reviseTarget,
+      previewHouseholdDate: parsed.data.previewHouseholdDate,
+      previewBasis: parsed.data.previewBasis,
+    });
+    broadcastGuideProgress(session, result.progress.guideVersion);
+    reply.header("Cache-Control", "no-store");
+    return result;
+  });
+
+  app.get("/api/v1/household/details", async (request, reply) => {
+    const session = requireLifecycleManager(request, reply);
+    if (!session) return;
+    reply.header("Cache-Control", "no-store");
+    return deps.getStore().householdDetails(session);
+  });
+
+  app.patch("/api/v1/household/details", async (request, reply) => {
+    const session = requireLifecycleManager(request, reply);
+    if (!session) return;
+    const parsed = UpdateHouseholdDetailsSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(deps.errorBody("VALIDATION", "Invalid household details payload", request.id));
+    }
+    const result = deps.getStore().updateHouseholdDetails(session, parsed.data);
+    reply.header("Cache-Control", "no-store");
+    return result;
+  });
+
+  app.post("/api/v1/guide/finish", async (request, reply) => {
+    const session = requireLifecycleManager(request, reply);
+    if (!session) return;
+    const parsed = GuideFinishSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(deps.errorBody("VALIDATION", "Invalid guide finish payload", request.id));
+    }
+    const progress = deps.getStore().guideFinish(session, parsed.data);
+    broadcastGuideProgress(session, progress.guideVersion);
+    reply.header("Cache-Control", "no-store");
+    return { progress };
+  });
+
+  app.post("/api/v1/guide/dismiss", async (request, reply) => {
+    const session = requireLifecycleManager(request, reply);
+    if (!session) return;
+    const parsed = GuideDismissSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(deps.errorBody("VALIDATION", "Invalid guide dismiss payload", request.id));
+    }
+    const progress = deps.getStore().guideDismiss(session, parsed.data);
+    broadcastGuideProgress(session, progress.guideVersion);
+    reply.header("Cache-Control", "no-store");
+    return { progress };
   });
 
   app.post("/api/v1/auth/reauthenticate", async (request, reply) => {

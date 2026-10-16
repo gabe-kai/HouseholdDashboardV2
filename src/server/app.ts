@@ -380,7 +380,8 @@ export async function buildApp(
       | "group"
       | "school_calendar"
       | "family_order"
-      | "activity_reset",
+      | "activity_reset"
+      | "setup_progress",
     resourceId: string,
     version?: number,
   ): void {
@@ -1466,8 +1467,28 @@ export async function buildApp(
         .code(400)
         .send(errorBody("VALIDATION", "Invalid responsibility draft", request.id));
     }
+    const extended = store.previewDraftResponsibilityExtended(session, parsed.data, 7);
     return {
-      preview: store.previewDraftResponsibility(session, parsed.data, 7),
+      preview: extended.preview,
+      nextKnownDate: extended.nextKnownDate,
+      noKnownReason: extended.noKnownReason,
+    };
+  });
+
+  app.post("/api/v1/routines/preview-draft", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const parsed = CreateRoutineSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid routine draft", request.id));
+    }
+    const result = store.previewDraftRoutine(session, parsed.data, 7);
+    return {
+      preview: result.preview,
+      nextKnownDate: result.nextKnownDate,
+      noKnownReason: result.noKnownReason,
     };
   });
 

@@ -484,6 +484,50 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  e2e-phone-008d:
+    name: "E2E · Phone P0-008D"
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download production dist
+        uses: actions/download-artifact@v4
+        with:
+          name: production-dist
+          path: dist/
+
+      - name: Install Playwright Chromium OS deps
+        run: npx playwright install --with-deps chromium
+
+      - name: Run phone e2e P0-008D
+        run: npx playwright test --project=chromium-008a --grep "P0-008D"
+        env:
+          CI: true
+          E2E_SKIP_BUILD: "1"
+
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-e2e-phone-008d-failure
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
   e2e-phone-007c3b:
     name: "E2E · Phone P0-007C-3B"
     needs: build
@@ -556,7 +600,7 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run desktop geometry e2e
-        run: npx playwright test --project=chromium-desktop --project=chromium-display
+        run: npx playwright test --project=chromium-desktop --project=chromium-display --project=chromium-008a-desktop
         env:
           CI: true
           E2E_SKIP_BUILD: "1"
@@ -625,6 +669,7 @@ jobs:
       - e2e-phone-008a
       - e2e-phone-008b
       - e2e-phone-008c
+      - e2e-phone-008d
       - e2e-desktop
       - e2e-vite
     if: always()
@@ -647,6 +692,7 @@ jobs:
             "${{ needs.e2e-phone-008a.result }}"
             "${{ needs.e2e-phone-008b.result }}"
             "${{ needs.e2e-phone-008c.result }}"
+            "${{ needs.e2e-phone-008d.result }}"
             "${{ needs.e2e-desktop.result }}"
             "${{ needs.e2e-vite.result }}"
           )

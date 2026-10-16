@@ -34,3 +34,7 @@ Architecture re-reviewed the corrected source and named evidence against P0-008C
 P0-008C r1 satisfies its technical brief and is **ACCEPTED**. This is not Project Lead/Product acceptance of the full P0-008 journey. The shared card **Set up and manage my household without operator help** remains **In Progress** across A–D.
 
 The correction set is still uncommitted. Project Lead owns the commit and subsequent push/PR/merge/cleanup. After C is integrated, Architecture should refresh P0-008D against merged A–C and the actual integrated repository baseline before sending it for Engineering readiness. No implementation authorization for D is implied here.
+
+## Integration confirmation — 2026-10-12
+
+The accepted correction set was committed as `90de153` and merged through PR #26 at `1709097`. Architecture inspected clean local `main` / `origin/main` at that merge. The preceding uncommitted-tree wording describes the acceptance-time snapshot; C integration is now complete. P0-008D is refreshed and released as r2 for a fresh readiness review against this baseline.

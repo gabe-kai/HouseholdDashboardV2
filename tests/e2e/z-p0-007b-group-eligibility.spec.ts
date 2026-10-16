@@ -59,8 +59,10 @@ async function openAsManager(page: Page) {
 }
 
 async function openPeopleGroups(page: Page) {
+  // Phone layouts can expose more than one Primary nav landmark; use the first.
   await page
     .getByRole("navigation", { name: "Primary" })
+    .first()
     .getByRole("button", { name: "Household", exact: true })
     .click();
   await page

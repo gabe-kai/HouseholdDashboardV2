@@ -599,7 +599,8 @@ export type SyncNotification = {
     | "group"
     | "school_calendar"
     | "family_order"
-    | "activity_reset";
+    | "activity_reset"
+    | "setup_progress";
   resourceId: string;
   version?: number;
   at: string;
@@ -803,6 +804,8 @@ export type ResponsibilityPreviewDay = {
   occurrenceId: string | null;
   unassignedReason?: string | null;
   stepCount?: number;
+  /** Ordered composed step texts for the day (base + applicable additions). */
+  stepTexts?: string[];
 };
 
 /** Outcome of a plan reconcile for truthful save feedback. */
@@ -890,4 +893,151 @@ export const OwnerLegacyBackupRegisterSchema = z.object({
   fileName: z.string().trim().min(1).max(240),
   label: z.string().trim().max(80).optional().nullable(),
 });
+
+/** Optional guided setup step status (P0-008D). Independent of setupRequired. */
+export const GuideStepStatusSchema = z.enum(["not_chosen", "completed", "skipped"]);
+export type GuideStepStatus = z.infer<typeof GuideStepStatusSchema>;
+
+export type GuideProgressPublic = {
+  householdId: string;
+  accountCompletedAt: string | null;
+  householdCompletedAt: string | null;
+  setupRequired: boolean;
+  guideVersion: number;
+  peopleStatus: GuideStepStatus;
+  schoolStatus: GuideStepStatus;
+  firstWorkStatus: GuideStepStatus;
+  /** Current nondeparted memberships linked from the guide (resolved). */
+  peopleMembershipIds: string[];
+  /** Current non-deleted definitions linked from the guide (resolved). */
+  workDefinitionIds: string[];
+  finishedAt: string | null;
+  dismissedAt: string | null;
+  /** Epoch that produced this payload. Clients must ignore it after reset or restore. */
+  installationEpoch?: number;
+};
+
+export const GuideVersionGuardSchema = z.object({
+  mutationId: UuidSchema,
+  expectedGuideVersion: z.number().int().nonnegative(),
+  /** Originating installation epoch for the guide command identity. */
+  installationEpoch: z.number().int().positive(),
+});
+
+export const GuidePeopleSaveSchema = GuideVersionGuardSchema.extend({
+  displayName: z.string().trim().min(1).max(80),
+  classification: PersonClassificationSchema,
+});
+
+export const GuidePeopleCompleteSchema = GuideVersionGuardSchema.extend({
+  status: z.enum(["completed", "skipped"]),
+});
+
+export const GuideSchoolSaveSchema = GuideVersionGuardSchema.extend({
+  calendar: SaveSchoolCalendarSchema.optional(),
+  status: z.enum(["completed", "skipped"]),
+});
+
+/** Authoritative preview basis that Save must recheck atomically. */
+export const GuideWorkPreviewBasisSchema = z.object({
+  householdDate: HouseholdDateSchema,
+  calendarVersion: z.number().int().nonnegative(),
+  /** Sorted group IDs that contributed to the reviewed audience. */
+  audienceGroupIds: z.array(UuidSchema).default([]),
+  /** Group source versions at review time (id → version). */
+  audienceGroupVersions: z.record(z.string(), z.number().int().nonnegative()).default({}),
+  /** Participant membership IDs shown in the reviewed routine preview (when routine saved). */
+  reviewedRoutineParticipantIds: z.array(UuidSchema).optional(),
+  /** Final owner membership ID reviewed for responsibility (null = Unassigned). */
+  reviewedResponsibilityOwnerId: UuidSchema.nullable().optional(),
+  /** Full reviewed routine window (all applicable days in the preview horizon). */
+  reviewedRoutineDays: z
+    .array(
+      z.object({
+        householdDate: HouseholdDateSchema,
+        participantMemberIds: z.array(UuidSchema),
+        stepTexts: z.array(z.string()).optional(),
+      }),
+    )
+    .optional(),
+  /** Full reviewed responsibility window (owners per applicable day). */
+  reviewedResponsibilityDays: z
+    .array(
+      z.object({
+        householdDate: HouseholdDateSchema,
+        accountableMemberId: UuidSchema.nullable(),
+        stepTexts: z.array(z.string()).optional(),
+        scheduledAdditionNames: z.array(z.string()).optional(),
+      }),
+    )
+    .optional(),
+});
+
+export const GuideWorkReviseTargetSchema = z.object({
+  kind: z.enum(["routine", "responsibility"]),
+  definitionId: UuidSchema,
+  expectedVersion: z.number().int().positive(),
+  mode: z.enum(["current", "schedule"]).default("current"),
+  effectiveDate: HouseholdDateSchema.optional(),
+  scheduleEntryId: UuidSchema.optional(),
+});
+
+export const GuideWorkSaveSchema = GuideVersionGuardSchema.extend({
+  routine: CreateRoutineSchema.optional(),
+  responsibility: CreateResponsibilitySchema.optional(),
+  /** When set, Save revises an existing guide-linked definition instead of creating. */
+  reviseTarget: GuideWorkReviseTargetSchema.optional(),
+  status: z.enum(["completed", "skipped"]).optional(),
+  /** @deprecated Prefer previewBasis.householdDate */
+  previewHouseholdDate: HouseholdDateSchema.optional(),
+  previewBasis: GuideWorkPreviewBasisSchema.optional(),
+}).superRefine((data, ctx) => {
+  if ((data.routine || data.responsibility) && !data.previewBasis) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Review work before saving",
+      path: ["previewBasis"],
+    });
+  }
+  if (data.reviseTarget?.kind === "routine" && !data.routine) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Routine payload required for revise",
+      path: ["routine"],
+    });
+  }
+  if (data.reviseTarget?.kind === "responsibility" && !data.responsibility) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Responsibility payload required for revise",
+      path: ["responsibility"],
+    });
+  }
+});
+
+export const GuideFinishSchema = GuideVersionGuardSchema.extend({
+  dismiss: z.boolean().optional(),
+});
+
+export const GuideDismissSchema = GuideVersionGuardSchema;
+
+export const UpdateHouseholdDetailsSchema = z.object({
+  mutationId: UuidSchema,
+  expectedName: z.string().trim().min(1).max(120),
+  name: z.string().trim().min(1).max(120),
+});
+
+/** Read-only draft routine preview day (does not materialize). */
+export type RoutineDraftPreviewDay = {
+  householdDate: string;
+  applicable: boolean;
+  title: string | null;
+  daypart: Daypart | null;
+  participantMemberIds: string[];
+  participantNames: string[];
+  stepCount: number;
+  /** Ordered step texts that remain after applicability filtering for this date. */
+  stepTexts?: string[];
+  schoolFiltered: boolean;
+};
 

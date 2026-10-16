@@ -67,6 +67,8 @@ export function TodayView(props: {
   /** Session/member/date key — reset focus policy when it changes. */
   focusScopeKey: string;
   occurrencesLoaded: boolean;
+  /** When Today is empty for this member, offer a Household link (e.g. children have work). */
+  onOpenHousehold?: () => void;
 }) {
   const day = projectPersonalDay(props.occurrences, props.tasks);
   const [focusMode, setFocusMode] = useState<FocusMode>("auto");
@@ -139,8 +141,21 @@ export function TodayView(props: {
           Loading today&apos;s work…
         </p>
       ) : !hasRecurring ? (
-        <div className="empty-state">
+        <div className="empty-state" data-testid="today-empty">
           <p>Nothing assigned to you on this household date.</p>
+          {props.onOpenHousehold ? (
+            <p className="meta">
+              Work may be assigned to other household members.{" "}
+              <button
+                type="button"
+                className="text-button"
+                onClick={props.onOpenHousehold}
+                data-testid="today-empty-household-link"
+              >
+                View household
+              </button>
+            </p>
+          ) : null}
         </div>
       ) : null}
 

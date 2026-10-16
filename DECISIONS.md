@@ -1059,7 +1059,7 @@ Task changes must invalidate every formerly authorized projection that could ret
 
 ## D-050 - Installation ownership survives household setup and replacement
 
-**Status:** Active. P0-008A's owner/setup boundary is merged at `405c5db`; B's protected backup/restore extension is merged at `f80d47b`; C's member-link extension remains planned.
+**Status:** Active. P0-008A's owner/setup boundary is merged at `405c5db`; B's protected backup/restore extension is merged at `f80d47b`; C's member-link extension is merged at `1709097`.
 
 **Decision:** Introduce a narrowly authorized installation-owner recovery principal distinct from a human membership and a Household Display. The deployment owner provisions `INSTALLATION_OWNER_SECRET` through the hosting secret UI using at least 256 bits of password-manager-generated randomness. A protected `/owner` browser journey accepts that proof and issues one-use setup access; no public visitor wins ownership by reaching an empty site first. The setup recipient receives a short-lived invitation, not the deployment recovery secret. Lost access is replaced through the owner page or, if the root secret is lost, the host's secret-management UI. Normal setup/reset/recovery requires no terminal/database commands.
 
@@ -1123,7 +1123,7 @@ The initial compatibility promise covers verified through-017 backups and schema
 
 ## D-053 - Person permissions, access and managerial continuity are separate
 
-**Status:** Active. P0-008A's lifecycle grant is merged at `405c5db`; C r1 member administration is released for Engineering readiness against `f80d47b`, not yet implemented.
+**Status:** Active. P0-008A's lifecycle grant is merged at `405c5db`; C r1 member administration is technically accepted and merged at `1709097`.
 
 **Decision:** Keep D-006's user/membership/grant separation. Expose Manager/Member with a separate member personal-routine mode (Approval required or Can edit own additions), plus a secondary editor for the closed permission set. Adult/Child stays descriptive. New people default to Member + approval. Effective grants determine accurate role/customized labels; preserve legacy/custom grants and do not silently replace them. No arbitrary role definitions or age-based access.
 
@@ -1141,7 +1141,7 @@ Permission edits are versioned, replay-bound and independent of invitation/passw
 
 ## D-054 - Departure immediately ends eligibility but preserves historical accountability
 
-**Status:** Active for P0-008C r1; departure is not implemented at merged baseline `f80d47b`.
+**Status:** Active. P0-008C r1 departure is technically accepted and merged at `1709097`, including resolver/display corrections in `90de153`.
 
 **Decision:** Model removal separately from access revocation. Store departure identity/time and household-local date; remove the person from current directory/order/pickers and deny sign-in, links and execution immediately. Used memberships become retained former-member identities. An unused pending membership can be physically deleted after reference checks and retirement of solely owned setup artifacts. Creation/profile/order receipts alone must not force a former-member tombstone; keep minimal non-content-bearing replay denial so old commands cannot resurrect a deleted profile. Execution/accountability or shared history remains protected and requires retained identity. Names never establish identity; removed IDs are not recycled.
 
@@ -1159,7 +1159,7 @@ Started work and historical snapshots preserve owner, structure, execution and d
 
 ## D-055 - Hosted sample remediation is explicit, provenance-based and conservative about real work
 
-**Status:** Active for P0-008C r1; D-017's existing CLI behavior remains implemented and unchanged at `f80d47b`.
+**Status:** Active. P0-008C r1 reviewed browser remediation is merged at `1709097`; D-017's existing CLI behavior remains implemented and preserved.
 
 **Decision:** Offer a conditional one-time browser remediation only when canonical fixture identities exist. The six IDs plus their original household establish sample origin. A claimed/renamed/used fixture may now represent a real person; retain ambiguous records by default and require explicit selection/confirmation before sample treatment. Ordinary member departure remains available independently of this utility.
 
@@ -1175,7 +1175,7 @@ Apply selected removals together under D-054 and last-manager/version checks, wi
 
 ## D-056 - Setup is a resumable guide over the real household records
 
-**Status:** Active. P0-008A required basics are merged at `405c5db`; P0-008D's complete guide remains planned after C.
+**Status:** Active. P0-008A required basics are merged at `405c5db`; P0-008D r2 is released for Engineering readiness against merged A–C at `1709097`.
 
 **Decision:** Persist versioned setup progress, explicit skip/dismissal choices and stable links to the same user, household, people, calendar and work records used by normal management. Only first account and confirmed household name/timezone are required. A provides those steps; D integrates Your people, School days and First work with Back, Save and finish later, optional exits and a recap. Existing households are not forced to recreate identity. Returning edits the saved records; examples never auto-save fixtures.
 
@@ -1184,5 +1184,7 @@ Preview uses the existing recurrence/assignment/applicability resolver and never
 **Reason:** A parallel setup model or browser-only wizard would duplicate people/work on retries and disconnect the walkthrough from the usable product. A correct reset alone cannot fulfill the approved nontechnical first-day outcome.
 
 **Implications:** Narrow reuse of domain commands/editors, saved-state conflicts/IDs, phone/desktop accessibility and full ordinary-UI journey evidence. Post-activity timezone relocation is not introduced implicitly; initial confirmation precedes work. The full P0-008 Product checkpoint includes setup, invitation, permission change, removal, backup, reset and restore.
+
+**r2 technical refinement (2026-10-12):** Extend the existing household `setup_progress` boundary for versioned optional choices, stable links and dismissal; do not move these into the surviving installation-control store. Required-basics availability remains independent from optional completion. Guide domain changes, progress/link and payload/scope-bound receipts commit together through existing services, so response loss and retries cannot create duplicate people/plans. Links and setup receipts do not make otherwise unused people/work undeletable or resurrect removed IDs. The expanded guide requires current lifecycle authority plus each command's ordinary capability; preview/commit bind to household date, source versions and epoch. Local technical acceptance precedes the separately authorized hosted and human checkpoint; neither replaces the other.
 
 **Related briefs:** P0-008A–D; preserves D-017/D-023/D-024/D-027–D-040.

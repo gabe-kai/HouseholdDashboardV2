@@ -59,6 +59,7 @@ import { HistoryView } from "./History";
 import { HouseholdDisplaysView } from "./HouseholdDisplays";
 import { HouseholdOverview } from "./HouseholdOverview";
 import { HouseholdSettingsView } from "./HouseholdSettings";
+import { GuidedSetupView } from "./GuidedSetup";
 import { TodayView } from "./TodayView";
 import { PeopleGroupsView } from "./PeopleGroups";
 import { ResponsibilitiesView } from "./Responsibilities";
@@ -160,6 +161,7 @@ function primaryTabFor(location: AppLocation): PrimaryTab {
     location.name === "household-history" ||
     location.name === "household-history-occurrence" ||
     location.name === "household-settings" ||
+    location.name === "household-setup" ||
     location.name === "household-displays"
   ) {
     return "household";
@@ -194,6 +196,9 @@ function gateLocation(location: AppLocation, session: SessionInfo): AppLocation 
     !canClearActivity &&
     !canManageLifecycle
   ) {
+    return { name: "unavailable", attemptedPath: pathFor(location) };
+  }
+  if (location.name === "household-setup" && !canManageLifecycle) {
     return { name: "unavailable", attemptedPath: pathFor(location) };
   }
   if (location.name === "household-displays" && !canManageDisplays) {
@@ -334,6 +339,7 @@ export function App() {
   const [mutationDelayMs, setMutationDelayMs] = useState(0);
   const [routineRefreshToken, setRoutineRefreshToken] = useState(0);
   const [schoolCalendarRefreshToken, setSchoolCalendarRefreshToken] = useState(0);
+  const [guideRefreshToken, setGuideRefreshToken] = useState(0);
   const identityRef = useRef<string | null>(null);
   const occurrencesRef = useRef<OccurrenceView[]>([]);
   const outboxRef = useRef<OutboxItem[]>([]);
@@ -903,6 +909,9 @@ export function App() {
         ) {
           void refreshSupportingData(session);
         }
+        if (notification.resource === "setup_progress") {
+          setGuideRefreshToken((n) => n + 1);
+        }
         if (notification.resource === "activity_reset") {
           const version = notification.version;
           if (typeof version === "number") {
@@ -938,6 +947,7 @@ export function App() {
           // Missed WS notifications: refresh Plan/History tokens with Today.
           setRoutineRefreshToken((n) => n + 1);
           setHistoryRefreshToken((n) => n + 1);
+          setGuideRefreshToken((n) => n + 1);
           refreshAuthoritative({ urgentSupporting: true });
         }
       },
@@ -950,6 +960,7 @@ export function App() {
       // behind startTransition (same class of bug as deferred proposal status).
       setRoutineRefreshToken((n) => n + 1);
       setHistoryRefreshToken((n) => n + 1);
+      setGuideRefreshToken((n) => n + 1);
       void refreshToday(membershipId).catch((caught) => setError(errorMessage(caught)));
       void refreshSupportingData(session);
       void flushOutbox(membershipId);
@@ -1295,6 +1306,8 @@ export function App() {
   const showingSettings =
     gatedLocation.name === "household-settings" &&
     (canClearActivity || canManageLifecycle);
+  const showingGuidedSetup =
+    gatedLocation.name === "household-setup" && canManageLifecycle;
   const showingDisplays =
     gatedLocation.name === "household-displays" && canManageDisplays;
   const showingUnavailable =
@@ -1306,6 +1319,7 @@ export function App() {
     (gatedLocation.name === "household-settings" &&
       !canClearActivity &&
       !canManageLifecycle) ||
+    (gatedLocation.name === "household-setup" && !canManageLifecycle) ||
     (gatedLocation.name === "household-displays" && !canManageDisplays) ||
     ((gatedLocation.name === "household-history" ||
       gatedLocation.name === "household-history-occurrence") &&
@@ -1323,6 +1337,8 @@ export function App() {
             ? "Household displays"
             : showingSettings
             ? "Settings"
+            : showingGuidedSetup
+              ? "Household setup"
             : showingActivity
               ? "Activity"
               : showingPeople
@@ -1521,6 +1537,7 @@ export function App() {
           onStepChange={queueStepChange}
           focusScopeKey={`${session.member.id}:${householdDate || session.householdDate}`}
           occurrencesLoaded={occurrencesLoaded}
+          onOpenHousehold={() => requestNavigate({ name: "household" })}
           onTasksChanged={(next) =>
             setTasks((current) => {
               const ownerId = session.member.id;
@@ -1984,6 +2001,21 @@ export function App() {
             window.location.assign("/today");
           }}
           onSuccessToast={(message) => showToast(message)}
+        />
+      ) : null}
+      {!showingUnavailable && showingGuidedSetup && activeSession ? (
+        <GuidedSetupView
+          session={activeSession}
+          memberships={memberships}
+          onMembershipsChange={setMemberships}
+          guideRefreshToken={guideRefreshToken}
+          onDirtyChange={(dirty) => {
+            editorDirtyRef.current = dirty;
+            setEditorDirty(dirty);
+          }}
+          onBack={() => requestNavigate({ name: "household" })}
+          onNavigateToday={() => requestNavigate({ name: "today" })}
+          onNavigateHousehold={() => requestNavigate({ name: "household" })}
         />
       ) : null}
       {!showingUnavailable && showingDisplays ? (

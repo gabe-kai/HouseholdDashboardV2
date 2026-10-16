@@ -78,6 +78,24 @@ export type SetupProgress = {
   setupRequired: boolean;
 };
 
+export type GuideStepStatus = "not_chosen" | "completed" | "skipped";
+
+export type GuideProgress = {
+  householdId: string;
+  accountCompletedAt: string | null;
+  householdCompletedAt: string | null;
+  setupRequired: boolean;
+  guideVersion: number;
+  peopleStatus: GuideStepStatus;
+  schoolStatus: GuideStepStatus;
+  firstWorkStatus: GuideStepStatus;
+  peopleMembershipIds: string[];
+  workDefinitionIds: string[];
+  finishedAt: string | null;
+  dismissedAt: string | null;
+  installationEpoch?: number;
+};
+
 export type HouseholdBackupMeta = {
   id: string;
   householdId: string;
@@ -541,6 +559,158 @@ export async function setupCompleteHousehold(body: { name: string; timezone: str
 
 export async function fetchSetupProgress() {
   return request<SetupProgress>("/api/v1/setup/progress");
+}
+
+export async function fetchGuideProgress() {
+  return request<GuideProgress>("/api/v1/guide/progress");
+}
+
+export type GuideCommandGuard = {
+  mutationId: string;
+  expectedGuideVersion: number;
+  installationEpoch: number;
+};
+
+export type GuideWorkPreviewBasis = {
+  householdDate: string;
+  calendarVersion: number;
+  audienceGroupIds: string[];
+  audienceGroupVersions?: Record<string, number>;
+  reviewedRoutineParticipantIds?: string[];
+  reviewedResponsibilityOwnerId?: string | null;
+  reviewedRoutineDays?: Array<{
+    householdDate: string;
+    participantMemberIds: string[];
+    stepTexts?: string[];
+  }>;
+  reviewedResponsibilityDays?: Array<{
+    householdDate: string;
+    accountableMemberId: string | null;
+    stepTexts?: string[];
+    scheduledAdditionNames?: string[];
+  }>;
+};
+
+export async function guideSavePerson(
+  body: GuideCommandGuard & {
+    displayName: string;
+    classification: "adult" | "child";
+  },
+) {
+  return request<{ progress: GuideProgress; person: MemberPublic }>(
+    "/api/v1/guide/people",
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+export async function guideCompletePeople(
+  body: GuideCommandGuard & { status: "completed" | "skipped" },
+) {
+  return request<{ progress: GuideProgress }>("/api/v1/guide/people/complete", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function guideSaveSchool(
+  body: GuideCommandGuard & {
+    status: "completed" | "skipped";
+    calendar?: SaveSchoolCalendarInput;
+  },
+) {
+  return request<{ progress: GuideProgress; calendar: SchoolCalendarPublic | null }>(
+    "/api/v1/guide/school",
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+export async function guideSaveWork(
+  body: GuideCommandGuard & {
+    status?: "completed" | "skipped";
+    routine?: RoutineMutationBody;
+    responsibility?: ResponsibilityMutationBody;
+    reviseTarget?: {
+      kind: "routine" | "responsibility";
+      definitionId: string;
+      expectedVersion: number;
+      mode?: "current" | "schedule";
+      effectiveDate?: string;
+      scheduleEntryId?: string;
+    };
+    previewHouseholdDate?: string;
+    previewBasis?: GuideWorkPreviewBasis;
+  },
+) {
+  return request<{
+    progress: GuideProgress;
+    routine: Routine | null;
+    responsibility: Responsibility | null;
+  }>("/api/v1/guide/work", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function guideFinish(
+  body: GuideCommandGuard & { dismiss?: boolean },
+) {
+  return request<{ progress: GuideProgress }>("/api/v1/guide/finish", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function guideDismiss(body: GuideCommandGuard) {
+  return request<{ progress: GuideProgress }>("/api/v1/guide/dismiss", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function fetchHouseholdDetails() {
+  return request<{
+    householdId: string;
+    name: string;
+    timezone: string;
+    timezoneLocked: boolean;
+  }>("/api/v1/household/details");
+}
+
+export async function updateHouseholdDetails(body: {
+  mutationId: string;
+  expectedName: string;
+  name: string;
+}) {
+  return request<{
+    householdId: string;
+    name: string;
+    timezone: string;
+    timezoneLocked: boolean;
+  }>("/api/v1/household/details", {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function previewDraftRoutine(body: RoutineMutationBody) {
+  return request<{
+    preview: Array<{
+      householdDate: string;
+      applicable: boolean;
+      title: string | null;
+      daypart: string | null;
+      participantMemberIds: string[];
+      participantNames: string[];
+      stepCount: number;
+      stepTexts?: string[];
+      schoolFiltered: boolean;
+    }>;
+    nextKnownDate: string | null;
+    noKnownReason: string | null;
+  }>("/api/v1/routines/preview-draft", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 export async function reauthenticatePassphrase(passphrase: string) {
@@ -1314,13 +1484,14 @@ export async function fetchResponsibilityPreview(definitionId: string) {
 }
 
 export async function previewDraftResponsibility(body: ResponsibilityMutationBody) {
-  return request<{ preview: ResponsibilityPreviewDay[] }>(
-    "/api/v1/responsibilities/preview-draft",
-    {
-      method: "POST",
-      body: JSON.stringify(body),
-    },
-  );
+  return request<{
+    preview: ResponsibilityPreviewDay[];
+    nextKnownDate?: string | null;
+    noKnownReason?: string | null;
+  }>("/api/v1/responsibilities/preview-draft", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 export async function savePersonalLayer(

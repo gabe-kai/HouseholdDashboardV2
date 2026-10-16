@@ -1,7 +1,7 @@
 # BRIEF P0-008C - Understandable Member Access and Safe Removal
 
 **Revision:** 1
-**Status:** TECHNICALLY ACCEPTED — Architecture reacceptance recorded in `reports/P0-008C-r1-architecture-reacceptance.md`; correction set awaits Project Lead commit/integration. Product acceptance remains separate.
+**Status:** TECHNICALLY ACCEPTED — correction `90de153` integrated via PR #26 at `1709097`; Architecture reacceptance recorded in `reports/P0-008C-r1-architecture-reacceptance.md`. Product acceptance remains separate.
 
 P0-008A/B are technically accepted and merged. This is one person-management journey; Engineering readiness should assess access, departure and fixture-transition risk together. Product acceptance is separate.
 
@@ -108,4 +108,4 @@ Inspected merged local `main` / `origin/main` at `f80d47b` (PR #25). P0-008A/B a
 
 ## Revision history
 
-- **r1:** Refreshed against merged A/B at `f80d47b`, reviewed READY, implemented at `aedd416`, returned FIX REQUIRED for AT9–AT14 departure/display/backup evidence and Build Report metadata, then remediated and technically accepted on the same revision. Contract unchanged; Project Lead integration remains pending.
+- **r1:** Refreshed against merged A/B at `f80d47b`, reviewed READY, implemented at `aedd416`, returned FIX REQUIRED for AT9–AT14 departure/display/backup evidence and Build Report metadata, then remediated and technically accepted on the same revision. Contract unchanged; correction `90de153` integrated via PR #26 at `1709097`.

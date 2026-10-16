@@ -248,6 +248,7 @@ export function WelcomeSetupFlow(props: WelcomeSetupProps) {
   const [step, setStep] = useState<"account" | "household" | "done">(
     props.initialStep ?? "account",
   );
+  const [accountReview, setAccountReview] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [loginName, setLoginName] = useState("");
   const [passphrase, setPassphrase] = useState("");
@@ -318,7 +319,32 @@ export function WelcomeSetupFlow(props: WelcomeSetupProps) {
               ? "Your household"
               : "Setup complete"}
         </h1>
-        {step === "account" ? (
+        {step === "account" && accountReview && props.session ? (
+          <div className="form-grid" data-testid="setup-account-review">
+            <p className="page-subcopy">
+              Signed in as <strong>{props.session.member.displayName}</strong>. Your account is
+              already saved.
+            </p>
+            <p className="meta">
+              Password changes and account help stay available from Settings after setup.
+            </p>
+            <div className="button-row">
+              <button
+                type="button"
+                className="primary"
+                onClick={() => {
+                  setAccountReview(false);
+                  setStep("household");
+                }}
+                data-testid="setup-account-review-continue"
+              >
+                Continue to household
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {step === "account" && !accountReview ? (
           <form className="form-grid" onSubmit={submitAccount} data-testid="setup-account-form">
             <label>
               Your name
@@ -409,7 +435,11 @@ export function WelcomeSetupFlow(props: WelcomeSetupProps) {
                 type="button"
                 className="secondary"
                 disabled={busy}
-                onClick={() => setStep("account")}
+                onClick={() => {
+                  setAccountReview(true);
+                  setStep("account");
+                }}
+                data-testid="setup-household-back"
               >
                 Back
               </button>
@@ -423,10 +453,18 @@ export function WelcomeSetupFlow(props: WelcomeSetupProps) {
         {step === "done" ? (
           <div data-testid="setup-complete">
             <p className="page-subcopy">
-              {savedHouseholdName || householdName} is ready. Choose where to go next.
+              {savedHouseholdName || householdName} is ready. Continue to set up your people, or
+              go to Today.
             </p>
             <div className="button-row">
-              <a className="primary button-link" href="/today" data-testid="setup-go-today">
+              <a
+                className="primary button-link"
+                href="/household/setup"
+                data-testid="setup-continue-guide"
+              >
+                Continue
+              </a>
+              <a className="secondary button-link" href="/today" data-testid="setup-go-today">
                 Today
               </a>
               <a className="secondary button-link" href="/household" data-testid="setup-go-household">

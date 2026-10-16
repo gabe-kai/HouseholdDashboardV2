@@ -85,6 +85,14 @@ A genuinely new repository fact discovered later may still be reported when it w
 
 When uncertainty can be resolved cheaply by implementing the bounded slice and observing the result, prefer evidence over another specification debate.
 
+### Evidence matrix and test-first practice
+
+For a brief containing an assertion-level evidence matrix, keep its row IDs in the implementation/test plan and Build Report. Implement the smallest evidence for each required row; do not infer a row passes merely because the encompassing test command exits zero.
+
+For behavior that can be expressed as an automated regression test, prefer test-first development (the red/green/refactor cycle): write or tighten the assertion, confirm it fails for the missing behavior when feasible, implement the smallest fix, rerun it to green, then refactor without changing behavior. For visual, manual, or environment-specific checkpoints, identify the evidence owner and record the actual observation; do not fabricate an automated equivalent. TDD is encouraged, not a requirement to force every product judgment into a unit test.
+
+Do not wait until Architecture acceptance to disclose a required row that could not be exercised. Report it honestly as PARTIAL or NOT RUN, with the specific limitation, in the consolidated handoff.
+
 ## After implementation
 
 Return a Build Report using `templates/BUILD_REPORT_TEMPLATE.md` and name the exact brief revision implemented.
@@ -98,6 +106,10 @@ Include:
 - deviations from the brief;
 - discoveries Architecture should record;
 - known limitations.
+
+When a brief has an evidence matrix, map every required row and subcase to the exact test/checkpoint, file, and assertion. Use PASS only when the assertion itself is verified; a related test or green aggregate is not sufficient. Report partial evidence at the subcase level.
+
+Record commit information as of the handoff: tested commit SHA(s), or the base SHA plus an explicitly uncommitted working-tree delta. A suggested commit message is not a commit. If the Project Lead later tests and commits that delta, their follow-up and the current repository state supersede the earlier handoff status; Architecture should preserve the timeline rather than treating the old report snapshot as current.
 
 Do not certify the work as accepted. Architecture owns acceptance.
 

@@ -3,12 +3,14 @@ import {
   clearRoutineActivity,
   createHouseholdBackup,
   deleteHouseholdBackup,
+  fetchHouseholdDetails,
   fetchLifecycleRecovery,
   householdReset,
   householdRestore,
   listHouseholdBackups,
   previewHouseholdBackup,
   reauthenticatePassphrase,
+  updateHouseholdDetails,
   type HouseholdBackupMeta,
   type HouseholdBackupPreview,
 } from "./api";
@@ -62,6 +64,10 @@ export function HouseholdSettingsView(props: {
   const [restorePassphrase, setRestorePassphrase] = useState("");
   const [saveBackupBeforeRestore, setSaveBackupBeforeRestore] = useState(false);
   const [restoreBackupLabel, setRestoreBackupLabel] = useState("");
+  const [detailsName, setDetailsName] = useState("");
+  const [detailsExpectedName, setDetailsExpectedName] = useState("");
+  const [detailsTimezone, setDetailsTimezone] = useState(props.householdTimezone);
+  const [timezoneLocked, setTimezoneLocked] = useState(true);
 
   async function refreshBackups() {
     if (!props.canManageLifecycle) return;
@@ -69,10 +75,43 @@ export function HouseholdSettingsView(props: {
     setBackups(result.backups);
   }
 
+  async function refreshDetails() {
+    if (!props.canManageLifecycle) return;
+    const details = await fetchHouseholdDetails();
+    setDetailsName(details.name);
+    setDetailsExpectedName(details.name);
+    setDetailsTimezone(details.timezone);
+    setTimezoneLocked(details.timezoneLocked);
+  }
+
   useEffect(() => {
     if (!props.canManageLifecycle) return;
     void refreshBackups().catch((caught) => setError(errorMessage(caught)));
+    void refreshDetails().catch((caught) => setError(errorMessage(caught)));
   }, [props.canManageLifecycle]);
+
+  async function submitHouseholdDetails(event: FormEvent) {
+    event.preventDefault();
+    if (!props.canManageLifecycle) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await updateHouseholdDetails({
+        mutationId: newClientId(),
+        expectedName: detailsExpectedName,
+        name: detailsName.trim(),
+      });
+      setDetailsName(result.name);
+      setDetailsExpectedName(result.name);
+      setDetailsTimezone(result.timezone);
+      setTimezoneLocked(result.timezoneLocked);
+      props.onSuccessToast("Household details saved");
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function openClearConfirm() {
     setError(null);
@@ -277,13 +316,50 @@ export function HouseholdSettingsView(props: {
       </button>
       <h1 className="page-heading">Settings</h1>
 
-      <div className="settings-section">
+      <div className="settings-section" data-testid="household-details-section">
         <h2>Household details</h2>
-        <p className="meta">
-          Timezone: {props.householdTimezone}. Name and timezone were set during setup; changing
-          timezone after activity exists is not available in this release.
-        </p>
+        {props.canManageLifecycle ? (
+          <form className="stack-form" onSubmit={submitHouseholdDetails}>
+            <label>
+              Household name
+              <input
+                value={detailsName}
+                onChange={(event) => setDetailsName(event.target.value)}
+                maxLength={120}
+                required
+                data-testid="household-details-name"
+              />
+            </label>
+            <p className="meta">
+              Timezone: {detailsTimezone || props.householdTimezone}
+              {timezoneLocked
+                ? ". Timezone is read-only after dated calendar, work, or activity exists; this release does not relocate household history."
+                : ". Confirm timezone carefully before dated work begins."}
+            </p>
+            <button type="submit" className="primary" disabled={busy} data-testid="household-details-save">
+              Save household details
+            </button>
+          </form>
+        ) : (
+          <p className="meta">Timezone: {props.householdTimezone}.</p>
+        )}
       </div>
+
+      {props.canManageLifecycle ? (
+        <div className="settings-section settings-action" data-testid="finish-setup-section">
+          <h2>Finish setup</h2>
+          <p className="meta">
+            Return to the guided setup for people, school days, and first household work.
+          </p>
+          <a
+            className="primary button-link"
+            href="/household/setup"
+            data-testid="settings-finish-setup"
+          >
+            Finish setup
+          </a>
+        </div>
+      ) : null}
 
       {props.canManageLifecycle ? (
         <div className="settings-section settings-action" data-testid="backups-section">

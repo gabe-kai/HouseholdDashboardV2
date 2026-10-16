@@ -66,6 +66,21 @@ Every brief should state:
 
 Use `templates/BRIEF_TEMPLATE.md`.
 
+### Assertion-level matrix for broad or high-risk briefs
+
+Use the evidence matrix in the brief template when a slice spans multiple workflows or system boundaries, changes lifecycle/migration/authority behavior, has important async or cross-device behavior, or has roughly eight or more acceptance tests. This is a trigger for clarity, not a demand for more tests.
+
+Before readiness review, decompose each required acceptance outcome into atomic assertions. For each assertion, state:
+- the initial state / relevant fixture;
+- the action or transition;
+- the exact expected observable result or invariant;
+- the evidence type (automated integration, browser, CI, or explicitly assigned human checkpoint);
+- the named test or planned evidence location when known.
+
+Keep required assertions distinct from optional coverage. Each row must be independently judgeable as PASS, PARTIAL, or NOT RUN. Avoid vague rows such as “migration works” or “privacy covered.” The matrix is an evidence contract, not a prescription for test-file layout or implementation technique.
+
+Engineering readiness should verify that the rows are implementable and repository-aware. After readiness, Architecture should assess implementation against those same rows, not invent new requirements during acceptance. A missing assertion is FIX REQUIRED only when the approved brief already requires that behavior/evidence; otherwise record it as a follow-up or propose a contract revision through the normal process.
+
 ## Player-facing project tracking
 
 The external project board is a visibility and learning layer for the project. It is **not** a second source of truth. The repository, approved design, decisions, roadmap, and authoritative brief remain the source of truth for implementation.
@@ -157,6 +172,10 @@ After Engineering returns a Build Report:
 6. If the contract must change, increment the revision and restart readiness review.
 7. Update roadmap/state or provide exact file updates when appropriate.
 8. State the user-facing project-card transition, or explicitly state that no board movement is warranted.
+
+For briefs with an acceptance evidence matrix, review every required row against the named test or checkpoint. A test title or green suite is not enough: inspect what the test actually asserts. Mark the row PASS only when the exact expected outcome is demonstrated; keep partial or unrun evidence explicit. Do not expand the contract during acceptance.
+
+When the Project Lead reports a later manual evaluation or Git action (for example, starting the app, testing it, then committing), treat that as a new post-handoff update rather than contradicting it from an earlier Build Report snapshot. If the repository is accessible, verify the current commit/status and record both timelines accurately: Engineering handoff state versus current Project Lead state. Do not request report rewrites solely because the report correctly described the earlier uncommitted handoff.
 
 `ACCEPTED` means the implementation satisfies the technical brief. It does not mean the Project Lead has accepted the resulting experience as product direction.
 

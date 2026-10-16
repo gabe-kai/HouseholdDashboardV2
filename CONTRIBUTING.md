@@ -231,6 +231,16 @@ Be precise in reports:
 - "works in one environment" is not the same as supported-environment compatibility.
 - "CI check exists" is not the same as "required branch protection is configured" (Project Lead setting).
 
+### Acceptance evidence for broad/high-risk work
+
+When a brief spans multiple workflows/system boundaries, changes lifecycle/migration/authority behavior, includes important async/cross-device behavior, or has roughly eight or more acceptance tests, Architecture should include an assertion-level evidence matrix in the authoritative brief. Each required row should identify the setup/initial state, action, exact expected observable or invariant, evidence type, and named test/checkpoint when known. Keep optional coverage separate.
+
+Engineering and Architecture use the same rows through implementation and acceptance. A test name or passing aggregate is not proof by itself; the assertion must establish the stated result. Mark evidence PASS, PARTIAL, or NOT RUN at the smallest useful row/subcase level. Do not add acceptance requirements during review that were not in the approved brief; record new concerns as follow-up or revise the contract explicitly.
+
+Prefer test-first implementation for behavior that can be automated: write or strengthen the assertion, verify it catches the defect when practical, implement the smallest fix, rerun it, then refactor safely (red/green/refactor). This is a practice, not a requirement to convert human product evaluation or environment-specific release checks into automated tests.
+
+Build Reports describe repository state at handoff. If the Project Lead subsequently runs the app, evaluates it, and commits, later coordination should recognize that timeline and use the current Git state when available. Do not treat an earlier accurate “uncommitted at handoff” note as evidence that the Project Lead did not commit afterward.
+
 ## 7. Dependencies
 
 Before adding a dependency:

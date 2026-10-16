@@ -2,13 +2,16 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { migrate, openDatabase } from "../../src/server/db.js";
 import { scrubRestoredAccess } from "../../src/server/backup-catalog.js";
 import { hashPassphrase, sha256Hex } from "../../src/server/crypto.js";
 import {
+  InstallationControl,
+  relativeDbPathFromConfig,
+} from "../../src/server/installation-control.js";
+import {
   addHouseholdDays,
-  householdDateFromInstant,
   isoWeekdayForHouseholdDate,
 } from "../../src/domain/time.js";
 import { createHttpHarness, type HttpHarness } from "../helpers/auth-fixture.js";
@@ -28,6 +31,7 @@ const harnesses: HttpHarness[] = [];
 const temps: string[] = [];
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   while (harnesses.length > 0) {
     await harnesses.pop()?.close();
   }
@@ -1741,15 +1745,77 @@ describe("P0-008D guided first household day", () => {
     );
     db.close();
 
+    // Pre-populate installation-control catalog + non-default epoch BEFORE adopt.
+    const controlPath = tempPath("hd-d-c1-control");
+    const control = InstallationControl.open(controlPath);
+    const relativeDb = relativeDbPathFromConfig(dbPath);
+    control.ensureAdopt(relativeDb);
+    control.activateCandidate(4, relativeDb);
+    const preexistingBackup = {
+      id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      householdId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      householdName: "Pre-adoption Household",
+      createdAt: "2026-01-15T12:00:00.000Z",
+      label: "pre-adoption catalog",
+      schemaManifest: JSON.stringify(["019_member_access_removal.sql"]),
+      formatVersion: 1,
+      byteSize: 12345,
+      contentDigest: "a".repeat(64),
+      relativePath: "pre-adoption.sqlite",
+      source: "app" as const,
+    };
+    control.insertBackup(preexistingBackup);
+    const catalogSnapshot = (rows: ReturnType<InstallationControl["listBackups"]>) =>
+      rows
+        .map((b) => ({
+          id: b.id,
+          householdId: b.householdId,
+          householdName: b.householdName,
+          createdAt: b.createdAt,
+          label: b.label,
+          schemaManifest: b.schemaManifest,
+          formatVersion: b.formatVersion,
+          byteSize: b.byteSize,
+          contentDigest: b.contentDigest,
+          relativePath: b.relativePath,
+          source: b.source,
+        }))
+        .sort((a, b) => a.id.localeCompare(b.id));
+    const catalogBefore = catalogSnapshot(control.listBackups());
+    const epochBefore = control.getState().datasetEpoch;
+    expect(epochBefore).toBe(4);
+    expect(catalogBefore).toEqual([
+      {
+        id: preexistingBackup.id,
+        householdId: preexistingBackup.householdId,
+        householdName: preexistingBackup.householdName,
+        createdAt: preexistingBackup.createdAt,
+        label: preexistingBackup.label,
+        schemaManifest: preexistingBackup.schemaManifest,
+        formatVersion: preexistingBackup.formatVersion,
+        byteSize: preexistingBackup.byteSize,
+        contentDigest: preexistingBackup.contentDigest,
+        relativePath: preexistingBackup.relativePath,
+        source: preexistingBackup.source,
+      },
+    ]);
+    control.close();
+
     const h = await createHttpHarness({
       AUTO_SEED: "0",
       INSTALLATION_OWNER_SECRET: OWNER_SECRET,
       DB_PATH: dbPath,
-      INSTALLATION_CONTROL_PATH: tempPath("hd-d-c1-control"),
+      INSTALLATION_CONTROL_PATH: controlPath,
       BACKUP_DIR: backupDirForTest(),
     });
     harnesses.push(h);
-    const epochBefore = h.runtime.epoch;
+    expect(h.runtime.epoch).toBe(epochBefore);
+    expect(catalogSnapshot(h.runtime.control.listBackups())).toEqual(catalogBefore);
+    migrate(h.db);
+    migrate(h.db);
+    expect(h.runtime.epoch).toBe(epochBefore);
+    expect(catalogSnapshot(h.runtime.control.listBackups())).toEqual(catalogBefore);
+
     const login = await h.app.inject({
       method: "POST",
       url: "/api/v1/auth/login",
@@ -1768,17 +1834,11 @@ describe("P0-008D guided first household day", () => {
     const guide = await call(h, auth, "GET", "/api/v1/guide/progress");
     expect(guide.statusCode).toBe(200);
     const meta = await h.app.inject({ method: "GET", url: "/api/v1/meta" });
-    expect((meta.json() as { setupRequired: boolean }).setupRequired).toBe(false);
-    await reauth(h, auth);
-    const created = await call(h, auth, "POST", "/api/v1/household/backups", {
-      mutationId: randomUUID(),
-      label: "adoption catalog",
-    });
-    expect(created.statusCode).toBe(200);
-    const backupId = (created.json() as { backup: { id: string } }).backup.id;
-    migrate(h.db);
-    expect(h.runtime.control.listBackups().some((b) => b.id === backupId)).toBe(true);
-    expect(h.runtime.epoch).toBe(epochBefore);
+    expect((meta.json() as { setupRequired: boolean; installationEpoch: number }).setupRequired).toBe(
+      false,
+    );
+    expect((meta.json() as { installationEpoch: number }).installationEpoch).toBe(epochBefore);
+    expect(catalogSnapshot(h.runtime.control.listBackups())).toEqual(catalogBefore);
   });
 
   it("C1/AT1: through-019 without A progress does not invent completion timestamps", async () => {
@@ -1848,15 +1908,146 @@ describe("P0-008D guided first household day", () => {
   });
 
   it("C2/AT5: controlled-date preview agrees with saved work and stale consent conflicts", async () => {
+    // Explicit harness household date (no production clock). Monday keeps weekday math stable.
+    // Resolver internals for assignment/phase remain covered by P0-007B AT2.
+    const CONTROLLED_TODAY = "2026-03-09";
     const h = await createDHarness();
     const auth = await setupHousehold(h);
-    const today = householdDateFromInstant(new Date(), "America/New_York");
+    vi.spyOn(h.store, "householdDateNow").mockReturnValue(CONTROLLED_TODAY);
+    vi.spyOn(h.store, "householdDateNowForHousehold").mockReturnValue(CONTROLLED_TODAY);
+    const today = CONTROLLED_TODAY;
     const weekday = isoWeekdayForHouseholdDate(today);
-    const other = weekday === 1 ? 2 : 1;
+    expect(weekday).toBe(1);
+    const other = 2;
     const counts = () => ({
       routines: (h.db.prepare(`SELECT COUNT(*) AS c FROM routine_definitions`).get() as { c: number }).c,
       occurrences: (h.db.prepare(`SELECT COUNT(*) AS c FROM occurrences`).get() as { c: number }).c,
+      responsibilities: (
+        h.db
+          .prepare(`SELECT COUNT(*) AS c FROM routine_definitions WHERE kind = 'responsibility'`)
+          .get() as { c: number }
+      ).c,
     });
+
+    type PreviewDay = {
+      applicable: boolean;
+      householdDate: string;
+      participantMemberIds?: string[];
+      accountableMemberId?: string | null;
+      stepTexts?: string[];
+    };
+
+    async function calendarVersionNow(): Promise<number> {
+      const calendar = await call(h, auth, "GET", "/api/v1/school-calendar");
+      return (calendar.json() as { calendar: { version: number } }).calendar.version;
+    }
+
+    type SavedPreviewDay = {
+      householdDate: string;
+      applicable: boolean;
+      accountableMemberId: string | null;
+      stepCount?: number;
+      stepTexts?: string[];
+    };
+
+    async function saveResponsibilityParity(input: {
+      version: number;
+      title: string;
+      responsibility: Record<string, unknown>;
+      reviewedDays: PreviewDay[];
+      expectedOwner: string | null;
+      expectedSteps: string[];
+      expectedMode: string;
+      /** When set, compare every draft applicable day to the saved definition preview. */
+      requireDistinctOwners?: boolean;
+    }): Promise<number> {
+      const calVersion = await calendarVersionNow();
+      const applicable = input.reviewedDays.filter((d) => d.applicable);
+      const basis = {
+        householdDate: today,
+        calendarVersion: calVersion,
+        audienceGroupIds: [] as string[],
+        audienceGroupVersions: {},
+        reviewedResponsibilityOwnerId: input.expectedOwner,
+        reviewedResponsibilityDays: (applicable.length ? applicable : input.reviewedDays).map(
+          (d) => ({
+            householdDate: d.householdDate,
+            accountableMemberId: d.accountableMemberId ?? null,
+            stepTexts: d.stepTexts ?? [],
+          }),
+        ),
+      };
+      const saved = await call(h, auth, "POST", "/api/v1/guide/work", {
+        ...guideGuard(auth, input.version),
+        status: "completed",
+        responsibility: input.responsibility,
+        previewBasis: basis,
+      });
+      expect(saved.statusCode, saved.body).toBe(200);
+      const body = saved.json() as {
+        responsibility: { id: string };
+        progress: { guideVersion: number };
+      };
+      const loaded = await call(h, auth, "GET", `/api/v1/responsibilities/${body.responsibility.id}`);
+      expect(loaded.statusCode, loaded.body).toBe(200);
+      const revision = (
+        loaded.json() as {
+          responsibility: {
+            revisions: Array<{
+              assignment?: { mode: string; fixedMemberId?: string | null };
+              steps: Array<{ text: string }>;
+              scheduledAdditions?: Array<{
+                inheritAssignment: boolean;
+                assignment?: { mode: string; fixedMemberId?: string | null };
+                steps: Array<{ text: string }>;
+              }>;
+            }>;
+          };
+        }
+      ).responsibility.revisions[0]!;
+      expect(revision.assignment?.mode).toBe(input.expectedMode);
+      const orderedSaved = [
+        ...revision.steps.map((s) => s.text),
+        ...(revision.scheduledAdditions ?? []).flatMap((addition) =>
+          addition.steps.map((s) => s.text),
+        ),
+      ];
+      expect(orderedSaved).toEqual(input.expectedSteps);
+      const savedPreview = await call(
+        h,
+        auth,
+        "GET",
+        `/api/v1/responsibilities/${body.responsibility.id}/preview`,
+      );
+      expect(savedPreview.statusCode, savedPreview.body).toBe(200);
+      const savedDays = (savedPreview.json() as { preview: SavedPreviewDay[] }).preview;
+      if (input.requireDistinctOwners) {
+        const draftOwners = [
+          ...new Set(
+            applicable.map((d) => d.accountableMemberId ?? null).filter((id) => id != null),
+          ),
+        ];
+        expect(draftOwners.length).toBeGreaterThanOrEqual(2);
+        expect(applicable.length).toBeGreaterThanOrEqual(2);
+        for (const draftDay of applicable) {
+          const savedDay = savedDays.find((d) => d.householdDate === draftDay.householdDate);
+          expect(savedDay, draftDay.householdDate).toBeTruthy();
+          expect(savedDay!.applicable).toBe(true);
+          expect(savedDay!.accountableMemberId ?? null).toBe(draftDay.accountableMemberId ?? null);
+          const orderedWork = draftDay.stepTexts ?? [];
+          expect(orderedWork).toEqual(input.expectedSteps);
+          expect(savedDay!.stepCount).toBe(orderedWork.length);
+          if (savedDay!.stepTexts) {
+            expect(savedDay!.stepTexts).toEqual(orderedWork);
+          }
+        }
+      } else {
+        const savedDay = savedDays.find((d) => d.applicable);
+        expect(savedDay?.accountableMemberId ?? null).toBe(input.expectedOwner);
+        expect(savedDay?.stepCount).toBe(input.expectedSteps.length);
+      }
+      return body.progress.guideVersion;
+    }
 
     const child = await call(h, auth, "POST", "/api/v1/people", {
       mutationId: randomUUID(),
@@ -1881,12 +2072,7 @@ describe("P0-008D guided first household day", () => {
     expect(routinePreview.statusCode).toBe(200);
     expect(counts()).toEqual(before);
     const body = routinePreview.json() as {
-      preview: Array<{
-        applicable: boolean;
-        householdDate: string;
-        participantMemberIds: string[];
-        stepTexts?: string[];
-      }>;
+      preview: PreviewDay[];
       nextKnownDate: string | null;
     };
     const applicable = body.preview.filter((d) => d.applicable);
@@ -1899,8 +2085,7 @@ describe("P0-008D guided first household day", () => {
 
     const guide = await call(h, auth, "GET", "/api/v1/guide/progress");
     let version = (guide.json() as { guideVersion: number }).guideVersion;
-    const calendar = await call(h, auth, "GET", "/api/v1/school-calendar");
-    const calendarVersion = (calendar.json() as { calendar: { version: number } }).calendar.version;
+    const calendarVersion = await calendarVersionNow();
     const basis = {
       householdDate: today,
       calendarVersion,
@@ -1909,7 +2094,7 @@ describe("P0-008D guided first household day", () => {
       reviewedRoutineParticipantIds: applicable[0]?.participantMemberIds ?? [],
       reviewedRoutineDays: (applicable.length ? applicable : body.preview).map((d) => ({
         householdDate: d.householdDate,
-        participantMemberIds: d.participantMemberIds,
+        participantMemberIds: d.participantMemberIds ?? [],
         stepTexts: d.stepTexts ?? [],
       })),
     };
@@ -1991,9 +2176,37 @@ describe("P0-008D guided first household day", () => {
     expect(schoolBody.preview.every((d) => !d.applicable || d.householdDate >= schoolStart)).toBe(
       true,
     );
-    expect(schoolBody.nextKnownDate === schoolStart || schoolBody.nextKnownDate === null).toBe(
-      true,
-    );
+    expect(schoolBody.nextKnownDate).toBe(schoolStart);
+    expect(schoolBody.noKnownReason).toBeNull();
+    vi.mocked(h.store.householdDateNow).mockReturnValue(schoolStart);
+    vi.mocked(h.store.householdDateNowForHousehold).mockReturnValue(schoolStart);
+    const schoolStartPreview = await call(h, auth, "POST", "/api/v1/routines/preview-draft", {
+      mutationId: randomUUID(),
+      title: "School Later",
+      daypart: "morning",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
+      assigneeMemberIds: [childId],
+      assigneeGroupIds: [],
+      steps: [{ text: "Pack", obligation: "required", applicability: { kind: "school_days" } }],
+    });
+    expect(schoolStartPreview.statusCode, schoolStartPreview.body).toBe(200);
+    expect(
+      (
+        schoolStartPreview.json() as {
+          preview: Array<{ householdDate: string; applicable: boolean }>;
+        }
+      ).preview.find((d) => d.householdDate === schoolStart)?.applicable,
+    ).toBe(true);
+    vi.mocked(h.store.householdDateNow).mockReturnValue(today);
+    vi.mocked(h.store.householdDateNowForHousehold).mockReturnValue(today);
+
+    const sibling = await call(h, auth, "POST", "/api/v1/people", {
+      mutationId: randomUUID(),
+      displayName: "Sibling Child",
+      classification: "child",
+    });
+    expect(sibling.statusCode).toBe(200);
+    const siblingId = (sibling.json() as { person: { id: string } }).person.id;
 
     const group = await call(h, auth, "POST", "/api/v1/groups", {
       mutationId: randomUUID(),
@@ -2002,52 +2215,87 @@ describe("P0-008D guided first household day", () => {
     });
     expect(group.statusCode, group.body).toBe(200);
     const groupId = (group.json() as { group: { id: string } }).group.id;
-    const unassigned = await call(h, auth, "POST", "/api/v1/responsibilities/preview-draft", {
+
+    const rotateGroup = await call(h, auth, "POST", "/api/v1/groups", {
+      mutationId: randomUUID(),
+      name: "Two-child ring",
+      membershipIds: [childId, siblingId],
+    });
+    expect(rotateGroup.statusCode, rotateGroup.body).toBe(200);
+    const rotateGroupId = (rotateGroup.json() as { group: { id: string } }).group.id;
+
+    const unassignedPayload = {
       mutationId: randomUUID(),
       title: "Unassigned Chore",
-      daypart: "anytime",
+      daypart: "anytime" as const,
       weekdays: [1, 2, 3, 4, 5, 6, 7],
       assignment: {
-        mode: "take_turns",
+        mode: "take_turns" as const,
         anchorDate: today,
         sourceGroupId: groupId,
         savedRingOrder: [childId],
         excludedMemberIds: [childId],
       },
-      steps: [{ text: "Sweep", obligation: "required" }],
-    });
+      steps: [{ text: "Sweep", obligation: "required" as const }],
+    };
+    const unassigned = await call(
+      h,
+      auth,
+      "POST",
+      "/api/v1/responsibilities/preview-draft",
+      unassignedPayload,
+    );
     expect(unassigned.statusCode, unassigned.body).toBe(200);
-    const unassignedDay = (
-      unassigned.json() as {
-        preview: Array<{ applicable: boolean; accountableMemberId: string | null; stepTexts?: string[] }>;
-      }
-    ).preview.find((d) => d.applicable);
+    const unassignedDays = (
+      unassigned.json() as { preview: PreviewDay[] }
+    ).preview;
+    const unassignedDay = unassignedDays.find((d) => d.applicable);
     expect(unassignedDay?.accountableMemberId ?? null).toBeNull();
     expect(unassignedDay?.stepTexts).toEqual(["Sweep"]);
+    version = await saveResponsibilityParity({
+      version,
+      title: "Unassigned Chore",
+      responsibility: unassignedPayload,
+      reviewedDays: unassignedDays,
+      expectedOwner: null,
+      expectedSteps: ["Sweep"],
+      expectedMode: "take_turns",
+    });
 
-    const cyclic = await call(h, auth, "POST", "/api/v1/responsibilities/preview-draft", {
+    const cyclicPayload = {
       mutationId: randomUUID(),
       title: "Cyclic Chore",
-      daypart: "anytime",
+      daypart: "anytime" as const,
       weekdays: [1, 2, 3, 4, 5, 6, 7],
       assignment: {
-        mode: "take_turns",
+        mode: "take_turns" as const,
         anchorDate: today,
-        sourceGroupId: groupId,
-        savedRingOrder: [childId],
-        excludedMemberIds: [],
+        sourceGroupId: rotateGroupId,
+        savedRingOrder: [childId, siblingId],
+        excludedMemberIds: [] as string[],
       },
-      steps: [{ text: "Rotate", obligation: "required" }],
-    });
+      steps: [{ text: "Rotate", obligation: "required" as const }],
+    };
+    const cyclic = await call(h, auth, "POST", "/api/v1/responsibilities/preview-draft", cyclicPayload);
     expect(cyclic.statusCode, cyclic.body).toBe(200);
-    const cyclicDay = (
-      cyclic.json() as {
-        preview: Array<{ applicable: boolean; accountableMemberId: string | null; stepTexts?: string[] }>;
-      }
-    ).preview.find((d) => d.applicable);
-    expect(cyclicDay?.accountableMemberId).toBe(childId);
-    expect(cyclicDay?.accountableMemberId).not.toBe(auth.membershipId);
-    expect(cyclicDay?.stepTexts).toEqual(["Rotate"]);
+    const cyclicDays = (cyclic.json() as { preview: PreviewDay[] }).preview;
+    const cyclicApplicable = cyclicDays.filter((d) => d.applicable);
+    expect(cyclicApplicable.length).toBeGreaterThanOrEqual(2);
+    const cyclicOwners = [
+      ...new Set(cyclicApplicable.map((d) => d.accountableMemberId).filter(Boolean)),
+    ];
+    expect(cyclicOwners.sort()).toEqual([childId, siblingId].sort());
+    expect(cyclicApplicable.every((d) => d.stepTexts?.join() === "Rotate")).toBe(true);
+    version = await saveResponsibilityParity({
+      version,
+      title: "Cyclic Chore",
+      responsibility: cyclicPayload,
+      reviewedDays: cyclicDays,
+      expectedOwner: cyclicApplicable[0]?.accountableMemberId ?? childId,
+      expectedSteps: ["Rotate"],
+      expectedMode: "take_turns",
+      requireDistinctOwners: true,
+    });
 
     const grouped = await call(h, auth, "POST", "/api/v1/routines/preview-draft", {
       mutationId: randomUUID(),
@@ -2062,63 +2310,164 @@ describe("P0-008D guided first household day", () => {
       ],
     });
     expect(grouped.statusCode, grouped.body).toBe(200);
-    const groupedDay = (
-      grouped.json() as {
-        preview: Array<{ applicable: boolean; participantMemberIds: string[]; stepTexts?: string[] }>;
-      }
-    ).preview.find((d) => d.applicable);
+    const groupedDays = (grouped.json() as { preview: PreviewDay[] }).preview;
+    const groupedDay = groupedDays.find((d) => d.applicable);
     expect(groupedDay?.participantMemberIds).toEqual([childId]);
     expect(groupedDay?.participantMemberIds ?? []).not.toContain(auth.membershipId);
     expect(groupedDay?.stepTexts).toEqual(["First", "Second"]);
+    {
+      const calVersion = await calendarVersionNow();
+      const groupedSave = await call(h, auth, "POST", "/api/v1/guide/work", {
+        ...guideGuard(auth, version),
+        status: "completed",
+        routine: {
+          mutationId: randomUUID(),
+          title: "Child Group",
+          daypart: "morning",
+          weekdays: [weekday],
+          assigneeMemberIds: [],
+          assigneeGroupIds: [groupId],
+          steps: [
+            { text: "First", obligation: "required" },
+            { text: "Second", obligation: "required" },
+          ],
+        },
+        previewBasis: {
+          householdDate: today,
+          calendarVersion: calVersion,
+          audienceGroupIds: [] as string[],
+          audienceGroupVersions: {},
+          reviewedRoutineParticipantIds: groupedDay?.participantMemberIds ?? [childId],
+          reviewedRoutineDays: groupedDays
+            .filter((d) => d.applicable)
+            .map((d) => ({
+              householdDate: d.householdDate,
+              participantMemberIds: d.participantMemberIds ?? [],
+              stepTexts: d.stepTexts ?? [],
+            })),
+        },
+      });
+      expect(groupedSave.statusCode, groupedSave.body).toBe(200);
+      version = (groupedSave.json() as { progress: { guideVersion: number } }).progress.guideVersion;
+      const groupedId = (groupedSave.json() as { routine: { id: string } }).routine.id;
+      const loadedGroup = await call(h, auth, "GET", `/api/v1/routines/${groupedId}`);
+      const groupRev = (
+        loadedGroup.json() as {
+          routine: {
+            revisions: Array<{
+              assigneeMemberIds: string[];
+              assigneeGroupIds: string[];
+              steps: Array<{ text: string }>;
+            }>;
+          };
+        }
+      ).routine.revisions[0]!;
+      expect(groupRev.assigneeGroupIds).toEqual([groupId]);
+      expect(groupRev.assigneeMemberIds).toEqual([]);
+      expect(groupRev.steps.map((s) => s.text)).toEqual(["First", "Second"]);
+      expect(groupedDay?.participantMemberIds).toEqual([childId]);
+      expect(groupedDay?.stepTexts).toEqual(groupRev.steps.map((s) => s.text));
+    }
 
-    const fixed = await call(h, auth, "POST", "/api/v1/responsibilities/preview-draft", {
+    const fixedPayload = {
       mutationId: randomUUID(),
       title: "Fixed Chore",
-      daypart: "anytime",
+      daypart: "anytime" as const,
       weekdays: [1, 2, 3, 4, 5, 6, 7],
       accountableMemberId: childId,
-      assignment: { mode: "fixed", anchorDate: today, fixedMemberId: childId },
-      steps: [{ text: "Wipe", obligation: "required" }],
+      assignment: { mode: "fixed" as const, anchorDate: today, fixedMemberId: childId },
+      steps: [{ text: "Wipe", obligation: "required" as const }],
       scheduledAdditions: [
         {
           name: "Extra",
           weekdays: [1, 2, 3, 4, 5, 6, 7],
           inheritAssignment: false,
-          assignment: { mode: "fixed", anchorDate: today, fixedMemberId: auth.membershipId },
-          steps: [{ text: "Parent extra", obligation: "required" }],
+          assignment: { mode: "fixed" as const, anchorDate: today, fixedMemberId: auth.membershipId },
+          steps: [{ text: "Parent extra", obligation: "required" as const }],
         },
       ],
-    });
+    };
+    const fixed = await call(h, auth, "POST", "/api/v1/responsibilities/preview-draft", fixedPayload);
     expect(fixed.statusCode, fixed.body).toBe(200);
-    const fixedDay = (
-      fixed.json() as {
-        preview: Array<{ applicable: boolean; accountableMemberId: string | null; stepTexts?: string[] }>;
-      }
-    ).preview.find((d) => d.applicable);
+    const fixedDays = (fixed.json() as { preview: PreviewDay[] }).preview;
+    const fixedDay = fixedDays.find((d) => d.applicable);
     expect(fixedDay?.stepTexts).toEqual(["Wipe", "Parent extra"]);
-    const weeklyMap: Record<string, string> = {};
-    for (const day of [1, 2, 3, 4, 5, 6, 7]) weeklyMap[String(day)] = childId;
-    const weekly = await call(h, auth, "POST", "/api/v1/responsibilities/preview-draft", {
+    // Day owner follows the composed review (base fixed child; independently assigned addition keeps own owner).
+    expect(fixedDay?.accountableMemberId ?? null).not.toBeNull();
+    version = await saveResponsibilityParity({
+      version,
+      title: "Fixed Chore",
+      responsibility: fixedPayload,
+      reviewedDays: fixedDays,
+      expectedOwner: fixedDay?.accountableMemberId ?? null,
+      expectedSteps: ["Wipe", "Parent extra"],
+      expectedMode: "fixed",
+    });
+    {
+      const listed = await call(h, auth, "GET", "/api/v1/guide/progress");
+      const workIds = (listed.json() as { workDefinitionIds: string[] }).workDefinitionIds;
+      const fixedId = workIds.at(-1)!;
+      const loadedFixed = await call(h, auth, "GET", `/api/v1/responsibilities/${fixedId}`);
+      const addition = (
+        loadedFixed.json() as {
+          responsibility: {
+            revisions: Array<{
+              scheduledAdditions?: Array<{
+                inheritAssignment: boolean;
+                assignment?: { fixedMemberId?: string | null };
+                steps: Array<{ text: string }>;
+              }>;
+            }>;
+          };
+        }
+      ).responsibility.revisions[0]!.scheduledAdditions?.[0];
+      expect(addition?.inheritAssignment).toBe(false);
+      expect(addition?.assignment?.fixedMemberId).toBe(auth.membershipId);
+      expect(addition?.steps.map((s) => s.text)).toEqual(["Parent extra"]);
+    }
+
+    // Different owners on at least Mon (1) and Tue (2); remaining days alternate.
+    const weeklyMap: Record<string, string> = {
+      "1": childId,
+      "2": siblingId,
+      "3": childId,
+      "4": siblingId,
+      "5": childId,
+      "6": siblingId,
+      "7": childId,
+    };
+    const weeklyPayload = {
       mutationId: randomUUID(),
       title: "Weekly Chore",
-      daypart: "anytime",
+      daypart: "anytime" as const,
       weekdays: [1, 2, 3, 4, 5, 6, 7],
-      assignment: { mode: "weekly", anchorDate: today, weeklyMap },
-      steps: [{ text: "Weekly wipe", obligation: "required" }],
-    });
+      assignment: { mode: "weekly" as const, anchorDate: today, weeklyMap },
+      steps: [{ text: "Weekly wipe", obligation: "required" as const }],
+    };
+    const weekly = await call(h, auth, "POST", "/api/v1/responsibilities/preview-draft", weeklyPayload);
     expect(weekly.statusCode, weekly.body).toBe(200);
-    const weeklyToday = (
-      weekly.json() as {
-        preview: Array<{ householdDate: string; accountableMemberId: string | null; stepTexts?: string[] }>;
-      }
-    ).preview.find((d) => d.householdDate === today);
+    const weeklyDays = (weekly.json() as { preview: PreviewDay[] }).preview;
+    const weeklyToday = weeklyDays.find((d) => d.householdDate === today);
+    const weeklyTomorrow = weeklyDays.find((d) => d.householdDate === addHouseholdDays(today, 1));
     expect(weeklyToday?.accountableMemberId).toBe(childId);
+    expect(weeklyTomorrow?.accountableMemberId).toBe(siblingId);
     expect(weeklyToday?.stepTexts).toEqual(["Weekly wipe"]);
-    expect(counts().routines).toBe(before.routines);
+    expect(weeklyTomorrow?.stepTexts).toEqual(["Weekly wipe"]);
+    version = await saveResponsibilityParity({
+      version,
+      title: "Weekly Chore",
+      responsibility: weeklyPayload,
+      reviewedDays: weeklyDays,
+      expectedOwner: childId,
+      expectedSteps: ["Weekly wipe"],
+      expectedMode: "weekly",
+      requireDistinctOwners: true,
+    });
     expect(
       (h.db.prepare(`SELECT COUNT(*) AS c FROM step_reports`).get() as { c: number }).c,
     ).toBe(0);
 
+    const routinesBeforeWeekday = counts().routines;
     const sourceChanged = await call(h, auth, "POST", "/api/v1/guide/work", {
       ...guideGuard(auth, version),
       status: "completed",
@@ -2137,13 +2486,12 @@ describe("P0-008D guided first household day", () => {
       previewBasis: basis,
     });
     expect(sourceChanged.statusCode).toBeGreaterThanOrEqual(400);
-    expect(counts().routines).toBe(before.routines);
+    expect(counts().routines).toBe(routinesBeforeWeekday);
     expect((await call(h, auth, "GET", "/api/v1/guide/progress")).json()).toMatchObject({
       guideVersion: version,
     });
 
-    const freshCal = await call(h, auth, "GET", "/api/v1/school-calendar");
-    const freshVersion = (freshCal.json() as { calendar: { version: number } }).calendar.version;
+    const freshVersion = await calendarVersionNow();
     const saved = await call(h, auth, "POST", "/api/v1/guide/work", {
       ...guideGuard(auth, version),
       status: "completed",
@@ -2167,6 +2515,24 @@ describe("P0-008D guided first household day", () => {
       progress: { guideVersion: number };
     };
     const routineId = savedBody.routine.id;
+    const loadedRoutine = await call(h, auth, "GET", `/api/v1/routines/${routineId}`);
+    const routineRev = (
+      loadedRoutine.json() as {
+        routine: {
+          revisions: Array<{
+            assigneeMemberIds: string[];
+            steps: Array<{ text: string }>;
+          }>;
+        };
+      }
+    ).routine.revisions[0]!;
+    expect(routineRev.assigneeMemberIds).toEqual([childId]);
+    expect(routineRev.steps.map((s) => s.text)).toEqual(["First", "Second"]);
+    expect(applicable[0]?.participantMemberIds ?? [childId]).toEqual(routineRev.assigneeMemberIds);
+    expect(applicable[0]?.stepTexts ?? ["First", "Second"]).toEqual(
+      routineRev.steps.map((s) => s.text),
+    );
+
     const todayView = await call(h, auth, "GET", `/api/v1/today?date=${today}`);
     const occIds = (
       todayView.json() as { occurrences: Array<{ definitionId: string }> }

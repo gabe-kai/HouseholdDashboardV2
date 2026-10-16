@@ -77,6 +77,16 @@ Observable or automated checks that prove this revision is satisfied.
 1. TBD
 2. TBD
 
+### Acceptance evidence matrix (required for broad/high-risk briefs)
+
+Include this matrix when the brief spans multiple workflows/system boundaries, changes lifecycle/migration/authority behavior, has important async/cross-device behavior, or contains roughly eight or more acceptance tests. Otherwise, the concise acceptance-test list above is sufficient. Split compound tests into atomic rows so every required outcome can be judged separately. The matrix records the evidence contract; it does not prescribe implementation structure.
+
+| ID / brief assertion | Initial state / fixture | Action / transition | Exact expected observable or invariant | Evidence type and named test/checkpoint | Result |
+| --- | --- | --- | --- | --- | --- |
+| AT# / subcase | TBD | TBD | TBD | TBD | NOT RUN |
+
+Use **PASS**, **PARTIAL**, or **NOT RUN** per required row/subcase. Keep optional coverage separate. Do not mark a behavior PASS based only on a test name or aggregate suite result.
+
 ## Dependencies
 
 - None / TBD

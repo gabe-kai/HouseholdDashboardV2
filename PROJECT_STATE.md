@@ -19,9 +19,9 @@
 
 ## Current focus
 
-Inspected 2026-10-12: clean local `main` / `origin/main` are **1709097** (PR **#26**), through household migration 019 plus B's installation-control catalog migration 001. P0-008A r1, P0-008B r2 and P0-008C r1 are technically accepted and integrated. C's accepted correction is `90de153`. No live Railway reset/restore or hosted Product evaluation is claimed.
+Inspected 2026-10-15: current checkout is `brief/p0-008d-guided-first-household-day` at **c5f9867**, clean. Integrated baseline remains `main` / `origin/main` at **1709097** (PR **#26**), through household migration 019 plus B's installation-control catalog migration 001. P0-008A r1, P0-008B r2 and P0-008C r1 are technically accepted and integrated. C's accepted correction is `90de153`. No live Railway reset/restore or hosted Product evaluation is claimed.
 
-**P0-008D r2** evidence update on 2026-10-15: **FIX REQUIRED**, same contract. AT1 catalog/epoch, controlled dates, known school date, routine parity, and most responsibility parity are now evidenced; C3–C7 remain substantiated. Architecture independently reran the focused D integration suite (27/27 pass). Engineering reports PR/RC gates pass; Architecture did not rerun the full gates. One AT5 phase-parity assertion remains: compare a non-degenerate multi-member rotation and varying weekly owners across draft and saved previews. See `reports/P0-008D-r2-architecture-fifth-reassessment.md`. The shared card remains In Progress.
+**P0-008D r2** was technically **ACCEPTED** on 2026-10-15 at `c5f9867`. The focused D integration suite independently passed 27/27; the new AT5 evidence covers two-member cyclic rotation and alternating weekly owners across draft/saved previews. Engineering reports `validate:pr` and `validate:rc` PASS; Architecture did not rerun those full gates. Hosted/physical work and hands-on Product acceptance are NOT RUN. The P0-008 card is Ready to Evaluate; see `reports/P0-008D-r2-architecture-acceptance.md`.
 
 P0-007C's outstanding physical/Product judgments remain distinct from its technical acceptance and from approval to begin P0-008. Old reports retain their inspected SHAs.
 
@@ -47,7 +47,7 @@ P0-007C's outstanding physical/Product judgments remain distinct from its techni
 | P0-008A - Protected First-Manager Setup and Repeatable Reset | r1 | ACCEPTED | Integrated foundation | Merged to `main` at `405c5db` via PR #24 | Hosted/Product evaluation remains separate |
 | P0-008B - Household Backups and In-App Restore | r2 | ACCEPTED | Integrated foundation | Merged to `main` at `f80d47b` via PR #25 | Hosted and Product evaluation remain separate |
 | P0-008C - Understandable Member Access and Safe Removal | r1 | ACCEPTED | Integrated foundation | Merged to `main` at `1709097` via PR #26; correction `90de153` | Hosted/Product evaluation remains separate |
-| P0-008D - Guided Setup to the First Useful Household Day | r2 | FIX REQUIRED | Engineering | `brief/p0-008d-guided-first-household-day`; evidence update on `02fb313` / `9c5927f` | Fifth Architecture reassessment: AT5 multi-date non-degenerate rotation/weekly phase parity |
+| P0-008D - Guided Setup to the First Useful Household Day | r2 | ACCEPTED (technical) | Project Lead evaluation | `brief/p0-008d-guided-first-household-day` at `c5f9867` | Hands-on setup/management/backup/reset/restore evaluation; hosted checks remain separate |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -76,7 +76,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Known blockers
 
-- A–C technical acceptance is recorded. D's claim-scrub repair is implemented and focused-tested, but full staged restore compatibility is still required along with R1–R7. Actual Railway schema, volume layout, installed commit and backup inventory remain uninspected release checks; hosted setup/reset/restore is not yet proven.
+- A–D technical acceptance is recorded. Actual Railway schema, volume layout, installed commit and backup inventory remain uninspected release checks; hosted setup/reset/restore is not yet proven.
 - A deliberately provides reset without a new backup; B supplies the optional backup/restore choice. C/D preserve all remaining P0-008 member and guided-first-day requirements; no partial slice closes the shared Product outcome.
 
 ## Next Project Lead decision
@@ -85,7 +85,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Engineering closes only the AT5 phase-parity assertion in `reports/P0-008D-r2-architecture-fifth-reassessment.md`, then returns named evidence and final PR/RC results. Retain AT1, controlled-date, school-date, routine parity, C3–C7 and the corrected handoff timeline; do not repeat already-closed work. No new readiness cycle is needed. Hosted backup/reset/restore and Product evaluation remain separately authorized checkpoints. No deployment/live database operation is implied.
+Project Lead evaluates the complete P0-008 journey using `docs/p0-008-release-evaluation.md`. Engineering's local PR/RC gates are reported PASS; Architecture independently reran only the focused D integration suite. Hosted backup/reset/restore and hands-on Product evaluation remain explicit checkpoints. No deployment or live database operation is implied or authorized by technical acceptance.
 
 ## Notes for all teams
 

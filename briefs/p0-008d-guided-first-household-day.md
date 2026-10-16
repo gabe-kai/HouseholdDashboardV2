@@ -1,7 +1,7 @@
 # BRIEF P0-008D - Guided Setup to the First Useful Household Day
 
 **Revision:** 2
-**Status:** FIX REQUIRED — Architecture reviewed committed correction `9c86257` on 2026-10-14. AT10 lifecycle evidence and several async/preview and authorization cases are verified improvements. Remaining explicit acceptance gaps are recorded in `reports/P0-008D-r2-architecture-third-reassessment.md`; contract remains revision 2. Build Report: `reports/P0-008D-r2-build-report.md`.
+**Status:** ACCEPTED (technical) — Architecture accepted r2 on 2026-10-15 at current branch commit `c5f9867`; focused AT5 phase-parity integration passed 27/27. Engineering reports `validate:pr` and `validate:rc` passing; Architecture did not rerun those full gates. Hosted/physical Product evaluation remains separate. See `reports/P0-008D-r2-architecture-acceptance.md`.
 **Inspected baseline:** integrated `main` / `origin/main` at `1709097` (PR #26), 2026-10-12
 
 This is the final slice of the approved P0-008 journey. A r1, B r2 and C r1 are technically accepted and integrated. This revision replaces the pre-A r1 successor draft; no earlier readiness applies. Local technical acceptance and the hosted/Project Lead evaluation checkpoint are separate.
@@ -21,7 +21,7 @@ Your account → Your household → Your people → School days → First work. 
 ## Project card
 
 **Card title:** Set up and manage my household without operator help
-**Suggested column:** Shared card remains In Progress; Ready to Evaluate after D technical acceptance
+**Suggested column:** Shared card → Ready to Evaluate after D technical acceptance; Product acceptance is still pending
 **Player-facing goal:** Reach the first useful household day and manage access, backups and starting again through the app.
 **Done when:** Without terminal commands or coaching, a parent sets up the family/work, invites someone, changes permissions, removes a person, saves a backup, resets without another backup and restores, recognizing the current account and what happens next.
 **Tracking relationship:** Final integration slice of P0-008. Project Lead/Product acceptance follows hands-on evaluation; no new Design handoff is required to finish approved intent.
@@ -134,3 +134,4 @@ Source inspected on clean integrated `main` at `1709097`. C's accepted correctio
   - Correction `9c86257` reviewed on 2026-10-14: AT10 and several async/preview/lifecycle cases closed; FIX REQUIRED remains for AT1 preservation assertions, representative AT5 review truth, AT7 ended/missing guide returns, AT8 held-epoch UI fence, AT11 missing restore generations/lifecycle checks, AT12 guide geometry, and Build Report SHA metadata. The third reassessment contains a concrete C1–C7 closure checklist for these unchanged r2 requirements.
   - Correction `02fb313` reviewed on 2026-10-15: C3–C7 substantiated and focused D integration suite passed 27/27. FIX REQUIRED remains only for pre-existing control-catalog adoption evidence, deterministic AT5 preview/save parity, and stale Build Report commit metadata; see `reports/P0-008D-r2-architecture-fourth-reassessment.md`.
   - Working-tree evidence update reviewed on 2026-10-15: AT1 catalog/epoch, deterministic date and known-school-date assertions, routine parity, and most responsibility parity are now evidenced; focused D integration suite passes 27/27. FIX REQUIRED remains only for non-degenerate multi-date assignment phase parity on the guide preview/save path; see `reports/P0-008D-r2-architecture-fifth-reassessment.md`. No contract change.
+  - Committed correction `c5f9867` reviewed on 2026-10-15: two-member cyclic rotation and alternating weekly owners now compare guide draft preview with saved preview across dates for applicability, owner, and ordered work. Focused D integration suite passes 27/27; Engineering reports PR/RC PASS. Architecture accepts r2 technically; hosted and Product evaluation remain separate. See `reports/P0-008D-r2-architecture-acceptance.md`.

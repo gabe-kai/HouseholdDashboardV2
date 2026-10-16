@@ -1,10 +1,10 @@
 # P0-008 release and Project Lead evaluation
 
-Prepared by Architecture on 2026-10-12 for **P0-008D r2**. This is the release/evaluation plan, not a record of completed checks. Engineering updates actual routes and records local evidence in its Build Report. Product/Project Lead owns hands-on judgment.
+Prepared by Architecture on 2026-10-12 and refreshed on 2026-10-15 for **P0-008D r2**. This is the release/evaluation plan, not a record of completed hosted checks. Local technical acceptance is complete at `c5f9867`; the focused D integration suite passed 27/27, and Engineering reports `validate:pr` / `validate:rc` PASS. Architecture did not rerun the full gates. Product/Project Lead owns hands-on judgment.
 
-**Current evidence:** A–C are technically accepted and merged at `1709097`. D r2 implementation at `b90cd7f` is **FIX REQUIRED**; see `reports/P0-008D-r2-architecture-review.md`. Close local contract/evidence gaps before selecting a release candidate. Hosted adoption/reset/restore and the uninterrupted full Product session remain **NOT RUN**. The actual Railway dataset, storage layout and deployed commit have not been inspected for this release.
+**Current evidence:** A–C are technically accepted and merged at `1709097`; D r2 is technically accepted on branch `brief/p0-008d-guided-first-household-day` at `c5f9867`; see `reports/P0-008D-r2-architecture-acceptance.md`. Local contract/evidence gaps are closed. Hosted adoption/reset/restore and the uninterrupted full Product session remain **NOT RUN**. The actual Railway dataset, storage layout and deployed commit still require inspection before this candidate is deployed or any live data is changed.
 
-### Runnable local paths (after D r2 implementation)
+### Runnable local paths (accepted D r2 candidate)
 
 | Surface | Path / command |
 | --- | --- |
@@ -18,11 +18,11 @@ Prepared by Architecture on 2026-10-12 for **P0-008D r2**. This is the release/e
 | Exact gates | `npm run validate:pr` then `npm run validate:rc` |
 | Local screenshots only | `reports/_local-screenshots/p0-008d-r2/` (gitignored) |
 
-## 1. Complete local technical acceptance first
+## 1. Local technical acceptance — complete
 
-- Use isolated unseeded local/test installations for D's complete ordinary-UI setup and management journey, response-loss/concurrency/restore tests and populated through-019 upgrade rehearsal. Close the known staged-restore omission for C member-access claims, including unexpired links of all three purposes.
-- Pass exact `npm run validate:pr` and `npm run validate:rc` on the delivered tree. Include D phone Chromium/WebKit, desktop setup/geometry, built/Vite guide routes and the Actions aggregate.
-- Architecture accepts the exact brief revision. Project Lead integrates it through Git. Record the accepted source/candidate SHA and CI result before selecting a hosted candidate.
+- Engineering reports the isolated integration, UI, populated-restore, `validate:pr` and `validate:rc` evidence in `reports/P0-008D-r2-build-report.md`.
+- Architecture accepted the exact brief revision after independently rerunning the focused D integration suite (27/27); full PR/RC gates were not rerun by Architecture.
+- The current Project Lead commit is `c5f9867`. Before deployment, publish/integrate the branch according to the Project Lead's Git workflow, wait for the required GitHub Actions checks, and select the exact merged SHA as the hosted candidate.
 
 Implementation does not require deploying iterations. Local/LAN physical testing can reveal usability problems before any release.
 

@@ -100,14 +100,13 @@ Both C-3 slices contribute to **Act at the shared display without losing trust**
 
 ### CURRENT
 
-- [ ] **P0-008D — Reach the first useful family day without coaching.** Complete the five named setup steps, optional exits/cross-device resume, first-work review/recap and the ordinary app setup→management→backup→reset→restore journey.
-  - **Brief:** `P0-008D r2` (`briefs/p0-008d-guided-first-household-day.md`) remains FIX REQUIRED after the AT1/AT5 evidence update on 2026-10-15. AT1 and most AT5 evidence, plus C3–C7, are now substantiated; the only remaining assertion is non-degenerate multi-date AT5 assignment phase parity, recorded in `reports/P0-008D-r2-architecture-fifth-reassessment.md`. Build Report: `reports/P0-008D-r2-build-report.md`. Hosted/Product checkpoints remain separate.
+- [x] **P0-008D — Reach the first useful family day without coaching.** Complete the five named setup steps, optional exits/cross-device resume, first-work review/recap and the ordinary app setup→management→backup→reset→restore journey. Technical contract accepted at `c5f9867` on 2026-10-15; Build Report: `reports/P0-008D-r2-build-report.md`; Architecture acceptance: `reports/P0-008D-r2-architecture-acceptance.md`.
   - **Evidence target:** Atomic saved records/progress/retry, actual next dates/owners without materialization, compact phone/desktop entry, upgrade/removal/restore compatibility, complete UI journey and local PR/RC/CI selection. Include the newly inspected C access-claim sanitation gap in staged restore.
-  - **Card:** Shared P0-008 card remains In Progress; D technical acceptance makes the complete result Ready to Evaluate.
+  - **Card:** **Set up and manage my household without operator help** → **Ready to Evaluate**. Product acceptance remains pending.
 
 ### LIKELY NEXT
 
-- [ ] **Evaluate the complete P0-008 release candidate.** After accepted local/CI evidence, use an authorized HTTPS candidate for persistence/reset/restore/restart checks and one uninterrupted phone/desktop Project Lead session. Record what was actually observed using `docs/p0-008-release-evaluation.md`; no live reset/remediation is automatic.
+- [ ] **Evaluate the complete P0-008 release candidate.** Use an authorized HTTPS candidate for persistence/reset/restore/restart checks and one uninterrupted phone/desktop Project Lead session. Record what was actually observed using `docs/p0-008-release-evaluation.md`; no live reset/remediation is automatic.
 - Let the Project Lead's experience with the complete flow determine corrections or the next Design direction. No new feature sequence is committed before that evaluation. The approved proposal already supplies D's intent; no resubmission from Design is needed to begin it.
 
 The shared card reaches Product Accepted only after hands-on acceptance. Coverage/release checkpoints: `reports/P0-008-architecture-sequencing.md`.

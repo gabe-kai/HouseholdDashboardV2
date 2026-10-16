@@ -102,12 +102,12 @@ Both C-3 slices contribute to **Act at the shared display without losing trust**
 
 - **P0-008D technical delivery is complete** — accepted at `c5f9867`, merged through PR #27 at `65e1949`; Build Report: `reports/P0-008D-r2-build-report.md`; Architecture acceptance: `reports/P0-008D-r2-architecture-acceptance.md`.
   - Project Lead reports hosted setup, labeled backup, reset, restore, and post-restart persistence worked. The submitted evaluation also identifies friction in the owner-link handoff, timezone entry, people/work/permission review, and completion summary. Full Product acceptance remains pending.
-- **Next evidence-producing outcome:** Design proposes a bounded improvement to the first-run/reset and household-management experience from the dated evaluation in `evaluations/p0-008-project-lead-evaluation-2026-10-15.md`. Keep the reported `/` route anomaly on a separate Architecture/QA investigation track; it is not a design acceptance item.
+- **Next evidence-producing outcome — P0-008E r1 (draft):** Make first-run and household editing clear through an actionable setup invitation, understandable timezone and person entry, in-context permission consequences, one-view routine/responsibility editing, live previews, and a useful finish summary. Brief: `briefs/p0-008e-clear-first-run-and-one-view-editing.md`. Engineering readiness is next; no implementation is authorized until reviewed.
 
 ### LIKELY NEXT
 
-- Reproduce the reported `/` → “view unavailable” behavior on the exact Railway deployment (record deployed SHA and fresh-session steps); repository routing currently maps `/` to Today. Keep this as a focused defect investigation, separate from the Design proposal.
-- After Design returns its bounded proposal, Architecture will assess whether a small implementation brief is warranted. Do not reopen completed security, reset, backup, restore, access, or history contracts unless Product explicitly changes them.
+- Reproduce the reported `/` → “view unavailable” behavior on the exact Railway deployment (record deployed SHA and fresh-session steps); repository routing currently maps `/` to Today. Keep this as a focused defect investigation, separate from P0-008E.
+- P0-008E does not reopen completed security, reset, backup, restore, access, or history contracts. Overall P0-008 Product acceptance remains with the Project Lead after evaluating the revised experience.
 
 The shared card reaches Product Accepted only after hands-on acceptance. Coverage/release checkpoints: `reports/P0-008-architecture-sequencing.md`.
 

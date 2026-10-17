@@ -21,7 +21,7 @@
 
 Inspected 2026-10-15: current checkout is `main` at **65e1949** (P0-008D merged via PR **#27**), clean before this evaluation writeback. Integrated baseline includes household migrations through 019 and B's installation-control catalog migration 001. P0-008A r1, P0-008B r2, P0-008C r1, and P0-008D r2 are technically accepted and integrated. The Project Lead reports Railway first-run, backup, reset, restore, and post-container-restart success; exact deployed SHA and operational details were not independently recorded. See the dated evaluation below.
 
-**P0-008D r2** was technically **ACCEPTED** at `c5f9867` and merged at `65e1949`; Architecture’s focused D suite passed 27/27, and Engineering reported PR/RC PASS. The Project Lead reports successful hosted first-run setup, labeled app backup, reset, restore, and persistence after Railway container restart. The follow-up Product proposal is captured in `PRODUCT.md`; Architecture brief **P0-008E r1** is drafted for Engineering readiness. Final Product acceptance remains pending. `/` reportedly shows an unavailable view despite the repository’s root-to-Today mapping; exact hosted reproduction remains separate. Evaluation: `evaluations/p0-008-project-lead-evaluation-2026-10-15.md`.
+**P0-008D r2** was technically **ACCEPTED** at `c5f9867` and merged at `65e1949`; Architecture’s focused D suite passed 27/27, and Engineering reported PR/RC PASS. The Project Lead reports successful hosted first-run setup, labeled app backup, reset, restore, and persistence after Railway container restart. P0-008E r1 has Engineering **READY** and Architecture **ACCEPT / PROCEED** as of 2026-10-17. Implementation may begin; final Product acceptance remains pending. `/` reportedly shows an unavailable view despite the repository’s root-to-Today mapping; exact hosted reproduction remains separate. Evaluation: `evaluations/p0-008-project-lead-evaluation-2026-10-15.md`.
 
 P0-007C's outstanding physical/Product judgments remain distinct from its technical acceptance and from approval to begin P0-008. Old reports retain their inspected SHAs.
 
@@ -48,7 +48,7 @@ P0-007C's outstanding physical/Product judgments remain distinct from its techni
 | P0-008B - Household Backups and In-App Restore | r2 | ACCEPTED | Integrated foundation | Merged to `main` at `f80d47b` via PR #25 | Hosted and Product evaluation remain separate |
 | P0-008C - Understandable Member Access and Safe Removal | r1 | ACCEPTED | Integrated foundation | Merged to `main` at `1709097` via PR #26; correction `90de153` | Hosted/Product evaluation remains separate |
 | P0-008D - Guided Setup to the First Useful Household Day | r2 | ACCEPTED (technical) | Product / Design | Merged to `main` via PR #27 at `65e1949` | P0-008E UX follow-up; route anomaly triage; overall P0-008 Product acceptance pending |
-| P0-008E - Clear First Run and One-View Work Editing | r1 | DRAFT | Architecture | `briefs/p0-008e-clear-first-run-and-one-view-editing.md` | Engineering readiness review; do not begin implementation before disposition |
+| P0-008E - Clear First Run and One-View Work Editing | r1 | READY | Engineering | `briefs/p0-008e-clear-first-run-and-one-view-editing.md` | Implement r1; no deployment/merge authorization implied |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -86,7 +86,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Engineering reviews P0-008E r1 readiness against the current repository. Separately, Architecture/QA should reproduce the root-route “view unavailable” report on the deployed build. The Project Lead’s hosted reset/restore/restart success and usability feedback are recorded in `evaluations/p0-008-project-lead-evaluation-2026-10-15.md`; technical acceptance remains distinct from Product acceptance.
+Engineering implements P0-008E r1 on the brief branch. Separately, Architecture/QA should reproduce the root-route “view unavailable” report on the deployed build. The Project Lead’s hosted reset/restore/restart success and usability feedback are recorded in `evaluations/p0-008-project-lead-evaluation-2026-10-15.md`; technical acceptance remains distinct from Product acceptance.
 
 ## Notes for all teams
 

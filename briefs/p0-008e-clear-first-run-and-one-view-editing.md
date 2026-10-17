@@ -1,7 +1,7 @@
 # BRIEF P0-008E - Clear First Run and One-View Work Editing
 
 **Revision:** 1  
-**Status:** DRAFT — Architecture selected from the approved Product follow-up; Engineering readiness pending.  
+**Status:** READY — Engineering reported READY on 2026-10-17; Architecture ACCEPT / PROCEED on 2026-10-17.
 **Planning baseline:** integrated `main` at `65e1949` (P0-008D via PR #27). Current planning checkout is `p0-008-release-evaluation` at `770e975`, a documentation-only commit above that baseline. The Product follow-up is present as an uncommitted change in `PRODUCT.md`; preserve it and do not stage or rewrite it as part of implementation planning.
 
 This brief follows the P0-008D hosted evaluation. It changes presentation and editing interactions, not the approved lifecycle/security contract. The reported `/` routing anomaly is separate Architecture/QA work and is intentionally excluded.
@@ -133,11 +133,12 @@ Repository facts inspected at integrated `main` `65e1949`; the current planning 
 
 ## Engineering readiness
 
-**Reviewed revision:** NOT REVIEWED  
-**Readiness:** NOT REVIEWED
+**Reviewed revision:** 1
+**Readiness:** READY — Engineering found no material blocker. Architecture accepts the readiness disposition and authorizes implementation of r1. The optional-profile create-path adjustment is within the existing implementation boundary; no contract revision or new migration is required.
 
-Engineering should perform one consolidated, repository-grounded readiness pass before implementation. Architecture disposition follows that pass.
+Implementation may begin on the Project Lead's brief branch. This disposition does not authorize deployment, merge, or Product acceptance.
 
 ## Revision history
 
 - **r1:** Initial Architecture brief based on the Product follow-up proposed 2026-10-15 and Project Lead hosted evaluation. Separates route investigation; reuses existing person-detail fields and P0-008 lifecycle/domain contracts; focuses on one-view editing, contextual summaries and Calm Household presentation.
+- **Readiness:** Engineering reported READY on 2026-10-17; Architecture ACCEPT / PROCEED with no contract change. `/` routing remains outside this brief.

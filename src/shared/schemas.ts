@@ -395,6 +395,10 @@ export const CreatePersonSchema = z.object({
   mutationId: UuidSchema,
   displayName: z.string().trim().min(1).max(80),
   classification: PersonClassificationSchema,
+  /** Optional profile fields already supported by updatePerson / membership columns. */
+  fullName: z.string().max(120).nullable().optional(),
+  birthday: HouseholdDateSchema.nullable().optional(),
+  email: z.string().max(254).nullable().optional(),
 });
 
 export const UpdatePersonSchema = z.object({

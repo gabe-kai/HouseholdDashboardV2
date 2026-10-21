@@ -126,6 +126,7 @@ export default defineConfig({
         "**/z-p0-008b-*.spec.ts",
         "**/z-p0-008c-*.spec.ts",
         "**/z-p0-008d-*.spec.ts",
+        "**/z-p0-008e-setup.spec.ts",
       ],
       use: { ...devices["Pixel 7"], baseURL: chromiumURL },
     },
@@ -136,6 +137,7 @@ export default defineConfig({
         "**/z-p0-008b-*.spec.ts",
         "**/z-p0-008c-*.spec.ts",
         "**/z-p0-008d-*.spec.ts",
+        "**/z-p0-008e-setup.spec.ts",
       ],
       testIgnore: [
         "**/z-p0-008a-desktop-setup.spec.ts",
@@ -196,6 +198,7 @@ export default defineConfig({
         "**/z-p0-008b-*.spec.ts",
         "**/z-p0-008c-*.spec.ts",
         "**/z-p0-008d-*.spec.ts",
+        "**/z-p0-008e-setup.spec.ts",
       ],
       use: { ...devices["iPhone 13"], baseURL: webkitURL },
     },

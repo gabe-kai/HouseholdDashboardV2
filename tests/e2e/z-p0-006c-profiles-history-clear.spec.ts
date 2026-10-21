@@ -219,7 +219,7 @@ test.describe("P0-006C profiles, history, and clear", () => {
 
     await page.getByRole("button", { name: "Edit profile" }).click();
     await expect(page.getByRole("heading", { name: "Edit person" })).toBeVisible();
-    await page.getByLabel("Friendly name").fill(friendlyName);
+    await page.getByLabel("Name shown in the app").fill(friendlyName);
     await page.getByLabel("Full name").fill(fullName);
     await page.getByLabel("Birthday").fill(birthday);
     await page.getByLabel("Email").fill(email);
@@ -230,7 +230,7 @@ test.describe("P0-006C profiles, history, and clear", () => {
     await expect(page.getByRole("heading", { name: friendlyName })).toBeVisible({
       timeout: 15_000,
     });
-    await expect(page.getByText(`Friendly name:`)).toContainText(friendlyName);
+    await expect(page.getByText(`Name shown in the app:`)).toContainText(friendlyName);
     await expect(page.getByText(`Full name:`)).toContainText(fullName);
     await expect(page.getByText(`Birthday:`)).toContainText(birthday);
     await expect(page.getByText(`Email:`)).toContainText(email);

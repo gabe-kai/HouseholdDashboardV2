@@ -70,7 +70,6 @@ type EditorFocus =
   | "when"
   | "assignment"
   | "work"
-  | "save-preview"
   | { kind: "work-base" }
   | { kind: "work-addition"; additionId: string }
   | { kind: "step"; index: number; localId: string }
@@ -330,11 +329,6 @@ function buildAssignmentSpec(
     excludedMemberIds: [],
     savedRingOrder: [],
   };
-}
-
-function needsSavePreview(draft: Draft): boolean {
-  if (draft.assignmentMode !== "fixed") return true;
-  return draft.scheduledAdditions.some((addition) => !addition.inheritAssignment);
 }
 
 function previewRowsForAddition(
@@ -958,19 +952,19 @@ export function ResponsibilitiesView(props: {
     return true;
   }
 
-  function mutationPayload(anchorDate: string) {
-    const assignment = buildAssignmentSpec(draft.assignmentMode, anchorDate, {
-      accountableMemberId: draft.accountableMemberId,
-      cycleOrder: draft.cycleOrder,
-      weeklyMap: draft.weeklyMap,
+  function mutationPayloadFrom(source: Draft, anchorDate: string) {
+    const assignment = buildAssignmentSpec(source.assignmentMode, anchorDate, {
+      accountableMemberId: source.accountableMemberId,
+      cycleOrder: source.cycleOrder,
+      weeklyMap: source.weeklyMap,
     });
     return {
       mutationId: newClientId(),
-      title: draft.title.trim(),
-      daypart: draft.daypart,
-      weekdays: draft.weekdays,
+      title: source.title.trim(),
+      daypart: source.daypart,
+      weekdays: source.weekdays,
       assignment,
-      scheduledAdditions: draft.scheduledAdditions.map((addition, index) => ({
+      scheduledAdditions: source.scheduledAdditions.map((addition, index) => ({
         id: addition.id,
         name: addition.name.trim(),
         weekdays: addition.weekdays,
@@ -990,7 +984,7 @@ export function ResponsibilitiesView(props: {
           applicability: DEFAULT_APPLICABILITY,
         })),
       })),
-      steps: draft.steps.map((step) => ({
+      steps: source.steps.map((step) => ({
         text: step.text.trim(),
         obligation: step.obligation,
         ...(step.logicalItemId ? { logicalItemId: step.logicalItemId } : {}),
@@ -999,24 +993,50 @@ export function ResponsibilitiesView(props: {
     };
   }
 
-  async function loadDraftPreview() {
-    setDraftPreviewError(null);
-    setDraftPreviewDays(null);
-    try {
-      const result = await previewDraftResponsibility(mutationPayload(draft.startingDate));
-      setDraftPreviewDays(result.preview);
-    } catch (caught) {
-      setDraftPreviewError(caught instanceof Error ? caught.message : String(caught));
-    }
+  function mutationPayload(anchorDate: string) {
+    return mutationPayloadFrom(draft, anchorDate);
   }
+
+  const responsibilityEditorOpen = view.kind === "create" || view.kind === "edit";
+  const composedPreviewDraft = sectionDraft ?? draft;
+  const responsibilityPreviewKey = responsibilityEditorOpen
+    ? draftSnapshot(composedPreviewDraft)
+    : "";
+  const responsibilityPreviewKeyRef = useRef(responsibilityPreviewKey);
+  responsibilityPreviewKeyRef.current = responsibilityPreviewKey;
+  useEffect(() => {
+    if (!responsibilityEditorOpen) {
+      setDraftPreviewDays(null);
+      setDraftPreviewError(null);
+      return;
+    }
+    const generation = ++previewGenerationRef.current;
+    // Capture the composed draft that produced this key so preview is causally tied
+    // to unsaved Name/When/Work section edits, not only the last Done-committed draft.
+    const previewSource = composedPreviewDraft;
+    const snapshotKey = responsibilityPreviewKey;
+    const handle = window.setTimeout(() => {
+      void previewDraftResponsibility(
+        mutationPayloadFrom(previewSource, previewSource.startingDate),
+      )
+        .then((result) => {
+          if (generation !== previewGenerationRef.current) return;
+          if (snapshotKey !== responsibilityPreviewKeyRef.current) return;
+          setDraftPreviewDays(result.preview);
+          setDraftPreviewError(null);
+        })
+        .catch((caught) => {
+          if (generation !== previewGenerationRef.current) return;
+          setDraftPreviewError(caught instanceof Error ? caught.message : String(caught));
+          setDraftPreviewDays(null);
+        });
+    }, 350);
+    return () => window.clearTimeout(handle);
+  }, [responsibilityEditorOpen, responsibilityPreviewKey]);
 
   async function requestSave(editing: boolean) {
     if (busy || !validateDraft()) return;
-    if (needsSavePreview(draft)) {
-      setEditorFocus("save-preview");
-      await loadDraftPreview();
-      return;
-    }
+    // Live preview stays visible in the editor; no separate Review/save-preview detour.
     if (editing) await saveEdit();
     else await saveCreate();
   }
@@ -1550,42 +1570,77 @@ export function ResponsibilitiesView(props: {
               editing the draft date.
             </p>
           ) : null}
-          {editorFocus === "name" && sectionDraft ? (
-            <NameSectionEditor
-              value={sectionDraft.title}
-              onChange={(title) => setSectionDraft({ ...sectionDraft, title })}
-              onDone={() => {
-                if (!sectionDraft.title.trim()) {
-                  setError("Enter a responsibility name.");
-                  return;
-                }
-                setDraft((current) => ({ ...current, title: sectionDraft.title }));
-                cancelSection();
-              }}
-              onCancel={cancelSection}
-            />
-          ) : null}
-          {editorFocus === "when" && sectionDraft ? (
-            <WhenSectionEditor
-              daypart={sectionDraft.daypart}
-              weekdays={sectionDraft.weekdays}
-              onChange={(next) =>
-                setSectionDraft({ ...sectionDraft, daypart: next.daypart, weekdays: next.weekdays })
-              }
-              onDone={() => {
-                if (sectionDraft.weekdays.length === 0) {
-                  setError("Choose at least one weekday.");
-                  return;
-                }
-                setDraft((current) => ({
-                  ...current,
-                  daypart: sectionDraft.daypart,
-                  weekdays: sectionDraft.weekdays,
-                }));
-                cancelSection();
-              }}
-              onCancel={cancelSection}
-            />
+          <RoutineFocusedSummary
+            draft={toEditorDraft(working)}
+            scheduleMode={scheduleMode}
+            people={props.memberships}
+            groups={[]}
+            stepLocalIds={workingIds}
+            workSectionLabel="Work"
+            whoSummary={assignmentSummary(working, ownerName)}
+            expandedFocus={
+              editorFocus === "name" || editorFocus === "when" ? editorFocus : null
+            }
+            namePanel={
+              editorFocus === "name" && sectionDraft ? (
+                <NameSectionEditor
+                  value={sectionDraft.title}
+                  onChange={(title) => setSectionDraft({ ...sectionDraft, title })}
+                  onDone={() => {
+                    if (!sectionDraft.title.trim()) {
+                      setError("Enter a responsibility name.");
+                      return;
+                    }
+                    setDraft((current) => ({ ...current, title: sectionDraft.title }));
+                    cancelSection();
+                  }}
+                  onCancel={cancelSection}
+                />
+              ) : undefined
+            }
+            whenPanel={
+              editorFocus === "when" && sectionDraft ? (
+                <WhenSectionEditor
+                  daypart={sectionDraft.daypart}
+                  weekdays={sectionDraft.weekdays}
+                  onChange={(next) =>
+                    setSectionDraft({
+                      ...sectionDraft,
+                      daypart: next.daypart,
+                      weekdays: next.weekdays,
+                    })
+                  }
+                  onDone={() => {
+                    if (sectionDraft.weekdays.length === 0) {
+                      setError("Choose at least one weekday.");
+                      return;
+                    }
+                    setDraft((current) => ({
+                      ...current,
+                      daypart: sectionDraft.daypart,
+                      weekdays: sectionDraft.weekdays,
+                    }));
+                    cancelSection();
+                  }}
+                  onCancel={cancelSection}
+                />
+              ) : undefined
+            }
+            whoPanel={undefined}
+            stepsPanel={undefined}
+            onOpenName={() => openSection("name")}
+            onOpenWhen={() => openSection("when")}
+            onOpenWho={() => setEditorFocus("assignment")}
+            onOpenSteps={() => setEditorFocus("work")}
+            startingMin={props.today}
+            onStartingDateChange={(value) =>
+              setDraft((current) => ({ ...current, startingDate: value }))
+            }
+          />
+          {working.assignmentMode === "fixed" &&
+          working.accountableMemberId &&
+          accessNote(working.accountableMemberId) ? (
+            <p className="meta">{accessNote(working.accountableMemberId)}</p>
           ) : null}
           {editorFocus === "assignment" ? (
             <div className="form-grid" aria-labelledby="assignment-pattern-heading">
@@ -1875,92 +1930,58 @@ export function ResponsibilitiesView(props: {
               onCancel={() => setEditorFocus({ kind: "work-addition", additionId: activeAddition.id })}
             />
           ) : null}
-          {editorFocus === "save-preview" ? (
-            <div className="form-grid" aria-labelledby="save-preview-heading">
-              <FocusHeading id="save-preview-heading">Upcoming preview</FocusHeading>
-              <p className="meta">
-                Review who will receive this responsibility before saving. Read-only — does not
-                create checklist work.
-              </p>
-              {draftPreviewError ? <p role="alert">{draftPreviewError}</p> : null}
-              {draftPreviewDays ? (
-                <ul className="simple-list responsibility-preview-list">
-                  {draftPreviewDays.map((day) => (
-                    <li key={day.householdDate}>
-                      <strong>{day.householdDate}</strong>
-                      <span className="meta">
-                        {day.applicable
-                          ? ` · ${day.accountableMemberName ?? "Unassigned"}${
-                              day.unassignedReason ? ` (${day.unassignedReason})` : ""
-                            }${day.stepCount != null ? ` · ${day.stepCount} items` : ""}`
-                          : " · No work"}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="meta">Loading preview…</p>
-              )}
-              <div className="button-row">
-                <button
-                  type="button"
-                  className="primary"
-                  disabled={busy || !draftPreviewDays}
-                  onClick={() => void (editing ? saveEdit() : saveCreate())}
-                >
-                  {busy ? "Saving…" : "Confirm and save"}
-                </button>
-                <button type="button" onClick={cancelSection}>
-                  Back to edit
-                </button>
-              </div>
-            </div>
-          ) : null}
-          {editorFocus === null ? (
-            <>
-              <RoutineFocusedSummary
-                draft={toEditorDraft(working)}
-                scheduleMode={scheduleMode}
-                people={props.memberships}
-                groups={[]}
-                stepLocalIds={workingIds}
-                workSectionLabel="Work"
-                whoSummary={assignmentSummary(working, ownerName)}
-                onOpenName={() => openSection("name")}
-                onOpenWhen={() => openSection("when")}
-                onOpenWho={() => setEditorFocus("assignment")}
-                onOpenSteps={() => setEditorFocus("work")}
-                startingMin={props.today}
-                onStartingDateChange={(value) =>
-                  setDraft((current) => ({ ...current, startingDate: value }))
-                }
-              />
-              {working.assignmentMode === "fixed" &&
-              working.accountableMemberId &&
-              accessNote(working.accountableMemberId) ? (
-                <p className="meta">{accessNote(working.accountableMemberId)}</p>
-              ) : null}
-              <div className="button-row">
-                <button
-                  type="button"
-                  className="primary"
-                  disabled={busy}
-                  onClick={() => void requestSave(editing)}
-                >
-                  {busy ? "Saving…" : editing ? "Save" : "Create responsibility"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (editing) tryLeaveEditor({ kind: "detail", definitionId: view.definitionId });
-                    else tryLeaveEditor({ kind: "list" });
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
-            </>
-          ) : null}
+          <aside
+            className="live-work-preview"
+            data-testid="responsibility-live-preview"
+            aria-live="polite"
+          >
+            <strong>Upcoming preview</strong>
+            <p className="meta" data-testid="responsibility-preview-title">
+              {(sectionDraft ?? draft).title.trim() || "Untitled responsibility"}
+              {(sectionDraft ?? draft).weekdays.length > 0
+                ? ` · ${weekdaysLabel((sectionDraft ?? draft).weekdays)}`
+                : ""}
+            </p>
+            <p className="meta">Read-only — does not create checklist work.</p>
+            {draftPreviewError ? <p role="alert">{draftPreviewError}</p> : null}
+            {draftPreviewDays ? (
+              <ul className="simple-list responsibility-preview-list">
+                {draftPreviewDays.slice(0, 7).map((day) => (
+                  <li key={day.householdDate}>
+                    <strong>{day.householdDate}</strong>
+                    <span className="meta">
+                      {day.applicable
+                        ? ` · ${day.accountableMemberName ?? "Unassigned"}${
+                            day.unassignedReason ? ` (${day.unassignedReason})` : ""
+                          }${day.stepCount != null ? ` · ${day.stepCount} items` : ""}`
+                        : " · No work"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="meta">Updating preview…</p>
+            )}
+          </aside>
+          <div className="button-row">
+            <button
+              type="button"
+              className="primary"
+              disabled={busy}
+              onClick={() => void requestSave(editing)}
+            >
+              {busy ? "Saving…" : editing ? "Save" : "Create responsibility"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (editing) tryLeaveEditor({ kind: "detail", definitionId: view.definitionId });
+                else tryLeaveEditor({ kind: "list" });
+              }}
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       </section>
     );

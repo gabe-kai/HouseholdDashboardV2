@@ -114,6 +114,10 @@ test.describe("P0-006A geometry and text scale", () => {
       await openRoutineSection(page, "Steps");
       await expect(page.getByRole("heading", { name: /steps/i })).toBeVisible();
       await assertNoHorizontalClip(page);
+      await page
+        .getByTestId("section-expand-steps")
+        .getByRole("button", { name: "Cancel", exact: true })
+        .click();
       await page.getByRole("button", { name: "Cancel", exact: true }).click();
       await page.getByRole("button", { name: /Back to/i }).first().click();
 

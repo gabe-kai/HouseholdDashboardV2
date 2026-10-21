@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { ApplicabilityRule, Daypart, GroupPublic, MemberPublic } from "../shared/schemas";
 import {
   DEFAULT_APPLICABILITY,
@@ -31,10 +32,13 @@ export type EditorDraft = {
   startingDate: string;
 };
 
+export type SummarySection = "name" | "when" | "who" | "steps";
+
 export type EditorFocus =
   | null
   | "name"
   | "when"
+  | "who"
   | "steps"
   | { kind: "step"; index: number; localId: string };
 
@@ -133,6 +137,12 @@ function applicabilityFromKind(
   return { kind };
 }
 
+function summarySectionKey(focus: EditorFocus): SummarySection | null {
+  if (focus === "name" || focus === "when" || focus === "who" || focus === "steps") return focus;
+  if (focus && typeof focus === "object" && focus.kind === "step") return "steps";
+  return null;
+}
+
 export function RoutineFocusedSummary(props: {
   draft: EditorDraft;
   scheduleMode: boolean;
@@ -148,16 +158,53 @@ export function RoutineFocusedSummary(props: {
   /** Defaults to Steps; responsibilities use Work. */
   workSectionLabel?: "Steps" | "Work";
   whoSummary?: string;
+  /** Open section stays expanded in place; other sections remain visible. */
+  expandedFocus?: EditorFocus;
+  namePanel?: ReactNode;
+  whenPanel?: ReactNode;
+  whoPanel?: ReactNode;
+  stepsPanel?: ReactNode;
 }) {
   const workLabel = props.workSectionLabel ?? "Steps";
-  return (
-    <ul className="section-summary">
-      <li>
-        <button type="button" className="section-summary-row" onClick={props.onOpenName}>
-          <strong>Name</strong>
-          <span>{props.draft.title.trim() || "Add a name"}</span>
+  const expanded = summarySectionKey(props.expandedFocus ?? null);
+
+  function section(
+    key: SummarySection,
+    label: string,
+    summary: string,
+    onOpen: () => void,
+    panel: ReactNode | undefined,
+  ) {
+    if (expanded === key && panel) {
+      return (
+        <li key={key} className="section-summary-expanded" data-testid={`section-expand-${key}`}>
+          <div className="section-summary-row section-summary-row--static">
+            <strong>{label}</strong>
+            <span className="meta">{summary}</span>
+          </div>
+          <div className="section-inline-panel">{panel}</div>
+        </li>
+      );
+    }
+    return (
+      <li key={key}>
+        <button type="button" className="section-summary-row" onClick={onOpen}>
+          <strong>{label}</strong>
+          <span>{summary}</span>
         </button>
       </li>
+    );
+  }
+
+  return (
+    <ul className="section-summary one-view-summary" data-testid="one-view-work-summary">
+      {section(
+        "name",
+        "Name",
+        props.draft.title.trim() || "Add a name",
+        props.onOpenName,
+        props.namePanel,
+      )}
       {props.scheduleMode ? (
         <li>
           <label className="section-summary-row">
@@ -172,31 +219,29 @@ export function RoutineFocusedSummary(props: {
           </label>
         </li>
       ) : null}
-      <li>
-        <button type="button" className="section-summary-row" onClick={props.onOpenWhen}>
-          <strong>When</strong>
-          <span>
-            {weekdaysLabel(props.draft.weekdays)} · {DAYPART_LABELS[props.draft.daypart]}
-          </span>
-        </button>
-      </li>
-      <li>
-        <button type="button" className="section-summary-row" onClick={props.onOpenWho}>
-          <strong>Who</strong>
-          <span>
-            {props.whoSummary ?? whoLine(props.draft, props.people, props.groups)}
-          </span>
-        </button>
-      </li>
-      <li>
-        <button type="button" className="section-summary-row" onClick={props.onOpenSteps}>
-          <strong>{workLabel}</strong>
-          <span>
-            {props.draft.steps.length}{" "}
-            {props.draft.steps.length === 1 ? "item" : workLabel === "Work" ? "items" : "steps"}
-          </span>
-        </button>
-      </li>
+      {section(
+        "when",
+        "When",
+        `${weekdaysLabel(props.draft.weekdays)} · ${DAYPART_LABELS[props.draft.daypart]}`,
+        props.onOpenWhen,
+        props.whenPanel,
+      )}
+      {section(
+        "who",
+        "Who",
+        props.whoSummary ?? whoLine(props.draft, props.people, props.groups),
+        props.onOpenWho,
+        props.whoPanel,
+      )}
+      {section(
+        "steps",
+        workLabel,
+        `${props.draft.steps.length} ${
+          props.draft.steps.length === 1 ? "item" : workLabel === "Work" ? "items" : "steps"
+        }`,
+        props.onOpenSteps,
+        props.stepsPanel,
+      )}
     </ul>
   );
 }

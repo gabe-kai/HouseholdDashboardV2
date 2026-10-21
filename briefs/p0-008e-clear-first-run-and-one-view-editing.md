@@ -136,9 +136,12 @@ Repository facts inspected at integrated `main` `65e1949`; the current planning 
 **Reviewed revision:** 1
 **Readiness:** READY — Engineering found no material blocker. Architecture accepts the readiness disposition and authorizes implementation of r1. The optional-profile create-path adjustment is within the existing implementation boundary; no contract revision or new migration is required.
 
+**Architecture implementation review:** FIX REQUIRED — the implementation has a responsibility-preview source mismatch while editing section drafts, and several required UI assertions in the evidence matrix are not demonstrated by named P0-008E tests. See `reports/P0-008E-r1-architecture-review.md`. Contract unchanged; Engineering should correct and re-evidence r1.
+
 Implementation may begin on the Project Lead's brief branch. This disposition does not authorize deployment, merge, or Product acceptance.
 
 ## Revision history
 
 - **r1:** Initial Architecture brief based on the Product follow-up proposed 2026-10-15 and Project Lead hosted evaluation. Separates route investigation; reuses existing person-detail fields and P0-008 lifecycle/domain contracts; focuses on one-view editing, contextual summaries and Calm Household presentation.
 - **Readiness:** Engineering reported READY on 2026-10-17; Architecture ACCEPT / PROCEED with no contract change. `/` routing remains outside this brief.
+- **Implementation review:** Architecture returned FIX REQUIRED against r1 on 2026-10-19; see `reports/P0-008E-r1-architecture-review.md`.

@@ -15,6 +15,7 @@ import {
   type SessionInfo,
 } from "./api";
 import { newClientId } from "./id";
+import { isValidIanaTimezoneClient, TimezonePicker } from "./TimezonePicker";
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -287,6 +288,10 @@ export function WelcomeSetupFlow(props: WelcomeSetupProps) {
 
   async function submitHousehold(event: FormEvent) {
     event.preventDefault();
+    if (!isValidIanaTimezoneClient(timezone)) {
+      setError("Choose a valid home timezone.");
+      return;
+    }
     if (!timezoneConfirmed) {
       setError("Confirm the household timezone before continuing.");
       return;
@@ -405,22 +410,15 @@ export function WelcomeSetupFlow(props: WelcomeSetupProps) {
                 data-testid="setup-household-name"
               />
             </label>
-            <label>
-              Timezone
-              <input
-                value={timezone}
-                onChange={(event) => {
-                  setTimezone(event.target.value);
-                  setTimezoneConfirmed(false);
-                }}
-                required
-                data-testid="setup-timezone"
-              />
-            </label>
-            <p className="meta">
-              Suggested from this device: <strong>{suggestedTz}</strong>. Confirm or edit before
-              saving.
-            </p>
+            <TimezonePicker
+              value={timezone}
+              suggested={suggestedTz}
+              disabled={busy}
+              onChange={(next) => {
+                setTimezone(next);
+                setTimezoneConfirmed(false);
+              }}
+            />
             <label className="checkbox-label">
               <input
                 type="checkbox"

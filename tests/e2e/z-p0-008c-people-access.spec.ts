@@ -84,7 +84,7 @@ test.describe("P0-008C member access journeys", () => {
     // Add person: starts as a Member with no sign-in yet.
     await page.getByRole("button", { name: "Add person", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Add person" })).toBeVisible();
-    await page.getByLabel("Friendly name").fill("Elizabeth");
+    await page.getByLabel("Name shown in the app").fill("Elizabeth");
     await page.getByRole("radio", { name: "Child" }).check();
     await page.getByRole("button", { name: "Add person", exact: true }).click();
 

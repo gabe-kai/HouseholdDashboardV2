@@ -386,6 +386,32 @@ export function GuidedSetupView(props: GuidedSetupProps) {
     props.onDirtyChange(step === "recap" ? false : dirty);
   }, [dirty, step, props]);
 
+  const livePreviewKey =
+    step === "work" && workKind !== "skip"
+      ? workSnapshot({
+          workKind,
+          workTitle,
+          daypart,
+          weekdays,
+          steps: workSteps,
+          audienceIds,
+          audienceGroupIds,
+          ownerId,
+          assignmentMode,
+          cycleOrder,
+          weeklyMap,
+          scheduledAdditions,
+          editingDefinitionId,
+        })
+      : "";
+  useEffect(() => {
+    if (!livePreviewKey) return;
+    const handle = window.setTimeout(() => {
+      void runPreview({ quiet: true });
+    }, 400);
+    return () => window.clearTimeout(handle);
+  }, [livePreviewKey]);
+
   useEffect(() => {
     sessionEpochRef.current = props.session.installationEpoch;
   }, [props.session.installationEpoch]);
@@ -1014,8 +1040,10 @@ export function GuidedSetupView(props: GuidedSetupProps) {
     }
   }
 
-  async function runPreview() {
-    if (!progress || workKind === "skip") return;
+  async function runPreview(options?: {
+    quiet?: boolean;
+  }): Promise<GuideWorkPreviewBasis | null> {
+    if (!progress || workKind === "skip") return null;
     const generation = ++previewGenerationRef.current;
     const snapshot = workSnapshot({
       workKind,
@@ -1032,11 +1060,13 @@ export function GuidedSetupView(props: GuidedSetupProps) {
       scheduledAdditions,
       editingDefinitionId,
     });
-    setBusy(true);
-    setError(null);
+    if (!options?.quiet) {
+      setBusy(true);
+      setError(null);
+    }
     try {
       const calendar = await fetchSchoolCalendar();
-      if (generation !== previewGenerationRef.current) return;
+      if (generation !== previewGenerationRef.current) return null;
       const liveSnapshot = workSnapshot({
         workKind,
         workTitle,
@@ -1054,8 +1084,10 @@ export function GuidedSetupView(props: GuidedSetupProps) {
       });
       if (liveSnapshot !== snapshot) {
         invalidatePreview();
-        setError("Draft changed while reviewing; review again");
-        return;
+        if (!options?.quiet) {
+          setError("Draft changed while reviewing; review again");
+        }
+        return null;
       }
       const lines: string[] = [];
       let reviewedRoutineParticipantIds: string[] | undefined;
@@ -1082,7 +1114,7 @@ export function GuidedSetupView(props: GuidedSetupProps) {
           assigneeGroupIds: audienceGroupIds,
           steps,
         });
-        if (generation !== previewGenerationRef.current) return;
+        if (generation !== previewGenerationRef.current) return null;
         const applicable = routinePreview.preview.filter((d) => d.applicable);
         const first = applicable[0];
         reviewedRoutineParticipantIds = first?.participantMemberIds ?? [];
@@ -1115,7 +1147,7 @@ export function GuidedSetupView(props: GuidedSetupProps) {
           steps: steps.map((s) => ({ ...s, applicability: DEFAULT_APPLICABILITY })),
           scheduledAdditions: additions,
         });
-        if (generation !== previewGenerationRef.current) return;
+        if (generation !== previewGenerationRef.current) return null;
         const applicable = respPreview.preview.filter((d) => d.applicable);
         const first = applicable[0];
         reviewedResponsibilityOwnerId = first?.accountableMemberId ?? null;
@@ -1137,14 +1169,13 @@ export function GuidedSetupView(props: GuidedSetupProps) {
           lines.push(`  Beyond window: next known ${respPreview.nextKnownDate}`);
         }
       }
-      if (generation !== previewGenerationRef.current) return;
+      if (generation !== previewGenerationRef.current) return null;
       const groupVersions: Record<string, number> = {};
       for (const groupId of audienceGroupIds) {
         const group = groups.find((g) => g.id === groupId);
         if (group) groupVersions[groupId] = group.version;
       }
-      setPreviewText(lines.join("\n"));
-      setPreviewBasis({
+      const basis: GuideWorkPreviewBasis = {
         householdDate: props.session.householdDate,
         calendarVersion: calendar.calendar.version,
         audienceGroupIds: [...audienceGroupIds],
@@ -1153,21 +1184,31 @@ export function GuidedSetupView(props: GuidedSetupProps) {
         reviewedResponsibilityOwnerId,
         reviewedRoutineDays,
         reviewedResponsibilityDays,
-      });
+      };
+      setPreviewText(lines.join("\n"));
+      setPreviewBasis(basis);
+      return basis;
     } catch (caught) {
-      if (generation !== previewGenerationRef.current) return;
-      setError(errorMessage(caught));
+      if (generation !== previewGenerationRef.current) return null;
+      if (!options?.quiet) setError(errorMessage(caught));
       invalidatePreview();
+      return null;
     } finally {
-      setBusy(false);
+      if (!options?.quiet) setBusy(false);
     }
   }
 
   async function saveWork(status: "completed" | "skipped") {
     if (!progress) return;
-    if (status === "completed" && workKind !== "skip" && !previewBasis) {
-      setError("Review the work before saving");
-      return;
+    let basisForSave = previewBasis;
+    if (status === "completed" && workKind !== "skip") {
+      // Prefer a fresh authoritative basis so Save never depends on a Review click.
+      const refreshed = await runPreview({ quiet: true });
+      if (refreshed) basisForSave = refreshed;
+      if (!basisForSave) {
+        setError("Preview the work before saving");
+        return;
+      }
     }
     setBusy(true);
     setError(null);
@@ -1243,8 +1284,8 @@ export function GuidedSetupView(props: GuidedSetupProps) {
                 scheduleEntryId: editScheduleEntryId,
               }
             : undefined,
-          previewHouseholdDate: previewBasis?.householdDate,
-          previewBasis: previewBasis ?? undefined,
+          previewHouseholdDate: basisForSave?.householdDate,
+          previewBasis: basisForSave ?? undefined,
         } satisfies PendingWorkCommand);
       pendingWorkRef.current = pending;
       const scope = ++applyScopeRef.current;
@@ -1497,7 +1538,7 @@ export function GuidedSetupView(props: GuidedSetupProps) {
           {(addingAnother || others.length === 0 || personName) && (
             <form className="stack-form" onSubmit={savePerson} data-testid="guide-add-person">
               <label>
-                Name
+                Name shown in the app
                 <input
                   value={personName}
                   onChange={(event) => setPersonName(event.target.value)}
@@ -1506,7 +1547,7 @@ export function GuidedSetupView(props: GuidedSetupProps) {
                 />
               </label>
               <label>
-                Adult or child
+                Adult or child (not an access role)
                 <select
                   value={personClass}
                   onChange={(event) =>
@@ -2109,11 +2150,23 @@ export function GuidedSetupView(props: GuidedSetupProps) {
                   </fieldset>
                 </>
               )}
-              {previewText ? (
-                <pre className="guide-preview" data-testid="guide-work-preview">
-                  {previewText}
-                </pre>
-              ) : null}
+              <aside
+                className="live-work-preview guide-preview"
+                data-testid="guide-work-preview"
+                aria-live="polite"
+              >
+                <strong>Preview</strong>
+                {previewText ? (
+                  <ul className="simple-list">
+                    {previewText.split("\n").map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="meta">Updating preview…</p>
+                )}
+                <p className="meta">Read-only — does not create checklist work.</p>
+              </aside>
               <div className="button-row">
                 <button
                   type="button"
@@ -2121,12 +2174,12 @@ export function GuidedSetupView(props: GuidedSetupProps) {
                   data-testid="guide-work-review"
                   onClick={() => void runPreview()}
                 >
-                  Review
+                  Refresh preview
                 </button>
                 <button
                   type="button"
                   className="primary"
-                  disabled={busy || !previewText}
+                  disabled={busy}
                   data-testid="guide-work-save"
                   onClick={() => void saveWork("completed")}
                 >

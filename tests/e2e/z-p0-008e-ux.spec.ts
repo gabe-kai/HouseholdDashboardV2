@@ -50,11 +50,19 @@ async function fillNewResponsibility(page: Page, title: string) {
   await fillResponsibilityBaseSteps(page, ["Wipe counters"]);
 }
 
+async function clickVisiblePrimaryNav(page: Page, name: string) {
+  const bottom = page
+    .locator("nav.primary-nav--bottom")
+    .getByRole("button", { name, exact: true });
+  if (await bottom.isVisible()) {
+    await bottom.click();
+    return;
+  }
+  await page.locator("nav.primary-nav--top").getByRole("button", { name, exact: true }).click();
+}
+
 async function openPeople(page: Page) {
-  await page
-    .getByRole("navigation", { name: "Primary" })
-    .getByRole("button", { name: "Household", exact: true })
-    .click();
+  await clickVisiblePrimaryNav(page, "Household");
   await page
     .getByRole("navigation", { name: "Household" })
     .getByRole("button", { name: /People & Groups/ })
@@ -548,9 +556,12 @@ test.describe("P0-008E UX evidence (seeded chromium)", () => {
     }
 
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.addStyleTag({ content: "html { font-size: 200% !important; }" });
+    const zoomStyle = await page.addStyleTag({
+      content: "html { font-size: 200% !important; }",
+    });
     await assertNoHorizontalOverflow(page, "200% text horizontal overflow");
     await expect(page.getByRole("button", { name: "Create responsibility", exact: true })).toBeVisible();
+    await zoomStyle.evaluate((el) => el.remove());
 
     await page.setViewportSize({ width: 360, height: 800 });
     await assertUsableControl(
@@ -595,10 +606,7 @@ test.describe("P0-008E UX evidence (seeded chromium)", () => {
   test("AT2b: settings timezone is locked after dated household work exists", async ({ page }) => {
     test.setTimeout(180_000);
     await openAsManager(page);
-    await page
-      .getByRole("navigation", { name: "Primary" })
-      .getByRole("button", { name: "Household", exact: true })
-      .click();
+    await clickVisiblePrimaryNav(page, "Household");
     await page
       .getByRole("navigation", { name: "Household" })
       .getByRole("button", { name: /Settings/ })

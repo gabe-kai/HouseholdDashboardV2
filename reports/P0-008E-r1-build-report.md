@@ -9,11 +9,11 @@
 **Pull request:** not opened by this Build Report
 **Out of scope retained:** `/` routing anomaly
 
-## CI correction (200% text)
+## CI correction (200% text, then nav click)
 
-Linux Chromium CI failed `AT10: 360/768/1280 and 200% text keep 008E editors usable without horizontal clip` with `documentElement.scrollWidth` wider than the viewport after `html { font-size: 200% }` at 390×844. Rem-scaled padding plus unwrapped min-content (preview rows, long action labels, bottom-nav items, native date fields) can exceed the phone content width on Linux fonts even when Windows local runs pass.
+Linux Chromium first failed AT10 because `html { font-size: 200% }` at 390×844 widened `documentElement.scrollWidth`. A follow-up wrap of the bottom nav then timed out on CI: after 200% stayed applied, `openPeople` clicked Primary → Household and Plan `focused-state` intercepted the control for 180s.
 
-This pass keeps the existing document-width and in-flow box assertions. It constrains the shell and 008E editors so large text wraps instead of widening the page: `min-width: 0` / `max-width: 100%` / `overflow-wrap: anywhere` on the app shell, headings, one-view rows, preview lists, editor buttons, and live preview; bottom-nav items may wrap; date/time inputs are width-limited. The AT10 failure message now includes measured `scrollWidth`/`clientWidth`.
+This pass keeps the document-width and in-flow box assertions. Editors wrap instead of widening the page. The bottom nav stays one row (`flex-wrap: nowrap`, `flex: 1 1 0`) so large labels wrap inside the item instead of stacking over Plan. AT10 removes the 200% style after that checkpoint before the 360 People/permissions walk. `openPeople` clicks the visible phone bottom nav, not the hidden top duplicate.
 
 R5 People fieldset/choice-row wrap remains. Keyboard, focus, and ≥36px target checks remain.
 
@@ -42,17 +42,16 @@ R5 People fieldset/choice-row wrap remains. Keyboard, focus, and ≥36px target 
 
 ## Focused correction verification (pre-gate)
 
-- `npx playwright test --project=chromium tests/e2e/z-p0-008e-ux.spec.ts -g "AT10:"` after 200% wrap CSS — **1 passed**
-- `npx playwright test --project=chromium-008a tests/e2e/z-p0-008e-setup.spec.ts -g "AT10:"` — **1 passed**
+- `npx playwright test --project=chromium tests/e2e/z-p0-008e-ux.spec.ts -g "AT10:"` after nav/200% isolation — **1 passed**
+- `npx playwright test --project=chromium tests/e2e/z-p0-008e-ux.spec.ts` — **10 passed (1.0m)**
 - `npx playwright test --project=chromium tests/e2e/z-p0-006a-geometry.spec.ts` — **1 passed**
-- Exact CI shard `npx playwright test --project=chromium --grep-invert "P0-007"` — **42 passed (3.8m)**
 - Hosted / physical — **NOT RUN**
 
 ## Exact gates (correction tree)
 
-- Exact CI `e2e-phone-core` shard (above) — **PASS**
-- `npm run validate:pr` — **NOT RUN** on this 200% wrap tree (prior accepted tree reported PASS, then Linux CI failed AT10)
-- `npm run validate:rc` — **NOT RUN** on this 200% wrap tree
+- Exact CI `e2e-phone-core` shard — **NOT COMPLETED** in this environment (interrupted mid-suite after earlier passing tests; not a named AT10 failure)
+- `npm run validate:pr` — **NOT RUN** on this nav/200% isolation tree
+- `npm run validate:rc` — **NOT RUN** on this nav/200% isolation tree
 
 Playwright `globalTimeout` remains 45 minutes. AT5 still restores temporarily demoted essential managers so the shared seeded e2e household is not left without peer managers.
 

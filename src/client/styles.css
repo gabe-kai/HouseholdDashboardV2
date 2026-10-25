@@ -283,6 +283,7 @@ textarea {
 
 .list-row {
   width: 100%;
+  min-width: 0;
   min-height: var(--touch);
   display: grid;
   gap: 0.15rem;
@@ -293,6 +294,7 @@ textarea {
   background: transparent;
   color: inherit;
   cursor: pointer;
+  overflow-wrap: anywhere;
 }
 
 .list-row:hover,
@@ -348,9 +350,9 @@ textarea {
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 30;
+  z-index: 50;
   justify-content: space-around;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0;
   padding: var(--space-1) var(--space-2) calc(var(--space-1) + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--border);
@@ -377,10 +379,11 @@ textarea {
   display: grid;
   place-items: center;
   min-width: 0;
-  flex: 1 1 4rem;
+  flex: 1 1 0;
   padding: 0.45rem 0.25rem;
   font-size: var(--font-size-sm);
   text-align: center;
+  line-height: 1.15;
 }
 
 .nav-item[aria-current="page"] {
@@ -394,8 +397,10 @@ textarea {
 }
 
 .household-nav .list-row {
+  min-width: 0;
   font-size: 1.05rem;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .household-nav .list-row .meta {
@@ -1027,6 +1032,7 @@ input[type="time"] {
 
 .person-row {
   width: 100%;
+  min-width: 0;
   min-height: var(--touch);
   display: grid;
   gap: 0.15rem;
@@ -1037,6 +1043,7 @@ input[type="time"] {
   background: transparent;
   color: inherit;
   cursor: pointer;
+  overflow-wrap: anywhere;
 }
 
 .person-row.selected {

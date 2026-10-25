@@ -634,6 +634,18 @@ textarea {
 .form-grid {
   display: grid;
   gap: var(--space-3);
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* UA fieldset min-width: min-content stretches phone forms past the viewport. */
+fieldset {
+  min-width: 0;
+  max-width: 100%;
+}
+
+legend {
+  overflow-wrap: anywhere;
 }
 
 .form-grid label {
@@ -646,6 +658,8 @@ textarea {
 .form-grid select,
 .form-grid textarea {
   min-height: var(--touch);
+  min-width: 0;
+  max-width: 100%;
   padding: 0.5rem 0.65rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -661,11 +675,18 @@ textarea {
   align-items: center;
   gap: 0.65rem;
   width: 100%;
+  min-width: 0;
   box-sizing: border-box;
   min-height: var(--touch);
   padding: 0.45rem 0.35rem;
   font-weight: 500;
+  overflow-wrap: anywhere;
   cursor: pointer;
+}
+
+.choice-row > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .form-grid label.choice-row input[type="radio"],
@@ -1051,6 +1072,12 @@ textarea {
   display: block;
   margin-top: var(--space-1);
   color: var(--text-muted);
+}
+
+.focused-state,
+.people-groups {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .focused-state .form-grid {
@@ -2062,6 +2089,8 @@ textarea {
 .optional-details {
   display: grid;
   gap: var(--space-2);
+  min-width: 0;
+  max-width: 100%;
   margin-top: var(--space-4);
   padding: var(--space-4);
   border: 1px solid var(--border);

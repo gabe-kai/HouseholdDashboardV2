@@ -52,7 +52,8 @@ export default defineConfig({
   retries: 0,
   workers: 1,
   timeout: 120_000,
-  globalTimeout: 30 * 60_000,
+  // Chromium + WebKit + 008a/desktop/display; 008E named suites need headroom.
+  globalTimeout: 45 * 60_000,
   expect: { timeout: 20_000 },
   reporter: [["list"], ["html", { open: "never" }]],
   use: {

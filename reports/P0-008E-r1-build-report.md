@@ -1,52 +1,56 @@
-# Build Report - BRIEF P0-008E r1 (Architecture FIX REQUIRED correction)
+# Build Report - BRIEF P0-008E r1 (Architecture FIX REQUIRED — AT10 overflow)
 
-**Acting as:** Engineering  
-**Brief revision implemented:** 1  
-**Engineering status:** IMPLEMENTED — awaiting Architecture re-review  
-**Branch:** `brief/p0-008e-clear-first-run-and-one-view-editing`  
-**Baseline:** Architecture FIX REQUIRED in `reports/P0-008E-r1-architecture-review.md`  
-**Authorization:** code/evidence correction under existing r1; no deployment or merge  
-**Pull request:** not opened by this Build Report  
+**Acting as:** Engineering
+**Brief revision implemented:** 1
+**Engineering status:** IMPLEMENTED — awaiting Architecture re-review
+**Branch:** `brief/p0-008e-clear-first-run-and-one-view-editing`
+**Baseline:** Architecture FIX REQUIRED (fourth review) in `reports/P0-008E-r1-architecture-review.md` (R5 AT10 overflow)
+**Authorization:** code/evidence correction under existing r1; no deployment, merge, or commit
+**Pull request:** not opened by this Build Report
 **Out of scope retained:** `/` routing anomaly
 
 ## Correction summary
 
-- **R1:** Responsibility live preview calls `mutationPayloadFrom(sectionDraft ?? draft, …)` so unsaved Name/When/Work section edits are previewed; preview header shows composed title/weekdays; responses are discarded if the draft snapshot key advanced.
-- **R2:** Named browser/integration evidence added below. Assertions without a named check are PARTIAL rather than PASS-by-source.
+R5 required People add-person and permissions to satisfy AT10's no-horizontal-overflow rule, not only keyboard/focus/target size. UA `fieldset` `min-width: min-content` and unwrapped choice-row text were stretching those forms past the phone viewport. This pass constrains fieldsets, form controls, choice rows, and the People focused layouts, and AT10 now measures both `documentElement.scrollWidth` and in-flow boxes that extend past `window.innerWidth`. Keyboard, focus, and ≥36px target checks remain.
+
+- **AT10:** Named Chromium journey asserts overflow on responsibility (360/768/1280 and 200% text), Routine, People add-person, and permissions at 360px, plus usable/focusable controls. Setup/guided-work 008a walk still asserts document overflow and touch targets.
 
 ## Acceptance evidence matrix
 
 | ID / assertion | Exact evidence (named test / checkpoint) | Result |
 | --- | --- | --- |
-| AT1a Invitation action | `tests/e2e/z-p0-008e-setup.spec.ts` → `AT1a: Open setup opens issued same-origin invitation; Copy link remains` (same-origin invite href, Copy link visible, Open setup → Welcome account form) | PASS |
-| AT1b Invitation security | Named 008E suite does not re-assert fragment/single-use; existing P0-008A invitation suites ran in validate:pr | PARTIAL |
-| AT2a Timezone selection | `tests/e2e/z-p0-008e-setup.spec.ts` → `AT2a: timezone search/select updates sample time; suggestion is not silently applied`; helper `src/client/TimezonePicker.test.ts` | PASS |
-| AT2b Timezone safety | Client invalid-zone unit in `TimezonePicker.test.ts`; lock/validation regressions via gates only | PARTIAL |
-| AT3a/b Optional profile | `tests/integration/p0-008e.test.ts` → schema + createPerson persist/blank defaults | PASS |
-| AT4 Permission summary | `tests/e2e/z-p0-008e-ux.spec.ts` → `AT4: permission before/after summary updates beside controls before save` (before/after text, no Save-preview detour, grant persists after Save) | PASS |
-| AT5 Permission safeguards | Named 008E suite does not re-assert last-manager/version; existing suites under validate:pr | PARTIAL |
-| AT6a Routine one-view | `tests/e2e/z-p0-008e-ux.spec.ts` → `AT6a: routine one-view keeps Name/When/Who/Steps in one editor and saves once` | PASS |
-| AT6b Responsibility one-view | Same file → `AT6b/AT7: responsibility composed draft preview updates before Save; preview is non-mutating` (Name/When/Who/Work + Create) | PASS |
-| AT7 Preview truth/purity | Same AT6b/AT7 test: unsaved name/weekdays in preview title + preview-draft POST while section open; count unchanged until Create; guided Save without Review click in AT9 | PASS |
-| AT8 Draft recovery | No new named 008E discard/Cancel suite in this correction; prior Cancel/Back contracts remain under gates | PARTIAL |
-| AT9 Completion | `tests/e2e/z-p0-008e-setup.spec.ts` → `AT9: finish recap shows saved work; Go to Today primary; View household available` | PASS |
-| AT10 Responsive/a11y | `tests/e2e/z-p0-008e-ux.spec.ts` → `AT10: 360/768/1280 and 200% text keep 008E editors usable without horizontal clip` | PASS |
-| AT11 Protected behavior | No lifecycle/domain contract changes intended. validate:pr Chromium protected suites passed. validate:rc did not finish (see gates). | PARTIAL |
-| AT12 validate:pr / validate:rc | Exact repository gates (below) | PARTIAL |
+| AT1a Invitation action | `tests/e2e/z-p0-008e-setup.spec.ts` → `AT1a: Open setup opens issued same-origin invitation; Copy link remains` | PASS |
+| AT1b Invitation security | Same file → `AT1b: invite fragment is cleared; storage has no token; second use is rejected`. Also `tests/integration/p0-008e.test.ts` → `AT1b: consumed invitation cannot be exchanged again` | PASS |
+| AT2a Timezone selection | `tests/e2e/z-p0-008e-setup.spec.ts` → `AT2a`; helper `src/client/TimezonePicker.test.ts` | PASS |
+| AT2b Timezone safety | `tests/e2e/z-p0-008e-ux.spec.ts` → `AT2b: settings timezone is locked after dated household work exists`. `tests/integration/p0-008e.test.ts` → `AT2b: invalid timezone is rejected; dated work locks relocation`. Client invalid-zone unit in `TimezonePicker.test.ts` | PASS |
+| AT3a Optional profile | `tests/e2e/z-p0-008e-ux.spec.ts` → `AT3a/b: People optional details stay collapsed/blank and persist when entered` | PASS |
+| AT3b Optional profile data | Same AT3a/b test. Supporting: `tests/integration/p0-008e.test.ts` → schema + `AT3: createPerson persists optional profile fields and blank defaults` | PASS |
+| AT4 Permission summary | `tests/e2e/z-p0-008e-ux.spec.ts` → `AT4: permission before/after summary updates beside controls before save` | PASS |
+| AT5 Permission safeguards | Same file → `AT5: last manager and stale permission version are denied; draft stays`. Also integration `AT5: last essential manager cannot be demoted; stale authority version conflicts` | PASS |
+| AT6a Routine one-view | Same file → `AT6a: routine one-view keeps Name/When/Who/Steps in one editor and saves once` | PASS |
+| AT6b Responsibility one-view | Same file → `AT6b: edit existing responsibility with scheduled addition stays one-view`. Preview compose remains in `AT6b/AT7` | PASS |
+| AT7 Preview truth/purity | Same file → `AT6a` and `AT6b/AT7`. `tests/integration/p0-008e.test.ts` → `AT7: preview-draft does not materialize, lock, or advance assignment` | PASS |
+| AT8 Draft recovery | Same file → `AT8: household-date rollover keeps draft, requires confirm, and saves once`. Same file → `AT8: future startingDate stays put across household-date rollover`. `src/client/proposed-save-date.test.ts` | PASS |
+| AT9 Completion | `tests/e2e/z-p0-008e-setup.spec.ts` → `AT9: finish recap shows saved work; Go to Today primary; View household available`. Same file → `AT9: recap distinguishes skipped/available setup and reopens unfinished work` | PASS |
+| AT10 Responsive/a11y | Same UX file → `AT10` (document scrollWidth and overflowing in-flow boxes on responsibility 360/768/1280 + 200%; Routine; People add-person; permissions; keyboard focus; ≥36px targets). Setup file → `AT10: setup and guided-work stay usable at 360 with keyboard and touch targets` | PASS |
+| AT11 Protected behavior | No lifecycle/domain contract changes intended. Exact `validate:pr` / `validate:rc` include the protected 008A–D suites | PASS |
+| AT12 validate:pr / validate:rc | Exact repository gates (below) | PASS |
 
 ## Focused correction verification (pre-gate)
 
-- `npx playwright test --project=chromium tests/e2e/z-p0-008e-ux.spec.ts` — **4 passed** (AT4, AT6a, AT6b/AT7, AT10)
-- `npx playwright test --project=chromium-008a tests/e2e/z-p0-008e-setup.spec.ts` — **3 passed** (AT1a, AT2a, AT9)
+- `npx playwright test --project=chromium tests/e2e/z-p0-008e-ux.spec.ts -g "AT10:"` after the fieldset/choice-row wrap — **1 passed**
+- `npx playwright test --project=chromium-008a tests/e2e/z-p0-008e-setup.spec.ts -g "AT10:"` — **1 passed**
 - Hosted / physical — **NOT RUN**
 
 ## Exact gates (correction tree)
 
-- `npm run validate:pr` — **PASS** (EXIT 0). Lint/typecheck; **346** unit/integration; Chromium Playwright **126 passed**; Vite deeplink **6 passed**. Log: `reports/_local-validate-pr-008e-r1.log`
-- `npm run validate:rc` — **FAIL** (EXIT 1). Lint/typecheck and **346** unit/integration passed. Playwright stopped after **99 passed**, **134 did not run**. `chromium-008a` `z-p0-008d-guided-setup.spec.ts` → `P0-008D AT10: invite/access/removal/backup/reset/Welcome restore UI journey` hung (~3.0h), then Playwright reported `Timed out waiting 1800s for the test suite to run` / teardown. This is a suite-timeout hang on a protected 008D journey, not an 008E assertion failure. Log: `reports/_local-validate-rc-008e-r1.log`
+- `npm run validate:pr` — **PASS** (exit 0). Lint/typecheck; unit **351 passed** / 49 files; Playwright Chromium projects **135 passed (10.1m)**; Vite deep-link **6 passed (20.5s)**
+- `npm run validate:rc` — **PASS** (exit 0). Unit **351 passed** / 49 files; Playwright all projects **207 passed (17.1m)**; Vite deep-link **6 passed (14.5s)**
+
+Playwright `globalTimeout` remains 45 minutes. AT5 still restores temporarily demoted essential managers so the shared seeded e2e household is not left without peer managers.
 
 ## Do-not-change checklist
 
-- P0-008A–D installation-owner, invitation, session, capability, reset/restore, epoch fencing: contracts preserved  
-- D-056 guide atomicity / preview non-mutation: preserved  
-- `/` routing: not modified  
+- P0-008A–D installation-owner, invitation, session, capability, reset/restore, epoch fencing: contracts preserved
+- D-056 guide atomicity / preview non-mutation: preserved
+- `/` routing: not modified

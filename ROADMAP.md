@@ -102,7 +102,7 @@ Both C-3 slices contribute to **Act at the shared display without losing trust**
 
 - **P0-008D technical delivery is complete** — accepted at `c5f9867`, merged through PR #27 at `65e1949`; Build Report: `reports/P0-008D-r2-build-report.md`; Architecture acceptance: `reports/P0-008D-r2-architecture-acceptance.md`.
   - Project Lead reports hosted setup, labeled backup, reset, restore, and post-restart persistence worked. The submitted evaluation also identifies friction in the owner-link handoff, timezone entry, people/work/permission review, and completion summary. Full Product acceptance remains pending.
-- **Current implementation — P0-008E r1 (FIX REQUIRED):** Make first-run and household editing clear through an actionable setup invitation, understandable timezone and person entry, in-context permission consequences, one-view routine/responsibility editing, live previews, and a useful finish summary. Architecture found a responsibility-preview source mismatch and missing named UI evidence against the matrix; see `reports/P0-008E-r1-architecture-review.md`. No deployment or merge is implied.
+- **Current implementation — P0-008E r1 (technically ACCEPTED):** Preview/date-rollover and responsive overflow corrections are accepted against the brief; named AT evidence and exact PR/RC gates are recorded in the Build Report. Project Lead hands-on Product evaluation and Git operations remain; Architecture acceptance does not authorize deploy or merge.
 
 ### LIKELY NEXT
 

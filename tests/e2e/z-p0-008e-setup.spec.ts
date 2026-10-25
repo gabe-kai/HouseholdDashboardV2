@@ -87,6 +87,55 @@ test.describe("P0-008E first-run evidence (008a)", () => {
     expect(page.url()).toMatch(/\/welcome/i);
   });
 
+  test("AT1b: invite fragment is cleared; storage has no token; second use is rejected", async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    const inviteLink = await ownerIssueInvite(page);
+    expect(inviteLink).toMatch(/#.*invite=/i);
+    expect(inviteLink).not.toMatch(/[?&]invite=/i);
+
+    await page.goto(inviteLink);
+    await expect(page.getByTestId("setup-account-form")).toBeVisible({ timeout: 20_000 });
+    expect(page.url()).not.toMatch(/invite=/i);
+    const stored = await page.evaluate(() => ({
+      href: window.location.href,
+      search: window.location.search,
+      hash: window.location.hash,
+      local: { ...localStorage },
+      session: { ...sessionStorage },
+    }));
+    expect(stored.search).not.toMatch(/invite=/i);
+    expect(stored.hash).not.toMatch(/invite=/i);
+    expect(JSON.stringify(stored.local)).not.toMatch(/invite=/i);
+    expect(JSON.stringify(stored.session)).not.toMatch(/invite=/i);
+
+    const inviteToken = new URLSearchParams(new URL(inviteLink).hash.replace(/^#/, "")).get(
+      "invite",
+    );
+    expect(inviteToken).toBeTruthy();
+    const origin = new URL(inviteLink).origin;
+    const retry = await page.request.post("/api/v1/setup/exchange", {
+      headers: { Origin: origin, "content-type": "application/json" },
+      data: { invitationToken: inviteToken },
+    });
+    expect(retry.status()).toBeGreaterThanOrEqual(400);
+
+    // Same-path hash revisit can keep in-memory setup state; prove rejection on a fresh document.
+    const browser = page.context().browser();
+    expect(browser).toBeTruthy();
+    const other = await browser!.newContext();
+    const otherPage = await other.newPage();
+    try {
+      await otherPage.goto(inviteLink);
+      await expect(otherPage.getByTestId("setup-exchange-error")).toBeVisible({ timeout: 20_000 });
+      await expect(otherPage.getByTestId("setup-account-form")).toHaveCount(0);
+      expect(otherPage.url()).not.toMatch(/invite=/i);
+    } finally {
+      await other.close();
+    }
+  });
+
   test("AT2a: timezone search/select updates sample time; suggestion is not silently applied", async ({
     page,
   }) => {
@@ -194,5 +243,110 @@ test.describe("P0-008E first-run evidence (008a)", () => {
     await expect(page.getByTestId("guide-view-household")).toBeVisible();
     await goToday.click();
     await expectSignedInAs(page, displayName);
+  });
+
+  test("AT9: recap distinguishes skipped/available setup and reopens unfinished work", async ({
+    page,
+  }) => {
+    test.setTimeout(240_000);
+    const inviteLink = await ownerIssueInvite(page);
+    await page.goto(inviteLink);
+    const displayName = "Skip Recap Parent";
+    await completeRequiredBasics(
+      page,
+      `skiprecap.${Date.now().toString(36)}`,
+      displayName,
+      "Skip Recap Household",
+    );
+
+    await page.getByTestId("setup-continue-guide").click();
+    await expect(page.getByTestId("guided-setup")).toBeVisible({ timeout: 20_000 });
+    await page.getByTestId("guide-people-continue").click();
+    await expect(page.getByTestId("guide-school")).toBeVisible({ timeout: 15_000 });
+    await page.getByTestId("guide-school-not-now").click();
+    await expect(page.getByTestId("guide-work")).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId("guide-save-finish-later").click();
+    await expectSignedInAs(page, displayName);
+
+    await page
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("button", { name: "Household", exact: true })
+      .click();
+    await page
+      .getByRole("navigation", { name: "Household" })
+      .getByRole("button", { name: /Settings/ })
+      .click();
+    await expect(page.getByTestId("finish-setup-section")).toBeVisible();
+    await page.getByTestId("settings-finish-setup").click();
+    await expect(page.getByTestId("guided-setup")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId("guide-work")).toBeVisible({ timeout: 20_000 });
+
+    await page.getByTestId("guide-work-kind").selectOption("skip");
+    await page.getByTestId("guide-work-finish-for-now").click();
+    await expect(page.getByTestId("guide-recap")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId("guide-recap")).toContainText(/People:\s*completed/i);
+    await expect(page.getByTestId("guide-recap")).toContainText(/School:\s*skipped/i);
+    await expect(page.getByTestId("guide-recap")).toContainText(/First work:\s*skipped/i);
+    await expect(page.getByTestId("guide-recap")).toContainText(/No first work saved yet/i);
+    await expect(page.getByTestId("guide-recap")).toContainText(/Set up the wall display/i);
+    await expect(page.getByTestId("guide-recap")).toContainText(/Set up sign-in/i);
+    const goToday = page.getByTestId("guide-go-today");
+    await expect(goToday).toHaveClass(/primary/);
+    await expect(page.getByTestId("guide-view-household")).toBeVisible();
+    await goToday.click();
+    await expectSignedInAs(page, displayName);
+  });
+
+  test("AT10: setup and guided-work stay usable at 360 with keyboard and touch targets", async ({
+    page,
+  }) => {
+    test.setTimeout(240_000);
+    await page.setViewportSize({ width: 360, height: 800 });
+    const inviteLink = await ownerIssueInvite(page);
+    await page.goto(inviteLink);
+
+    await expect(page.getByTestId("setup-account-form")).toBeVisible({ timeout: 20_000 });
+    const overflow = async (label: string) => {
+      const wide = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+      expect(wide, label).toBe(false);
+    };
+    const usable = async (control: ReturnType<Page["getByTestId"]>, label: string) => {
+      await expect(control).toBeVisible();
+      const box = await control.boundingBox();
+      expect(box, label).toBeTruthy();
+      expect(box!.height).toBeGreaterThanOrEqual(36);
+      await control.focus();
+      await expect(control).toBeFocused();
+    };
+
+    await overflow("setup account 360 overflow");
+    await usable(page.getByTestId("setup-display-name"), "setup display name");
+    await completeRequiredBasics(
+      page,
+      `geom.${Date.now().toString(36)}`,
+      "Geometry Parent",
+      "Geometry Household",
+    );
+
+    await expect(page.getByTestId("setup-complete")).toBeVisible();
+    await overflow("setup complete 360 overflow");
+    await usable(page.getByTestId("setup-continue-guide"), "continue guide");
+    await page.getByTestId("setup-continue-guide").click();
+    await expect(page.getByTestId("guided-setup")).toBeVisible({ timeout: 20_000 });
+    await overflow("guided people 360 overflow");
+    await usable(page.getByTestId("guide-add-another"), "guide add person");
+    await page.getByTestId("guide-people-continue").click();
+    await expect(page.getByTestId("guide-school")).toBeVisible({ timeout: 15_000 });
+    await overflow("guided school 360 overflow");
+    await usable(page.getByTestId("guide-school-not-now"), "school not now");
+    await page.getByTestId("guide-school-not-now").click();
+    await expect(page.getByTestId("guide-work")).toBeVisible({ timeout: 30_000 });
+    await overflow("guided work 360 overflow");
+    await page.getByTestId("guide-work-kind").selectOption("routine");
+    await page.getByTestId("guide-work-title").fill("Geometry Morning");
+    await expect(page.getByTestId("guide-work-preview")).toContainText("Geometry Morning", {
+      timeout: 20_000,
+    });
+    await usable(page.getByTestId("guide-work-save"), "guide work save");
   });
 });

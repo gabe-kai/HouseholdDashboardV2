@@ -19,9 +19,9 @@
 
 ## Current focus
 
-Inspected 2026-10-15: current checkout is `main` at **65e1949** (P0-008D merged via PR **#27**), clean before this evaluation writeback. Integrated baseline includes household migrations through 019 and B's installation-control catalog migration 001. P0-008A r1, P0-008B r2, P0-008C r1, and P0-008D r2 are technically accepted and integrated. The Project Lead reports Railway first-run, backup, reset, restore, and post-container-restart success; exact deployed SHA and operational details were not independently recorded. See the dated evaluation below.
+Inspected 2026-10-25: current checkout is `brief/p0-008e-clear-first-run-one-view-editing` at **6dc7002**, with P0-008E implementation and Architecture acceptance writebacks uncommitted. Integrated baseline remains P0-008D at **65e1949** (PR **#27**), with household migrations through 019 and B's installation-control catalog migration 001. P0-008A–D are technically accepted and integrated. The Project Lead reports Railway first-run, backup, reset, restore, and post-container-restart success; exact deployed SHA and operational details were not independently recorded. See the dated evaluation below.
 
-**P0-008D r2** was technically **ACCEPTED** at `c5f9867` and merged at `65e1949`; Architecture’s focused D suite passed 27/27, and Engineering reported PR/RC PASS. The Project Lead reports successful hosted first-run setup, labeled app backup, reset, restore, and persistence after Railway container restart. P0-008E r1 has Engineering **READY** and Architecture **ACCEPT / PROCEED** as of 2026-10-17. Implementation may begin; final Product acceptance remains pending. `/` reportedly shows an unavailable view despite the repository’s root-to-Today mapping; exact hosted reproduction remains separate. Evaluation: `evaluations/p0-008-project-lead-evaluation-2026-10-15.md`.
+**P0-008D r2** was technically **ACCEPTED** at `c5f9867` and merged at `65e1949`; Architecture’s focused D suite passed 27/27, and Engineering reported PR/RC PASS. The Project Lead reports successful hosted first-run setup, labeled app backup, reset, restore, and persistence after Railway container restart. P0-008E r1 was technically **ACCEPTED** by Architecture on 2026-10-25 after the AT10 overflow correction and named evidence; Product acceptance remains with the Project Lead. `/` reportedly shows an unavailable view despite the repository’s root-to-Today mapping; exact hosted reproduction remains separate. Evaluation: `evaluations/p0-008-project-lead-evaluation-2026-10-15.md`.
 
 P0-007C's outstanding physical/Product judgments remain distinct from its technical acceptance and from approval to begin P0-008. Old reports retain their inspected SHAs.
 
@@ -48,7 +48,7 @@ P0-007C's outstanding physical/Product judgments remain distinct from its techni
 | P0-008B - Household Backups and In-App Restore | r2 | ACCEPTED | Integrated foundation | Merged to `main` at `f80d47b` via PR #25 | Hosted and Product evaluation remain separate |
 | P0-008C - Understandable Member Access and Safe Removal | r1 | ACCEPTED | Integrated foundation | Merged to `main` at `1709097` via PR #26; correction `90de153` | Hosted/Product evaluation remains separate |
 | P0-008D - Guided Setup to the First Useful Household Day | r2 | ACCEPTED (technical) | Product / Design | Merged to `main` via PR #27 at `65e1949` | P0-008E UX follow-up; route anomaly triage; overall P0-008 Product acceptance pending |
-| P0-008E - Clear First Run and One-View Work Editing | r1 | FIX REQUIRED | Engineering | `brief/p0-008e-clear-first-run-and-one-view-editing` | Correct responsibility live-preview source and close named UI evidence gaps; no deployment/merge authorization implied |
+| P0-008E - Clear First Run and One-View Work Editing | r1 | ACCEPTED (technical) | Project Lead evaluation | `brief/p0-008e-clear-first-run-and-one-view-editing` | Hands-on Product evaluation; Project Lead owns commit/push/merge. No deployment or merge authorized by Architecture |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -86,7 +86,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Engineering addresses Architecture FIX REQUIRED for P0-008E r1; see `reports/P0-008E-r1-architecture-review.md`. Separately, Architecture/QA should reproduce the root-route “view unavailable” report on the deployed build. The Project Lead’s hosted reset/restore/restart success and usability feedback are recorded in `evaluations/p0-008-project-lead-evaluation-2026-10-15.md`; technical acceptance remains distinct from Product acceptance.
+P0-008E r1 is technically accepted; the Project Lead should complete hands-on Product evaluation before deciding whether to commit/publish/merge. See `reports/P0-008E-r1-architecture-review.md`. Separately, Architecture/QA should reproduce the root-route “view unavailable” report on the deployed build. The Project Lead’s hosted reset/restore/restart success and usability feedback are recorded in `evaluations/p0-008-project-lead-evaluation-2026-10-15.md`; technical acceptance remains distinct from Product acceptance.
 
 ## Notes for all teams
 

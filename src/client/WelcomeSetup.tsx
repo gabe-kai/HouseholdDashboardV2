@@ -139,7 +139,7 @@ export function ProtectedWelcomeGate(props: {
           </p>
         )}
         {props.exchangeError ? (
-          <p role="alert" className="form-error">
+          <p role="alert" className="form-error" data-testid="setup-exchange-error">
             {props.exchangeError}
           </p>
         ) : null}

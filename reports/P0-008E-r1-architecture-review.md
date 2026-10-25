@@ -1,36 +1,42 @@
 # P0-008E r1 Architecture Review
 
-**Disposition:** FIX REQUIRED  
+**Disposition:** ACCEPTED (technical acceptance; fifth review)
 **Brief:** P0-008E r1  
 **Branch:** `brief/p0-008e-clear-first-run-one-view-editing`  
-**Build Report reviewed:** `reports/P0-008E-r1-build-report.md`  
+**Build Report reviewed:** `reports/P0-008E-r1-build-report.md` (AT10 correction pass)
 **Contract:** unchanged; return directly to Engineering on r1.
 
 ## Findings
 
-### R1 — Responsibility live preview does not preview the active section draft
+### Closed — R1 responsibility preview source
 
-In `src/client/Responsibilities.tsx`, `responsibilityPreviewKey` is derived from `sectionDraft ?? draft`, but the debounced preview calls `mutationPayload(draft.startingDate)`. The Name/When editors keep edits in `sectionDraft` until their Done action copies them into `draft`. Consequently, changing those visible fields triggers a preview request whose payload still contains the prior saved draft values. This fails the P0-008E AT6b/AT7 requirement that changing relevant draft fields immediately updates an authoritative preview.
+The correction now captures `composedPreviewDraft = sectionDraft ?? draft`, sends it to the preview endpoint, and rejects responses whose snapshot is stale. The named AT6b/AT7 test asserts unsaved Name/When values in the preview and request before Save. R1 is closed.
 
-Use the current composed editor draft as the preview payload, including the active section draft, and ensure preview output is causally tied to the exact draft snapshot that produced it. Add a focused regression that changes at least the responsibility name and schedule while the section editor remains open, and asserts the preview reflects those unsaved values before Save.
+### Closed — R2 named UI evidence
 
-### R2 — Required UI evidence is not mapped to named assertions
+The correction adds named UI tests for AT1a, AT2a, AT4, AT6a, AT6b/AT7, AT9, and AT10. These demonstrate the named assertions reported as PASS. R2 is closed for those rows.
 
-The Build Report marks the full acceptance matrix PASS, but its evidence entries mostly point to implementation files or aggregate PR/RC gates. The repository changes add a focused integration test for the create-person API/schema and a timezone helper unit test; the existing P0-008C/P0-008D e2e edits shown in the diff update labels or adapt old flows, and do not establish all the new user-visible assertions. In particular, the Build Report does not identify named browser assertions for:
+### Closed — R3 date-rollover retry loop and AT8 evidence
 
-- AT1a: Open setup opens the issued same-origin invitation in the issuing browser while Copy link remains available.
-- AT2a: search/selection, explicit confirmation, suggested-zone non-application, and sample-time change.
-- AT4: permission before/after summary changes beside the controls before save, and saved grants match it.
-- AT6a/AT6b: one persistent editing context with independent draft sections retained and saved, including responsibility assignment/additions.
-- AT7: preview changes with unsaved edits and demonstrates no materialization/lock/assignment side effects; Save succeeds without Review.
-- AT9: completion recap accurately reflects saved records and completed/skipped/available states, with the specified primary/alternative actions.
-- AT10: geometry/accessibility checks on the changed P0-008E surfaces at the matrix viewports and 200% text/zoom.
+The correction now opens an explicit rollover confirmation, displays the new date, refreshes the preview on the new basis, disables the primary Save/Create button, and only saves after Confirm. It rebases an implicit start date and preserves an explicit later start date. Named AT8 tests verify the persisted date, explicit future-start preservation, and duplicate-free confirmation. R3 is closed.
 
-Add or identify focused named evidence for these assertions and map each assertion (including subcases) to exact tests/checks in the Build Report. Existing broad gates are still required, but a green aggregate suite alone is not evidence for a matrix row. Keep unsupported assertions PARTIAL/NOT RUN rather than claiming PASS.
+### Closed — R4 matrix evidence and validation gates
+
+The Build Report now maps named evidence to AT3a/b, AT6a/b, AT7, AT8, and AT9; the cited tests cover the required subassertions described there. Both exact `validate:pr` and `validate:rc` runs report PASS. The correction evidence is acceptable for those rows.
+
+### Closed — R5 AT10 horizontal overflow on People and permissions
+
+The correction constrains fieldsets, form controls, choice rows, and People focused layouts. The named AT10 browser test now checks both document scroll width and in-flow element bounds against the viewport, including People add-person and permissions at 360px; its setup/guided journey checks document overflow at 360px. The focused AT10 reruns pass. The new assertion is meaningful for the previously reported issue: it catches both scrollable document overflow and in-flow content extending beyond the viewport.
+
+The ≥36px target and focus checks remain. Engineering reports the focused Chromium AT10 journeys passing and exact `npm run validate:pr` and `npm run validate:rc` passing on this tree. AT10 is accepted.
+
+## Disposition
+
+All required evidence rows in P0-008E r1 are now sufficiently mapped and demonstrated. Technical acceptance is **ACCEPTED**. Product acceptance remains with the Project Lead after hands-on evaluation; this does not authorize deployment or merge.
 
 ## Acceptance boundary
 
 - This is a code/evidence correction under the existing r1 contract; no readiness rerun or brief revision is needed.
 - Preserve P0-008A–D protected behavior and keep `/` routing out of scope.
-- After the focused corrections, rerun exact `npm run validate:pr` and `npm run validate:rc`, and update the Build Report with the corrected-tree evidence and honest per-assertion results.
-- No deploy, merge, or commit is authorized by this review.
+- Engineering reports exact PR/RC gates PASS; Architecture inspected the named AT10 assertions and report mapping but did not independently rerun the full suites.
+- No deploy or merge is authorized by this review. Project Lead owns Git operations.

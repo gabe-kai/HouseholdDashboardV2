@@ -56,6 +56,7 @@ body,
 #root {
   margin: 0;
   min-height: 100%;
+  max-width: 100%;
   background: var(--bg);
   color: var(--text);
 }
@@ -112,7 +113,8 @@ textarea {
 }
 
 .app-shell {
-  max-width: 720px;
+  max-width: min(720px, 100%);
+  min-width: 0;
   margin: 0 auto;
   padding: var(--space-4);
   padding-bottom: calc(var(--space-6) + env(safe-area-inset-bottom, 0px));
@@ -210,6 +212,11 @@ textarea {
   font-size: var(--font-size-xl);
   line-height: var(--line-tight);
   font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.focus-heading {
+  overflow-wrap: anywhere;
 }
 
 .page-heading + .meta,
@@ -226,12 +233,14 @@ textarea {
 .btn-ghost {
   min-height: var(--touch);
   min-width: var(--touch);
+  max-width: 100%;
   padding: 0.55rem 0.9rem;
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
   cursor: pointer;
+  overflow-wrap: anywhere;
 }
 
 .btn-primary,
@@ -341,6 +350,7 @@ textarea {
   bottom: 0;
   z-index: 30;
   justify-content: space-around;
+  flex-wrap: wrap;
   gap: 0;
   padding: var(--space-1) var(--space-2) calc(var(--space-1) + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--border);
@@ -352,6 +362,7 @@ textarea {
   flex: 1 1 auto;
   min-height: var(--touch);
   min-width: var(--touch);
+  max-width: 100%;
   padding: 0.45rem 0.65rem;
   border: 0;
   border-radius: var(--radius);
@@ -359,12 +370,17 @@ textarea {
   color: var(--text-muted);
   font-weight: 600;
   cursor: pointer;
+  overflow-wrap: anywhere;
 }
 
 .primary-nav--bottom .nav-item {
   display: grid;
   place-items: center;
+  min-width: 0;
+  flex: 1 1 4rem;
+  padding: 0.45rem 0.25rem;
   font-size: var(--font-size-sm);
+  text-align: center;
 }
 
 .nav-item[aria-current="page"] {
@@ -462,6 +478,8 @@ textarea {
   border: 0;
   padding: 0;
   margin-bottom: var(--space-5);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .profile-grid {
@@ -656,7 +674,9 @@ legend {
 
 .form-grid input,
 .form-grid select,
-.form-grid textarea {
+.form-grid textarea,
+input[type="date"],
+input[type="time"] {
   min-height: var(--touch);
   min-width: 0;
   max-width: 100%;
@@ -664,6 +684,11 @@ legend {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
+}
+
+input[type="date"],
+input[type="time"] {
+  width: 100%;
 }
 
 /* Choice rows must win over `.form-grid label { display: grid }` so the
@@ -799,11 +824,19 @@ legend {
 .task-list li,
 .simple-list li {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
+  min-width: 0;
   border-bottom: 1px solid var(--border);
   padding: 0.4rem 0;
+}
+
+.task-list li > *,
+.simple-list li > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .task-toggle {
@@ -1093,6 +1126,8 @@ legend {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* Secondary actions in People & Groups focused flows meet --touch. */
@@ -1101,12 +1136,14 @@ legend {
 .people-groups .form-grid .button-row > button {
   min-height: var(--touch);
   min-width: var(--touch);
+  max-width: 100%;
   padding: 0.55rem 0.9rem;
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
   cursor: pointer;
+  overflow-wrap: anywhere;
 }
 
 .people-groups .button-row > button.primary,
@@ -1463,6 +1500,8 @@ legend {
   display: grid;
   gap: var(--space-1);
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: var(--touch);
   padding: var(--space-3);
   border: 1px solid var(--border);
@@ -1471,6 +1510,13 @@ legend {
   text-align: left;
   color: inherit;
   cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.section-summary-row strong,
+.section-summary-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .section-summary-row strong {
@@ -1525,6 +1571,7 @@ legend {
 .topbar-identity .view-title {
   font-size: var(--font-size-lg);
   line-height: var(--line-tight);
+  overflow-wrap: anywhere;
 }
 
 .topbar-identity .meta {
@@ -2096,6 +2143,7 @@ legend {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: color-mix(in srgb, var(--surface) 92%, var(--accent, #4a6b4a));
+  overflow-wrap: anywhere;
 }
 
 .optional-details summary {

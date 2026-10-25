@@ -1,17 +1,21 @@
-# Build Report - BRIEF P0-008E r1 (Architecture FIX REQUIRED — AT10 overflow)
+# Build Report - BRIEF P0-008E r1 (CI AT10 200% overflow)
 
 **Acting as:** Engineering
 **Brief revision implemented:** 1
-**Engineering status:** IMPLEMENTED — awaiting Architecture re-review
+**Engineering status:** IMPLEMENTED — CI overflow correction on the accepted r1 tree
 **Branch:** `brief/p0-008e-clear-first-run-and-one-view-editing`
-**Baseline:** Architecture FIX REQUIRED (fourth review) in `reports/P0-008E-r1-architecture-review.md` (R5 AT10 overflow)
+**Baseline:** Architecture technical acceptance of r1; GitHub `e2e-phone-core` then failed AT10 at 200% text
 **Authorization:** code/evidence correction under existing r1; no deployment, merge, or commit
 **Pull request:** not opened by this Build Report
 **Out of scope retained:** `/` routing anomaly
 
-## Correction summary
+## CI correction (200% text)
 
-R5 required People add-person and permissions to satisfy AT10's no-horizontal-overflow rule, not only keyboard/focus/target size. UA `fieldset` `min-width: min-content` and unwrapped choice-row text were stretching those forms past the phone viewport. This pass constrains fieldsets, form controls, choice rows, and the People focused layouts, and AT10 now measures both `documentElement.scrollWidth` and in-flow boxes that extend past `window.innerWidth`. Keyboard, focus, and ≥36px target checks remain.
+Linux Chromium CI failed `AT10: 360/768/1280 and 200% text keep 008E editors usable without horizontal clip` with `documentElement.scrollWidth` wider than the viewport after `html { font-size: 200% }` at 390×844. Rem-scaled padding plus unwrapped min-content (preview rows, long action labels, bottom-nav items, native date fields) can exceed the phone content width on Linux fonts even when Windows local runs pass.
+
+This pass keeps the existing document-width and in-flow box assertions. It constrains the shell and 008E editors so large text wraps instead of widening the page: `min-width: 0` / `max-width: 100%` / `overflow-wrap: anywhere` on the app shell, headings, one-view rows, preview lists, editor buttons, and live preview; bottom-nav items may wrap; date/time inputs are width-limited. The AT10 failure message now includes measured `scrollWidth`/`clientWidth`.
+
+R5 People fieldset/choice-row wrap remains. Keyboard, focus, and ≥36px target checks remain.
 
 - **AT10:** Named Chromium journey asserts overflow on responsibility (360/768/1280 and 200% text), Routine, People add-person, and permissions at 360px, plus usable/focusable controls. Setup/guided-work 008a walk still asserts document overflow and touch targets.
 
@@ -38,14 +42,17 @@ R5 required People add-person and permissions to satisfy AT10's no-horizontal-ov
 
 ## Focused correction verification (pre-gate)
 
-- `npx playwright test --project=chromium tests/e2e/z-p0-008e-ux.spec.ts -g "AT10:"` after the fieldset/choice-row wrap — **1 passed**
+- `npx playwright test --project=chromium tests/e2e/z-p0-008e-ux.spec.ts -g "AT10:"` after 200% wrap CSS — **1 passed**
 - `npx playwright test --project=chromium-008a tests/e2e/z-p0-008e-setup.spec.ts -g "AT10:"` — **1 passed**
+- `npx playwright test --project=chromium tests/e2e/z-p0-006a-geometry.spec.ts` — **1 passed**
+- Exact CI shard `npx playwright test --project=chromium --grep-invert "P0-007"` — **42 passed (3.8m)**
 - Hosted / physical — **NOT RUN**
 
 ## Exact gates (correction tree)
 
-- `npm run validate:pr` — **PASS** (exit 0). Lint/typecheck; unit **351 passed** / 49 files; Playwright Chromium projects **135 passed (10.1m)**; Vite deep-link **6 passed (20.5s)**
-- `npm run validate:rc` — **PASS** (exit 0). Unit **351 passed** / 49 files; Playwright all projects **207 passed (17.1m)**; Vite deep-link **6 passed (14.5s)**
+- Exact CI `e2e-phone-core` shard (above) — **PASS**
+- `npm run validate:pr` — **NOT RUN** on this 200% wrap tree (prior accepted tree reported PASS, then Linux CI failed AT10)
+- `npm run validate:rc` — **NOT RUN** on this 200% wrap tree
 
 Playwright `globalTimeout` remains 45 minutes. AT5 still restores temporarily demoted essential managers so the shared seeded e2e household is not left without peer managers.
 

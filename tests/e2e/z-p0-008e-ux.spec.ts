@@ -131,10 +131,15 @@ async function assertNoHorizontalOverflow(page: Page, label: string) {
     }
     return {
       documentWider: root.scrollWidth > root.clientWidth + 1,
+      scrollWidth: root.scrollWidth,
+      clientWidth: root.clientWidth,
       overflowing: overflowing.slice(0, 8),
     };
   });
-  expect(result.documentWider, `${label} document scrollWidth`).toBe(false);
+  expect(
+    result.documentWider,
+    `${label} document scrollWidth ${result.scrollWidth}>${result.clientWidth}`,
+  ).toBe(false);
   expect(result.overflowing, `${label} overflowing boxes`).toEqual([]);
 }
 

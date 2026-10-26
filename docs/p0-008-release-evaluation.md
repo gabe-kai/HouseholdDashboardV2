@@ -2,7 +2,7 @@
 
 Prepared by Architecture on 2026-10-12 and refreshed on 2026-10-15 for **P0-008D r2**. This is the release/evaluation plan, not a record of completed hosted checks. Local technical acceptance is complete at `c5f9867`; the focused D integration suite passed 27/27, and Engineering reports `validate:pr` / `validate:rc` PASS. Architecture did not rerun the full gates. Product/Project Lead owns hands-on judgment.
 
-**Current evidence:** A–C are technically accepted and merged at `1709097`; D r2 is technically accepted on branch `brief/p0-008d-guided-first-household-day` at `c5f9867`; see `reports/P0-008D-r2-architecture-acceptance.md`. Local contract/evidence gaps are closed. Hosted adoption/reset/restore and the uninterrupted full Product session remain **NOT RUN**. The actual Railway dataset, storage layout and deployed commit still require inspection before this candidate is deployed or any live data is changed.
+**Current evidence (2026-10-15):** A–C are technically accepted and merged at `1709097`; D r2 is technically accepted and merged through PR #27 at `65e1949`; see `reports/P0-008D-r2-architecture-acceptance.md`. The Project Lead reports hosted first-run setup, app backup, reset, restore and post-restart persistence succeeded. Exact deployed SHA, active database/schema/volume inspection, full access-revocation checks, and the complete uninterrupted journey were not recorded. Usability findings and the root-route anomaly are in `evaluations/p0-008-project-lead-evaluation-2026-10-15.md`; overall Product acceptance is pending.
 
 ### Runnable local paths (accepted D r2 candidate)
 
@@ -22,7 +22,7 @@ Prepared by Architecture on 2026-10-12 and refreshed on 2026-10-15 for **P0-008D
 
 - Engineering reports the isolated integration, UI, populated-restore, `validate:pr` and `validate:rc` evidence in `reports/P0-008D-r2-build-report.md`.
 - Architecture accepted the exact brief revision after independently rerunning the focused D integration suite (27/27); full PR/RC gates were not rerun by Architecture.
-- The current Project Lead commit is `c5f9867`. Before deployment, publish/integrate the branch according to the Project Lead's Git workflow, wait for the required GitHub Actions checks, and select the exact merged SHA as the hosted candidate.
+- P0-008D was merged to `main` via PR #27 at `65e1949`. The Project Lead reports Railway auto-deployed after the merge and completed first-run, backup, reset, restore, and container-restart checks. The exact deployed SHA was not recorded; do not equate the merge SHA with the deployed artifact without checking Railway's deployment record.
 
 Implementation does not require deploying iterations. Local/LAN physical testing can reveal usability problems before any release.
 
@@ -58,4 +58,4 @@ The observer records friction and confidence as well as correctness: visibility 
 - **Project Lead evaluation:** dated file in `evaluations/` using `templates/EVALUATION_REPORT_TEMPLATE.md` when useful; record actual KEEP/CHANGE/DEFER decision and observations. An agent may organize supplied feedback but cannot invent the session or approval.
 - **Card:** `Set up and manage my household without operator help` moves to Ready to Evaluate at D technical acceptance and to Accepted only after Project Lead acceptance. Defects violating the brief return to Engineering; changes to intended experience go to Product/Design.
 
-Pending hosted/manual evidence remains explicitly pending even when local technical acceptance passes. No current item above has been represented as a hosted PASS.
+Hosted results in this document are limited to the Project Lead-reported observations identified above. Other unreported checks remain unverified; do not upgrade them to PASS by inference. Follow-up Design work and the root-route reproduction remain separate from the completed reset/restore flow.

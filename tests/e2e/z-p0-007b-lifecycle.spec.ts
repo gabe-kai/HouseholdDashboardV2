@@ -9,6 +9,7 @@ import {
   ensureManagerSession,
   expectSignedInAs,
   fillResponsibilityBaseSteps,
+  openAccountablePicker,
   openResponsibilitySection,
   pickAccountablePerson,
   revealChecklist,
@@ -146,7 +147,7 @@ test.describe("P0-007B AT9 scheduled-work lifecycle", () => {
 
     await openResponsibilitySection(page, "Who");
     await chooseAssignmentMode(page, "Fixed person");
-    await page.getByRole("button", { name: /Choose accountable person/i }).click();
+    await openAccountablePicker(page);
     await pickAccountablePerson(page, "Avery");
     await page.getByRole("button", { name: "Done", exact: true }).click();
 
@@ -271,7 +272,7 @@ test.describe("P0-007B AT9 scheduled-work lifecycle", () => {
     await page.getByLabel("Starting").fill(day2);
     await openResponsibilitySection(page, "Who");
     await chooseAssignmentMode(page, "Fixed person");
-    await page.getByRole("button", { name: /Choose accountable person|Avery|Casey|Jordan/i }).click();
+    await openAccountablePicker(page, "Avery|Casey|Jordan");
     await pickAccountablePerson(page, "Casey");
     await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("button", { name: /^Save$/i }).click();
@@ -283,7 +284,7 @@ test.describe("P0-007B AT9 scheduled-work lifecycle", () => {
     await page.getByLabel("Starting").fill(day4);
     await openResponsibilitySection(page, "Who");
     await chooseAssignmentMode(page, "Fixed person");
-    await page.getByRole("button", { name: /Choose accountable person|Avery|Casey|Jordan/i }).click();
+    await openAccountablePicker(page, "Avery|Casey|Jordan");
     await pickAccountablePerson(page, "Jordan");
     await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("button", { name: /^Save$/i }).click();

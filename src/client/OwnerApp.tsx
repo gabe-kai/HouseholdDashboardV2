@@ -219,7 +219,18 @@ export function OwnerApp() {
                   />
                 </label>
                 <p className="meta">Expires {new Date(invitation.expiresAt).toLocaleString()}</p>
+                <p className="meta">
+                  Installation-owner configuration is a one-time installation prerequisite — not
+                  repeated for ordinary code deployments. This invitation can be used once.
+                </p>
                 <div className="button-row">
+                  <a
+                    className="primary button-link"
+                    href={invitation.link}
+                    data-testid="owner-open-setup"
+                  >
+                    Open setup
+                  </a>
                   <button type="button" onClick={() => void copyInviteLink()} disabled={busy}>
                     {copied ? "Copied" : "Copy link"}
                   </button>

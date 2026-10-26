@@ -9,6 +9,7 @@ import {
   ensureManagerSession,
   expectSignedInAs,
   fillResponsibilityBaseSteps,
+  openAccountablePicker,
   openResponsibilitySection,
   pickAccountablePerson,
   pinTodayFetches,
@@ -322,7 +323,7 @@ test.describe("P0-007B Kitchen and Bathroom journeys", () => {
     await page.getByRole("button", { name: "Done", exact: true }).click();
     await openResponsibilitySection(page, "Who");
     await chooseAssignmentMode(page, "Fixed person");
-    await page.getByRole("button", { name: /Choose accountable person/i }).click();
+    await openAccountablePicker(page);
     await pickAccountablePerson(page, "Jordan");
     await page.getByRole("button", { name: "Done", exact: true }).click();
     await fillResponsibilityBaseSteps(page, ["Sink", "Mirror", "Toilet", "Floor"]);

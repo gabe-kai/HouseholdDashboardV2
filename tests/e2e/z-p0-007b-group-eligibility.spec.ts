@@ -7,6 +7,7 @@ import {
   confirmResponsibilitySaveIfNeeded,
   ensureManagerSession,
   expectSignedInAs,
+  openAccountablePicker,
   openResponsibilitySection,
   pickAccountablePerson,
   sessionDisplayName,
@@ -284,7 +285,7 @@ test.describe("P0-007B AT7 group eligibility", () => {
     await page.getByRole("button", { name: "Edit", exact: true }).click();
     await openResponsibilitySection(page, "Who");
     await chooseAssignmentMode(page, "Fixed person");
-    await page.getByRole("button", { name: /Choose accountable person|Avery/i }).click();
+    await openAccountablePicker(page, "Avery|Casey|Jordan");
     await pickAccountablePerson(page, "Avery");
     await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("button", { name: "Save", exact: true }).click();

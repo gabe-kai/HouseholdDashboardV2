@@ -56,6 +56,7 @@ body,
 #root {
   margin: 0;
   min-height: 100%;
+  max-width: 100%;
   background: var(--bg);
   color: var(--text);
 }
@@ -112,7 +113,8 @@ textarea {
 }
 
 .app-shell {
-  max-width: 720px;
+  max-width: min(720px, 100%);
+  min-width: 0;
   margin: 0 auto;
   padding: var(--space-4);
   padding-bottom: calc(var(--space-6) + env(safe-area-inset-bottom, 0px));
@@ -210,6 +212,11 @@ textarea {
   font-size: var(--font-size-xl);
   line-height: var(--line-tight);
   font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.focus-heading {
+  overflow-wrap: anywhere;
 }
 
 .page-heading + .meta,
@@ -226,12 +233,14 @@ textarea {
 .btn-ghost {
   min-height: var(--touch);
   min-width: var(--touch);
+  max-width: 100%;
   padding: 0.55rem 0.9rem;
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
   cursor: pointer;
+  overflow-wrap: anywhere;
 }
 
 .btn-primary,
@@ -274,6 +283,7 @@ textarea {
 
 .list-row {
   width: 100%;
+  min-width: 0;
   min-height: var(--touch);
   display: grid;
   gap: 0.15rem;
@@ -284,6 +294,7 @@ textarea {
   background: transparent;
   color: inherit;
   cursor: pointer;
+  overflow-wrap: anywhere;
 }
 
 .list-row:hover,
@@ -339,8 +350,10 @@ textarea {
   left: 0;
   right: 0;
   bottom: 0;
+  /* Below More/toast (40). Raising this above menus makes Delete/End unclickable. */
   z-index: 30;
   justify-content: space-around;
+  flex-wrap: nowrap;
   gap: 0;
   padding: var(--space-1) var(--space-2) calc(var(--space-1) + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--border);
@@ -352,6 +365,7 @@ textarea {
   flex: 1 1 auto;
   min-height: var(--touch);
   min-width: var(--touch);
+  max-width: 100%;
   padding: 0.45rem 0.65rem;
   border: 0;
   border-radius: var(--radius);
@@ -359,12 +373,18 @@ textarea {
   color: var(--text-muted);
   font-weight: 600;
   cursor: pointer;
+  overflow-wrap: anywhere;
 }
 
 .primary-nav--bottom .nav-item {
   display: grid;
   place-items: center;
+  min-width: 0;
+  flex: 1 1 0;
+  padding: 0.45rem 0.25rem;
   font-size: var(--font-size-sm);
+  text-align: center;
+  line-height: 1.15;
 }
 
 .nav-item[aria-current="page"] {
@@ -378,8 +398,10 @@ textarea {
 }
 
 .household-nav .list-row {
+  min-width: 0;
   font-size: 1.05rem;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .household-nav .list-row .meta {
@@ -462,6 +484,8 @@ textarea {
   border: 0;
   padding: 0;
   margin-bottom: var(--space-5);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .profile-grid {
@@ -634,6 +658,18 @@ textarea {
 .form-grid {
   display: grid;
   gap: var(--space-3);
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* UA fieldset min-width: min-content stretches phone forms past the viewport. */
+fieldset {
+  min-width: 0;
+  max-width: 100%;
+}
+
+legend {
+  overflow-wrap: anywhere;
 }
 
 .form-grid label {
@@ -644,12 +680,21 @@ textarea {
 
 .form-grid input,
 .form-grid select,
-.form-grid textarea {
+.form-grid textarea,
+input[type="date"],
+input[type="time"] {
   min-height: var(--touch);
+  min-width: 0;
+  max-width: 100%;
   padding: 0.5rem 0.65rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
+}
+
+input[type="date"],
+input[type="time"] {
+  width: 100%;
 }
 
 /* Choice rows must win over `.form-grid label { display: grid }` so the
@@ -661,11 +706,18 @@ textarea {
   align-items: center;
   gap: 0.65rem;
   width: 100%;
+  min-width: 0;
   box-sizing: border-box;
   min-height: var(--touch);
   padding: 0.45rem 0.35rem;
   font-weight: 500;
+  overflow-wrap: anywhere;
   cursor: pointer;
+}
+
+.choice-row > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .form-grid label.choice-row input[type="radio"],
@@ -778,11 +830,19 @@ textarea {
 .task-list li,
 .simple-list li {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
+  min-width: 0;
   border-bottom: 1px solid var(--border);
   padding: 0.4rem 0;
+}
+
+.task-list li > *,
+.simple-list li > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .task-toggle {
@@ -973,6 +1033,7 @@ textarea {
 
 .person-row {
   width: 100%;
+  min-width: 0;
   min-height: var(--touch);
   display: grid;
   gap: 0.15rem;
@@ -983,6 +1044,7 @@ textarea {
   background: transparent;
   color: inherit;
   cursor: pointer;
+  overflow-wrap: anywhere;
 }
 
 .person-row.selected {
@@ -1053,6 +1115,12 @@ textarea {
   color: var(--text-muted);
 }
 
+.focused-state,
+.people-groups {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .focused-state .form-grid {
   margin-top: var(--space-2);
 }
@@ -1066,6 +1134,8 @@ textarea {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* Secondary actions in People & Groups focused flows meet --touch. */
@@ -1074,12 +1144,14 @@ textarea {
 .people-groups .form-grid .button-row > button {
   min-height: var(--touch);
   min-width: var(--touch);
+  max-width: 100%;
   padding: 0.55rem 0.9rem;
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
   cursor: pointer;
+  overflow-wrap: anywhere;
 }
 
 .people-groups .button-row > button.primary,
@@ -1380,7 +1452,7 @@ textarea {
   position: absolute;
   right: 0;
   top: calc(100% + var(--space-1));
-  z-index: 40;
+  z-index: 60;
   min-width: 11rem;
   padding: var(--space-1);
   border: 1px solid var(--border);
@@ -1436,6 +1508,8 @@ textarea {
   display: grid;
   gap: var(--space-1);
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: var(--touch);
   padding: var(--space-3);
   border: 1px solid var(--border);
@@ -1444,6 +1518,13 @@ textarea {
   text-align: left;
   color: inherit;
   cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.section-summary-row strong,
+.section-summary-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .section-summary-row strong {
@@ -1498,6 +1579,7 @@ textarea {
 .topbar-identity .view-title {
   font-size: var(--font-size-lg);
   line-height: var(--line-tight);
+  overflow-wrap: anywhere;
 }
 
 .topbar-identity .meta {
@@ -2053,10 +2135,64 @@ textarea {
 }
 
 .guide-preview {
-  max-height: 12rem;
+  max-height: 14rem;
   overflow: auto;
-  pointer-events: none;
-  white-space: pre-wrap;
+}
+
+.live-work-preview,
+.permission-change-summary,
+.optional-details {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  max-width: 100%;
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface) 92%, var(--accent, #4a6b4a));
+  overflow-wrap: anywhere;
+}
+
+.optional-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  min-height: var(--touch);
+  display: flex;
+  align-items: center;
+}
+
+.section-summary-expanded {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.section-summary-row--static {
+  cursor: default;
+}
+
+.section-inline-panel {
+  padding: var(--space-3);
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.permissions-editor-layout {
+  gap: var(--space-4);
+}
+
+.timezone-picker {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.one-view-summary {
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .guide-people-list {

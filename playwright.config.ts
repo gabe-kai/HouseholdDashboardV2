@@ -52,7 +52,8 @@ export default defineConfig({
   retries: 0,
   workers: 1,
   timeout: 120_000,
-  globalTimeout: 30 * 60_000,
+  // Chromium + WebKit + 008a/desktop/display; 008E named suites need headroom.
+  globalTimeout: 45 * 60_000,
   expect: { timeout: 20_000 },
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
@@ -126,6 +127,7 @@ export default defineConfig({
         "**/z-p0-008b-*.spec.ts",
         "**/z-p0-008c-*.spec.ts",
         "**/z-p0-008d-*.spec.ts",
+        "**/z-p0-008e-setup.spec.ts",
       ],
       use: { ...devices["Pixel 7"], baseURL: chromiumURL },
     },
@@ -136,6 +138,7 @@ export default defineConfig({
         "**/z-p0-008b-*.spec.ts",
         "**/z-p0-008c-*.spec.ts",
         "**/z-p0-008d-*.spec.ts",
+        "**/z-p0-008e-setup.spec.ts",
       ],
       testIgnore: [
         "**/z-p0-008a-desktop-setup.spec.ts",
@@ -196,6 +199,7 @@ export default defineConfig({
         "**/z-p0-008b-*.spec.ts",
         "**/z-p0-008c-*.spec.ts",
         "**/z-p0-008d-*.spec.ts",
+        "**/z-p0-008e-setup.spec.ts",
       ],
       use: { ...devices["iPhone 13"], baseURL: webkitURL },
     },

@@ -19,6 +19,7 @@ import {
   fetchRoutines,
   fetchSession,
   moveScheduleEntry,
+  previewDraftRoutine,
   type ApiError,
   type PlanRefineOutcome,
   type Routine,
@@ -34,6 +35,7 @@ import {
   StepRowEditor,
   StepsSectionEditor,
   WhenSectionEditor,
+  type EditorFocus as SharedEditorFocus,
 } from "./RoutineFocusedEditor";
 
 /** Client copy of domain DAYPART_LABELS (avoid domain import in client bundle). */
@@ -350,12 +352,7 @@ function confirmDiscard(): boolean {
   );
 }
 
-type EditorFocus =
-  | null
-  | "name"
-  | "when"
-  | "steps"
-  | { kind: "step"; index: number; localId: string };
+type EditorFocus = SharedEditorFocus;
 
 type RoutinesRoute =
   | { kind: "list" }
@@ -409,11 +406,14 @@ export function RoutinesView(props: {
     occupiedDate: string;
     conflictingScheduleEntryId: string;
   } | null>(null);
+  const [editorPreviewText, setEditorPreviewText] = useState<string | null>(null);
+  const [editorPreviewError, setEditorPreviewError] = useState<string | null>(null);
   const listGenerationRef = useRef(0);
   const detailGenerationRef = useRef(0);
   const selectedDefinitionRef = useRef<string | null>(null);
   const editorHouseholdDateRef = useRef(props.today);
   const moreMenuRef = useRef<HTMLDivElement>(null);
+  const editorPreviewGenRef = useRef(0);
 
   const dirty =
     (baselineSnapshot !== "" && draftSnapshot(draft) !== baselineSnapshot) ||
@@ -687,19 +687,8 @@ export function RoutinesView(props: {
     setPickerMembers([...draft.assigneeMemberIds]);
     setPickerGroups([...draft.assigneeGroupIds]);
     setError(null);
-    if (view.kind === "create") {
-      setView({ kind: "picker", returnTo: "create" });
-      return;
-    }
-    if (view.kind === "edit") {
-      setView({
-        kind: "picker",
-        returnTo: "edit",
-        definitionId: view.definitionId,
-        editMode: view.mode,
-        scheduleEntryId: view.scheduleEntryId,
-      });
-    }
+    setSectionDraft(null);
+    setEditorFocus("who");
   }
 
   function applyPicker(event: FormEvent) {
@@ -714,20 +703,23 @@ export function RoutinesView(props: {
       assigneeGroupIds: pickerGroups,
     }));
     setError(null);
-    if (view.kind !== "picker") return;
-    if (view.returnTo === "create") setView({ kind: "create" });
-    else if (view.definitionId && view.editMode) {
-      setView({
-        kind: "edit",
-        definitionId: view.definitionId,
-        mode: view.editMode,
-        scheduleEntryId: view.scheduleEntryId,
-      });
+    setEditorFocus(null);
+    if (view.kind === "picker") {
+      if (view.returnTo === "create") setView({ kind: "create" });
+      else if (view.definitionId && view.editMode) {
+        setView({
+          kind: "edit",
+          definitionId: view.definitionId,
+          mode: view.editMode,
+          scheduleEntryId: view.scheduleEntryId,
+        });
+      }
     }
   }
 
   function cancelPicker() {
     setError(null);
+    setEditorFocus(null);
     if (view.kind !== "picker") return;
     if (view.returnTo === "create") setView({ kind: "create" });
     else if (view.definitionId && view.editMode) {
@@ -764,15 +756,15 @@ export function RoutinesView(props: {
     return true;
   }
 
-  function mutationPayload() {
+  function mutationPayloadFrom(source: Draft) {
     return {
       mutationId: newClientId(),
-      title: draft.title.trim(),
-      daypart: draft.daypart,
-      weekdays: draft.weekdays,
-      assigneeMemberIds: draft.assigneeMemberIds,
-      assigneeGroupIds: draft.assigneeGroupIds,
-      steps: draft.steps.map((step) => {
+      title: source.title.trim(),
+      daypart: source.daypart,
+      weekdays: source.weekdays,
+      assigneeMemberIds: source.assigneeMemberIds,
+      assigneeGroupIds: source.assigneeGroupIds,
+      steps: source.steps.map((step) => {
         const rule = normalizeApplicability(step.applicability ?? DEFAULT_APPLICABILITY);
         return {
           text: step.text.trim(),
@@ -783,6 +775,52 @@ export function RoutinesView(props: {
       }),
     };
   }
+
+  function mutationPayload() {
+    return mutationPayloadFrom(draft);
+  }
+
+  const editorOpen = view.kind === "create" || view.kind === "edit";
+  const editorPreviewSource = sectionDraft ?? draft;
+  const editorPreviewKey = editorOpen ? draftSnapshot(editorPreviewSource) : "";
+  useEffect(() => {
+    if (!editorOpen) {
+      setEditorPreviewText(null);
+      setEditorPreviewError(null);
+      return;
+    }
+    const generation = ++editorPreviewGenRef.current;
+    const payload = mutationPayloadFrom(editorPreviewSource);
+    const handle = window.setTimeout(() => {
+      void previewDraftRoutine(payload)
+        .then((result) => {
+          if (generation !== editorPreviewGenRef.current) return;
+          const applicable = result.preview.filter((day) => day.applicable);
+          const lines: string[] = [];
+          if (applicable.length === 0) {
+            lines.push(
+              result.nextKnownDate
+                ? `Next known date: ${result.nextKnownDate}`
+                : result.noKnownReason ?? "No upcoming applicable dates in the preview window.",
+            );
+          } else {
+            for (const day of applicable.slice(0, 5)) {
+              lines.push(
+                `${day.householdDate}: ${day.participantNames.join(", ") || "—"} · ${(day.stepTexts ?? []).join(" → ") || `${day.stepCount} steps`}`,
+              );
+            }
+          }
+          setEditorPreviewText(lines.join("\n"));
+          setEditorPreviewError(null);
+        })
+        .catch((caught) => {
+          if (generation !== editorPreviewGenRef.current) return;
+          setEditorPreviewError(caught instanceof Error ? caught.message : String(caught));
+          setEditorPreviewText(null);
+        });
+    }, 350);
+    return () => window.clearTimeout(handle);
+  }, [editorOpen, editorPreviewKey]);
 
   async function saveCreate() {
     if (busy || !validateDraft()) return;
@@ -1250,7 +1288,7 @@ export function RoutinesView(props: {
             : "Edit routine";
     const working = sectionDraft ?? draft;
     const workingIds =
-      sectionDraft && editorFocus === "steps"
+      sectionDraft && (editorFocus === "steps" || (typeof editorFocus === "object" && editorFocus?.kind === "step"))
         ? ensureStepLocalIds(sectionDraft.steps)
         : stepLocalIds.length === draft.steps.length
           ? stepLocalIds
@@ -1264,6 +1302,10 @@ export function RoutinesView(props: {
           setStepLocalIds(ensureStepLocalIds(draft.steps));
         }
         setEditorFocus(focus);
+        return;
+      }
+      if (focus === "who") {
+        openPicker();
         return;
       }
       setEditorFocus(focus);
@@ -1322,103 +1364,143 @@ export function RoutinesView(props: {
       setError(null);
     }
 
-    if (editorFocus === "name" && sectionDraft) {
-      return (
-        <section className="panel people-groups routines-view">
-          <div className="focused-state" aria-labelledby="routine-name-heading">
-            <BackButton label={`Back to ${heading}`} onClick={cancelSection} />
-            <FocusHeading id="routine-name-heading">Edit name</FocusHeading>
-            {error ? <p role="alert">{error}</p> : null}
-            <NameSectionEditor
-              value={sectionDraft.title}
-              onChange={(title) => setSectionDraft({ ...sectionDraft, title })}
-              onDone={doneName}
-              onCancel={cancelSection}
-            />
-          </div>
-        </section>
-      );
-    }
+    const stepFocus =
+      editorFocus !== null && typeof editorFocus === "object" && editorFocus.kind === "step"
+        ? editorFocus
+        : null;
+    const stepIndex =
+      stepFocus && sectionDraft
+        ? (() => {
+            const index = sectionDraft.steps.findIndex(
+              (_, i) =>
+                (stepLocalIds[i] ?? ensureStepLocalIds(sectionDraft.steps)[i]) ===
+                stepFocus.localId,
+            );
+            return index >= 0 ? index : stepFocus.index;
+          })()
+        : -1;
+    const activeStep = stepIndex >= 0 && sectionDraft ? sectionDraft.steps[stepIndex] : null;
 
-    if (editorFocus === "when" && sectionDraft) {
-      return (
-        <section className="panel people-groups routines-view">
-          <div className="focused-state" aria-labelledby="routine-when-heading">
-            <BackButton label={`Back to ${heading}`} onClick={cancelSection} />
-            <FocusHeading id="routine-when-heading">Edit when</FocusHeading>
-            {error ? <p role="alert">{error}</p> : null}
-            <WhenSectionEditor
-              daypart={sectionDraft.daypart}
-              weekdays={sectionDraft.weekdays}
-              onChange={(next) => setSectionDraft({ ...sectionDraft, ...next })}
-              onDone={doneWhen}
-              onCancel={cancelSection}
-            />
-          </div>
-        </section>
-      );
-    }
-
-    if (
-      editorFocus !== null &&
-      typeof editorFocus === "object" &&
-      editorFocus.kind === "step" &&
-      sectionDraft
-    ) {
-      const index = sectionDraft.steps.findIndex(
-        (_, i) => (stepLocalIds[i] ?? ensureStepLocalIds(sectionDraft.steps)[i]) === editorFocus.localId,
-      );
-      const stepIndex = index >= 0 ? index : editorFocus.index;
-      const step = sectionDraft.steps[stepIndex];
-      if (!step) {
-        return (
-          <section className="panel people-groups routines-view">
-            <p className="meta">Step unavailable.</p>
-            <button type="button" onClick={() => setEditorFocus("steps")}>
-              Back to Steps
+    const whoPanel =
+      editorFocus === "who" ? (
+        <form className="form-grid" onSubmit={applyPicker} data-testid="routine-who-inline">
+          <FocusHeading id="participation-picker-heading">Who does this routine?</FocusHeading>
+          <p className="meta">
+            Selecting people or groups updates this draft only. The routine is not saved until you
+            choose Save.
+          </p>
+          <fieldset>
+            <legend>Groups</legend>
+            {groups.length === 0 ? (
+              <p className="meta">No groups yet. Create one in People &amp; Groups.</p>
+            ) : (
+              <ul className="people-list">
+                {groups.map((group) => {
+                  const selected = pickerGroups.includes(group.id);
+                  const line = groupMemberLine(group, props.memberships);
+                  return (
+                    <li key={group.id}>
+                      <label className={`choice-row person-row ${selected ? "selected" : ""}`}>
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={() => {
+                            const nextSelected = !selected;
+                            setPickerGroups((current) =>
+                              nextSelected
+                                ? [...current, group.id]
+                                : current.filter((id) => id !== group.id),
+                            );
+                            if (nextSelected) {
+                              setPickerMembers((members) =>
+                                members.filter((id) => !group.membershipIds.includes(id)),
+                              );
+                            }
+                          }}
+                        />
+                        <span>
+                          <span className="person-name">{group.name}</span>
+                          <span className="meta">
+                            Today: {line.today}
+                            {line.pending ? ` · ${line.pending}` : ""}
+                            {" · "}
+                            one routine per member
+                          </span>
+                        </span>
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </fieldset>
+          <fieldset>
+            <legend>People</legend>
+            <ul className="people-list">
+              {props.memberships.map((person) => {
+                const covered = pickerGroups.some((groupId) =>
+                  groups.find((group) => group.id === groupId)?.membershipIds.includes(person.id),
+                );
+                const selected = pickerMembers.includes(person.id) || covered;
+                return (
+                  <li key={person.id}>
+                    <label className={`choice-row person-row ${selected ? "selected" : ""}`}>
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        disabled={covered}
+                        onChange={() => {
+                          if (covered) return;
+                          setPickerMembers((current) =>
+                            current.includes(person.id)
+                              ? current.filter((id) => id !== person.id)
+                              : [...current, person.id],
+                          );
+                        }}
+                      />
+                      <span className="person-name">{person.displayName}</span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          </fieldset>
+          <div className="button-row">
+            <button type="submit" className="primary">
+              Apply who does this
             </button>
-          </section>
-        );
-      }
-      return (
-          <section className="panel people-groups routines-view">
-            <div className="focused-state" aria-labelledby="routine-step-heading">
-              <BackButton label="Back to Steps" onClick={() => setEditorFocus("steps")} />
-              <FocusHeading id="routine-step-heading">Edit step</FocusHeading>
-              {error ? <p role="alert">{error}</p> : null}
-              <StepRowEditor
-                step={step}
-                canRemove={sectionDraft.steps.length > 1}
-                onChange={(nextStep) =>
-                  setSectionDraft({
-                    ...sectionDraft,
-                    steps: sectionDraft.steps.map((item, i) =>
-                      i === stepIndex ? nextStep : item,
-                    ),
-                  })
-                }
-                onRemove={() => {
-                  const nextSteps = sectionDraft.steps.filter((_, i) => i !== stepIndex);
-                  const nextIds = workingIds.filter((_, i) => i !== stepIndex);
-                  setSectionDraft({ ...sectionDraft, steps: nextSteps });
-                  setStepLocalIds(nextIds);
-                  setEditorFocus("steps");
-                }}
-                onDone={() => setEditorFocus("steps")}
-                onCancel={() => setEditorFocus("steps")}
-              />
-            </div>
-          </section>
-        );
-    }
+            <button type="button" onClick={cancelPicker}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      ) : undefined;
 
-    if (editorFocus === "steps" && sectionDraft) {
-      return (
-        <section className="panel people-groups routines-view">
-          <div className="focused-state" aria-labelledby="routine-steps-heading">
-            <BackButton label={`Back to ${heading}`} onClick={cancelSection} />
+    const stepsPanel =
+      (editorFocus === "steps" || stepFocus) && sectionDraft ? (
+        activeStep && stepFocus ? (
+          <StepRowEditor
+            step={activeStep}
+            canRemove={sectionDraft.steps.length > 1}
+            onChange={(nextStep) =>
+              setSectionDraft({
+                ...sectionDraft,
+                steps: sectionDraft.steps.map((item, i) => (i === stepIndex ? nextStep : item)),
+              })
+            }
+            onRemove={() => {
+              const nextSteps = sectionDraft.steps.filter((_, i) => i !== stepIndex);
+              const nextIds = workingIds.filter((_, i) => i !== stepIndex);
+              setSectionDraft({ ...sectionDraft, steps: nextSteps });
+              setStepLocalIds(nextIds);
+              setEditorFocus("steps");
+            }}
+            onDone={() => setEditorFocus("steps")}
+            onCancel={() => setEditorFocus("steps")}
+          />
+        ) : (
+          <>
             <FocusHeading id="routine-steps-heading">Edit steps</FocusHeading>
-            {error ? <p role="alert">{error}</p> : null}
             <StepsSectionEditor
               steps={sectionDraft.steps}
               stepLocalIds={workingIds}
@@ -1426,16 +1508,13 @@ export function RoutinesView(props: {
                 setSectionDraft({ ...sectionDraft, steps });
                 setStepLocalIds(localIds);
               }}
-              onEditStep={(index, localId) =>
-                setEditorFocus({ kind: "step", index, localId })
-              }
+              onEditStep={(index, localId) => setEditorFocus({ kind: "step", index, localId })}
               onDone={doneSteps}
               onCancel={cancelSection}
             />
-          </div>
-        </section>
-      );
-    }
+          </>
+        )
+      ) : undefined;
 
     return (
       <section className="panel people-groups routines-view">
@@ -1457,7 +1536,7 @@ export function RoutinesView(props: {
           <FocusHeading id="routine-form-heading">{heading}</FocusHeading>
           <p className="meta">
             {!editing
-              ? "New routines start today when they apply. Edit one section at a time, then save."
+              ? "New routines start today when they apply. Edit sections in place, then save."
               : view.mode === "schedule-new"
                 ? "Scheduling copies this draft into a future change. Today's plan stays as it is."
                 : view.mode === "schedule-edit"
@@ -1509,6 +1588,30 @@ export function RoutinesView(props: {
             people={props.memberships}
             groups={groups}
             stepLocalIds={workingIds}
+            expandedFocus={editorFocus}
+            namePanel={
+              editorFocus === "name" && sectionDraft ? (
+                <NameSectionEditor
+                  value={sectionDraft.title}
+                  onChange={(title) => setSectionDraft({ ...sectionDraft, title })}
+                  onDone={doneName}
+                  onCancel={cancelSection}
+                />
+              ) : undefined
+            }
+            whenPanel={
+              editorFocus === "when" && sectionDraft ? (
+                <WhenSectionEditor
+                  daypart={sectionDraft.daypart}
+                  weekdays={sectionDraft.weekdays}
+                  onChange={(next) => setSectionDraft({ ...sectionDraft, ...next })}
+                  onDone={doneWhen}
+                  onCancel={cancelSection}
+                />
+              ) : undefined
+            }
+            whoPanel={whoPanel}
+            stepsPanel={stepsPanel}
             onOpenName={() => openSection("name")}
             onOpenWhen={() => openSection("when")}
             onOpenWho={openPicker}
@@ -1522,6 +1625,20 @@ export function RoutinesView(props: {
               setDraft((current) => ({ ...current, startingDate }))
             }
           />
+          <aside className="live-work-preview" data-testid="routine-live-preview" aria-live="polite">
+            <strong>Preview</strong>
+            {editorPreviewError ? <p role="alert">{editorPreviewError}</p> : null}
+            {editorPreviewText ? (
+              <ul className="simple-list">
+                {editorPreviewText.split("\n").map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="meta">Updating preview…</p>
+            )}
+            <p className="meta">Read-only — does not create checklist work.</p>
+          </aside>
           <div className="button-row">
             <button
               type="button"

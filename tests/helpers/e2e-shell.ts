@@ -171,10 +171,7 @@ export async function fillFocusedResponsibilityCreate(
 
   await openResponsibilitySection(page, "Who");
   await chooseAssignmentMode(page, "Fixed person");
-  const whoButton = page.getByRole("button", {
-    name: new RegExp(`Choose accountable person|${options.ownerName}`, "i"),
-  });
-  await whoButton.click();
+  await openAccountablePicker(page, options.ownerName);
   await pickAccountablePerson(page, options.ownerName);
   await page.getByRole("button", { name: "Done", exact: true }).click();
 
@@ -209,6 +206,18 @@ export async function chooseAssignmentMode(
   mode: "Fixed person" | "Take turns" | "Weekly pattern",
 ) {
   await page.getByRole("button", { name: mode, exact: true }).click();
+}
+
+/** Opens the assignment person picker; ignores the one-view Who summary row. */
+export async function openAccountablePicker(page: Page, nameHint?: string) {
+  const pattern = nameHint
+    ? new RegExp(`Choose accountable person|${nameHint}`, "i")
+    : /Choose accountable person/i;
+  await page
+    .locator("button:not(.section-summary-row)")
+    .filter({ hasText: pattern })
+    .first()
+    .click();
 }
 
 export async function pickAccountablePerson(page: Page, displayName: string) {

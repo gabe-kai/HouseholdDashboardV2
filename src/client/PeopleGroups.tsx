@@ -965,6 +965,10 @@ function AddPersonState(props: {
 }) {
   const [name, setName] = useState("");
   const [role, setRole] = useState<"adult" | "child">("child");
+  const [showDetails, setShowDetails] = useState(false);
+  const [fullName, setFullName] = useState("");
+  const [birthday, setBirthday] = useState("");
+  const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function submit(event: FormEvent) {
@@ -977,6 +981,13 @@ function AddPersonState(props: {
         mutationId: newClientId(),
         displayName: name,
         classification: role,
+        ...(showDetails
+          ? {
+              fullName: fullName.trim() ? fullName.trim() : null,
+              birthday: birthday || null,
+              email: email.trim() ? email.trim() : null,
+            }
+          : {}),
       });
       props.onCreated(result.person.id, result.person.displayName);
     } catch (caught) {
@@ -989,19 +1000,20 @@ function AddPersonState(props: {
     <div className="focused-state" aria-labelledby="add-person-heading">
       <BackButton label="Back to People & Groups" onClick={props.onBack} />
       <FocusHeading id="add-person-heading">Add person</FocusHeading>
-      <form className="form-grid" onSubmit={submit}>
+      <form className="form-grid" onSubmit={submit} data-testid="add-person-form">
         <label>
-          Friendly name
+          Name shown in the app
           <input
             value={name}
             onChange={(event) => setName(event.target.value)}
             required
             maxLength={80}
             disabled={busy}
+            data-testid="add-person-display-name"
           />
         </label>
         <fieldset disabled={busy}>
-          <legend>Role</legend>
+          <legend>Adult or child (not an access role)</legend>
           <label className="choice-row">
             <input
               type="radio"
@@ -1021,6 +1033,51 @@ function AddPersonState(props: {
             Child
           </label>
         </fieldset>
+        <details
+          className="optional-details"
+          open={showDetails}
+          data-testid="add-person-more-details"
+          onToggle={(event) => setShowDetails((event.target as HTMLDetailsElement).open)}
+        >
+          <summary>More details (optional)</summary>
+          <div className="form-grid">
+            <label>
+              Full name
+              <input
+                value={fullName}
+                onChange={(event) => setFullName(event.target.value)}
+                maxLength={120}
+                disabled={busy}
+                data-testid="add-person-full-name"
+              />
+            </label>
+            <label>
+              Birthday
+              <input
+                type="date"
+                value={birthday}
+                onChange={(event) => setBirthday(event.target.value)}
+                disabled={busy}
+                data-testid="add-person-birthday"
+              />
+            </label>
+            <label>
+              Email
+              <input
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                maxLength={254}
+                disabled={busy}
+                data-testid="add-person-email"
+              />
+            </label>
+            <p className="meta">
+              Optional only — not used for sign-in or access. Manager/Member permissions stay
+              separate.
+            </p>
+          </div>
+        </details>
         <button type="submit" className="primary" disabled={busy}>
           {busy ? "Addingâ€¦" : "Add person"}
         </button>
@@ -1106,7 +1163,7 @@ function EditPersonState(props: {
       <FocusHeading id="edit-person-heading">Edit person</FocusHeading>
       <form className="form-grid" onSubmit={submit}>
         <label>
-          Friendly name
+          Name shown in the app
           <input
             value={name}
             onChange={(event) => setName(event.target.value)}
@@ -1318,7 +1375,7 @@ function PersonDetailState(props: {
       <section>
         <h3>Profile</h3>
         <p>
-          Friendly name: <strong>{props.detail.displayName}</strong>
+          Name shown in the app: <strong>{props.detail.displayName}</strong>
         </p>
         <p>
           Full name: <strong>{displayOrNotSet(props.detail.fullName)}</strong>
@@ -1608,7 +1665,6 @@ function PermissionsEditorState(props: {
   const [role, setRole] = useState<"manager" | "member">(initial.role);
   const [memberMode, setMemberMode] = useState<"approval" | "direct">(initial.memberMode);
   const [secondary, setSecondary] = useState<string[]>(initial.secondary);
-  const [showPreview, setShowPreview] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -1616,7 +1672,6 @@ function PermissionsEditorState(props: {
     setRole(next.role);
     setMemberMode(next.memberMode);
     setSecondary(next.secondary);
-    setShowPreview(false);
   }, [props.detail.id, props.detail.authorityVersion]);
 
   const nextGrants = mergePermissionGrants({
@@ -1641,11 +1696,7 @@ function PermissionsEditorState(props: {
   }, [dirty, props.onDirtyChange]);
 
   async function save() {
-    if (busy) return;
-    if (!showPreview) {
-      setShowPreview(true);
-      return;
-    }
+    if (busy || !dirty) return;
     props.onError(null);
     setBusy(true);
     try {
@@ -1664,6 +1715,14 @@ function PermissionsEditorState(props: {
     }
   }
 
+  const beforeRole =
+    props.detail.roleLabel === "manager"
+      ? "Manager"
+      : props.detail.roleLabel === "member"
+        ? "Member"
+        : props.detail.roleLabel;
+  const afterRole = role === "manager" ? "Manager" : "Member";
+
   return (
     <div
       className="focused-state"
@@ -1677,7 +1736,7 @@ function PermissionsEditorState(props: {
           Older capabilities kept as-is: {props.detail.unknownGrants.join(", ")}
         </p>
       ) : null}
-      <div className="form-grid">
+      <div className="form-grid permissions-editor-layout">
         <fieldset disabled={busy}>
           <legend>Household role</legend>
           <label className="choice-row">
@@ -1685,10 +1744,7 @@ function PermissionsEditorState(props: {
               type="radio"
               name="authority-role"
               checked={role === "manager"}
-              onChange={() => {
-                setRole("manager");
-                setShowPreview(false);
-              }}
+              onChange={() => setRole("manager")}
             />
             <span>
               <strong>Manager</strong>
@@ -1700,10 +1756,7 @@ function PermissionsEditorState(props: {
               type="radio"
               name="authority-role"
               checked={role === "member"}
-              onChange={() => {
-                setRole("member");
-                setShowPreview(false);
-              }}
+              onChange={() => setRole("member")}
             />
             <span>
               <strong>Member</strong>
@@ -1719,10 +1772,7 @@ function PermissionsEditorState(props: {
                 type="radio"
                 name="member-mode"
                 checked={memberMode === "approval"}
-                onChange={() => {
-                  setMemberMode("approval");
-                  setShowPreview(false);
-                }}
+                onChange={() => setMemberMode("approval")}
               />
               Approval required
             </label>
@@ -1731,10 +1781,7 @@ function PermissionsEditorState(props: {
                 type="radio"
                 name="member-mode"
                 checked={memberMode === "direct"}
-                onChange={() => {
-                  setMemberMode("direct");
-                  setShowPreview(false);
-                }}
+                onChange={() => setMemberMode("direct")}
               />
               Can edit own additions
             </label>
@@ -1753,33 +1800,43 @@ function PermissionsEditorState(props: {
                       ? current.filter((item) => item !== grant)
                       : [...current, grant],
                   );
-                  setShowPreview(false);
                 }}
               />
               {grantLabel(grant)}
             </label>
           ))}
         </fieldset>
-        {showPreview ? (
-          <div className="token-box" role="status">
-            <strong>Save preview</strong>
-            {added.length === 0 && removed.length === 0 ? (
-              <p className="meta">No permission changes.</p>
-            ) : (
-              <>
-                {added.length > 0 ? (
-                  <p className="meta">Add: {added.map(grantLabel).join("; ")}</p>
-                ) : null}
-                {removed.length > 0 ? (
-                  <p className="meta">Remove: {removed.map(grantLabel).join("; ")}</p>
-                ) : null}
-              </>
-            )}
-          </div>
-        ) : null}
+        <aside
+          className="permission-change-summary"
+          role="status"
+          data-testid="permission-change-summary"
+          aria-live="polite"
+        >
+          <strong>Before / after</strong>
+          <p className="meta">
+            Role: {beforeRole} → {afterRole}
+            {role === "member"
+              ? ` · Personal additions: ${memberModeLabel(memberMode)}`
+              : null}
+          </p>
+          {!dirty ? (
+            <p className="meta">No permission changes yet.</p>
+          ) : added.length === 0 && removed.length === 0 ? (
+            <p className="meta">Role or mode changes only — grant list unchanged.</p>
+          ) : (
+            <>
+              {added.length > 0 ? (
+                <p className="meta">Will add: {added.map(grantLabel).join("; ")}</p>
+              ) : null}
+              {removed.length > 0 ? (
+                <p className="meta">Will remove: {removed.map(grantLabel).join("; ")}</p>
+              ) : null}
+            </>
+          )}
+        </aside>
         <div className="button-row">
           <button type="button" className="primary" disabled={busy || !dirty} onClick={() => void save()}>
-            {showPreview ? (busy ? "Saving…" : "Confirm save") : "Preview & save"}
+            {busy ? "Saving…" : "Save"}
           </button>
           <button type="button" className="secondary" disabled={busy} onClick={props.onBack}>
             Cancel

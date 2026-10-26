@@ -104,7 +104,10 @@ test.describe("P0-008D guided first household day", () => {
     await page.getByTestId("guide-work-review").click();
     await expect(page.getByTestId("guide-work-preview")).toBeVisible({ timeout: 20_000 });
     await page.getByTestId("guide-work-title").fill("Family morning");
-    await expect(page.getByTestId("guide-work-save")).toBeDisabled();
+    // Live preview updates; refresh once so Save uses a current authoritative basis.
+    await expect(page.getByTestId("guide-work-preview")).toContainText("Family morning", {
+      timeout: 20_000,
+    });
     await page.getByTestId("guide-work-review").click();
     await expect(page.getByTestId("guide-work-preview")).toContainText("Family morning", {
       timeout: 20_000,
@@ -246,8 +249,7 @@ test.describe("P0-008D guided first household day", () => {
       .filter({ hasText: /Manage household displays/i })
       .locator("input")
       .check();
-    await page.getByRole("button", { name: "Preview & save" }).click();
-    await page.getByRole("button", { name: "Confirm save" }).click();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.locator("#person-detail-heading")).toHaveText("Invited Adult", {
       timeout: 15_000,
     });

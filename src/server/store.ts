@@ -3088,6 +3088,9 @@ export class AppStore {
       mutationId: string;
       displayName: string;
       classification: PersonClassification;
+      fullName?: string | null;
+      birthday?: string | null;
+      email?: string | null;
     },
   ): MemberPublic {
     this.requireGrant(ctx, "household.structure.manage");
@@ -3098,6 +3101,22 @@ export class AppStore {
     if (!displayName || displayName.length > 80) {
       fail("VALIDATION", "Display name must be between 1 and 80 characters");
     }
+    const today = this.householdDateNow(ctx);
+    const issues = validateProfileFields({
+      displayName,
+      fullName: input.fullName,
+      birthday: input.birthday,
+      email: input.email,
+      householdToday: today,
+    });
+    if (issues.length > 0) {
+      fail("VALIDATION", issues[0]!.message, { validationIssues: issues });
+    }
+    const fullName =
+      input.fullName === undefined ? null : normalizeOptionalText(input.fullName);
+    const birthday =
+      input.birthday === undefined ? null : normalizeOptionalText(input.birthday);
+    const email = input.email === undefined ? null : normalizeOptionalText(input.email);
     const id = randomUUID();
     const createdAt = nowUtcIso();
     const tx = this.db.transaction(() => {
@@ -3121,9 +3140,10 @@ export class AppStore {
       this.db
         .prepare(
           `UPDATE household_memberships
-           SET classification = ?, version = 1 WHERE id = ?`,
+           SET classification = ?, full_name = ?, birthday = ?, email = ?, version = 1
+           WHERE id = ?`,
         )
-        .run(input.classification, id);
+        .run(input.classification, fullName, birthday, email, id);
       this.db
         .prepare(
           `UPDATE households

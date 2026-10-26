@@ -1150,6 +1150,9 @@ export async function createPerson(body: {
   mutationId: string;
   displayName: string;
   classification: "adult" | "child";
+  fullName?: string | null;
+  birthday?: string | null;
+  email?: string | null;
 }) {
   return request<{ person: MemberPublic }>("/api/v1/people", {
     method: "POST",

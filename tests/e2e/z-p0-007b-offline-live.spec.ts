@@ -6,6 +6,7 @@ import {
   ensureManagerSession,
   expectSignedInAs,
   fillResponsibilityBaseSteps,
+  openAccountablePicker,
   openResponsibilitySection,
   pickAccountablePerson,
   revealChecklist,
@@ -120,7 +121,7 @@ async function createComposedKitchen(page: Page, title: string): Promise<string>
   await page.getByRole("button", { name: "Done", exact: true }).click();
   await openResponsibilitySection(page, "Who");
   await chooseAssignmentMode(page, "Fixed person");
-  await page.getByRole("button", { name: /Choose accountable person/i }).click();
+  await openAccountablePicker(page);
   await pickAccountablePerson(page, "Avery");
   await page.getByRole("button", { name: "Done", exact: true }).click();
   await fillResponsibilityBaseSteps(page, ["Counters", "Dishes", "Sweep"]);
@@ -397,7 +398,7 @@ test.describe("P0-007B AT11/AT12 offline and live", () => {
     await pageA.getByRole("button", { name: "Edit", exact: true }).click();
     await openResponsibilitySection(pageA, "Who");
     await chooseAssignmentMode(pageA, "Fixed person");
-    await pageA.getByRole("button", { name: /Choose accountable person|Avery|Casey|Jordan/i }).click();
+    await openAccountablePicker(pageA, "Avery|Casey|Jordan");
     await pickAccountablePerson(pageA, "Casey");
     await pageA.getByRole("button", { name: "Done", exact: true }).click();
     await Promise.all([
@@ -440,7 +441,7 @@ test.describe("P0-007B AT11/AT12 offline and live", () => {
     await pageA.getByRole("button", { name: "Edit", exact: true }).click();
     await openResponsibilitySection(pageA, "Who");
     await chooseAssignmentMode(pageA, "Fixed person");
-    await pageA.getByRole("button", { name: /Choose accountable person|Casey|Avery|Jordan/i }).click();
+    await openAccountablePicker(pageA, "Avery|Casey|Jordan");
     await pickAccountablePerson(pageA, "Avery");
     await pageA.getByRole("button", { name: "Done", exact: true }).click();
     await pageA.getByRole("button", { name: "Save", exact: true }).click();
@@ -469,7 +470,7 @@ test.describe("P0-007B AT11/AT12 offline and live", () => {
     await pageA.getByRole("button", { name: "Edit", exact: true }).click();
     await openResponsibilitySection(pageA, "Who");
     await chooseAssignmentMode(pageA, "Fixed person");
-    await pageA.getByRole("button", { name: /Choose accountable person|Avery|Jordan/i }).click();
+    await openAccountablePicker(pageA, "Avery|Casey|Jordan");
     await pickAccountablePerson(pageA, "Jordan");
     await pageA.getByRole("button", { name: "Done", exact: true }).click();
     await pageA.getByRole("button", { name: "Save", exact: true }).click();
@@ -534,7 +535,7 @@ test.describe("P0-007B AT11/AT12 offline and live", () => {
     await pageB.getByRole("button", { name: "Edit", exact: true }).click();
     await openResponsibilitySection(pageB, "Who");
     await chooseAssignmentMode(pageB, "Fixed person");
-    await pageB.getByRole("button", { name: /Choose accountable person|Jordan|Casey/i }).click();
+    await openAccountablePicker(pageB, "Avery|Casey|Jordan");
     await pickAccountablePerson(pageB, "Casey");
     await pageB.getByRole("button", { name: "Done", exact: true }).click();
     await expect(pageB.getByRole("button", { name: /^Who/ })).toContainText(/Casey/i);
@@ -542,7 +543,7 @@ test.describe("P0-007B AT11/AT12 offline and live", () => {
     await pageA.getByRole("button", { name: "Edit", exact: true }).click();
     await openResponsibilitySection(pageA, "Who");
     await chooseAssignmentMode(pageA, "Fixed person");
-    await pageA.getByRole("button", { name: /Choose accountable person|Jordan|Avery/i }).click();
+    await openAccountablePicker(pageA, "Avery|Casey|Jordan");
     await pickAccountablePerson(pageA, "Avery");
     await pageA.getByRole("button", { name: "Done", exact: true }).click();
     await pageA.getByRole("button", { name: "Save", exact: true }).click();

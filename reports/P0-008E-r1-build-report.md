@@ -15,6 +15,8 @@ Linux Chromium first failed AT10 because `html { font-size: 200% }` at 390×844 
 
 This pass keeps the document-width and in-flow box assertions. Editors wrap instead of widening the page. The bottom nav stays one row (`flex-wrap: nowrap`, `flex: 1 1 0`) so large labels wrap inside the item instead of stacking over Plan. AT10 removes the 200% style after that checkpoint before the 360 People/permissions walk. `openPeople` clicks the visible phone bottom nav, not the hidden top duplicate.
 
+A later phone-core failure showed the interim `z-index: 50` on the bottom nav sitting above More menus (`z-index: 40`). `Delete routine` is then covered by **Today**. Nav is restored to `30`; More/ordered-row panels are `60` so End/Delete/Schedule stay above the bar.
+
 R5 People fieldset/choice-row wrap remains. Keyboard, focus, and ≥36px target checks remain.
 
 - **AT10:** Named Chromium journey asserts overflow on responsibility (360/768/1280 and 200% text), Routine, People add-person, and permissions at 360px, plus usable/focusable controls. Setup/guided-work 008a walk still asserts document overflow and touch targets.
@@ -42,16 +44,17 @@ R5 People fieldset/choice-row wrap remains. Keyboard, focus, and ≥36px target 
 
 ## Focused correction verification (pre-gate)
 
-- `npx playwright test --project=chromium tests/e2e/z-p0-008e-ux.spec.ts -g "AT10:"` after nav/200% isolation — **1 passed**
-- `npx playwright test --project=chromium tests/e2e/z-p0-008e-ux.spec.ts` — **10 passed (1.0m)**
+- `npx playwright test --project=chromium tests/e2e/z-routine-lifecycle.spec.ts` — **1 passed**
+- `npx playwright test --project=chromium tests/e2e/z-multiple-routines.spec.ts -g "After School and Bedtime"` — **1 passed**
+- `npx playwright test --project=chromium tests/e2e/z-p0-008e-ux.spec.ts -g "AT10:"` — **1 passed**
 - `npx playwright test --project=chromium tests/e2e/z-p0-006a-geometry.spec.ts` — **1 passed**
 - Hosted / physical — **NOT RUN**
 
 ## Exact gates (correction tree)
 
-- Exact CI `e2e-phone-core` shard — **NOT COMPLETED** in this environment (interrupted mid-suite after earlier passing tests; not a named AT10 failure)
-- `npm run validate:pr` — **NOT RUN** on this nav/200% isolation tree
-- `npm run validate:rc` — **NOT RUN** on this nav/200% isolation tree
+- Exact CI `e2e-phone-core` shard — **NOT RUN** on this menu z-index tree
+- `npm run validate:pr` — **NOT RUN**
+- `npm run validate:rc` — **NOT RUN**
 
 Playwright `globalTimeout` remains 45 minutes. AT5 still restores temporarily demoted essential managers so the shared seeded e2e household is not left without peer managers.
 

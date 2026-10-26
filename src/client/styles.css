@@ -350,7 +350,8 @@ textarea {
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 50;
+  /* Below More/toast (40). Raising this above menus makes Delete/End unclickable. */
+  z-index: 30;
   justify-content: space-around;
   flex-wrap: nowrap;
   gap: 0;
@@ -1451,7 +1452,7 @@ input[type="time"] {
   position: absolute;
   right: 0;
   top: calc(100% + var(--space-1));
-  z-index: 40;
+  z-index: 60;
   min-width: 11rem;
   padding: var(--space-1);
   border: 1px solid var(--border);

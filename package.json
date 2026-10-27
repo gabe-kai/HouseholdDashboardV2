@@ -21,6 +21,7 @@
     "auth:bootstrap": "tsx src/server/scripts/bootstrap.ts",
     "db:backup": "tsx src/server/scripts/backup.ts",
     "db:restore": "tsx src/server/scripts/restore.ts",
+    "db:relocate-control": "tsx src/server/scripts/relocate-control.ts",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit",
     "test": "vitest run",

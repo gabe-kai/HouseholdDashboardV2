@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import type { AppConfig } from "./config.js";
-import { migrate, openDatabase, resolveDbPath } from "./db.js";
+import { migrate, openDatabase } from "./db.js";
 import { DisplayStore } from "./display.js";
 import {
   createCatalogBackup,
@@ -14,7 +14,8 @@ import {
 } from "./backup-catalog.js";
 import {
   InstallationControl,
-  relativeDbPathFromConfig,
+  assertInstallationControlReady,
+  parseSupersededDbPath,
   resolveActiveDbAbsolutePath,
   resolveInstallationControlPath,
   type LifecycleOperationRow,
@@ -73,6 +74,7 @@ export type LifecycleRuntime = {
     resultEpoch: number;
     cleanupFailures: string[];
     preOperationBackup: BackupPublicMeta | null;
+    supersededDbPath: string;
   }>;
   replaceWithRestoredDatabase(input: {
     operationId: string;
@@ -87,6 +89,7 @@ export type LifecycleRuntime = {
     cleanupFailures: string[];
     preOperationBackup: BackupPublicMeta | null;
     restoredBackup: BackupPublicMeta;
+    supersededDbPath: string;
   }>;
   reopenFromControlState(): void;
   /** Complete/fail interrupted ops and finish deferred cleanup after restart. */
@@ -153,6 +156,7 @@ function recoveredResetResponse(op: LifecycleOperationRow, resultEpoch: number) 
     cleanupFailures: [] as string[],
     setupRequired: true,
     preOperationBackup: partial.preOperationBackup ?? null,
+    supersededDbPath: parseSupersededDbPath(op.responseJson),
     recovered: true,
   };
 }
@@ -170,6 +174,7 @@ function recoveredRestoreResponse(op: LifecycleOperationRow, resultEpoch: number
     signInRequired: true,
     restoredBackup: partial.restoredBackup ?? null,
     preOperationBackup: partial.preOperationBackup ?? null,
+    supersededDbPath: parseSupersededDbPath(op.responseJson),
     recovered: true,
   };
 }
@@ -200,10 +205,10 @@ export function createLifecycleRuntime(
     onRuntimeSwapped?: () => void;
   },
 ): LifecycleRuntime {
+  assertInstallationControlReady(config);
   const controlPath = resolveInstallationControlPath(config.installationControlPath);
   const control = InstallationControl.open(controlPath);
-  const configuredRelative = relativeDbPathFromConfig(config.dbPath);
-  const state = control.ensureAdopt(configuredRelative);
+  const state = control.getState();
   const activeDbRelativePath = state.activeDbRelativePath;
   const activeDbPath = resolveActiveDbAbsolutePath(activeDbRelativePath);
 
@@ -284,7 +289,7 @@ export function createLifecycleRuntime(
     nextEpoch: number;
     candidateRelative: string;
     oldDbPath: string;
-  }): Promise<{ resultEpoch: number; cleanupFailures: string[] }> {
+  }): Promise<{ resultEpoch: number; cleanupFailures: string[]; supersededDbPath: string }> {
     await faultHooks.beforeActivate?.();
     control.activateCandidate(input.nextEpoch, input.candidateRelative);
 
@@ -310,7 +315,11 @@ export function createLifecycleRuntime(
       }
     }
 
-    return { resultEpoch: input.nextEpoch, cleanupFailures };
+    return {
+      resultEpoch: input.nextEpoch,
+      cleanupFailures,
+      supersededDbPath: input.oldDbPath,
+    };
   }
 
   const runtime: LifecycleRuntime = {
@@ -487,7 +496,7 @@ export function createLifecycleRuntime(
         }
       }
       runtime.pinnedRestoreBackupId = null;
-      cleanupOrphanEpochFiles(runtime.activeDbRelativePath, runtime.activeDbPath);
+      cleanupProvenSupersededFiles(control, runtime.activeDbPath);
       return resolved;
     },
     async replaceWithEmptyDatabase(input) {
@@ -510,6 +519,7 @@ export function createLifecycleRuntime(
           backupLabel: input.backupLabel,
           reusePreOperationBackup: input.reusePreOperationBackup,
         });
+        const oldDbPath = runtime.activeDbPath;
         // Durable typed progress before activation so post-activate crashes recover truthfully.
         control.recordLifecycleOperationProgress(
           input.operationId,
@@ -517,10 +527,9 @@ export function createLifecycleRuntime(
             kind: "household_reset",
             sourceEpoch: input.sourceEpoch,
             preOperationBackup,
+            supersededDbPath: oldDbPath,
           }),
         );
-
-        const oldDbPath = runtime.activeDbPath;
         const nextEpoch = current.datasetEpoch + 1;
         const candidate = candidatePaths(nextEpoch);
 
@@ -604,6 +613,7 @@ export function createLifecycleRuntime(
               preOperationBackup,
               backupId: restoredBackup.id,
               contentDigest: restoredBackup.contentDigest,
+              supersededDbPath: oldDbPath,
             }),
           );
 
@@ -624,36 +634,39 @@ export function createLifecycleRuntime(
   return runtime;
 }
 
-function cleanupOrphanEpochFiles(activeRelative: string, activeAbs: string): void {
-  const dir = path.dirname(activeAbs);
-  if (!fs.existsSync(dir)) return;
-  const stem = path.basename(activeRelative).replace(/\.epoch-\d+\.sqlite$/i, "");
-  const baseStem = stem.replace(/\.sqlite$/i, "");
-  for (const entry of fs.readdirSync(dir)) {
-    if (!entry.startsWith(`${baseStem}.epoch-`) || !entry.endsWith(".sqlite")) continue;
-    const abs = path.join(dir, entry);
+function cleanupProvenSupersededFiles(
+  control: InstallationControl,
+  activeAbs: string,
+): void {
+  for (const op of control.listCompletedReplacementOperations()) {
+    const named = parseSupersededDbPath(op.responseJson);
+    if (!named) continue;
+    const abs = path.isAbsolute(named) ? named : resolveActiveDbAbsolutePath(named);
     if (path.resolve(abs) === path.resolve(activeAbs)) continue;
     for (const target of [abs, `${abs}-wal`, `${abs}-shm`]) {
       try {
         if (fs.existsSync(target)) fs.rmSync(target, { force: true });
       } catch {
-        /* best-effort cleanup */
+        /* best-effort cleanup of a journal-named superseded image only */
       }
     }
   }
 }
 
-/** Resolve active household DB for operator scripts when control store exists. */
+/** Resolve active household DB for operator scripts; fail closed like server startup. */
 export function resolveActiveHouseholdDbPath(config: AppConfig): string {
-  const controlPath = resolveInstallationControlPath(config.installationControlPath);
-  if (!fs.existsSync(controlPath)) {
-    return resolveDbPath(config.dbPath);
-  }
-  const control = InstallationControl.open(controlPath);
-  try {
-    const state = control.getState();
-    return resolveActiveDbAbsolutePath(state.activeDbRelativePath);
-  } finally {
-    control.close();
-  }
+  const state = assertInstallationControlReady(config);
+  return resolveActiveDbAbsolutePath(state.activeDbRelativePath);
+}
+
+export function installationStartupDiagnostic(runtime: LifecycleRuntime): {
+  installationControlPath: string;
+  activeDatabasePath: string;
+  installationEpoch: number;
+} {
+  return {
+    installationControlPath: resolveInstallationControlPath(runtime.config.installationControlPath),
+    activeDatabasePath: runtime.activeDbPath,
+    installationEpoch: runtime.epoch,
+  };
 }

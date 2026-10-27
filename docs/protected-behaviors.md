@@ -99,6 +99,7 @@ invalidation/reconciliation semantics.
 | PB-62 | Guide saves bind mutation identity to actor/household/installation epoch/payload digest; changed payload/action rejected; same command recovers | `tests/integration/p0-008d.test.ts` R3/AT4 | Developer |
 | PB-63 | Draft routine preview matches execution audience/eligibility/applicability with zero materialization; Save rechecks reviewed preview basis | `tests/integration/p0-008d.test.ts` AT5/R4 | Developer |
 | PB-64 | Guide school Not now preserves calendar years/exceptions; unused guide people/work remain deletable and retired retries stay denied; restore scrubs all C claim purposes | `tests/integration/p0-008d.test.ts` R2/AT7/AT11 | Developer |
+| PB-65 | Hosted installation control is durable; missing/invalid control with leftover household/epoch/backup files fails closed; a valid control pointer must name an existing readable in-volume active database before any writable open; process replacement reopens the exact active image; epoch cleanup requires a named superseded path | `tests/integration/p0-008f.test.ts` | Developer |
 
 ### Environment-specific (not counted as automated acceptance)
 

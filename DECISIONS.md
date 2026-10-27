@@ -1188,3 +1188,19 @@ Preview uses the existing recurrence/assignment/applicability resolver and never
 **r2 technical refinement (2026-10-12):** Extend the existing household `setup_progress` boundary for versioned optional choices, stable links and dismissal; do not move these into the surviving installation-control store. Required-basics availability remains independent from optional completion. Guide domain changes, progress/link and payload/scope-bound receipts commit together through existing services, so response loss and retries cannot create duplicate people/plans. Links and setup receipts do not make otherwise unused people/work undeletable or resurrect removed IDs. The expanded guide requires current lifecycle authority plus each command's ordinary capability; preview/commit bind to household date, source versions and epoch. Local technical acceptance precedes the separately authorized hosted and human checkpoint; neither replaces the other.
 
 **Related briefs:** P0-008A–D; preserves D-017/D-023/D-024/D-027–D-040.
+
+## D-060 - Hosted installation control is durable authority state
+
+**Status:** Active.
+
+**Decision:** In a hosted deployment, the installation-control database is part of the durable installation state, alongside the active household database and managed backup files. `INSTALLATION_CONTROL_PATH` must be explicitly configured on persistent storage. Hosted startup must not silently create replacement control state, adopt the configured base database, or infer the active database from filenames or timestamps when prior installation evidence exists. A genuinely empty installation may initialize control state before opening or migrating a household database.
+
+If control state is missing, unreadable, malformed, or inconsistent while household, epoch, backup, or lifecycle evidence exists, fail closed before changing any candidate. Epoch-file cleanup is permitted only when durable lifecycle state proves a replacement completed and identifies the superseded image. A process or container replacement must reopen the exact active database and preserve the installation ID, epoch, backup catalog, credentials, grants, history, and display records, subject only to ordinary expiry/revocation rules.
+
+Relocating existing control state to persistent storage must use SQLite's backup API, verify the copied control state and its referenced active database, and leave the source untouched until verification succeeds. This is an operator migration of installation metadata, not permission to restore an older household snapshot. In-app reset and restore remain explicit user actions; deployment never invokes them.
+
+**Reason:** D-050/D-051 make installation identity and the active-database pointer survive household replacement, but those guarantees fail if a deployment stores the control database on a replaceable container filesystem. Reconstructing control state against an empty base path can make a healthy replacement image unreachable or subject it to unsafe cleanup.
+
+**Implications:** Require an explicit hosted control path and validate configured data paths against the provider's mounted-volume boundary when available. Test a new application/container filesystem against a shared persistent data volume after both ordinary use and epoch-changing reset/restore. Prove fail-closed preservation for missing/invalid control and conservative cleanup. Keep this provider-neutral in the architecture and document Railway's concrete path configuration in deployment instructions.
+
+**Related briefs:** P0-008A/B and P0-008F r1. Preserves D-050–D-052 and does not authorize live deployment or data recovery.

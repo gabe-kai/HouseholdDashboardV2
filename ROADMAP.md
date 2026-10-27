@@ -100,14 +100,13 @@ Both C-3 slices contribute to **Act at the shared display without losing trust**
 
 ### CURRENT
 
-- **P0-008D technical delivery is complete** — accepted at `c5f9867`, merged through PR #27 at `65e1949`; Build Report: `reports/P0-008D-r2-build-report.md`; Architecture acceptance: `reports/P0-008D-r2-architecture-acceptance.md`.
-  - Project Lead reports hosted setup, labeled backup, reset, restore, and post-restart persistence worked. The submitted evaluation also identifies friction in the owner-link handoff, timezone entry, people/work/permission review, and completion summary. Full Product acceptance remains pending.
-- **Current implementation — P0-008E r1 (technically ACCEPTED):** Preview/date-rollover and responsive overflow corrections are accepted against the brief; named AT evidence and exact PR/RC gates are recorded in the Build Report. Project Lead hands-on Product evaluation and Git operations remain; Architecture acceptance does not authorize deploy or merge.
+- **P0-008F r1 — Keep a household intact through deployment:** fail-closed hosted control inspection, active-target verification, journal-named epoch cleanup, SQLite-backup control relocation, and session/display continuity on a shared volume. Architecture has technically accepted the corrected local implementation; Engineering reports exact PR/RC PASS. The corrected tree remains uncommitted on `brief/p0-008f-hosted-installation-continuity` from `main` at `bd05ad0` (`reports/P0-008F-r1-architecture-reacceptance.md`). The current Railway control store was last observed at ephemeral `/app/runtime/installation-control.sqlite`; relocate it to `/data/installation-control.sqlite` and complete AT13 before any container-replacing auto-deploy. No older snapshot restore or household rebuild is part of this brief.
+- **P0-008E r1** is technically accepted and merged through PR #28 at `bd05ad0`. Overall P0-008 Product acceptance remains separate.
 
 ### LIKELY NEXT
 
-- Reproduce the reported `/` → “view unavailable” behavior on the exact Railway deployment (record deployed SHA and fresh-session steps); repository routing currently maps `/` to Today. Keep this as a focused defect investigation, separate from P0-008E.
-- P0-008E does not reopen completed security, reset, backup, restore, access, or history contracts. Overall P0-008 Product acceptance remains with the Project Lead after evaluating the revised experience.
+- Before a merge triggers Railway auto-deploy, the Project Lead preserves/relocates the currently ephemeral control file to the volume. Then verify `DB_PATH=/data/household.sqlite`, `BACKUP_DIR=/data/backups`, `INSTALLATION_CONTROL_PATH=/data/installation-control.sqlite`, and the startup diagnostic (AT13); only then proceed with container replacement or household rebuild.
+- Reproduce the reported `/` → “view unavailable” behavior on the exact Railway deployment (record deployed SHA and fresh-session steps); repository routing currently maps `/` to Today. Keep this as a focused defect investigation, separate from P0-008F.
 
 The shared card reaches Product Accepted only after hands-on acceptance. Coverage/release checkpoints: `reports/P0-008-architecture-sequencing.md`.
 

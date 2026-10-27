@@ -3,7 +3,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import DatabaseConstructor from "better-sqlite3";
-import { repoRoot } from "./config.js";
+import { isPathInsideRoot, repoRoot, resolveConfiguredPath, type AppConfig } from "./config.js";
 import { digestEquals, randomToken, sha256Hex } from "./crypto.js";
 
 const OWNER_IDLE_MS = 15 * 60 * 1000;
@@ -163,6 +163,137 @@ export type HouseholdBackupRow = {
 export function resolveInstallationControlPath(configured?: string): string {
   const raw = configured ?? "runtime/installation-control.sqlite";
   return path.isAbsolute(raw) ? raw : path.resolve(repoRoot, raw);
+}
+
+export const INSTALLATION_RECOVERY_HINT =
+  "Preserve all household, epoch, backup, and control files. Do not delete, adopt, restore, or rebuild candidates. See docs/ops-deploy.md (Hosted installation continuity).";
+
+export function failClosedInstallation(detail: string): Error {
+  const error = new Error(`${detail} ${INSTALLATION_RECOVERY_HINT}`);
+  error.name = "InstallationControlError";
+  return error;
+}
+
+export function parseSupersededDbPath(responseJson: string | null): string | null {
+  if (!responseJson) return null;
+  try {
+    const parsed = JSON.parse(responseJson) as { supersededDbPath?: unknown };
+    return typeof parsed.supersededDbPath === "string" && parsed.supersededDbPath.length > 0
+      ? parsed.supersededDbPath
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function pushExisting(targets: string[], candidate: string): void {
+  if (fs.existsSync(candidate)) targets.push(path.resolve(candidate));
+}
+
+function listSqliteSidecars(filePath: string): string[] {
+  const found: string[] = [];
+  pushExisting(found, filePath);
+  pushExisting(found, `${filePath}-wal`);
+  pushExisting(found, `${filePath}-shm`);
+  return found;
+}
+
+/** Household, epoch, and backup files that prove a prior installation exists. */
+export function listInstallationEvidence(config: AppConfig): string[] {
+  const found = new Set<string>();
+  const dbAbs = resolveConfiguredPath(config.dbPath);
+  for (const file of listSqliteSidecars(dbAbs)) found.add(file);
+
+  const dbDir = path.dirname(dbAbs);
+  if (fs.existsSync(dbDir)) {
+    const baseStem = path.basename(dbAbs).replace(/\.sqlite$/i, "");
+    for (const entry of fs.readdirSync(dbDir)) {
+      const epochLike =
+        entry.startsWith(`${baseStem}.epoch-`) &&
+        (entry.endsWith(".sqlite") ||
+          entry.endsWith(".sqlite-wal") ||
+          entry.endsWith(".sqlite-shm"));
+      if (!epochLike) continue;
+      found.add(path.resolve(dbDir, entry));
+    }
+  }
+
+  const backupDir = resolveConfiguredPath(config.backupDir);
+  if (fs.existsSync(backupDir)) {
+    for (const entry of fs.readdirSync(backupDir)) {
+      const abs = path.resolve(backupDir, entry);
+      try {
+        if (fs.statSync(abs).isFile()) found.add(abs);
+      } catch {
+        /* ignore racing deletes */
+      }
+    }
+  }
+
+  return [...found].sort();
+}
+
+export type ControlInspection =
+  | { status: "missing" }
+  | { status: "valid"; state: InstallationState }
+  | { status: "invalid"; reason: string };
+
+export function inspectInstallationControl(controlPath: string): ControlInspection {
+  const resolved = resolveInstallationControlPath(controlPath);
+  if (!fs.existsSync(resolved)) return { status: "missing" };
+  let db: Database.Database | undefined;
+  try {
+    db = new DatabaseConstructor(resolved, { readonly: true, fileMustExist: true });
+    const check = db.pragma("quick_check", { simple: true });
+    if (check !== "ok") {
+      return { status: "invalid", reason: `control store failed SQLite integrity check (${String(check)})` };
+    }
+    const table = db
+      .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'installation_state'`)
+      .get() as { name: string } | undefined;
+    if (!table) {
+      return { status: "invalid", reason: "control store has no installation_state table" };
+    }
+    const row = db
+      .prepare(
+        `SELECT installation_id, dataset_epoch, active_db_relative_path, created_at
+         FROM installation_state WHERE id = 1`,
+      )
+      .get() as
+      | {
+          installation_id: string;
+          dataset_epoch: number;
+          active_db_relative_path: string;
+          created_at: string;
+        }
+      | undefined;
+    if (!row) {
+      return { status: "invalid", reason: "control store is missing installation_state row" };
+    }
+    if (!row.installation_id || row.dataset_epoch < 1 || !row.active_db_relative_path) {
+      return { status: "invalid", reason: "control store installation_state is internally inconsistent" };
+    }
+    return {
+      status: "valid",
+      state: {
+        installationId: row.installation_id,
+        datasetEpoch: row.dataset_epoch,
+        activeDbRelativePath: row.active_db_relative_path,
+        createdAt: row.created_at,
+      },
+    };
+  } catch (err) {
+    return {
+      status: "invalid",
+      reason: err instanceof Error ? err.message : "control store is unreadable",
+    };
+  } finally {
+    try {
+      db?.close();
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 export function ownerSecretDigestFromEnv(secret: string): string {
@@ -585,6 +716,20 @@ export class InstallationControl {
       .all() as LifecycleOperationRow[];
   }
 
+  listCompletedReplacementOperations(): LifecycleOperationRow[] {
+    return this.db
+      .prepare(
+        `SELECT id, kind, status, source_epoch AS sourceEpoch, result_epoch AS resultEpoch,
+                initiator_kind AS initiatorKind, initiator_ref AS initiatorRef,
+                payload_digest AS payloadDigest, response_json AS responseJson,
+                created_at AS createdAt, completed_at AS completedAt
+         FROM lifecycle_operations
+         WHERE status = 'completed' AND kind IN ('household_reset', 'household_restore')
+         ORDER BY completed_at ASC`,
+      )
+      .all() as LifecycleOperationRow[];
+  }
+
   findCompletedOperationByPayload(
     kind: string,
     payloadDigest: string,
@@ -809,4 +954,91 @@ export function relativeDbPathFromConfig(configuredDbPath: string): string {
 
 export function resolveActiveDbAbsolutePath(relativePath: string): string {
   return path.resolve(repoRoot, relativePath);
+}
+
+function inspectActiveHouseholdTarget(absolutePath: string): { ok: true } | { ok: false; reason: string } {
+  if (!fs.existsSync(absolutePath)) {
+    return { ok: false, reason: `active household database is missing at ${absolutePath}` };
+  }
+  let db: Database.Database | undefined;
+  try {
+    db = new DatabaseConstructor(absolutePath, { readonly: true, fileMustExist: true });
+    const check = db.pragma("quick_check", { simple: true });
+    if (check !== "ok") {
+      return {
+        ok: false,
+        reason: `active household database at ${absolutePath} is unreadable or failed integrity check (${String(check)})`,
+      };
+    }
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      reason: `active household database at ${absolutePath} is unreadable (${err instanceof Error ? err.message : "unknown error"})`,
+    };
+  } finally {
+    try {
+      db?.close();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/**
+ * Verify the control store's active household pointer before any writable open.
+ * `allowCreate` is only for a genuine first install (no prior evidence; control just initialized).
+ */
+export function assertActiveHouseholdTargetReady(
+  config: AppConfig,
+  state: InstallationState,
+  options?: { allowCreate?: boolean },
+): string {
+  const absolute = resolveActiveDbAbsolutePath(state.activeDbRelativePath);
+  if (config.volumeMountPath && !isPathInsideRoot(absolute, config.volumeMountPath)) {
+    throw failClosedInstallation(
+      `Active household database ${absolute} is outside RAILWAY_VOLUME_MOUNT_PATH (${config.volumeMountPath}).`,
+    );
+  }
+  if (options?.allowCreate) return absolute;
+
+  const inspected = inspectActiveHouseholdTarget(absolute);
+  if (!inspected.ok) {
+    throw failClosedInstallation(
+      `Installation control is valid but ${inspected.reason}.`,
+    );
+  }
+  return absolute;
+}
+
+export function assertInstallationControlReady(config: AppConfig): InstallationState {
+  const controlPath = resolveInstallationControlPath(config.installationControlPath);
+  const evidence = listInstallationEvidence(config);
+  const inspection = inspectInstallationControl(controlPath);
+
+  if (inspection.status === "valid") {
+    assertActiveHouseholdTargetReady(config, inspection.state);
+    return inspection.state;
+  }
+
+  if (inspection.status === "invalid") {
+    throw failClosedInstallation(
+      `Installation control at ${controlPath} is unreadable, malformed, or inconsistent (${inspection.reason}).`,
+    );
+  }
+
+  if (evidence.length > 0) {
+    throw failClosedInstallation(
+      `Installation control is missing at ${controlPath} while household, epoch, or backup files remain (${evidence.join(", ")}).`,
+    );
+  }
+
+  const control = InstallationControl.open(controlPath);
+  try {
+    const state = control.ensureAdopt(relativeDbPathFromConfig(config.dbPath));
+    assertActiveHouseholdTargetReady(config, state, { allowCreate: true });
+    return state;
+  } finally {
+    control.close();
+  }
 }

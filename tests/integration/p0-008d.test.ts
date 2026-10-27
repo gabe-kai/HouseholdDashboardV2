@@ -1862,11 +1862,15 @@ describe("P0-008D guided first household day", () => {
       managerUser.id,
     );
     db.close();
+    const controlPath = tempPath("hd-d-c1-noa-control");
+    const seededControl = InstallationControl.open(controlPath);
+    seededControl.ensureAdopt(relativeDbPathFromConfig(dbPath));
+    seededControl.close();
     const h = await createHttpHarness({
       AUTO_SEED: "0",
       INSTALLATION_OWNER_SECRET: OWNER_SECRET,
       DB_PATH: dbPath,
-      INSTALLATION_CONTROL_PATH: tempPath("hd-d-c1-noa-control"),
+      INSTALLATION_CONTROL_PATH: controlPath,
       BACKUP_DIR: backupDirForTest(),
     });
     harnesses.push(h);

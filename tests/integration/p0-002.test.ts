@@ -307,6 +307,7 @@ describe("P0-002 authenticated authority", () => {
         PUBLIC_ORIGIN: "https://family.example.invalid",
         DB_PATH: "runtime/hosted.sqlite",
         BACKUP_DIR: "runtime/backups",
+        INSTALLATION_CONTROL_PATH: path.resolve("runtime/hosted-control.sqlite"),
         AUTO_SEED: "1",
       }),
     ).toThrow(/AUTO_SEED/i);
@@ -315,6 +316,7 @@ describe("P0-002 authenticated authority", () => {
       PUBLIC_ORIGIN: "https://family.example.invalid",
       DB_PATH: "runtime/hosted.sqlite",
       BACKUP_DIR: "runtime/backups",
+      INSTALLATION_CONTROL_PATH: path.resolve("runtime/hosted-control.sqlite"),
     });
     expect(ok.cookieName).toBe("__Host-hd_session");
     expect(ok.cookieSecure).toBe(true);

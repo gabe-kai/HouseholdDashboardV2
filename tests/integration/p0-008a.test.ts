@@ -18,6 +18,10 @@ import { loadConfig } from "../../src/server/config.js";
 import { sha256Hex } from "../../src/server/crypto.js";
 import { migrate } from "../../src/server/db.js";
 import {
+  InstallationControl,
+  relativeDbPathFromConfig,
+} from "../../src/server/installation-control.js";
+import {
   createHttpHarness,
   tempDbPath,
   type HttpHarness,
@@ -419,6 +423,9 @@ describe("P0-008A AT1 populated through-017 adoption", () => {
     const backupHash = hashFile(backupPath);
 
     const controlPath = controlPathForTest();
+    const seededControl = InstallationControl.open(controlPath);
+    seededControl.ensureAdopt(relativeDbPathFromConfig(dbPath));
+    seededControl.close();
     const harness = trackHarness(
       await createHttpHarness({
         AUTO_SEED: "0",
@@ -888,12 +895,6 @@ describe("P0-008A AT3 concurrent first-account race", () => {
 describe("P0-008A AT7 reset without backup", () => {
   it("AT7 two resets: no new backup files; pre-seeded backup bytes unchanged; epoch advances", async () => {
     const backupDir = backupDirForTest();
-    const seededBackup = path.join(backupDir, "operator-saved.sqlite");
-    fs.writeFileSync(seededBackup, Buffer.from("pre-existing-backup-bytes-v1"));
-    const seededLen = fs.statSync(seededBackup).size;
-    const seededHash = hashFile(seededBackup);
-    const filesBefore = new Set(fs.readdirSync(backupDir));
-
     const harness = trackHarness(
       await createHttpHarness({
         AUTO_SEED: "0",
@@ -902,6 +903,11 @@ describe("P0-008A AT7 reset without backup", () => {
         BACKUP_DIR: backupDir,
       }),
     );
+    const seededBackup = path.join(backupDir, "operator-saved.sqlite");
+    fs.writeFileSync(seededBackup, Buffer.from("pre-existing-backup-bytes-v1"));
+    const seededLen = fs.statSync(seededBackup).size;
+    const seededHash = hashFile(seededBackup);
+    const filesBefore = new Set(fs.readdirSync(backupDir));
 
     const first = await setupManagerHousehold(
       harness,

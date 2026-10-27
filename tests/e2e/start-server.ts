@@ -43,7 +43,11 @@ async function listenFresh(): Promise<Listening> {
     process.env.INSTALLATION_CONTROL_PATH = path.resolve(root, controlPathEnv);
   }
   process.env.DB_PATH = dbPath;
-  process.env.BACKUP_DIR = path.resolve(root, "runtime/backups");
+  process.env.BACKUP_DIR = process.env.BACKUP_DIR
+    ? path.isAbsolute(process.env.BACKUP_DIR)
+      ? process.env.BACKUP_DIR
+      : path.resolve(root, process.env.BACKUP_DIR)
+    : path.resolve(root, path.dirname(dbPath), `${path.basename(dbPath, path.extname(dbPath))}-backups`);
   process.env.HOUSEHOLD_TIMEZONE =
     process.env.HOUSEHOLD_TIMEZONE ?? "America/New_York";
   process.env.HOST = process.env.HOST ?? "127.0.0.1";
@@ -130,6 +134,14 @@ function wipeHouseholdArtifacts(): void {
       ? controlPathEnv
       : path.resolve(root, controlPathEnv);
     rmSqliteFamily(controlAbs);
+  }
+  const backupDir = process.env.BACKUP_DIR
+    ? path.isAbsolute(process.env.BACKUP_DIR)
+      ? process.env.BACKUP_DIR
+      : path.resolve(root, process.env.BACKUP_DIR)
+    : path.resolve(root, path.dirname(dbPath), `${path.basename(dbPath, path.extname(dbPath))}-backups`);
+  if (fs.existsSync(backupDir)) {
+    fs.rmSync(backupDir, { recursive: true, force: true });
   }
 }
 

@@ -19,9 +19,9 @@
 
 ## Current focus
 
-Inspected 2026-10-25: current checkout is `brief/p0-008e-clear-first-run-one-view-editing` at **6dc7002**, with P0-008E implementation and Architecture acceptance writebacks uncommitted. Integrated baseline remains P0-008D at **65e1949** (PR **#27**), with household migrations through 019 and B's installation-control catalog migration 001. P0-008A–D are technically accepted and integrated. The Project Lead reports Railway first-run, backup, reset, restore, and post-container-restart success; exact deployed SHA and operational details were not independently recorded. See the dated evaluation below.
+Inspected 2026-10-26: integrated repository baseline is `main` at **bd05ad0**, with P0-008E merged through PR **#28**. P0-008F r1 is technically **ACCEPTED** on `brief/p0-008f-hosted-installation-continuity` against the corrected uncommitted working tree. Engineering reports exact local PR/RC gates passing. AT13 and the safe move of the currently ephemeral `/app/runtime/installation-control.sqlite` to `/data/installation-control.sqlite` remain outstanding. Do not trigger an auto-deploy, restore an older snapshot, or rebuild the household until that control-store transition and path verification are ready.
 
-**P0-008D r2** was technically **ACCEPTED** at `c5f9867` and merged at `65e1949`; Architecture’s focused D suite passed 27/27, and Engineering reported PR/RC PASS. The Project Lead reports successful hosted first-run setup, labeled app backup, reset, restore, and persistence after Railway container restart. P0-008E r1 was technically **ACCEPTED** by Architecture on 2026-10-25 after the AT10 overflow correction and named evidence; Product acceptance remains with the Project Lead. `/` reportedly shows an unavailable view despite the repository’s root-to-Today mapping; exact hosted reproduction remains separate. Evaluation: `evaluations/p0-008-project-lead-evaluation-2026-10-15.md`.
+**P0-008E r1** is technically **ACCEPTED** and integrated via PR #28 at `bd05ad0`. P0-008F r1 is the incident-driven continuity correction. Overall P0-008 Product acceptance remains separate; the reported `/` anomaly remains a separate investigation.
 
 P0-007C's outstanding physical/Product judgments remain distinct from its technical acceptance and from approval to begin P0-008. Old reports retain their inspected SHAs.
 
@@ -47,8 +47,9 @@ P0-007C's outstanding physical/Product judgments remain distinct from its techni
 | P0-008A - Protected First-Manager Setup and Repeatable Reset | r1 | ACCEPTED | Integrated foundation | Merged to `main` at `405c5db` via PR #24 | Hosted/Product evaluation remains separate |
 | P0-008B - Household Backups and In-App Restore | r2 | ACCEPTED | Integrated foundation | Merged to `main` at `f80d47b` via PR #25 | Hosted and Product evaluation remain separate |
 | P0-008C - Understandable Member Access and Safe Removal | r1 | ACCEPTED | Integrated foundation | Merged to `main` at `1709097` via PR #26; correction `90de153` | Hosted/Product evaluation remains separate |
-| P0-008D - Guided Setup to the First Useful Household Day | r2 | ACCEPTED (technical) | Product / Design | Merged to `main` via PR #27 at `65e1949` | P0-008E UX follow-up; route anomaly triage; overall P0-008 Product acceptance pending |
-| P0-008E - Clear First Run and One-View Work Editing | r1 | ACCEPTED (technical) | Project Lead evaluation | `brief/p0-008e-clear-first-run-and-one-view-editing` | Hands-on Product evaluation; Project Lead owns commit/push/merge. No deployment or merge authorized by Architecture |
+| P0-008D - Guided Setup to the First Useful Household Day | r2 | ACCEPTED (technical) | Project Lead evaluation | Merged to `main` via PR #27 at `65e1949` | P0-008E integrated; overall P0-008 Product acceptance pending |
+| P0-008E - Clear First Run and One-View Work Editing | r1 | ACCEPTED (technical) | Project Lead evaluation | Merged to `main` via PR #28 at `bd05ad0` | Hands-on Product evaluation; overall P0-008 Product acceptance remains separate |
+| P0-008F - Keep a Household Intact Through Deployment | r1 | ACCEPTED (technical) | Project Lead | `brief/p0-008f-hosted-installation-continuity` | Preserve/relocate current control store to `/data` before any container replacement; verify all paths/diagnostic (AT13) before any rebuild |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -77,16 +78,12 @@ This table is the short repository-side coordination index. An external project 
 
 ## Known blockers
 
-- A–D technical acceptance is recorded. Project Lead reports hosted first-run and backup/reset/restore/restart success. Exact deployed SHA, actual Railway schema/active DB path and volume layout were not recorded; the remaining route anomaly and overall Product acceptance are open.
-- A deliberately provides reset without a new backup; B supplies the optional backup/restore choice. C/D preserve all remaining P0-008 member and guided-first-day requirements; no partial slice closes the shared Product outcome.
-
-## Next Project Lead decision
-
-- Project Lead has requested that P0-008 first-run/reset usability return to Design. Live data replacement/remediation remains Project Lead–authorized only.
+- P0-008F r1 is locally technically accepted. The current Railway control store was last observed at ephemeral `/app/runtime/installation-control.sqlite`; safely relocate it to `/data/installation-control.sqlite` and verify AT13 before any container replacement or household rebuild. Do not restore older snapshots or write live Railway data under this brief.
+- Overall P0-008 Product acceptance and exact hosted deployed-SHA/operations record remain separate. The reported `/` anomaly remains open.
 
 ## Next likely handoff
 
-P0-008E r1 is technically accepted; the Project Lead should complete hands-on Product evaluation before deciding whether to commit/publish/merge. See `reports/P0-008E-r1-architecture-review.md`. Separately, Architecture/QA should reproduce the root-route “view unavailable” report on the deployed build. The Project Lead’s hosted reset/restore/restart success and usability feedback are recorded in `evaluations/p0-008-project-lead-evaluation-2026-10-15.md`; technical acceptance remains distinct from Product acceptance.
+Project Lead: before allowing a merge to trigger Railway auto-deploy, prepare a verified SQLite-backup relocation of the current control store from `/app/runtime/installation-control.sqlite` to `/data/installation-control.sqlite`; the current deployed image may not include the new relocation CLI. Then verify all three Railway paths and the startup diagnostic (AT13). Only after this transition is ready should the accepted branch be integrated/deployed. No older snapshot restore or household rebuild is part of this technical acceptance.
 
 ## Notes for all teams
 

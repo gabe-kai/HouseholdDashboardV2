@@ -1,11 +1,13 @@
 import { loadConfig } from "./config.js";
 import { buildApp } from "./app.js";
+import { installationStartupDiagnostic } from "./lifecycle-runtime.js";
 
 async function main() {
   const config = loadConfig();
-  const { app } = await buildApp(config);
+  const { app, runtime } = await buildApp(config);
 
   await app.listen({ host: config.host, port: config.port });
+  app.log.info(installationStartupDiagnostic(runtime), "Installation paths");
   app.log.info(
     {
       host: config.host,

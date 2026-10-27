@@ -7,7 +7,7 @@ behind HTTPS with WebSocket forwarding. Do not commit real origins, accounts, or
 
 - `APP_PROFILE=development` (default locally): loopback, no automatic fixture seed unless `AUTO_SEED=1`, distinct `hd_dev_session` cookie.
 - `APP_PROFILE=test`: used by Playwright; allows `/api/v1/test/bootstrap-claim`.
-- `APP_PROFILE=hosted`: fail-closed. Requires `PUBLIC_ORIGIN=https://…`, `DB_PATH`, `BACKUP_DIR`. Forbids `EVAL_LAN_ACCESS`, `ALLOW_EVAL_BYPASS`, and `AUTO_SEED=1`. Uses `__Host-hd_session` with `Secure; HttpOnly; SameSite=Strict; Path=/`.
+- `APP_PROFILE=hosted`: fail-closed. Requires `PUBLIC_ORIGIN=https://…`, `DB_PATH`, `BACKUP_DIR`, and an **absolute** `INSTALLATION_CONTROL_PATH` on persistent storage. Forbids `EVAL_LAN_ACCESS`, `ALLOW_EVAL_BYPASS`, and `AUTO_SEED=1`. Uses `__Host-hd_session` with `Secure; HttpOnly; SameSite=Strict; Path=/`. When the host exposes `RAILWAY_VOLUME_MOUNT_PATH`, all three data paths must resolve inside that mount.
 
 ## Commands
 
@@ -19,6 +19,7 @@ npm run auth:bootstrap   # empty DB: minimum household + one-time claim only (no
 npm run db:cleanup-fixtures -- [--db path] [--apply]  # dry-run default; exact fixture IDs only
 npm run db:backup        # consistent backup into BACKUP_DIR
 npm run db:restore -- path/to/backup.sqlite
+npm run db:relocate-control -- <source-control.sqlite> <dest-control.sqlite>
 npm run build
 npm run start            # with APP_PROFILE=hosted and required env
 ```
@@ -33,7 +34,7 @@ Normal local development uses `AUTO_SEED=0` (see `.env.example`). Explicit `npm 
 - Terminate TLS at the edge; redirect HTTP→HTTPS.
 - Forward `/` and `/api` to the Node process; enable WebSocket upgrade for `/api/v1/sync`.
 - The client reconnects dropped sync sockets with backoff and re-reads `/api/v1/today` on reconnect and tab visibility; server ping frames help keep long-lived upgrades healthy through intermediaries.
-- Mount persistent volumes for `DB_PATH` and `BACKUP_DIR`.
+- Mount persistent volumes for `DB_PATH`, `BACKUP_DIR`, and `INSTALLATION_CONTROL_PATH`. A replaceable container filesystem is not durable storage.
 - Do not put passphrases, session tokens, enrollment tokens, or private task titles in logs.
 - Keep a single Node process (in-memory sync fan-out is not multi-replica).
 
@@ -56,9 +57,9 @@ No-terminal deployment-owner configuration for protected first-manager setup and
 2. Set `INSTALLATION_OWNER_SECRET` in the host secret UI (never commit it).
 3. Set durable paths on the same volume:
    - `DB_PATH` — initial household database (adopted; may change after reset)
-   - `INSTALLATION_CONTROL_PATH` — small control SQLite outside household snapshots (default `runtime/installation-control.sqlite`)
+   - `INSTALLATION_CONTROL_PATH` — small control SQLite outside household snapshots. Hosted deployments require an absolute path on the volume (not the local `runtime/` default)
    - `BACKUP_DIR` — operator/provider backups (survive A resets; A creates no new pre-reset backup)
-4. Mount all three paths persistently. After reset, operator tools resolve the **active** household image via the control store (do not assume the original `DB_PATH` filename remains active).
+4. Mount all three paths persistently. After reset, operator tools resolve the **active** household image via the control store (do not assume the original `DB_PATH` filename remains active). Changing the control-path variable does not copy an existing control database; use `npm run db:relocate-control` while the process is stopped.
 5. Open `/owner` in the browser, exchange the secret for an owner session, issue a one-use setup invitation (fragment link), and complete Welcome: account → household.
 6. **Reset household** in Settings requires `household.lifecycle.manage`, typing `RESET`, and recent password confirmation. Losing the response does not repeat the wipe; recovery uses the continuation cookie or `/owner`.
 
@@ -84,5 +85,45 @@ Use only when a candidate is actually being released or deployed (not during the
 5. Record evidence in the brief Build Report (omit private origins/secrets). Live reset remains a Project Lead deliberate app action.
 
 A Project Lead-authorized public HTTPS origin with persistent storage and recoverable snapshots is required for those hosted checks. Until then, report them as NOT RUN.
+
+## Hosted installation continuity (P0-008F)
+
+The installation-control database is authority state. It must live on the same persistent volume as the household database and backup directory. A new container with an empty app filesystem is expected; an empty control store is not.
+
+Railway example (provider-neutral architecture; these values are the current Project Lead target, not a live write):
+
+```text
+DB_PATH=/data/household.sqlite
+BACKUP_DIR=/data/backups
+INSTALLATION_CONTROL_PATH=/data/installation-control.sqlite
+```
+
+Railway also exposes `RAILWAY_VOLUME_MOUNT_PATH` for an attached volume. When that variable is present, startup rejects any of the three paths that resolve outside the mount, before creating or migrating files. Confirm the deployed value; do not assume it.
+
+Startup logs the resolved control path, active database path, and installation epoch only. It does not log credentials, tokens, or household content.
+
+### One-time control relocation
+
+If a running deployment still keeps control state on the ephemeral app filesystem (for example `runtime/installation-control.sqlite`):
+
+1. Stop the application process.
+2. Confirm the source control file and the referenced active household database exist. Do not use an older household backup as the live database.
+3. Copy with verification:
+   `npm run db:relocate-control -- /app/runtime/installation-control.sqlite /data/installation-control.sqlite`
+4. Set `INSTALLATION_CONTROL_PATH` to the destination on the volume.
+5. Start the new process and confirm the startup diagnostic reports the volume paths and the same epoch.
+
+The command uses SQLite's backup API, verifies installation ID/epoch/active pointer/catalog, leaves the source unchanged, and aborts without replacing either copy when the active database is missing or a check fails.
+
+### Recovery when control is missing or invalid
+
+If household, epoch, or backup files exist and control state is missing, unreadable, malformed, or inconsistent — or a valid control store points at a missing, unreadable, or out-of-volume active database:
+
+1. Stop the process. Do not delete candidate files, do not restore the October 16 or September 9 app snapshots, and do not rebuild the household from this procedure.
+2. Preserve every candidate (`*.sqlite`, `-wal`, `-shm`, backup directory files, leftover control files).
+3. Fix configuration so `INSTALLATION_CONTROL_PATH`, `DB_PATH`, and `BACKUP_DIR` all resolve on the persistent volume.
+4. If a valid control file still exists at an old path, relocate it with the command above. If the control file is valid but the named active database is missing or unreadable, fail-closed startup is working as designed; do not let the process create a replacement at that path. The Project Lead decides any later rebuild after verifying durable paths.
+
+Operator scripts (`db:migrate`, `db:backup`, `auth:bootstrap`) use the same fail-closed active-path resolution as the server.
 
 Contract catalog and local/CI gates: `docs/protected-behaviors.md`.

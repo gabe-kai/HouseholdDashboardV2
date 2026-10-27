@@ -861,6 +861,7 @@ export function registerLifecycleRoutes(app: FastifyInstance, deps: LifecycleRou
       cleanupFailures: string[];
       preOperationBackup: import("./backup-catalog.js").BackupPublicMeta | null;
       restoredBackup: import("./backup-catalog.js").BackupPublicMeta;
+      supersededDbPath: string;
     };
     // Revoke before exclusive drain so in-flight shared holders revalidate as 401 (AT10).
     deps.getStore().revokeAllSessionsAndClaims();
@@ -954,6 +955,7 @@ export function registerLifecycleRoutes(app: FastifyInstance, deps: LifecycleRou
       signInRequired: true,
       restoredBackup: replacement.restoredBackup,
       preOperationBackup: replacement.preOperationBackup,
+      supersededDbPath: replacement.supersededDbPath,
     };
     deps.runtime.control.completeLifecycleOperation(
       operationId,
@@ -1042,6 +1044,7 @@ export function registerLifecycleRoutes(app: FastifyInstance, deps: LifecycleRou
       resultEpoch: number;
       cleanupFailures: string[];
       preOperationBackup: import("./backup-catalog.js").BackupPublicMeta | null;
+      supersededDbPath: string;
     };
     // Revoke before exclusive drain so in-flight shared holders revalidate as 401 (AT10).
     deps.getStore().revokeAllSessionsAndClaims();
@@ -1099,6 +1102,7 @@ export function registerLifecycleRoutes(app: FastifyInstance, deps: LifecycleRou
       cleanupFailures: replacement.cleanupFailures,
       setupRequired: true,
       preOperationBackup: replacement.preOperationBackup,
+      supersededDbPath: replacement.supersededDbPath,
     };
     deps.runtime.control.completeLifecycleOperation(
       operationId,

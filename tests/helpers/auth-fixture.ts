@@ -92,13 +92,17 @@ export async function createHttpHarness(
   // tests to an earlier harness's active household database path.
   const controlPath =
     overrides.INSTALLATION_CONTROL_PATH ?? tempDbPath("hd-control");
+  const backupDir =
+    overrides.BACKUP_DIR ??
+    path.join(os.tmpdir(), `hd-backups-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  const createdBackupDir = overrides.BACKUP_DIR === undefined;
   const port = String(8797 + Math.floor(Math.random() * 1000));
   const origin = overrides.PUBLIC_ORIGIN ?? `http://127.0.0.1:${port}`;
   const config = loadConfig({
     APP_PROFILE: "test",
     AUTO_SEED: "1",
     DB_PATH: dbPath,
-    BACKUP_DIR: path.join(os.tmpdir(), "hd-backups"),
+    BACKUP_DIR: backupDir,
     HOUSEHOLD_TIMEZONE: "America/New_York",
     HOST: "127.0.0.1",
     PORT: port,
@@ -122,6 +126,13 @@ export async function createHttpHarness(
       rmSqliteArtifacts(dbPath);
       if (activeDbPath !== dbPath) rmSqliteArtifacts(activeDbPath);
       rmSqliteArtifacts(controlPath);
+      if (createdBackupDir) {
+        try {
+          fs.rmSync(backupDir, { recursive: true, force: true });
+        } catch {
+          /* ignore */
+        }
+      }
     },
   };
 }

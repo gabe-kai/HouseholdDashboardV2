@@ -12,9 +12,24 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const dbPath = path.resolve(root, process.env.DB_PATH ?? "runtime/e2e-vite-api.sqlite");
 const port = process.env.PORT ?? "8787";
 
+function rmSqliteFamily(filePath: string): void {
+  for (const target of [filePath, `${filePath}-wal`, `${filePath}-shm`]) {
+    if (fs.existsSync(target)) fs.rmSync(target, { force: true });
+  }
+}
+
 async function main() {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-  if (fs.existsSync(dbPath)) fs.rmSync(dbPath);
+  rmSqliteFamily(dbPath);
+  const dbDir = path.dirname(dbPath);
+  const stem = path.basename(dbPath, path.extname(dbPath));
+  if (fs.existsSync(dbDir)) {
+    for (const entry of fs.readdirSync(dbDir)) {
+      if (entry === stem || entry.startsWith(`${stem}.`)) {
+        rmSqliteFamily(path.join(dbDir, entry));
+      }
+    }
+  }
 
   process.env.NODE_ENV = process.env.NODE_ENV ?? "development";
   process.env.APP_PROFILE = "test";
@@ -23,7 +38,11 @@ async function main() {
   process.env.INSTALLATION_CONTROL_PATH =
     process.env.INSTALLATION_CONTROL_PATH ??
     path.resolve(root, "runtime/e2e-vite-api-control.sqlite");
-  process.env.BACKUP_DIR = path.resolve(root, "runtime/backups");
+  process.env.BACKUP_DIR = path.resolve(root, "runtime/e2e-vite-api-backups");
+  rmSqliteFamily(process.env.INSTALLATION_CONTROL_PATH);
+  if (fs.existsSync(process.env.BACKUP_DIR)) {
+    fs.rmSync(process.env.BACKUP_DIR, { recursive: true, force: true });
+  }
   process.env.HOUSEHOLD_TIMEZONE = process.env.HOUSEHOLD_TIMEZONE ?? "America/New_York";
   process.env.HOST = process.env.HOST ?? "127.0.0.1";
   process.env.PORT = port;

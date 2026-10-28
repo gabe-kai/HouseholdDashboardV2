@@ -1,11 +1,11 @@
 # BRIEF P0-009A - Preview a display and judge the family board
 
 **Revision:** 2  
-**Status:** IN REVIEW  
+**Status:** READY<br>
 **Integrated code baseline:** `main` / `origin/main` at `1acc4a1` (P0-008F, PR #29; P0-008E remains merged through PR #28)  
 **Product input:** `PRODUCT.md` → “Family wall experience proposal,” revised 2026-10-25; Design review confirmed the scope and sequence remain unchanged.
 
-This is the authoritative brief for P0-009A. r2 supersedes r1 before Engineering readiness. The Design review of the Project Lead's recent setup evaluation did not change the wall plan; no contract revision is needed. Engineering readiness is requested against the integrated `main` baseline above. Technical acceptance makes the result ready for Project Lead evaluation; it does not accept the proposed design.
+This is the authoritative brief for P0-009A. r2 supersedes r1 before implementation. The Design review of the Project Lead's recent setup evaluation did not change the wall plan; no contract revision is needed. Engineering readiness is READY against the integrated `main` baseline above, and Architecture has accepted it for implementation. Technical acceptance makes the result ready for Project Lead evaluation; it does not accept the proposed design.
 
 ## Why
 
@@ -223,12 +223,13 @@ D-041–D-049, D-050–D-056, and D-057–D-059 as refined for r2.
 
 ## Engineering readiness
 
-**Reviewed revision:** NOT REVIEWED  
-**Readiness:** NOT REVIEWED
+**Reviewed revision:** 2<br>
+**Readiness:** READY<br>
+**Review:** `reports/P0-009A-r2-engineering-readiness.md` (initial consolidated pass against `main` at `1acc4a1`)
 
-Review **P0-009A r2** against integrated code `1acc4a1` and the current Product/decision files. Pay particular attention to separate principal authorization/shared projection, current-day side effects, viewport scoping, standalone proof isolation, and built-versus-Vite validation selection. Return one consolidated READY / QUESTION / BLOCKER disposition before implementation. No implementation is authorized by this readiness handoff.
+**Architecture disposition:** ACCEPT / PROCEED (2026-10-27). Engineering may implement P0-009A r2 locally on this brief branch. No hosted deployment or production-wall replacement is authorized by this disposition.
 
 ## Revision history
 
 - **r1:** Initial selected-display preview and fictional family-board proof.
-- **r2:** Architecture self-review: made live/prototype boundaries explicit; specified preview read authority/context and shared presentation; corrected viewport, bootstrap, contact and materialization assumptions; added a useful simulated-action/layout checkpoint; split evidence into judgeable subcases; corrected development/production/CI selection and kept human acceptance separate. Refreshed the repository baseline to `1acc4a1` after P0-008F merged; Design confirmed no change to scope or sequence.
+- **r2:** Architecture self-review: made live/prototype boundaries explicit; specified preview read authority/context and shared presentation; corrected viewport, bootstrap, contact and materialization assumptions; added a useful simulated-action/layout checkpoint; split evidence into judgeable subcases; corrected development/production/CI selection and kept human acceptance separate. Refreshed the repository baseline to `1acc4a1` after P0-008F merged; Design confirmed no change to scope or sequence. Engineering readiness READY and Architecture ACCEPT / PROCEED on 2026-10-27; no contract change.

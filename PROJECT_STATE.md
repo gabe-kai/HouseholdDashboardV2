@@ -19,7 +19,7 @@
 
 ## Current focus
 
-Inspected 2026-10-27: integrated repository baseline is `main` at **1acc4a1**, with P0-008F merged through PR **#29**. The Project Lead reports the installation-control database was copied to `/data/installation-control.sqlite` and a new household was set up after deployment; this does not claim that the previous household was recovered. Design reviewed the recent setup evaluation and confirmed it does not change the Family wall plan. P0-009A r2 is the current Architecture handoff. Overall P0-008 Product acceptance remains separate, as does the reported `/` route anomaly.
+Inspected 2026-10-27: integrated repository baseline is `main` at **1acc4a1**, with P0-008F merged through PR **#29**. The Project Lead reports the installation-control database was copied to `/data/installation-control.sqlite` and a new household was set up after deployment; this does not claim that the previous household was recovered. Design reviewed the recent setup evaluation and confirmed it does not change the Family wall plan. P0-009A r2 Engineering readiness is **READY** (`reports/P0-009A-r2-engineering-readiness.md`), and Architecture has ACCEPTED / PROCEEDED. Implementation is authorized but has not yet been reported started. Overall P0-008 Product acceptance remains separate, as does the reported `/` route anomaly.
 
 **P0-008E r1** is technically **ACCEPTED** and integrated via PR #28 at `bd05ad0`. **P0-008F r1** is technically accepted and integrated via PR #29 at `1acc4a1`. P0-008's overall Product acceptance remains separate; the reported `/` anomaly remains a separate investigation.
 
@@ -50,7 +50,7 @@ P0-007C's outstanding physical/Product judgments remain distinct from its techni
 | P0-008D - Guided Setup to the First Useful Household Day | r2 | ACCEPTED (technical) | Project Lead evaluation | Merged to `main` via PR #27 at `65e1949` | P0-008E integrated; overall P0-008 Product acceptance pending |
 | P0-008E - Clear First Run and One-View Work Editing | r1 | ACCEPTED (technical) | Project Lead evaluation | Merged to `main` via PR #28 at `bd05ad0` | Hands-on Product evaluation; overall P0-008 Product acceptance remains separate |
 | P0-008F - Keep a Household Intact Through Deployment | r1 | ACCEPTED (technical) | Project Lead evaluation | Merged to `main` via PR #29 at `1acc4a1` | Project Lead reports persistent control-store copy and new-household setup; prior-household recovery is not claimed |
-| P0-009A - Preview a Display and Judge the Family Board | r2 | IN REVIEW | Engineering | `brief/p0-009a-selected-display-preview-and-family-wall-proof` | Engineering readiness review against `main` at `1acc4a1`; Project Lead checkpoint follows technical acceptance |
+| P0-009A - Preview a Display and Judge the Family Board | r2 | READY | Engineering | `brief/p0-009a-selected-display-preview-and-family-wall-proof` | Begin local implementation; return Build Report for Architecture technical acceptance |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -83,7 +83,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Engineering: review P0-009A r2 against integrated `main` at `1acc4a1` and return one consolidated readiness disposition. After Architecture confirms readiness, implement the brief locally; the Project Lead's same-viewport visual/interaction checkpoint follows technical acceptance. The later actionable-person-pane brief remains gated on that checkpoint. The root-route anomaly and live School/Meals/Calendar features are separate work.
+Engineering: begin local implementation of P0-009A r2 under Architecture ACCEPT / PROCEED. Return the Build Report for technical acceptance; after acceptance, the Project Lead performs the same-viewport checkpoint. The later actionable-person-pane brief remains gated on that checkpoint. The root-route anomaly and live School/Meals/Calendar features are separate work.
 
 ## Notes for all teams
 

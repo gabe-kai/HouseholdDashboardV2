@@ -1189,6 +1189,46 @@ Preview uses the existing recurrence/assignment/applicability resolver and never
 
 **Related briefs:** P0-008A–D; preserves D-017/D-023/D-024/D-027–D-040.
 
+## D-057 - Selected-display preview uses member authority and wall-filtered reads
+
+**Status:** Active.
+
+**Decision:** A manager previews a selected display from the signed-in member application using the current member session and `household.display.manage` grant. Every preview read verifies the selected display record belongs to that member's household and is not revoked; a device does not have to claim or connect to the record. Preview is not a display session: do not mint, borrow, replace, or use display credentials/cookies, and do not fabricate a `DisplayContext` to reuse display-principal authorization.
+
+The preview projection is allowlisted to wall-permitted current-day content, including actual ordered step details. Presentation and placement follow the accepted wall design: P0-009A preserves current summary/detail browsing, without making on-demand-only step delivery a permanent limit on future actionable panes. Unpromoted household-visible personal work still requires deliberate person detail; private work and execution-only metadata stay excluded. Shared current presentation uses separate wall execution and preview read-only adapters. Preview grants no status, enrollment, configuration, or device-control authority and cannot update physical display presence/contact or wall state. Reads use D-044's ordinary current-household-day materialization; they do not introduce arbitrary-date generation or a second scheduler.
+
+**Reason:** A display preview should let the authorized household manager inspect what the wall can show without turning a member browser into the wall, widening execution authority, or exposing data that the wall must hide.
+
+**Implications:** Keep member and display principals distinct in route policy and shared projection inputs; never mount the credential/outbox-owning `DisplayApp` as the preview. Preserve main-entry credential precedence and parent member session/outbox behavior. Bind requests and delayed dashboard/detail responses to current session/authority, selected display, date, generation and epoch under existing lifecycle barriers. Relevant member invalidations plus at least 30-second visible revalidation cover changes and display revocation; retain D-045's 60-second stale limit, measured from each content request's start. Observed withdrawal/denial/lifecycle change clears affected content before replacement data. Use no-store responses and memory-only content. Normal member auth bookkeeping and D-044 reconciliation remain allowed; preview creates no action intent or display contact renewal.
+
+**Related brief:** P0-009A r2 (refined before first Engineering readiness).
+
+**Related decisions:** D-044–D-049, D-053–D-054.
+
+## D-058 - Fictional layout proofs stay outside production household data
+
+**Status:** Active.
+
+**Decision:** A prototype used to compare the current wall with a proposed family-board composition uses a fixed fictional fixture in a standalone local development/test-only surface. It does not mount member/display authentication, sync or outbox owners, call household APIs, read real household data, persist its fixture, or ship in production. Ordinary assets and Vite development tooling are allowed. Simulated checklist actions use domain completion/progress semantics with in-memory pending/success/rejection feedback and are labeled as simulation.
+
+**Reason:** Product needs a realistic interactive design checkpoint before fixing the production layout. Keeping its fixture and actions separate prevents examples from contaminating the household or misleading a family into believing simulated actions were saved.
+
+**Implications:** Compare current shared presentation and the concept against the same fixture/state. Prove the crowded day, independent browsing, deliberate enlargement, candidate idle behavior and fictional future composition before fixing the working design. Run proof tests through explicitly selected Vite desktop/touch cases, separately from built-preview tests. Verify the proof entry/fixture is absent from production output. Keep screenshots in ignored `reports/_local-screenshots/`. A runnable comparison supplies a human checkpoint, not Product acceptance or permission to replace the live wall.
+
+**Related brief:** P0-009A r2.
+
+## D-059 - Preview comparisons hold target geometry constant
+
+**Status:** Active.
+
+**Decision:** The initial selected-display preview target defaults to an explicitly labeled 16:9, 3840×2160 CSS-pixel assumption, with a 1920×1080 effective-viewport comparison and custom dimensions when known. Dimensions govern the actual rendering viewport, including viewport units and media queries. Use an isolated rendering context or demonstrably equivalent scoping; a transformed div that still resolves against the PC viewport is insufficient. Resizing the outer window changes uniform fit scale, not target dimensions or breakpoints. Before/after comparisons use the same fixture/state and target viewport.
+
+**Reason:** A physical panel's advertised resolution does not establish the browser's effective CSS viewport, and comparison is unreliable if the viewport or workload changes between examples.
+
+**Implications:** Keep viewport/assumption and fit scale visible outside the simulated screen. Verify fitted current presentation against native rendering at the target viewport. A separate rendering context contains presentation only, not normal app authentication/outbox bootstrap; validate message source/origin if applicable. Scaling is a geometry technique, not an authority boundary. The initial three-by-two arrangement remains a design hypothesis, not a required production layout or six-person roster limit. Physical readability/touch still require actual hardware.
+
+**Related brief:** P0-009A r2.
+
 ## D-060 - Hosted installation control is durable authority state
 
 **Status:** Active.

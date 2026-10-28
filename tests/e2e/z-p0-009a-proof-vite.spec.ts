@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
+import { touchDragByCdp } from "../helpers/touch-drag";
 
 function boardFrame(page: Page) {
   return page.frameLocator('[data-testid="family-board-frame"]');
@@ -8,6 +9,37 @@ function boardFrame(page: Page) {
 
 function boardWindow(page: Page) {
   return page.frame({ url: /surface=board/ });
+}
+
+const PROOF_PEOPLE = ["morgan", "avery", "jordan", "casey", "taylor", "rowan"] as const;
+const NEXT_INSTRUCTION = "Pack the unusually long backpack checklist";
+const UPCOMING_HEADINGS = [
+  "Homework time",
+  "House cleaning",
+  "Dinner cleanup",
+  "Bedtime",
+  "Cat litter",
+] as const;
+
+async function assertSixNextAndStepThree(frame: ReturnType<typeof boardFrame>) {
+  for (const person of PROOF_PEOPLE) {
+    const pane = frame.getByTestId(`family-pane-p-${person}`);
+    await expect(pane).toBeVisible();
+    await expect(pane.getByText(NEXT_INSTRUCTION, { exact: false })).toBeVisible();
+    await expect(frame.getByTestId(`family-next-p-${person}`)).toContainText("2/5 done");
+  }
+}
+
+async function assertUpcomingHeadings(frame: ReturnType<typeof boardFrame>) {
+  await frame.getByRole("button", { name: "Coming up" }).first().click();
+  await expect(frame.getByTestId("family-upcoming-p-morgan")).toBeVisible();
+  for (const heading of UPCOMING_HEADINGS) {
+    await expect(frame.getByText(heading).first()).toBeVisible();
+  }
+  await frame.getByRole("button", { name: "Earlier" }).first().click();
+  await expect(frame.getByTestId("family-pane-p-morgan")).toHaveAttribute("data-section", "earlier");
+  await frame.getByRole("button", { name: "Back to next task" }).first().click();
+  await expect(frame.getByTestId("family-pane-p-morgan")).toHaveAttribute("data-section", "next");
 }
 
 test.describe("P0-009A family-board proof (Vite only)", () => {
@@ -43,12 +75,7 @@ test.describe("P0-009A family-board proof (Vite only)", () => {
     await expect(frame.getByTestId("family-board-concept")).toBeVisible();
     const meta = await page.getByTestId("family-board-meta").innerText();
 
-    for (const person of ["morgan", "avery", "jordan", "casey", "taylor", "rowan"]) {
-      await expect(frame.getByTestId(`family-pane-p-${person}`)).toBeVisible();
-    }
-    await expect(
-      frame.getByText("Pack the unusually long backpack checklist", { exact: false }).first(),
-    ).toBeVisible();
+    await assertSixNextAndStepThree(frame);
     await expect(frame.getByTestId("family-unassigned")).toBeVisible();
     await expect(
       frame.getByTestId("family-unassigned").getByRole("button", { name: /claim/i }),
@@ -87,21 +114,7 @@ test.describe("P0-009A family-board proof (Vite only)", () => {
       ),
     );
 
-    await frame.getByRole("button", { name: "Coming up" }).first().click();
-    await expect(frame.getByTestId("family-upcoming-p-morgan")).toBeVisible();
-    for (const heading of [
-      "Homework time",
-      "House cleaning",
-      "Dinner cleanup",
-      "Bedtime",
-      "Cat litter",
-    ]) {
-      await expect(frame.getByText(heading).first()).toBeVisible();
-    }
-    await frame.getByRole("button", { name: "Earlier" }).first().click();
-    await expect(frame.getByTestId("family-pane-p-morgan")).toHaveAttribute("data-section", "earlier");
-    await frame.getByRole("button", { name: "Back to next task" }).first().click();
-    await expect(frame.getByTestId("family-pane-p-morgan")).toHaveAttribute("data-section", "next");
+    await assertUpcomingHeadings(frame);
 
     const boardScroll = await page.locator('[data-testid="family-board-frame"]').evaluate((node) => {
       const iframe = node as HTMLIFrameElement;
@@ -114,10 +127,11 @@ test.describe("P0-009A family-board proof (Vite only)", () => {
 
     await page.getByRole("button", { name: "1920 × 1080" }).click();
     await expect(page.getByTestId("family-board-meta")).toContainText("1920×1080");
-    for (const person of ["morgan", "avery", "jordan", "casey", "taylor", "rowan"]) {
-      await expect(frame.getByTestId(`family-pane-p-${person}`)).toBeVisible();
-    }
+    await assertSixNextAndStepThree(frame);
+    await assertUpcomingHeadings(frame);
     await page.getByRole("button", { name: "3840 × 2160" }).click();
+    await expect(page.getByTestId("family-board-meta")).toContainText("3840×2160");
+    await assertSixNextAndStepThree(frame);
 
     await page.screenshot({
       path: path.join(shotDir, `${testInfo.project.name}-concept.png`),
@@ -150,6 +164,7 @@ test.describe("P0-009A family-board proof (Vite only)", () => {
     await expect(frame.getByTestId("family-calendar-p-morgan")).toContainText("Early release Friday 2026-10-30");
     await expect(frame.getByTestId("family-calendar-p-morgan")).toContainText("Avery and Jordan");
     await expect(frame.getByTestId("family-calendar-p-morgan")).toContainText("Today vs Later");
+    await assertSixNextAndStepThree(frame);
     await frame.getByRole("button", { name: "Coming up" }).first().click();
     await expect(frame.getByText("Homework time").first()).toBeVisible();
     await frame.getByTestId("family-done-hw-m-1").click();
@@ -233,10 +248,16 @@ test.describe("P0-009A family-board proof (Vite only)", () => {
     });
     const paneBox = await frame.getByTestId("family-scroll-p-morgan").boundingBox();
     expect(paneBox).toBeTruthy();
-    await page.mouse.move(paneBox!.x + 20, paneBox!.y + 20);
-    await page.mouse.down();
-    await page.mouse.move(paneBox!.x + 80, paneBox!.y + 80);
-    await page.mouse.up();
+    const from = { x: paneBox!.x + 20, y: paneBox!.y + 20 };
+    const to = { x: paneBox!.x + 80, y: paneBox!.y + 80 };
+    if (testInfo.project.name === "vite-touch") {
+      await touchDragByCdp(page, from, to, { steps: 8, pauseMs: 15 });
+    } else {
+      await page.mouse.move(from.x, from.y);
+      await page.mouse.down();
+      await page.mouse.move(to.x, to.y);
+      await page.mouse.up();
+    }
     await expect(frame.getByTestId("family-enlarge-p-morgan")).toBeVisible();
     await expect(frame.getByTestId("family-done-w-morning-morgan-s3")).toHaveText(boxBefore.done || /Done/);
 

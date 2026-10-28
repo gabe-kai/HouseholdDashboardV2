@@ -100,12 +100,12 @@ Both C-3 slices contribute to **Act at the shared display without losing trust**
 
 ### CURRENT
 
-- **P0-009A r2 — Preview a display and judge the family board:** most initial evidence gaps are closed on the brief branch; Architecture's re-review remains **FIX REQUIRED** for pending-action settlement, held stale-response races, FHD geometry parity, six-action visibility at both target presets, real touch-event behavior, and final-tree PR/RC gates. See `reports/P0-009A-r2-architecture-review.md`. The Project Lead checkpoint remains after technical acceptance; no hosted deployment or production-wall replacement is authorized.
+- **P0-009A r2 — Preview a display and judge the family board:** technically **ACCEPTED** after final assertion closure and exact local PR/RC passes. The Project Lead's same-viewport checkpoint is now next; use that evidence to decide whether the proposed layout and idle behavior should guide actionable-person-pane work. The live wall remains unchanged; no hosted deployment or production-wall replacement is authorized. See `reports/P0-009A-r2-architecture-review.md`.
 - P0-008F r1 — Keep a household intact through deployment — is technically accepted and merged through PR #29 at `1acc4a1`. The Project Lead reports relocating installation control to persistent storage and completing new-household setup; prior-household recovery is not claimed. Overall P0-008 Product acceptance remains separate.
 
 ### LIKELY NEXT
 
-- After P0-009A technical acceptance, the Project Lead evaluates the reproducible checkpoint. Use that evidence to scope the next brief for actionable person panes; do not fix the working layout before this review.
+- The Project Lead now evaluates the reproducible same-viewport checkpoint. Use that evidence to scope the next brief for actionable person panes; do not fix the working layout before this review.
 - Keep the `/` → “view unavailable” report as a separate, unsequenced routing investigation. It is not a P0-009A dependency or acceptance gate.
 
 The shared card reaches Product Accepted only after hands-on acceptance. Coverage/release checkpoints: `reports/P0-008-architecture-sequencing.md`.

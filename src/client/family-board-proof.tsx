@@ -542,7 +542,12 @@ function ConceptPane(props: {
             return (
               <div key={work.id} data-testid={`family-work-${work.id}`}>
                 <h3 className="display-work-title">{work.title}</h3>
-                <p className="display-work-meta">
+                <p
+                  className="display-work-meta"
+                  data-testid={
+                    props.section === "next" ? `family-next-${props.personId}` : undefined
+                  }
+                >
                   {occurrence.state} · {occurrence.progressLabel}
                 </p>
                 <ol className="display-step-list">

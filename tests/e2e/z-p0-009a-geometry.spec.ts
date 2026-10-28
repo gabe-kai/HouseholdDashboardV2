@@ -52,6 +52,9 @@ test.describe("P0-009A preview geometry", () => {
     const frame = page.locator('[data-testid="display-preview-frame"]');
     await expect(frame).toHaveAttribute("width", "3840");
     await expect(frame).toHaveAttribute("height", "2160");
+    await expect(
+      page.frameLocator('[data-testid="display-preview-frame"]').getByTestId("display-by-person"),
+    ).toBeVisible({ timeout: 20_000 });
     const inner = await page.evaluate(() => {
       const iframe = document.querySelector(
         '[data-testid="display-preview-frame"]',
@@ -188,13 +191,18 @@ test.describe("P0-009A preview geometry", () => {
     await page.getByRole("button", { name: "1920 × 1080" }).click();
     await wall.setViewportSize({ width: 1920, height: 1080 });
     await expect(page.getByTestId("display-preview-geometry")).toContainText("1920 × 1080");
+    await expect(wall.getByTestId("display-by-person")).toBeVisible();
+    await expect(previewFrame.getByTestId("display-by-person")).toBeVisible();
     const nativeFhd = await measure(wall, false);
     const previewFhd = await measure(page, true);
     expect(previewFhd!.innerWidth).toBe(1920);
     expect(previewFhd!.innerHeight).toBe(1080);
     expect(previewFhd!.fontSize).toBe(nativeFhd!.fontSize);
     expect(previewFhd!.mq1920).toBe(nativeFhd!.mq1920);
+    expect(previewFhd!.mq3000).toBe(nativeFhd!.mq3000);
     expect(previewFhd!.mq3000).toBe(false);
+    expect(previewFhd!.columns).toBe(nativeFhd!.columns);
+    expect(previewFhd!.columns.length).toBeGreaterThan(0);
     await wallCtx.close();
   });
 });

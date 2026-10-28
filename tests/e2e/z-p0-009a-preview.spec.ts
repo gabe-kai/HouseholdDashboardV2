@@ -103,6 +103,54 @@ async function createPreviewDisplay(page: Page, label: string) {
   return preview;
 }
 
+type HeldPreview = {
+  captured: Promise<void>;
+  release: (mutate?: (body: string) => string) => Promise<void>;
+};
+
+async function armHeldPreview(page: Page, glob: string, snapshot: string): Promise<HeldPreview> {
+  let capturedResolve: () => void = () => undefined;
+  const captured = new Promise<void>((resolve) => {
+    capturedResolve = resolve;
+  });
+  let mutateBody: ((body: string) => string) | undefined;
+  let releaseResolve: () => void = () => undefined;
+  const released = new Promise<void>((resolve) => {
+    releaseResolve = resolve;
+  });
+  let armed = true;
+  await page.route(glob, async (route: Route) => {
+    if (!armed) {
+      await route.continue();
+      return;
+    }
+    armed = false;
+    capturedResolve();
+    await released;
+    const body = mutateBody ? mutateBody(snapshot) : snapshot;
+    await route.fulfill({
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body,
+    });
+  });
+  return {
+    captured,
+    release: async (mutate) => {
+      mutateBody = mutate;
+      releaseResolve();
+    },
+  };
+}
+
+async function postPreviewBack(page: Page) {
+  const child = page.frame({ url: /preview-frame\.html/ });
+  if (!child) throw new Error("preview frame missing");
+  await child.evaluate(() => {
+    window.parent.postMessage({ type: "hd-preview-back" }, window.location.origin);
+  });
+}
+
 test.describe("P0-009A selected-display preview", () => {
   test("AT3b/AT6a/AT7b: preview opens read-only, restores by URL, and Back returns", async ({
     page,
@@ -225,7 +273,15 @@ test.describe("P0-009A selected-display preview", () => {
       window.dispatchEvent(new Event("online"));
       document.dispatchEvent(new Event("visibilitychange"));
     });
+    await expect(
+      wall.locator("[data-testid^=display-step-done-]").first(),
+    ).toHaveAttribute("aria-pressed", "true", { timeout: 20_000 });
+    await expect(wall.getByRole("status").filter({ hasText: /pending|Saving|retry/i })).toHaveCount(
+      0,
+    );
+    await expect(wall.getByTestId("display-pending-cue")).toHaveCount(0);
     await expect(wall.getByText("Hold this step")).toBeVisible();
+    await expect(previewFrame.locator("[data-testid^=display-step-done-]")).toHaveCount(0);
     await wallCtx.close();
   });
 
@@ -240,7 +296,7 @@ test.describe("P0-009A selected-display preview", () => {
     const previewButton = await createPreviewDisplay(page, label);
     const stepText = `Preview live ${Date.now().toString(36)}`;
     const routineTitle = `Live routine ${Date.now().toString(36)}`;
-    const created = await createAveryRoutine(page.request, routineTitle, stepText);
+    await createAveryRoutine(page.request, routineTitle, stepText);
     await previewButton.click();
     const frame = page.frameLocator('[data-testid="display-preview-frame"]');
     await expect(frame.getByTestId("display-overview")).toBeVisible({ timeout: 20_000 });
@@ -371,9 +427,18 @@ test.describe("P0-009A selected-display preview", () => {
       task: { id: string; sharingVersion: number };
     };
 
-    await page.getByRole("button", { name: "Preview display" }).first().click();
+    await page
+      .locator("li.display-manager-row")
+      .filter({ hasText: label })
+      .getByRole("button", { name: "Preview display" })
+      .click();
     const frame = page.frameLocator('[data-testid="display-preview-frame"]');
-    await expect(frame.getByText(taskTitle)).toBeVisible({ timeout: 20_000 });
+    await expect(frame.getByTestId("display-overview")).toBeVisible({ timeout: 20_000 });
+    await frame.getByTestId("display-org-by-work").click();
+    await expect(frame.getByTestId("display-by-work")).toBeVisible();
+    await expect(frame.getByTestId("display-promoted-personal")).toContainText(taskTitle, {
+      timeout: 20_000,
+    });
 
     let releaseHold = () => undefined as void;
     let holdNext = false;
@@ -488,6 +553,165 @@ test.describe("P0-009A selected-display preview", () => {
     });
     await expect(page.getByTestId("display-preview-error")).toBeVisible({ timeout: 20_000 });
     await expect(frame.getByTestId("display-overview")).toHaveCount(0);
+  });
+
+  test("AT5d/AT5f: held replies cannot replace a newer context or renew stale", async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      window.__HD_PREVIEW_POLL_MS = 30_000;
+      window.__HD_PREVIEW_STALE_MS = 60_000;
+    });
+    const label = `Held ${Date.now().toString(36)}`;
+    await createPreviewDisplay(page, label);
+    await page
+      .locator("li.display-manager-row")
+      .filter({ hasText: label })
+      .getByRole("button", { name: "Preview display" })
+      .click();
+    const frame = page.frameLocator('[data-testid="display-preview-frame"]');
+    await expect(frame.getByTestId("display-overview")).toBeVisible({ timeout: 20_000 });
+    const displayId = new URL(page.url()).pathname.split("/")[3]!;
+
+    const averyCard = frame
+      .getByTestId("display-by-person")
+      .locator(".display-person-card")
+      .filter({ hasText: /Avery/i });
+    await averyCard.click();
+    await expect(frame.getByTestId("display-detail")).toBeVisible();
+    const personSnap = await page.request.get(
+      `/api/v1/displays/${displayId}/preview/people/${AVERY_ID}`,
+    );
+    expect(personSnap.ok()).toBeTruthy();
+    const heldPerson = await armHeldPreview(
+      page,
+      "**/api/v1/displays/**/preview/people/**",
+      await personSnap.text(),
+    );
+    await postPreviewBack(page);
+    await expect(frame.getByTestId("display-overview")).toBeVisible();
+    await averyCard.click();
+    await heldPerson.captured;
+    await postPreviewBack(page);
+    await expect(frame.getByTestId("display-overview")).toBeVisible();
+    await heldPerson.release();
+    await page.waitForTimeout(300);
+    await expect(frame.getByTestId("display-overview")).toBeVisible();
+    await expect(frame.getByTestId("display-detail")).toHaveCount(0);
+    await page.unroute("**/api/v1/displays/**/preview/people/**");
+
+    const occTitle = `Held occ ${Date.now().toString(36)}`;
+    await createAveryRoutine(page.request, occTitle, "Held occurrence step");
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await expect(frame.getByText(occTitle)).toBeAttached({ timeout: 20_000 });
+    await averyCard.click();
+    await expect(frame.getByTestId("display-detail")).toBeVisible();
+    const personForOcc = await page.request.get(
+      `/api/v1/displays/${displayId}/preview/people/${AVERY_ID}`,
+    );
+    expect(personForOcc.ok()).toBeTruthy();
+    const personOccBody = (await personForOcc.json()) as {
+      person: { recurringWork: Array<{ occurrenceId: string; title: string }> };
+    };
+    const occId = personOccBody.person.recurringWork.find((row) => row.title === occTitle)
+      ?.occurrenceId;
+    expect(occId).toBeTruthy();
+    await frame
+      .getByTestId("display-detail")
+      .locator("button.display-work-row")
+      .filter({ hasText: occTitle })
+      .click();
+    await expect(frame.locator(".display-step").first()).toBeVisible();
+    const occSnap = await page.request.get(
+      `/api/v1/displays/${displayId}/preview/occurrences/${occId}`,
+    );
+    expect(occSnap.ok(), await occSnap.text()).toBeTruthy();
+    const heldOccurrence = await armHeldPreview(
+      page,
+      "**/api/v1/displays/**/preview/occurrences/**",
+      await occSnap.text(),
+    );
+    await postPreviewBack(page);
+    await expect(frame.getByTestId("display-overview")).toBeVisible();
+    await averyCard.click();
+    await expect(frame.getByTestId("display-detail")).toBeVisible();
+    await frame
+      .getByTestId("display-detail")
+      .locator("button.display-work-row")
+      .filter({ hasText: occTitle })
+      .click();
+    await heldOccurrence.captured;
+    await postPreviewBack(page);
+    await expect(frame.getByTestId("display-overview")).toBeVisible();
+    await heldOccurrence.release();
+    await page.waitForTimeout(300);
+    await expect(frame.getByTestId("display-overview")).toBeVisible();
+    await expect(frame.getByTestId("display-detail")).toHaveCount(0);
+    await page.unroute("**/api/v1/displays/**/preview/occurrences/**");
+
+    const dashSnap = await page.request.get(`/api/v1/displays/${displayId}/preview/dashboard`);
+    expect(dashSnap.ok()).toBeTruthy();
+    const dashBody = await dashSnap.text();
+    const heldOver = await armHeldPreview(page, "**/api/v1/displays/**/preview/dashboard", dashBody);
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await heldOver.captured;
+    const genTitle = `Gen fence ${Date.now().toString(36)}`;
+    await createAveryRoutine(page.request, genTitle, "Generation step");
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await expect(frame.getByText(genTitle)).toBeAttached({ timeout: 20_000 });
+    await heldOver.release((body) => {
+      const parsed = JSON.parse(body) as {
+        householdDate?: string;
+        activityGeneration?: number;
+        serverTime?: string;
+        dashboard?: { householdDate?: string };
+      };
+      parsed.householdDate = "2020-01-01";
+      parsed.serverTime = "2020-01-01T15:00:00.000Z";
+      parsed.activityGeneration = 0;
+      if (parsed.dashboard) parsed.dashboard.householdDate = "2020-01-01";
+      return JSON.stringify(parsed);
+    });
+    await page.waitForTimeout(300);
+    await expect(frame.locator(".display-date")).not.toContainText("January 1");
+    await expect(frame.getByText(genTitle)).toBeAttached();
+    await expect(frame.getByTestId("display-overview")).toBeVisible();
+    await page.unroute("**/api/v1/displays/**/preview/dashboard");
+
+    const heldLate = await armHeldPreview(page, "**/api/v1/displays/**/preview/dashboard", dashBody);
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await heldLate.captured;
+    await page.evaluate(() => {
+      window.__HD_PREVIEW_NOW_MS = Date.now() + 61_000;
+      window.__HD_PREVIEW_FORCE_STALE__?.();
+    });
+    await expect(frame.getByTestId("display-preview-frame-empty")).toBeVisible({ timeout: 20_000 });
+    await heldLate.release();
+    await page.waitForTimeout(300);
+    await expect(frame.getByTestId("display-preview-frame-empty")).toBeVisible();
+    await expect(frame.getByTestId("display-overview")).toHaveCount(0);
+    await expect(frame.getByText(genTitle)).toHaveCount(0);
+    await page.unroute("**/api/v1/displays/**/preview/dashboard");
+    await page.evaluate(() => {
+      delete window.__HD_PREVIEW_NOW_MS;
+    });
+
+    await page.route("**/api/v1/displays/**/preview/dashboard", (route) => route.abort());
+    await page.route("**/api/v1/displays/**/preview/people/**", (route) => route.abort());
+    await page.route("**/api/v1/displays/**/preview/occurrences/**", (route) => route.abort());
+    await page.reload();
+    await expect(page.getByTestId("display-preview-host")).toBeVisible();
+    const coldFrame = page.frameLocator('[data-testid="display-preview-frame"]');
+    await expect(coldFrame.getByTestId("display-preview-frame-empty")).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(coldFrame.getByTestId("display-overview")).toHaveCount(0);
+    await expect(coldFrame.getByText(/Avery/i)).toHaveCount(0);
+    await page.unroute("**/api/v1/displays/**/preview/dashboard");
+    await page.unroute("**/api/v1/displays/**/preview/people/**");
+    await page.unroute("**/api/v1/displays/**/preview/occurrences/**");
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await expect(coldFrame.getByTestId("display-overview")).toBeVisible({ timeout: 20_000 });
   });
 
   test("AT5c session expiry clears preview without a display credential", async ({ page }) => {

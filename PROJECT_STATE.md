@@ -19,7 +19,7 @@
 
 ## Current focus
 
-Inspected 2026-10-28: integrated baseline remains `main` at **1acc4a1** (P0-008F, PR **#29**). P0-009A r2 implementation is on `brief/p0-009a-selected-display-preview-and-family-wall-proof`; Engineering evidence pass is uncommitted on **8511efb**. Architecture re-reviewed the named assertions and returned **FIX REQUIRED** against unchanged r2: pending-action settlement, held stale responses, FHD geometry parity, six-action visibility at both presets, real touch input, and final-tree PR/RC gates remain. Details: `reports/P0-009A-r2-architecture-review.md`. No hosted deployment, production-wall replacement, push, PR, or merge is asserted. Overall P0-008 Product acceptance remains separate, as does the reported `/` route anomaly.
+Inspected 2026-10-28: integrated baseline remains `main` at **1acc4a1** (P0-008F, PR **#29**). P0-009A r2 is technically accepted on `brief/p0-009a-selected-display-preview-and-family-wall-proof` at evidence commit **3b494d8** plus uncommitted Engineering changes. Exact local PR/RC gates pass on the tested tree. Architecture acceptance is recorded in `reports/P0-009A-r2-architecture-review.md`; the Project Lead same-viewport checkpoint is now next. No hosted deployment, production-wall replacement, push, PR, or merge is asserted. Overall P0-008 Product acceptance remains separate, as does the reported `/` route anomaly.
 
 **P0-008E r1** is technically **ACCEPTED** and integrated via PR #28 at `bd05ad0`. **P0-008F r1** is technically accepted and integrated via PR #29 at `1acc4a1`. P0-008's overall Product acceptance remains separate; the reported `/` anomaly remains a separate investigation.
 
@@ -50,7 +50,7 @@ P0-007C's outstanding physical/Product judgments remain distinct from its techni
 | P0-008D - Guided Setup to the First Useful Household Day | r2 | ACCEPTED (technical) | Project Lead evaluation | Merged to `main` via PR #27 at `65e1949` | P0-008E integrated; overall P0-008 Product acceptance pending |
 | P0-008E - Clear First Run and One-View Work Editing | r1 | ACCEPTED (technical) | Project Lead evaluation | Merged to `main` via PR #28 at `bd05ad0` | Hands-on Product evaluation; overall P0-008 Product acceptance remains separate |
 | P0-008F - Keep a Household Intact Through Deployment | r1 | ACCEPTED (technical) | Project Lead evaluation | Merged to `main` via PR #29 at `1acc4a1` | Project Lead reports persistent control-store copy and new-household setup; prior-household recovery is not claimed |
-| P0-009A - Preview a Display and Judge the Family Board | r2 | FIX REQUIRED | Engineering | `brief/p0-009a-selected-display-preview-and-family-wall-proof` @ `8511efb` + uncommitted delta | Close remaining AT3b, AT5d/f, AT7a, AT9a/AT13, AT11/AT14a touch, rerun AT14b final-tree gates; then Architecture re-review |
+| P0-009A - Preview a Display and Judge the Family Board | r2 | ACCEPTED (technical) | Project Lead | `brief/p0-009a-selected-display-preview-and-family-wall-proof` @ `3b494d8` + uncommitted evidence delta | Same-viewport human checkpoint; then scope actionable-person-pane work; no deployment authorized |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -83,7 +83,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Engineering: begin local implementation of P0-009A r2 under Architecture ACCEPT / PROCEED. Return the Build Report for technical acceptance; after acceptance, the Project Lead performs the same-viewport checkpoint. The later actionable-person-pane brief remains gated on that checkpoint. The root-route anomaly and live School/Meals/Calendar features are separate work.
+Project Lead: perform the P0-009A same-viewport checkpoint using the selected-display preview and local family-board proof. Record the viewport and evaluation outcome before scoping the actionable-person-pane brief. The live wall remains unchanged; deployment and replacement are not authorized. The root-route anomaly and live School/Meals/Calendar features are separate work.
 
 ## Notes for all teams
 

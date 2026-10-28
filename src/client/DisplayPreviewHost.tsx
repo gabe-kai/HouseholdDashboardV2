@@ -283,6 +283,7 @@ export function DisplayPreviewHost(props: {
           current.membershipId,
         );
         if (blankedAtRef.current !== null && startedWall <= blankedAtRef.current) return;
+        if (nowMs() - startedAt > staleMaxMs()) return;
         if (detailRef.current?.kind !== "person" || detailRef.current.membershipId !== current.membershipId) {
           return;
         }
@@ -295,6 +296,7 @@ export function DisplayPreviewHost(props: {
           current.occurrenceId,
         );
         if (blankedAtRef.current !== null && startedWall <= blankedAtRef.current) return;
+        if (nowMs() - startedAt > staleMaxMs()) return;
         const stillSame =
           detailRef.current?.kind === current.kind &&
           "occurrenceId" in detailRef.current &&
@@ -327,11 +329,11 @@ export function DisplayPreviewHost(props: {
 
   useEffect(() => {
     void loadDashboard("open");
-  }, [props.displayId, loadDashboard]);
+  }, [props.displayId]);
 
   useEffect(() => {
     void loadDashboard("sync");
-  }, [props.refreshToken, loadDashboard]);
+  }, [props.refreshToken]);
 
   useEffect(() => {
     if (!detail) {
@@ -341,7 +343,7 @@ export function DisplayPreviewHost(props: {
       return;
     }
     void loadDetail();
-  }, [detail, loadDetail]);
+  }, [detail]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -350,7 +352,7 @@ export function DisplayPreviewHost(props: {
       if (detailRef.current) void loadDetail();
     }, pollMs());
     return () => window.clearInterval(timer);
-  }, [loadDashboard, loadDetail]);
+  }, []);
 
   useEffect(() => {
     const onVisible = () => {
@@ -365,7 +367,7 @@ export function DisplayPreviewHost(props: {
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [loadDashboard]);
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => {

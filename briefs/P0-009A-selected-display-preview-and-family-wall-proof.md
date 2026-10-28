@@ -1,11 +1,11 @@
 # BRIEF P0-009A - Preview a display and judge the family board
 
 **Revision:** 2  
-**Status:** FIX REQUIRED<br>
+**Status:** ACCEPTED (technical)<br>
 **Integrated code baseline:** `main` / `origin/main` at `1acc4a1` (P0-008F, PR #29; P0-008E remains merged through PR #28)  
 **Product input:** `PRODUCT.md` → “Family wall experience proposal,” revised 2026-10-25; Design review confirmed the scope and sequence remain unchanged.
 
-This is the authoritative brief for P0-009A. r2 supersedes r1 before implementation. The Design review of the Project Lead's recent setup evaluation did not change the wall plan; no contract revision is needed. Engineering readiness is READY against the integrated `main` baseline above, and Architecture accepted implementation to begin. The implementation is now awaiting technical acceptance; the same-revision evidence gaps are recorded in `reports/P0-009A-r2-architecture-review.md`. Technical acceptance makes the result ready for Project Lead evaluation; it does not accept the proposed design.
+This is the authoritative brief for P0-009A. r2 supersedes r1 before implementation. The Design review of the Project Lead's recent setup evaluation did not change the wall plan; no contract revision is needed. Engineering readiness is READY against the integrated `main` baseline above, and Architecture has technically accepted the implementation against r2. The Build Report and Architecture acceptance record the evidence. The Project Lead's same-viewport evaluation remains separate and does not accept the proposed design automatically.
 
 ## Why
 
@@ -229,7 +229,7 @@ D-041–D-049, D-050–D-056, and D-057–D-059 as refined for r2.
 
 **Architecture disposition:** ACCEPT / PROCEED (2026-10-27). Engineering may implement P0-009A r2 locally on this brief branch. No hosted deployment or production-wall replacement is authorized by this disposition.
 
-**Architecture acceptance review (2026-10-28):** FIX REQUIRED against the unchanged r2 contract. The evidence pass closes most previously open rows; remaining closure is limited to AT3b pending-intent settlement, AT5d/AT5f held-response races, AT7a FHD geometry parity, AT9a/AT13 six-action visibility, AT11/AT14a actual touch input, and AT14b final-tree gates. See `reports/P0-009A-r2-architecture-review.md`. No hosted deployment or production-wall replacement is authorized.
+**Architecture acceptance (2026-10-28):** ACCEPTED (technical) against the unchanged r2 contract after AT3b, AT5d/f, AT7a, AT9a/AT13, AT11/AT14a, and AT14b closure. See `reports/P0-009A-r2-architecture-review.md` and `reports/P0-009A-r2-build-report.md`. The Project Lead same-viewport checkpoint remains pending; no hosted deployment or production-wall replacement is authorized.
 
 ## Revision history
 

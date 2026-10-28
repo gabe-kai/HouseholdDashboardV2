@@ -46,6 +46,9 @@ export default defineConfig({
     "**/z-p0-006a-vite-deeplink.spec.ts",
     "**/z-p0-007a-vite-deeplink.spec.ts",
     "**/z-p0-007c-2-vite-deeplink.spec.ts",
+    "**/z-p0-008d-vite-deeplink.spec.ts",
+    "**/z-p0-009a-vite-deeplink.spec.ts",
+    "**/z-p0-009a-proof-vite.spec.ts",
   ],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
@@ -128,6 +131,7 @@ export default defineConfig({
         "**/z-p0-008c-*.spec.ts",
         "**/z-p0-008d-*.spec.ts",
         "**/z-p0-008e-setup.spec.ts",
+        "**/z-p0-009a-*.spec.ts",
       ],
       use: { ...devices["Pixel 7"], baseURL: chromiumURL },
     },
@@ -171,6 +175,7 @@ export default defineConfig({
         "**/z-p0-007c-2-geometry.spec.ts",
         "**/z-p0-007c-3a-geometry.spec.ts",
         "**/z-p0-007c-3b-geometry.spec.ts",
+        "**/z-p0-009a-geometry.spec.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],
@@ -184,6 +189,7 @@ export default defineConfig({
         "**/z-p0-007c-2-geometry.spec.ts",
         "**/z-p0-007c-3a-geometry.spec.ts",
         "**/z-p0-007c-3b-geometry.spec.ts",
+        "**/z-p0-009a-geometry.spec.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],
@@ -200,8 +206,27 @@ export default defineConfig({
         "**/z-p0-008c-*.spec.ts",
         "**/z-p0-008d-*.spec.ts",
         "**/z-p0-008e-setup.spec.ts",
+        "**/z-p0-009a-*.spec.ts",
       ],
       use: { ...devices["iPhone 13"], baseURL: webkitURL },
+    },
+    {
+      name: "chromium-preview",
+      testMatch: ["**/z-p0-009a-preview.spec.ts"],
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1280, height: 800 },
+        baseURL: chromiumURL,
+      },
+    },
+    {
+      name: "webkit-preview",
+      testMatch: ["**/z-p0-009a-preview.spec.ts"],
+      use: {
+        ...devices["Desktop Safari"],
+        viewport: { width: 1280, height: 800 },
+        baseURL: webkitURL,
+      },
     },
     {
       name: "webkit-008a",

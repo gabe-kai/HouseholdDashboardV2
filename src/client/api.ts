@@ -47,6 +47,7 @@ let csrfToken = readStoredCsrf();
 export type ApiError = Error & {
   code?: string;
   requestId?: string;
+  status?: number;
   conflictingScheduleEntryId?: string;
   occupiedDate?: string;
 };
@@ -400,6 +401,7 @@ async function parseJson<T>(res: Response): Promise<T> {
     const error = new Error(data.message ?? res.statusText) as ApiError;
     error.code = data.code;
     error.requestId = data.requestId;
+    error.status = res.status;
     error.conflictingScheduleEntryId = data.conflictingScheduleEntryId;
     error.occupiedDate = data.occupiedDate;
     throw error;
@@ -1669,6 +1671,46 @@ export async function revokeDisplay(
       method: "POST",
       body: JSON.stringify(body),
     },
+  );
+}
+
+export type DisplayPreviewEnvelope = {
+  displayId: string;
+  label: string;
+  householdDate: string;
+  timezone: string;
+  serverTime: string;
+  activityGeneration: number;
+  installationEpoch: number;
+};
+
+export async function fetchDisplayPreviewDashboard(displayId: string) {
+  return request<
+    DisplayPreviewEnvelope & { dashboard: import("./display-api").DisplayDashboard }
+  >(`/api/v1/displays/${encodeURIComponent(displayId)}/preview/dashboard`);
+}
+
+export async function fetchDisplayPreviewPerson(
+  displayId: string,
+  membershipId: string,
+) {
+  return request<
+    DisplayPreviewEnvelope & { person: import("./display-api").DisplayPersonDetail }
+  >(
+    `/api/v1/displays/${encodeURIComponent(displayId)}/preview/people/${encodeURIComponent(membershipId)}`,
+  );
+}
+
+export async function fetchDisplayPreviewOccurrence(
+  displayId: string,
+  occurrenceId: string,
+) {
+  return request<
+    DisplayPreviewEnvelope & {
+      occurrence: import("./display-api").DisplayOccurrenceDetail;
+    }
+  >(
+    `/api/v1/displays/${encodeURIComponent(displayId)}/preview/occurrences/${encodeURIComponent(occurrenceId)}`,
   );
 }
 

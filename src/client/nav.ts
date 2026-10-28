@@ -16,6 +16,7 @@
  *   /household/settings                 → Data & testing
  *   /household/setup                    → Guided first-household-day setup
  *   /household/displays                 → Household displays (manage grant)
+ *   /household/displays/:displayId/preview → Selected-display preview (manage grant)
  *
  * Edit/create/picker/ended-list and other secondary surfaces stay in-app local
  * state under their parent URL unless noted. Browser Back follows history;
@@ -54,6 +55,7 @@ export type AppLocation =
   | { name: "household-settings" }
   | { name: "household-setup" }
   | { name: "household-displays" }
+  | { name: "household-display-preview"; displayId: string; search?: string }
   | { name: "unavailable"; attemptedPath: string };
 
 const INTENDED_PATH_KEY = "hd_intended_path";
@@ -151,6 +153,15 @@ export function parsePath(pathname: string, search = ""): AppLocation {
     return { name: "household-displays" };
   }
 
+  const previewMatch = /^\/household\/displays\/([^/]+)\/preview$/.exec(path);
+  if (previewMatch?.[1]) {
+    return {
+      name: "household-display-preview",
+      displayId: decodeURIComponent(previewMatch[1]),
+      search: search || undefined,
+    };
+  }
+
   if (path === "/household/history") {
     return { name: "household-history", filters: parseHistoryFilters(search) };
   }
@@ -204,6 +215,10 @@ export function pathFor(location: AppLocation): string {
       return "/household/setup";
     case "household-displays":
       return "/household/displays";
+    case "household-display-preview":
+      return `/household/displays/${encodeURIComponent(location.displayId)}/preview${
+        location.search ?? ""
+      }`;
     case "unavailable":
       return location.attemptedPath || "/today";
   }
@@ -227,6 +242,8 @@ export function parentLocation(location: AppLocation): AppLocation {
     case "household-displays":
     case "unavailable":
       return { name: "household" };
+    case "household-display-preview":
+      return { name: "household-displays" };
     case "household-person":
     case "household-group":
       return { name: "household-people" };

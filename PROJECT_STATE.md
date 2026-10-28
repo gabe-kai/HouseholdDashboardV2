@@ -19,9 +19,9 @@
 
 ## Current focus
 
-Inspected 2026-10-26: integrated repository baseline is `main` at **bd05ad0**, with P0-008E merged through PR **#28**. P0-008F r1 is technically **ACCEPTED** on `brief/p0-008f-hosted-installation-continuity` against the corrected uncommitted working tree. Engineering reports exact local PR/RC gates passing. AT13 and the safe move of the currently ephemeral `/app/runtime/installation-control.sqlite` to `/data/installation-control.sqlite` remain outstanding. Do not trigger an auto-deploy, restore an older snapshot, or rebuild the household until that control-store transition and path verification are ready.
+Inspected 2026-10-28: integrated baseline remains `main` at **1acc4a1** (P0-008F, PR **#29**). P0-009A r2 is technically accepted on `brief/p0-009a-selected-display-preview-and-family-wall-proof` at evidence commit **3b494d8** plus uncommitted Engineering changes. Exact local PR/RC gates pass on the tested tree. Architecture acceptance is recorded in `reports/P0-009A-r2-architecture-review.md`; the Project Lead same-viewport checkpoint is now next. No hosted deployment, production-wall replacement, push, PR, or merge is asserted. Overall P0-008 Product acceptance remains separate, as does the reported `/` route anomaly.
 
-**P0-008E r1** is technically **ACCEPTED** and integrated via PR #28 at `bd05ad0`. P0-008F r1 is the incident-driven continuity correction. Overall P0-008 Product acceptance remains separate; the reported `/` anomaly remains a separate investigation.
+**P0-008E r1** is technically **ACCEPTED** and integrated via PR #28 at `bd05ad0`. **P0-008F r1** is technically accepted and integrated via PR #29 at `1acc4a1`. P0-008's overall Product acceptance remains separate; the reported `/` anomaly remains a separate investigation.
 
 P0-007C's outstanding physical/Product judgments remain distinct from its technical acceptance and from approval to begin P0-008. Old reports retain their inspected SHAs.
 
@@ -49,7 +49,8 @@ P0-007C's outstanding physical/Product judgments remain distinct from its techni
 | P0-008C - Understandable Member Access and Safe Removal | r1 | ACCEPTED | Integrated foundation | Merged to `main` at `1709097` via PR #26; correction `90de153` | Hosted/Product evaluation remains separate |
 | P0-008D - Guided Setup to the First Useful Household Day | r2 | ACCEPTED (technical) | Project Lead evaluation | Merged to `main` via PR #27 at `65e1949` | P0-008E integrated; overall P0-008 Product acceptance pending |
 | P0-008E - Clear First Run and One-View Work Editing | r1 | ACCEPTED (technical) | Project Lead evaluation | Merged to `main` via PR #28 at `bd05ad0` | Hands-on Product evaluation; overall P0-008 Product acceptance remains separate |
-| P0-008F - Keep a Household Intact Through Deployment | r1 | ACCEPTED (technical) | Project Lead | `brief/p0-008f-hosted-installation-continuity` | Preserve/relocate current control store to `/data` before any container replacement; verify all paths/diagnostic (AT13) before any rebuild |
+| P0-008F - Keep a Household Intact Through Deployment | r1 | ACCEPTED (technical) | Project Lead evaluation | Merged to `main` via PR #29 at `1acc4a1` | Project Lead reports persistent control-store copy and new-household setup; prior-household recovery is not claimed |
+| P0-009A - Preview a Display and Judge the Family Board | r2 | ACCEPTED (technical) | Project Lead | `brief/p0-009a-selected-display-preview-and-family-wall-proof` @ `3b494d8` + uncommitted evidence delta | Same-viewport human checkpoint; then scope actionable-person-pane work; no deployment authorized |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -76,14 +77,13 @@ This table is the short repository-side coordination index. An external project 
 - P0-006C r1 profiles, saved family order, read-only summarized History and generation-fenced activity reset were technically accepted after correction `e8a93d5`, then merged via PR #14 at `409d147`.
 - P0-007A r1 was technically accepted at `bb21d74`, recorded in `7539fd0`, and merged via PR #15 at `51322e0`. The Project Lead confirmed merge/cleanup; the supplied Design proposal accepts A as the foundation and requests B next, preserving C's presentation feedback.
 
-## Known blockers
+## Open follow-ups
 
-- P0-008F r1 is locally technically accepted. The current Railway control store was last observed at ephemeral `/app/runtime/installation-control.sqlite`; safely relocate it to `/data/installation-control.sqlite` and verify AT13 before any container replacement or household rebuild. Do not restore older snapshots or write live Railway data under this brief.
 - Overall P0-008 Product acceptance and exact hosted deployed-SHA/operations record remain separate. The reported `/` anomaly remains open.
 
 ## Next likely handoff
 
-Project Lead: before allowing a merge to trigger Railway auto-deploy, prepare a verified SQLite-backup relocation of the current control store from `/app/runtime/installation-control.sqlite` to `/data/installation-control.sqlite`; the current deployed image may not include the new relocation CLI. Then verify all three Railway paths and the startup diagnostic (AT13). Only after this transition is ready should the accepted branch be integrated/deployed. No older snapshot restore or household rebuild is part of this technical acceptance.
+Project Lead: perform the P0-009A same-viewport checkpoint using the selected-display preview and local family-board proof. Record the viewport and evaluation outcome before scoping the actionable-person-pane brief. The live wall remains unchanged; deployment and replacement are not authorized. The root-route anomaly and live School/Meals/Calendar features are separate work.
 
 ## Notes for all teams
 

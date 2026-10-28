@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 /**
- * Isolated Vite + API stack for P0-006A deep-link smoke.
+ * Isolated Vite + API stack for deep-link smoke and the P0-009A fictional proof.
  * Not mixed into the production-built e2e webServers (keeps PR/RC fast).
  */
 const apiPort = Number(process.env.E2E_VITE_API_PORT ?? 8792);
@@ -11,12 +11,6 @@ const apiURL = `http://127.0.0.1:${apiPort}`;
 
 export default defineConfig({
   testDir: "tests/e2e",
-  testMatch: [
-    "**/z-p0-006a-vite-deeplink.spec.ts",
-    "**/z-p0-007a-vite-deeplink.spec.ts",
-    "**/z-p0-007c-2-vite-deeplink.spec.ts",
-    "**/z-p0-008d-vite-deeplink.spec.ts",
-  ],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: 0,
@@ -25,7 +19,6 @@ export default defineConfig({
   expect: { timeout: 20_000 },
   reporter: [["list"]],
   use: {
-    ...devices["Pixel 7"],
     baseURL: viteURL,
     trace: "on-first-retry",
   },
@@ -61,8 +54,40 @@ export default defineConfig({
       env: {
         ...process.env,
         VITE_PORT: String(vitePort),
-        // Point Vite's /api/v1 proxy at this smoke API (vite.config defaults to 8787).
         VITE_API_PROXY_TARGET: apiURL,
+      },
+    },
+  ],
+  projects: [
+    {
+      name: "vite-phone",
+      testMatch: [
+        "**/z-p0-006a-vite-deeplink.spec.ts",
+        "**/z-p0-007a-vite-deeplink.spec.ts",
+        "**/z-p0-007c-2-vite-deeplink.spec.ts",
+        "**/z-p0-008d-vite-deeplink.spec.ts",
+        "**/z-p0-009a-vite-deeplink.spec.ts",
+      ],
+      use: { ...devices["Pixel 7"], baseURL: viteURL },
+    },
+    {
+      name: "vite-desktop",
+      testMatch: ["**/z-p0-009a-proof-vite.spec.ts"],
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1280, height: 800 },
+        baseURL: viteURL,
+      },
+    },
+    {
+      name: "vite-touch",
+      testMatch: ["**/z-p0-009a-proof-vite.spec.ts"],
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1280, height: 800 },
+        hasTouch: true,
+        isMobile: false,
+        baseURL: viteURL,
       },
     },
   ],

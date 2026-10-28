@@ -2,7 +2,7 @@ import path from "node:path";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [react()],
   root: path.resolve("src/client"),
   publicDir: path.resolve("src/client/public"),
@@ -15,6 +15,15 @@ export default defineConfig({
   build: {
     outDir: path.resolve("dist/client"),
     emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        main: path.resolve("src/client/index.html"),
+        previewFrame: path.resolve("src/client/preview-frame.html"),
+        ...(command === "serve"
+          ? { familyBoardProof: path.resolve("src/client/family-board-proof.html") }
+          : {}),
+      },
+    },
   },
   server: {
     // Loopback by default; EVAL_LAN_ACCESS=1 binds all interfaces for phone testing.
@@ -33,5 +42,5 @@ export default defineConfig({
       },
     },
   },
-});
+}));
 

@@ -75,6 +75,7 @@ test.describe("P0-007C-2 manager-to-wall enrollment", () => {
     const codeText = (await page.getByTestId("display-issued-code").innerText()).trim();
     expect(codeText.replace(/[\s-]/g, "").length).toBe(16);
     await expect(page.getByText("/display")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Preview display" })).toBeVisible();
 
     // Separate signed-out browser context claims the code.
     const wall = await browser.newContext();

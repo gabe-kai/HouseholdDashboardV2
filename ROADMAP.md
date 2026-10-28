@@ -100,18 +100,19 @@ Both C-3 slices contribute to **Act at the shared display without losing trust**
 
 ### CURRENT
 
-- **P0-008F r1 — Keep a household intact through deployment:** fail-closed hosted control inspection, active-target verification, journal-named epoch cleanup, SQLite-backup control relocation, and session/display continuity on a shared volume. Architecture has technically accepted the corrected local implementation; Engineering reports exact PR/RC PASS. The corrected tree remains uncommitted on `brief/p0-008f-hosted-installation-continuity` from `main` at `bd05ad0` (`reports/P0-008F-r1-architecture-reacceptance.md`). The current Railway control store was last observed at ephemeral `/app/runtime/installation-control.sqlite`; relocate it to `/data/installation-control.sqlite` and complete AT13 before any container-replacing auto-deploy. No older snapshot restore or household rebuild is part of this brief.
-- **P0-008E r1** is technically accepted and merged through PR #28 at `bd05ad0`. Overall P0-008 Product acceptance remains separate.
+- **P0-009A r2 — Preview a display and judge the family board:** technically **ACCEPTED** after final assertion closure and exact local PR/RC passes. The Project Lead's same-viewport checkpoint is now next; use that evidence to decide whether the proposed layout and idle behavior should guide actionable-person-pane work. The live wall remains unchanged; no hosted deployment or production-wall replacement is authorized. See `reports/P0-009A-r2-architecture-review.md`.
+- P0-008F r1 — Keep a household intact through deployment — is technically accepted and merged through PR #29 at `1acc4a1`. The Project Lead reports relocating installation control to persistent storage and completing new-household setup; prior-household recovery is not claimed. Overall P0-008 Product acceptance remains separate.
 
 ### LIKELY NEXT
 
-- Before a merge triggers Railway auto-deploy, the Project Lead preserves/relocates the currently ephemeral control file to the volume. Then verify `DB_PATH=/data/household.sqlite`, `BACKUP_DIR=/data/backups`, `INSTALLATION_CONTROL_PATH=/data/installation-control.sqlite`, and the startup diagnostic (AT13); only then proceed with container replacement or household rebuild.
-- Reproduce the reported `/` → “view unavailable” behavior on the exact Railway deployment (record deployed SHA and fresh-session steps); repository routing currently maps `/` to Today. Keep this as a focused defect investigation, separate from P0-008F.
+- The Project Lead now evaluates the reproducible same-viewport checkpoint. Use that evidence to scope the next brief for actionable person panes; do not fix the working layout before this review.
+- Keep the `/` → “view unavailable” report as a separate, unsequenced routing investigation. It is not a P0-009A dependency or acceptance gate.
 
 The shared card reaches Product Accepted only after hands-on acceptance. Coverage/release checkpoints: `reports/P0-008-architecture-sequencing.md`.
 
 ### LATER
 
+- Live School/homework, Meals, and Calendar features; assignment-coverage changes; and broader family-day modules remain separate decisions. P0-009A uses fictional examples only.
 - Preserve potential pressures from real-family use: helpers, Cover/Claim, household exceptions/Skip Day, exact-time behavior, richer personal/school projects, notifications, multi-person/claimable cleanup and a natural twice-daily chore concept. None is pre-selected as the next implementation commitment.
 - Preserve owner-controlled visibility, separately authorized future parent overrides for minors, long-running projects/subtasks/milestones/due dates/daily targets and compact shared project summaries. Due dates or progress must never expose private work. Broader ambient display feeds follow a useful functional display, not before it.
 - Additional ordinary responsibilities (Cars, lawn care, medication, seasonal maintenance), richer personal work, and assignment refinement remain Product pressure tests; no domain-specific implementation is authorized in B.

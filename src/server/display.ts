@@ -38,6 +38,27 @@ export type DisplayContext = {
   csrfSecret: string;
 };
 
+/** Household/date projection input after caller authorization (D-057). */
+export type DisplayReadScope = {
+  householdId: string;
+  timezone: string;
+};
+
+export type DisplayPreviewContext = {
+  displayId: string;
+  label: string;
+  householdDate: HouseholdDate;
+  timezone: string;
+  serverTime: string;
+  activityGeneration: number;
+  installationEpoch: number;
+};
+
+export type DisplayPreviewOccurrenceDetail = Omit<
+  DisplayOccurrenceDetail,
+  "intendedStructure"
+>;
+
 export type DisplayListItem = {
   id: string;
   label: string;
@@ -218,6 +239,34 @@ const DISPLAY_ABSOLUTE_MS = 365 * 24 * 60 * 60 * 1_000;
 
 function fail(code: StoreErrorCode, message: string): never {
   throw Object.assign(new Error(message), { code });
+}
+
+function stripPreviewOccurrence(
+  occurrence: Omit<DisplayOccurrenceDetail, "intendedStructure">,
+): DisplayPreviewOccurrenceDetail {
+  return {
+    id: occurrence.id,
+    definitionId: occurrence.definitionId,
+    revisionId: occurrence.revisionId,
+    title: occurrence.title,
+    kind: occurrence.kind,
+    daypart: occurrence.daypart,
+    householdDate: occurrence.householdDate,
+    accountableMemberId: occurrence.accountableMemberId,
+    accountableMemberName: occurrence.accountableMemberName,
+    completed: occurrence.completed,
+    state: occurrence.state,
+    progress: occurrence.progress,
+    progressLabel: occurrence.progressLabel,
+    steps: occurrence.steps.map((step) => ({
+      id: step.id,
+      text: step.text,
+      status: step.status,
+      obligation: step.obligation,
+      position: step.position,
+      ...(step.source ? { source: step.source } : {}),
+    })),
+  };
 }
 
 function isoAt(date: Date): string {
@@ -669,9 +718,117 @@ export class DisplayStore {
   }
 
   materializeCurrentDayForHousehold(householdId: string): OccurrenceView[] {
-    const timezone = this.householdTimezone(householdId);
-    const today = householdDateFromInstant(new Date(), timezone);
-    return this.appStore.materializeHouseholdDate(householdId, today);
+    return this.materializeCurrentDayScope({
+      householdId,
+      timezone: this.householdTimezone(householdId),
+    }).occurrences;
+  }
+
+  /**
+   * One household-date sample for a projection. Callers must already have
+   * authorized the household; this does not mint a display session.
+   */
+  materializeCurrentDayScope(scope: DisplayReadScope): {
+    occurrences: OccurrenceView[];
+    householdDate: HouseholdDate;
+    timezone: string;
+    serverTime: string;
+  } {
+    const serverTime = nowUtcIso();
+    const householdDate = householdDateFromInstant(new Date(serverTime), scope.timezone);
+    return {
+      occurrences: this.appStore.materializeHouseholdDate(scope.householdId, householdDate),
+      householdDate,
+      timezone: scope.timezone,
+      serverTime,
+    };
+  }
+
+  /** Member + display.manage + same-household non-revoked display. */
+  requirePreviewDisplay(
+    ctx: AuthContext,
+    displayId: string,
+  ): { id: string; label: string; householdId: string; timezone: string } {
+    this.requireDisplayManage(ctx);
+    const display = this.requireActiveDisplay(displayId, ctx.householdId);
+    return {
+      id: display.id,
+      label: display.label,
+      householdId: ctx.householdId,
+      timezone: this.householdTimezone(ctx.householdId),
+    };
+  }
+
+  getPreviewDashboard(
+    ctx: AuthContext,
+    displayId: string,
+    installationEpoch: number,
+  ): DisplayPreviewContext & { dashboard: DisplayDashboard } {
+    const display = this.requirePreviewDisplay(ctx, displayId);
+    const dashboard = this.getDisplayDashboard({
+      householdId: display.householdId,
+      timezone: display.timezone,
+    });
+    return {
+      displayId: display.id,
+      label: display.label,
+      householdDate: dashboard.householdDate,
+      timezone: dashboard.timezone,
+      serverTime: dashboard.serverTime,
+      activityGeneration: dashboard.activityGeneration,
+      installationEpoch,
+      dashboard,
+    };
+  }
+
+  getPreviewPersonDetail(
+    ctx: AuthContext,
+    displayId: string,
+    membershipId: string,
+    installationEpoch: number,
+  ): DisplayPreviewContext & { person: DisplayPersonDetail } {
+    const display = this.requirePreviewDisplay(ctx, displayId);
+    const scope: DisplayReadScope = {
+      householdId: display.householdId,
+      timezone: display.timezone,
+    };
+    const person = this.getDisplayPersonDetail(scope, membershipId);
+    const captured = this.materializeCurrentDayScope(scope);
+    return {
+      displayId: display.id,
+      label: display.label,
+      householdDate: captured.householdDate,
+      timezone: captured.timezone,
+      serverTime: captured.serverTime,
+      activityGeneration: this.appStore.getActivityGeneration(display.householdId),
+      installationEpoch,
+      person,
+    };
+  }
+
+  getPreviewOccurrenceDetail(
+    ctx: AuthContext,
+    displayId: string,
+    occurrenceId: string,
+    installationEpoch: number,
+  ): DisplayPreviewContext & { occurrence: DisplayPreviewOccurrenceDetail } {
+    const display = this.requirePreviewDisplay(ctx, displayId);
+    const scope: DisplayReadScope = {
+      householdId: display.householdId,
+      timezone: display.timezone,
+    };
+    const detail = this.getDisplayOccurrenceDetail(scope, occurrenceId);
+    const { intendedStructure: _omit, ...occurrence } = detail;
+    return {
+      displayId: display.id,
+      label: display.label,
+      householdDate: occurrence.householdDate,
+      timezone: display.timezone,
+      serverTime: nowUtcIso(),
+      activityGeneration: this.appStore.getActivityGeneration(display.householdId),
+      installationEpoch,
+      occurrence: stripPreviewOccurrence(occurrence),
+    };
   }
 
   getDisplaySessionInfo(ctx: DisplayContext): DisplaySessionInfo {
@@ -690,10 +847,10 @@ export class DisplayStore {
     };
   }
 
-  getDisplayDashboard(ctx: DisplayContext): DisplayDashboard {
-    const occurrences = this.materializeCurrentDayForHousehold(ctx.householdId);
+  getDisplayDashboard(ctx: DisplayReadScope): DisplayDashboard {
+    const captured = this.materializeCurrentDayScope(ctx);
     const people = this.listHouseholdPeople(ctx.householdId);
-    const byWork = buildHouseholdOverview(occurrences);
+    const byWork = buildHouseholdOverview(captured.occurrences);
     const promotedRows = this.listPromotedOpenPersonalTasks(ctx.householdId);
     const promotedByOwner = new Map<string, Array<{ id: string; title: string }>>();
     for (const row of promotedRows) {
@@ -703,7 +860,7 @@ export class DisplayStore {
     }
 
     const byPerson = people.map((person) => {
-      const mine = occurrences.filter(
+      const mine = captured.occurrences.filter(
         (occurrence) => occurrence.accountableMemberId === person.id,
       );
       const promotedPersonalTasks = promotedByOwner.get(person.id) ?? [];
@@ -754,9 +911,9 @@ export class DisplayStore {
     });
 
     return {
-      householdDate: householdDateFromInstant(new Date(), ctx.timezone),
-      timezone: ctx.timezone,
-      serverTime: nowUtcIso(),
+      householdDate: captured.householdDate,
+      timezone: captured.timezone,
+      serverTime: captured.serverTime,
       activityGeneration: this.appStore.getActivityGeneration(ctx.householdId),
       byPerson,
       byWork,
@@ -765,7 +922,7 @@ export class DisplayStore {
   }
 
   getDisplayPersonDetail(
-    ctx: DisplayContext,
+    ctx: DisplayReadScope,
     membershipId: string,
   ): DisplayPersonDetail {
     const person = this.listHouseholdPeople(ctx.householdId).find(
@@ -773,7 +930,7 @@ export class DisplayStore {
     );
     if (!person) fail("NOT_FOUND", "Person not found");
 
-    const occurrences = this.materializeCurrentDayForHousehold(ctx.householdId);
+    const occurrences = this.materializeCurrentDayScope(ctx).occurrences;
     const recurringWork = occurrences
       .filter((occurrence) => occurrence.accountableMemberId === membershipId)
       .map((occurrence) => {
@@ -829,10 +986,10 @@ export class DisplayStore {
   }
 
   getDisplayOccurrenceDetail(
-    ctx: DisplayContext,
+    ctx: DisplayReadScope,
     occurrenceId: string,
   ): DisplayOccurrenceDetail {
-    const occurrences = this.materializeCurrentDayForHousehold(ctx.householdId);
+    const occurrences = this.materializeCurrentDayScope(ctx).occurrences;
     const occurrence = occurrences.find((item) => item.id === occurrenceId);
     if (!occurrence) fail("NOT_FOUND", "Occurrence not found");
 

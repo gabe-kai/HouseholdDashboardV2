@@ -36,6 +36,7 @@ function accessLabel(display: DisplayListItem): string {
 
 export function HouseholdDisplaysView(props: {
   onBack: () => void;
+  onPreviewDisplay: (displayId: string) => void;
   onSuccessToast: (message: string) => void;
 }) {
   const [displays, setDisplays] = useState<DisplayListItem[]>([]);
@@ -244,6 +245,14 @@ export function HouseholdDisplaysView(props: {
               <div className="display-manager-actions">
                 {!display.revokedAt ? (
                   <>
+                    <button
+                      type="button"
+                      className="secondary"
+                      data-testid={`display-preview-${display.id}`}
+                      onClick={() => props.onPreviewDisplay(display.id)}
+                    >
+                      Preview display
+                    </button>
                     <button
                       type="button"
                       className="secondary"

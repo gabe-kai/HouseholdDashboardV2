@@ -56,6 +56,7 @@ import {
   resolveSetupStep,
 } from "./WelcomeSetup";
 import { HistoryView } from "./History";
+import { DisplayPreviewHost } from "./DisplayPreviewHost";
 import { HouseholdDisplaysView } from "./HouseholdDisplays";
 import { HouseholdOverview } from "./HouseholdOverview";
 import { HouseholdSettingsView } from "./HouseholdSettings";
@@ -162,7 +163,8 @@ function primaryTabFor(location: AppLocation): PrimaryTab {
     location.name === "household-history-occurrence" ||
     location.name === "household-settings" ||
     location.name === "household-setup" ||
-    location.name === "household-displays"
+    location.name === "household-displays" ||
+    location.name === "household-display-preview"
   ) {
     return "household";
   }
@@ -201,7 +203,11 @@ function gateLocation(location: AppLocation, session: SessionInfo): AppLocation 
   if (location.name === "household-setup" && !canManageLifecycle) {
     return { name: "unavailable", attemptedPath: pathFor(location) };
   }
-  if (location.name === "household-displays" && !canManageDisplays) {
+  if (
+    (location.name === "household-displays" ||
+      location.name === "household-display-preview") &&
+    !canManageDisplays
+  ) {
     return { name: "unavailable", attemptedPath: pathFor(location) };
   }
   return location;
@@ -329,6 +335,7 @@ export function App() {
   const [activityResetBanner, setActivityResetBanner] = useState(false);
   const [installationResetBanner, setInstallationResetBanner] = useState(false);
   const [historyRefreshToken, setHistoryRefreshToken] = useState(0);
+  const [previewRefreshToken, setPreviewRefreshToken] = useState(0);
   const [online, setOnline] = useState(navigator.onLine);
   const [connection, setConnection] = useState<"connected" | "reconnecting" | "offline">(
     navigator.onLine ? "connected" : "offline",
@@ -924,6 +931,19 @@ export function App() {
         if (notification.resource === "occurrence") {
           setHistoryRefreshToken((n) => n + 1);
         }
+        if (
+          notification.resource === "occurrence" ||
+          notification.resource === "personal_task" ||
+          notification.resource === "activity_reset" ||
+          notification.resource === "membership" ||
+          notification.resource === "family_order" ||
+          notification.resource === "routine" ||
+          notification.resource === "responsibility" ||
+          notification.resource === "group" ||
+          notification.resource === "school_calendar"
+        ) {
+          setPreviewRefreshToken((n) => n + 1);
+        }
         const urgent =
           notification.resource === "proposal" ||
           notification.resource === "routine" ||
@@ -948,6 +968,7 @@ export function App() {
           setRoutineRefreshToken((n) => n + 1);
           setHistoryRefreshToken((n) => n + 1);
           setGuideRefreshToken((n) => n + 1);
+          setPreviewRefreshToken((n) => n + 1);
           refreshAuthoritative({ urgentSupporting: true });
         }
       },
@@ -1310,6 +1331,8 @@ export function App() {
     gatedLocation.name === "household-setup" && canManageLifecycle;
   const showingDisplays =
     gatedLocation.name === "household-displays" && canManageDisplays;
+  const showingDisplayPreview =
+    gatedLocation.name === "household-display-preview" && canManageDisplays;
   const showingUnavailable =
     gatedLocation.name === "unavailable" ||
     ((location.name === "plan" ||
@@ -1321,6 +1344,7 @@ export function App() {
       !canManageLifecycle) ||
     (gatedLocation.name === "household-setup" && !canManageLifecycle) ||
     (gatedLocation.name === "household-displays" && !canManageDisplays) ||
+    (gatedLocation.name === "household-display-preview" && !canManageDisplays) ||
     ((gatedLocation.name === "household-history" ||
       gatedLocation.name === "household-history-occurrence") &&
       !canManageShared);
@@ -1333,6 +1357,8 @@ export function App() {
         ? "Approvals"
         : showingHistory
           ? "History"
+          : showingDisplayPreview
+            ? "Display preview"
           : showingDisplays
             ? "Household displays"
             : showingSettings
@@ -2021,7 +2047,31 @@ export function App() {
       {!showingUnavailable && showingDisplays ? (
         <HouseholdDisplaysView
           onBack={() => requestNavigate({ name: "household" })}
+          onPreviewDisplay={(displayId) =>
+            requestNavigate({ name: "household-display-preview", displayId })
+          }
           onSuccessToast={(message) => showToast(message)}
+        />
+      ) : null}
+      {!showingUnavailable && showingDisplayPreview && gatedLocation.name === "household-display-preview" ? (
+        <DisplayPreviewHost
+          displayId={gatedLocation.displayId}
+          session={activeSession}
+          refreshToken={previewRefreshToken}
+          onBack={() => requestNavigate({ name: "household-displays" })}
+          onViewportChange={(search) =>
+            requestNavigate(
+              {
+                name: "household-display-preview",
+                displayId: gatedLocation.displayId,
+                search,
+              },
+              "replace",
+            )
+          }
+          onAuthorityLost={() => {
+            expireSession();
+          }}
         />
       ) : null}
       {!showingUnavailable && showingPersonalize && canDirect ? (

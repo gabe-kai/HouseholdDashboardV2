@@ -224,6 +224,12 @@ export async function buildApp(
     // Aborted connections may skip onResponse; always release the shared hold.
     reply.raw.once("close", release);
   });
+
+  function releaseSharedNow(request: FastifyRequest): void {
+    if (!lifecycleSharedHeld.get(request)) return;
+    runtime.releaseShared();
+    lifecycleSharedHeld.delete(request);
+  }
   app.addHook("onResponse", async (request) => {
     if (lifecycleSharedHeld.get(request)) {
       runtime.releaseShared();
@@ -338,6 +344,48 @@ export async function buildApp(
       secure: config.cookieSecure,
       path: "/",
     });
+  }
+
+  function previewDateOverrideRequested(request: FastifyRequest): boolean {
+    const query = request.query as { date?: unknown };
+    return query.date !== undefined && query.date !== "";
+  }
+
+  /**
+   * Finish the preview read first, then optionally delay delivery without
+   * holding the shared lifecycle lease (AT5e). Revalidate before sending.
+   */
+  async function deliverPreviewAfterHold<T>(
+    request: FastifyRequest,
+    reply: FastifyReply,
+    capturedSession: AuthContext,
+    displayId: string,
+    body: T,
+  ): Promise<T | FastifyReply> {
+    reply.header("Cache-Control", "no-store");
+    const delayMs = Number(request.headers["x-read-delay-ms"] ?? 0);
+    if (config.profile === "hosted" || !(delayMs > 0)) {
+      return body;
+    }
+    releaseSharedNow(request);
+    await new Promise((resolve) => setTimeout(resolve, Math.min(delayMs, 10_000)));
+    requestSessions.delete(request);
+    const live = requireSession(request, reply);
+    if (!live) return reply;
+    if (
+      live.installationEpoch !== capturedSession.installationEpoch ||
+      live.installationEpoch !== getInstallationEpoch()
+    ) {
+      return reply
+        .code(401)
+        .send(errorBody("UNAUTHORIZED", "Authentication required", request.id));
+    }
+    try {
+      displayStore.requirePreviewDisplay(live, displayId);
+    } catch (error) {
+      return sendStoreError(reply, request.id, error);
+    }
+    return body;
   }
 
   function displayInvalidate(
@@ -1897,6 +1945,86 @@ export async function buildApp(
     }
     return displayStore.cancelEnrollment(session, displayId, parsed.data);
   });
+
+  app.get("/api/v1/displays/:displayId/preview/dashboard", async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const { displayId } = request.params as { displayId: string };
+    if (!UuidSchema.safeParse(displayId).success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid display id", request.id));
+    }
+    if (previewDateOverrideRequested(request)) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Preview does not accept a date override", request.id));
+    }
+    const body = displayStore.getPreviewDashboard(
+      session,
+      displayId,
+      getInstallationEpoch(),
+    );
+    return deliverPreviewAfterHold(request, reply, session, displayId, body);
+  });
+
+  app.get(
+    "/api/v1/displays/:displayId/preview/people/:membershipId",
+    async (request, reply) => {
+      const session = requireSession(request, reply);
+      if (!session) return;
+      const { displayId, membershipId } = request.params as {
+        displayId: string;
+        membershipId: string;
+      };
+      if (!UuidSchema.safeParse(displayId).success) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid display id", request.id));
+      }
+      if (!UuidSchema.safeParse(membershipId).success) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid membership id", request.id));
+      }
+      const body = displayStore.getPreviewPersonDetail(
+        session,
+        displayId,
+        membershipId,
+        getInstallationEpoch(),
+      );
+      return deliverPreviewAfterHold(request, reply, session, displayId, body);
+    },
+  );
+
+  app.get(
+    "/api/v1/displays/:displayId/preview/occurrences/:occurrenceId",
+    async (request, reply) => {
+      const session = requireSession(request, reply);
+      if (!session) return;
+      const { displayId, occurrenceId } = request.params as {
+        displayId: string;
+        occurrenceId: string;
+      };
+      if (!UuidSchema.safeParse(displayId).success) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid display id", request.id));
+      }
+      if (!UuidSchema.safeParse(occurrenceId).success) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid occurrence id", request.id));
+      }
+      const body = displayStore.getPreviewOccurrenceDetail(
+        session,
+        displayId,
+        occurrenceId,
+        getInstallationEpoch(),
+      );
+      return deliverPreviewAfterHold(request, reply, session, displayId, body);
+    },
+  );
 
   app.post("/api/v1/displays/:displayId/revoke", async (request, reply) => {
     const session = requireSession(request, reply);

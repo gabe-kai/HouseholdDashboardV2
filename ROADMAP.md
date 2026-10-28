@@ -100,12 +100,12 @@ Both C-3 slices contribute to **Act at the shared display without losing trust**
 
 ### CURRENT
 
-- **P0-009A r2 — Preview a display and judge the family board:** provide a member-authorized, read-only preview of a selected display and a standalone fictional, interactive layout comparison. Use the crowded six-person case, same target viewports for current/concept, earlier/upcoming navigation, independent panes, deliberate enlargement, simulated actions, and fictional future School/Meals/Calendar content. Design confirmed the Project Lead's recent setup feedback does not change the wall plan. The 3×2 layout and per-pane idle behavior remain designs to prove. Engineering readiness is READY and Architecture has ACCEPTED / PROCEEDED; local implementation may begin. See `briefs/P0-009A-selected-display-preview-and-family-wall-proof.md`.
+- **P0-009A r2 — Preview a display and judge the family board:** implementation is present on the brief branch at `d4f313d`; Engineering reports local PR/RC gates PASS. Architecture returned **FIX REQUIRED** against the unchanged r2 matrix because preview lifecycle/isolation, target parity/comparison, crowded/future-day evidence, independent pane behavior, simulated action states, and accessibility assertions remain incomplete. See `reports/P0-009A-r2-architecture-review.md`. The Project Lead checkpoint remains after technical acceptance; no hosted deployment or production-wall replacement is authorized.
 - P0-008F r1 — Keep a household intact through deployment — is technically accepted and merged through PR #29 at `1acc4a1`. The Project Lead reports relocating installation control to persistent storage and completing new-household setup; prior-household recovery is not claimed. Overall P0-008 Product acceptance remains separate.
 
 ### LIKELY NEXT
 
-- After the P0-009A technical result, the Project Lead evaluates the reproducible checkpoint. Use that evidence to scope the next brief for actionable person panes; do not fix the working layout before this review.
+- After P0-009A technical acceptance, the Project Lead evaluates the reproducible checkpoint. Use that evidence to scope the next brief for actionable person panes; do not fix the working layout before this review.
 - Keep the `/` → “view unavailable” report as a separate, unsequenced routing investigation. It is not a P0-009A dependency or acceptance gate.
 
 The shared card reaches Product Accepted only after hands-on acceptance. Coverage/release checkpoints: `reports/P0-008-architecture-sequencing.md`.

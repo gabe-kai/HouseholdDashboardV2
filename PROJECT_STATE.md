@@ -19,7 +19,7 @@
 
 ## Current focus
 
-Inspected 2026-10-28: integrated baseline remains `main` at **1acc4a1** (P0-008F, PR **#29**). P0-009A r2 implementation is on `brief/p0-009a-selected-display-preview-and-family-wall-proof` at **d4f313d**. Engineering reports exact local PR/RC gates passing; Architecture reviewed the named evidence and returned **FIX REQUIRED** against the unchanged r2 acceptance matrix. Consolidated findings: `reports/P0-009A-r2-architecture-review.md`. No hosted deployment, production-wall replacement, push, PR, or merge is asserted. Overall P0-008 Product acceptance remains separate, as does the reported `/` route anomaly.
+Inspected 2026-10-28: integrated baseline remains `main` at **1acc4a1** (P0-008F, PR **#29**). P0-009A r2 implementation is on `brief/p0-009a-selected-display-preview-and-family-wall-proof`; Engineering evidence pass is uncommitted on **8511efb**. Architecture re-reviewed the named assertions and returned **FIX REQUIRED** against unchanged r2: pending-action settlement, held stale responses, FHD geometry parity, six-action visibility at both presets, real touch input, and final-tree PR/RC gates remain. Details: `reports/P0-009A-r2-architecture-review.md`. No hosted deployment, production-wall replacement, push, PR, or merge is asserted. Overall P0-008 Product acceptance remains separate, as does the reported `/` route anomaly.
 
 **P0-008E r1** is technically **ACCEPTED** and integrated via PR #28 at `bd05ad0`. **P0-008F r1** is technically accepted and integrated via PR #29 at `1acc4a1`. P0-008's overall Product acceptance remains separate; the reported `/` anomaly remains a separate investigation.
 
@@ -50,7 +50,7 @@ P0-007C's outstanding physical/Product judgments remain distinct from its techni
 | P0-008D - Guided Setup to the First Useful Household Day | r2 | ACCEPTED (technical) | Project Lead evaluation | Merged to `main` via PR #27 at `65e1949` | P0-008E integrated; overall P0-008 Product acceptance pending |
 | P0-008E - Clear First Run and One-View Work Editing | r1 | ACCEPTED (technical) | Project Lead evaluation | Merged to `main` via PR #28 at `bd05ad0` | Hands-on Product evaluation; overall P0-008 Product acceptance remains separate |
 | P0-008F - Keep a Household Intact Through Deployment | r1 | ACCEPTED (technical) | Project Lead evaluation | Merged to `main` via PR #29 at `1acc4a1` | Project Lead reports persistent control-store copy and new-household setup; prior-household recovery is not claimed |
-| P0-009A - Preview a Display and Judge the Family Board | r2 | FIX REQUIRED | Engineering | `brief/p0-009a-selected-display-preview-and-family-wall-proof` @ `d4f313d` | Close named AT3b, AT5a–f, AT7a, AT8a, AT9a/b, AT10–11, AT12a, AT13, AT14a evidence; then Architecture re-review |
+| P0-009A - Preview a Display and Judge the Family Board | r2 | FIX REQUIRED | Engineering | `brief/p0-009a-selected-display-preview-and-family-wall-proof` @ `8511efb` + uncommitted delta | Close remaining AT3b, AT5d/f, AT7a, AT9a/AT13, AT11/AT14a touch, rerun AT14b final-tree gates; then Architecture re-review |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 

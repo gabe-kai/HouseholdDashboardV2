@@ -1416,7 +1416,9 @@ export function App() {
   }
 
   return (
-    <main className="app-shell has-bottom-nav">
+    <main
+      className={`app-shell has-bottom-nav${showingDisplayPreview ? " app-shell-wide" : ""}`}
+    >
       {meta?.evaluationMode ? (
         <div className="eval-banner" role="status">
           {meta.banner}

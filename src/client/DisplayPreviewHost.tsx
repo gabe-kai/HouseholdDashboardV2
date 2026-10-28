@@ -102,10 +102,13 @@ export function DisplayPreviewHost(props: {
   const lastSuccessDateRef = useRef<string | null>(null);
   const lastSuccessDisplayRef = useRef<string | null>(null);
   const withdrawnPersonalRef = useRef<Set<string>>(new Set());
+  const blankedAtRef = useRef<number | null>(null);
+  const dashboardRef = useRef<DisplayDashboard | null>(null);
   const sessionRef = useRef(props.session);
   const detailRef = useRef(detail);
   sessionRef.current = props.session;
   detailRef.current = detail;
+  dashboardRef.current = dashboard;
 
   function nowMs(): number {
     return typeof window.__HD_PREVIEW_NOW_MS === "number"
@@ -120,6 +123,23 @@ export function DisplayPreviewHost(props: {
     setDetail(null);
     setDetailUnavailable(false);
     lastSuccessStartRef.current = null;
+    blankedAtRef.current = Date.now();
+  }
+
+  function filterWithdrawn(nextDashboard: DisplayDashboard): DisplayDashboard {
+    if (withdrawnPersonalRef.current.size === 0) return nextDashboard;
+    return {
+      ...nextDashboard,
+      promotedPersonalTasks: nextDashboard.promotedPersonalTasks.filter(
+        (task) => !withdrawnPersonalRef.current.has(task.id),
+      ),
+      byPerson: nextDashboard.byPerson.map((personRow) => ({
+        ...personRow,
+        promotedPersonalTasks: personRow.promotedPersonalTasks.filter(
+          (task) => !withdrawnPersonalRef.current.has(task.id),
+        ),
+      })),
+    };
   }
 
   function acceptContext(payload: {
@@ -137,6 +157,12 @@ export function DisplayPreviewHost(props: {
       if (
         lastSuccessGenerationRef.current !== null &&
         payload.activityGeneration < lastSuccessGenerationRef.current
+      ) {
+        return false;
+      }
+      if (
+        lastSuccessDateRef.current !== null &&
+        payload.householdDate < lastSuccessDateRef.current
       ) {
         return false;
       }
@@ -175,24 +201,29 @@ export function DisplayPreviewHost(props: {
 
   const loadDashboard = useEffectEvent(async (reason: "poll" | "sync" | "open") => {
     const startedAt = nowMs();
+    const startedWall = Date.now();
     const seq = ++dashSeqRef.current;
     try {
       const payload = await fetchDisplayPreviewDashboard(props.displayId);
+      if (blankedAtRef.current !== null && startedWall <= blankedAtRef.current) {
+        return;
+      }
+      if (nowMs() - startedAt > staleMaxMs()) {
+        return;
+      }
       if (!acceptContext({ ...payload, requestSeq: seq, kind: "dashboard" })) {
         return;
       }
-      const nextDashboard = stripPreviewCommandMetadata(payload.dashboard);
-      if (withdrawnPersonalRef.current.size > 0) {
-        nextDashboard.promotedPersonalTasks = nextDashboard.promotedPersonalTasks.filter(
-          (task) => !withdrawnPersonalRef.current.has(task.id),
-        );
-        nextDashboard.byPerson = nextDashboard.byPerson.map((personRow) => ({
-          ...personRow,
-          promotedPersonalTasks: personRow.promotedPersonalTasks.filter(
-            (task) => !withdrawnPersonalRef.current.has(task.id),
-          ),
-        }));
+      const rawDashboard = stripPreviewCommandMetadata(payload.dashboard);
+      const previousPromoted = new Set(
+        (dashboardRef.current?.promotedPersonalTasks ?? []).map((task) => task.id),
+      );
+      const nextIds = new Set(rawDashboard.promotedPersonalTasks.map((task) => task.id));
+      for (const id of previousPromoted) {
+        if (!nextIds.has(id)) withdrawnPersonalRef.current.add(id);
       }
+      const nextDashboard = filterWithdrawn(rawDashboard);
+      blankedAtRef.current = null;
       setDashboard(nextDashboard);
       setLabel(payload.label);
       setError(null);
@@ -223,6 +254,7 @@ export function DisplayPreviewHost(props: {
       }
     } catch (caught) {
       if (isDenied(caught)) {
+        acceptedDashSeqRef.current = Math.max(acceptedDashSeqRef.current, seq);
         clearContent();
         setError(errorMessage(caught));
         if ((caught as ApiError).status === 401 || (caught as ApiError).code === "UNAUTHORIZED") {
@@ -240,6 +272,8 @@ export function DisplayPreviewHost(props: {
   const loadDetail = useEffectEvent(async () => {
     const current = detailRef.current;
     if (!current) return;
+    const startedAt = nowMs();
+    const startedWall = Date.now();
     const seq = ++detailSeqRef.current;
     setDetailUnavailable(false);
     try {
@@ -248,6 +282,10 @@ export function DisplayPreviewHost(props: {
           props.displayId,
           current.membershipId,
         );
+        if (blankedAtRef.current !== null && startedWall <= blankedAtRef.current) return;
+        if (detailRef.current?.kind !== "person" || detailRef.current.membershipId !== current.membershipId) {
+          return;
+        }
         if (!acceptContext({ ...payload, requestSeq: seq, kind: "detail" })) return;
         setPerson(payload.person);
         setOccurrence(null);
@@ -256,18 +294,26 @@ export function DisplayPreviewHost(props: {
           props.displayId,
           current.occurrenceId,
         );
+        if (blankedAtRef.current !== null && startedWall <= blankedAtRef.current) return;
+        const stillSame =
+          detailRef.current?.kind === current.kind &&
+          "occurrenceId" in detailRef.current &&
+          detailRef.current.occurrenceId === current.occurrenceId;
+        if (!stillSame) return;
         if (!acceptContext({ ...payload, requestSeq: seq, kind: "detail" })) return;
         setOccurrence(stripPreviewCommandMetadata(payload.occurrence));
         setPerson(null);
       }
     } catch (caught) {
       if (isDenied(caught)) {
+        acceptedDetailSeqRef.current = Math.max(acceptedDetailSeqRef.current, seq);
         if ((caught as ApiError).status === 404 || (caught as ApiError).code === "NOT_FOUND") {
           setPerson(null);
           setOccurrence(null);
           setDetailUnavailable(true);
           return;
         }
+        acceptedDashSeqRef.current = Math.max(acceptedDashSeqRef.current, seq);
         clearContent();
         setError(errorMessage(caught));
         if ((caught as ApiError).status === 401 || (caught as ApiError).code === "UNAUTHORIZED") {

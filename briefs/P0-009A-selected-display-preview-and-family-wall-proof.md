@@ -229,7 +229,7 @@ D-041–D-049, D-050–D-056, and D-057–D-059 as refined for r2.
 
 **Architecture disposition:** ACCEPT / PROCEED (2026-10-27). Engineering may implement P0-009A r2 locally on this brief branch. No hosted deployment or production-wall replacement is authorized by this disposition.
 
-**Architecture acceptance review (2026-10-28):** FIX REQUIRED against the unchanged r2 contract. The implementation is present on the brief branch, but required assertion-level evidence remains partial or unrun. See `reports/P0-009A-r2-architecture-review.md` for one consolidated closure list. No hosted deployment or production-wall replacement is authorized.
+**Architecture acceptance review (2026-10-28):** FIX REQUIRED against the unchanged r2 contract. The evidence pass closes most previously open rows; remaining closure is limited to AT3b pending-intent settlement, AT5d/AT5f held-response races, AT7a FHD geometry parity, AT9a/AT13 six-action visibility, AT11/AT14a actual touch input, and AT14b final-tree gates. See `reports/P0-009A-r2-architecture-review.md`. No hosted deployment or production-wall replacement is authorized.
 
 ## Revision history
 

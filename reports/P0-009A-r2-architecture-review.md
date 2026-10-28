@@ -1,62 +1,55 @@
 # Architecture review — P0-009A r2
 
-**Disposition:** FIX REQUIRED  
-**Reviewed:** 2026-10-28  
-**Brief:** `briefs/P0-009A-selected-display-preview-and-family-wall-proof.md`, revision 2  
-**Integrated baseline:** `main` at `1acc4a1`  
-**Implementation reviewed:** branch `brief/p0-009a-selected-display-preview-and-family-wall-proof`, current checkout `d4f313d`  
+**Disposition:** FIX REQUIRED
+**Review date:** 2026-10-28
+**Brief:** `briefs/P0-009A-selected-display-preview-and-family-wall-proof.md`, revision 2
+**Integrated baseline:** `main` at `1acc4a1`
+**Implementation branch:** `brief/p0-009a-selected-display-preview-and-family-wall-proof`
+**Reviewed implementation commit:** `d4f313d`
+**Evidence-pass base:** `8511efb` plus the current uncommitted Engineering delta
 **Build Report:** `reports/P0-009A-r2-build-report.md`
 
-The selected-display preview authority, route isolation, current-day restriction, deep-link behavior, and proof/build isolation have substantial evidence. The reported local `validate:pr` and `validate:rc` gates pass. The implementation is not technically accepted yet because the Build Report itself marks multiple required r2 assertions PARTIAL or NOT RUN, and inspection of the cited tests confirms those gaps. The brief's acceptance matrix is the evidence contract; a green suite does not close assertions the suite does not exercise.
+Engineering closed most findings from the initial Architecture review with substantive named assertions. The member-authorized preview, target-frame implementation, comparison capture generation, state/future-day scenarios, pane navigation, and simulated action behavior now have evidence mapped to the brief. The focused closure runs passed. The exact PR/RC gates were not rerun on this evidence-pass tree, however, and a few required assertions remain unproven in the cited test code. This review keeps the same r2 contract; it does not add product scope.
 
-## Required closure
+## Remaining required closure
 
-The items below are grouped by behavior so Engineering can close them in one evidence pass. Existing fixtures and tests may be extended; one test per matrix row is not required. Preserve r2 and the production-wall boundary.
+Related assertions may share parameterized tests. Report the exact outcomes for each row and rerun the exact local gates on the final corrected tree.
 
-### 1. Preview isolation and lifecycle recovery — AT3b, AT5a–AT5f
+### AT3b — pending wall action settles
 
-- **AT3b:** With a separate wall context holding a pending intent, browse and navigate the member preview. Prove preview does not change the wall's selected route/person, scroll position, or pending queue, while the wall's own pending action can still settle.
-- **AT5a:** Use a second authorized context to change current work while detail is open. Prove the preview converges without reload, retains a valid manual selection, and handles disappeared detail as specified.
-- **AT5b:** Hold an old preview payload while promoted work becomes Private. Prove sanitized invalidation is handled, the held payload cannot restore the withdrawn task, and private identifiers/content do not reach the renderer.
-- **AT5c:** Cover grant removal, display revocation, and member-session expiry. Prove observed denial clears content immediately; without an event, visible revalidation occurs within 30 seconds; unavailable refresh reaches the 60-second blanking bound; a held pre-denial reply cannot repopulate content.
-- **AT5d:** Hold dashboard/person/occurrence replies across selection change, household-date rollover, and activity-generation clear. Prove only the current context can render and stale positions/content cannot return.
-- **AT5e:** Keep the existing reset evidence and add the separate restore lifecycle variant: a held old-epoch response cannot render after restore, and fresh authorization reads from the restored runtime.
-- **AT5f:** Advance a controllable clock past the 60-second request-start deadline through failed refresh, pause/resume, delayed response, and cold offline load. Prove stale then blank behavior, no deadline renewal from old replies, and recovery through a fresh authorized read.
+The test proves the pending wall intent, route, and scroll remain unchanged while the member browses preview. After unroute/reconnect it only asserts the step text remains visible; it does not assert the wall intent settles or that the step reaches its authoritative completed state. Assert queue/pending clearance and authoritative completion through the wall's existing adapter, while retaining the preview isolation assertions.
 
-### 2. Target-viewport parity and comparison evidence — AT7a, AT8a
+### AT5d and AT5f — held-response races and stale recovery
 
-- **AT7a:** Compare the native current renderer with the fitted preview at both 3840×2160 and 1920×1080. Assert relevant media-query outcomes, normalized geometry, and computed typography match; resize the outer window from 1280 to 1600 and prove target rendering is unchanged while only fit scale changes. The current test proves iframe dimensions persist, but does not establish native-render parity or typography.
-- **AT8a:** Save a paired Current layout / Family board concept capture from the same canonical fixture, state, target viewport, and comparison scenario. Include the required scenario/viewport/browser/DPR/scale metadata. The current test toggles both modes but only writes a concept capture, so it does not yet provide the required comparable pair.
+- **AT5d:** The current test poisons immediately returned dashboard payloads with an old date/generation. AT5a selection retention and `detailRef` abort are useful, but do not demonstrate a delayed dashboard/person/occurrence response being held, overtaken by a selection/date/generation change, and released without replacing current content. Add the held-response variants required by AT5d and assert the newer context remains rendered after release.
+- **AT5f:** The current test aborts refreshes and forces the stale state, then reconnects for a fresh read. It does not release a successful response whose request began before the 60-second deadline, or prove that such a late response cannot renew freshness; it also does not show a cold offline load contains no household content. Add those assertions using the existing controllable clock/response hooks.
 
-### 3. Crowded layout, truth states, and future-day content — AT9a, AT9b, AT13
+### AT7a — 1920×1080 native geometry comparison
 
-- **AT9a:** At both target presets, assert all six identities and concrete next actions, the two-of-five/step-three-next case, reachable earlier unfinished work and all five named upcoming headings, full long instruction text, no board/page scroll, and one scroll surface per pane. Record the rendered type sizes. Retain evidence for the initial 3×2 hypothesis if an alternative is needed.
-- **AT9b:** Assert distinct empty and complete-with-optional states, unresolved As needed, Anytime, Unassigned outside person panes without Claim, promoted personal work as view-only and excluded from recurring counts, and unavailable detail as retryable rather than empty.
-- **AT13:** Assert the fictional future day contains useful child-specific School work, one shared Meals item, and a dated early-release/no-school Calendar notice with affected people and Today/Later distinction, while six next actions remain identifiable and homework completion does not complete School work. The cited test currently asserts School and Meals labels but not the Calendar notice or the complete composition.
+The native/iframe comparison checks font, media queries, and columns at 3840×2160. At 1920×1080 it checks dimensions, font, and media-query values, but does not compare native and preview columns/normalized geometry. Add the same relevant geometry comparison at 1920×1080; keep the existing outer-window resize assertions.
 
-### 4. Independent navigation and enlargement — AT10, AT11
+### AT9a and AT13 — next-action visibility at both target presets
 
-- **AT10:** Put two panes at different sections and scroll offsets. Navigate earlier/upcoming/More in one, then prove the sibling pane's section and offset are unchanged; verify full timeline reachability and Back to next.
-- **AT11:** From scrolled panes, enlarge and return. Prove section and reading positions restore, identity/Back remain visible, and focus returns to the trigger. Include touch drag/release boundaries proving background or drag release neither enlarges nor checks off a task.
+At 1920×1080, the proof test checks that all six pane elements exist, but the concrete next instructions and crowded reachability assertions are exercised at 3840×2160. Assert the six identifiable next actions and the required two-of-five/step-three-next case at both target presets. In the Future Family day scenario, also assert six next actions remain identifiable alongside School, Meals, and Calendar; the current family-day checks prove the named School/Meals/Calendar content and homework separation but do not assert that six-action composition.
 
-### 5. Simulated actions and input/accessibility — AT12a, AT14a
+### AT11 and AT14a — actual touch-event behavior
 
-- **AT12a:** In the fictional checklist, exercise Done, Reopen, and Not needed. Hold the final action pending, then prove success and rejection paths keep the action reachable, show discoverable feedback after compaction, preserve focus/target position, and issue no real write.
-- **AT14a:** At target coordinates, cover keyboard focus/navigation, descriptive labels, non-color status, reduced-motion preference, touch scrolling without accidental checkoff, and all relevant ≥48×48 hit areas with no overlap. The current single enlarge-button geometry assertion is insufficient for this matrix.
+The Vite test runs in a `hasTouch` project but performs the drag with `page.mouse`. That does not demonstrate the brief's touch-event boundary. Add a genuine touch gesture on the touch-capable project to prove scrolling/release neither checks off a task nor triggers enlargement. Keep the existing keyboard focus, reduced-motion, text-status, hit-area, and overlap assertions.
 
-## Already acceptable / not a gate
+### AT14b — final-tree gates
 
-- AT1a–AT4a, AT6a, and AT7b evidence is sufficient as mapped in the Build Report.
-- AT8b production absence and no-API proof evidence is sufficient.
-- AT12b per-pane idle evidence is sufficient for the specified 90-second candidate behavior.
-- AT14b local test-selection and exact `validate:pr` / `validate:rc` passes are sufficient for local technical acceptance. A GitHub Actions URL remains NOT RUN until the Project Lead authorizes a push.
-- The Project Lead same-viewport checkpoint is intentionally a post-acceptance human evaluation, not an Architecture gate. Do not mark the working layout accepted or advance the actionable-person-pane brief until that checkpoint occurs.
-- Hosted deployment and production-wall replacement remain unauthorized and are not requested for closure.
+The reported exact `validate:pr` and `validate:rc` passes are from the prior handoff tree. Since this evidence pass changes client code and tests, rerun both exact commands on the final corrected tree and update the Build Report with those results. Remote Actions remains NOT RUN until the Project Lead authorizes a push.
 
-## Repository and coordination state
+## Accepted / not a gate
 
-At review, the working tree was clean at `d4f313d` on the P0-009A brief branch. The Build Report accurately describes the Engineering handoff snapshot (`779152b` plus its then-uncommitted delta); the current checkout now contains the implementation commit. No remote push, PR, merge, or deployment is asserted by this review.
+- The other named evidence for AT1a–AT4a, AT5a–c/e, AT6a, AT7b, AT8a/b, AT9b, AT10, AT12a/b, and the non-touch parts of AT11/AT14a is sufficient as described in the Build Report.
+- The Project Lead same-viewport checkpoint is intentionally post-acceptance; it is not an Architecture gate. The next actionable-person-pane brief still waits for that checkpoint.
+- Remote GitHub Actions, hosted deployment, and production-wall replacement are not required here and remain unauthorized.
 
-No brief contract change is needed; this is same-revision acceptance evidence closure. Once the named rows are demonstrated and the Build Report maps each required assertion accurately, Architecture can re-review the corrected tree.
+## Repository state and next action
 
-**Project card:** **Preview a display and judge the family board** remains **In Progress**. No board movement to Ready to Evaluate is warranted yet.
+The checkout is on the P0-009A brief branch at `8511efb`, with Engineering's evidence-pass changes uncommitted. Architecture made no code changes and did not run tests. The Build Report correctly labels the exact PR/RC gates as prior-tree results, but AT14b must be updated after a final-tree run.
+
+After the listed assertions and final-tree gates are closed, return the same r2 Build Report for one consolidated Architecture re-review. No brief revision change is required.
+
+**Project card:** **Preview a display and judge the family board** remains **In Progress**. Do not move it to Ready to Evaluate before technical acceptance.

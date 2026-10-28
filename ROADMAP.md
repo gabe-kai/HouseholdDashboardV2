@@ -100,7 +100,7 @@ Both C-3 slices contribute to **Act at the shared display without losing trust**
 
 ### CURRENT
 
-- **P0-009A r2 — Preview a display and judge the family board:** implementation is present on the brief branch at `d4f313d`; Engineering reports local PR/RC gates PASS. Architecture returned **FIX REQUIRED** against the unchanged r2 matrix because preview lifecycle/isolation, target parity/comparison, crowded/future-day evidence, independent pane behavior, simulated action states, and accessibility assertions remain incomplete. See `reports/P0-009A-r2-architecture-review.md`. The Project Lead checkpoint remains after technical acceptance; no hosted deployment or production-wall replacement is authorized.
+- **P0-009A r2 — Preview a display and judge the family board:** most initial evidence gaps are closed on the brief branch; Architecture's re-review remains **FIX REQUIRED** for pending-action settlement, held stale-response races, FHD geometry parity, six-action visibility at both target presets, real touch-event behavior, and final-tree PR/RC gates. See `reports/P0-009A-r2-architecture-review.md`. The Project Lead checkpoint remains after technical acceptance; no hosted deployment or production-wall replacement is authorized.
 - P0-008F r1 — Keep a household intact through deployment — is technically accepted and merged through PR #29 at `1acc4a1`. The Project Lead reports relocating installation control to persistent storage and completing new-household setup; prior-household recovery is not claimed. Overall P0-008 Product acceptance remains separate.
 
 ### LIKELY NEXT

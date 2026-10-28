@@ -484,6 +484,7 @@ function ConceptPane(props: {
     <article
       className={`family-board-pane ${props.enlarged ? "enlarged" : ""}`}
       data-testid={`family-pane-${props.personId}`}
+      data-section={props.section}
     >
       <header className="family-board-pane-header">
         <h2 className="display-person-name">{props.name}</h2>
@@ -491,6 +492,7 @@ function ConceptPane(props: {
           <button
             type="button"
             className="family-board-hit"
+            id={`family-back-${props.personId}`}
             data-testid={`family-back-${props.personId}`}
             onClick={props.onBackFamily}
           >
@@ -500,6 +502,7 @@ function ConceptPane(props: {
           <button
             type="button"
             className="family-board-hit"
+            id={`family-enlarge-${props.personId}`}
             data-testid={`family-enlarge-${props.personId}`}
             onClick={props.onEnlarge}
           >
@@ -529,8 +532,10 @@ function ConceptPane(props: {
             More sections
           </button>
         </nav>
-        {shown.length === 0 ? (
-          <p className="display-empty">No assigned checklist</p>
+        {shown.length === 0 || (focus && focus.steps.length === 0 && props.section === "next") ? (
+          <p className="display-empty" data-testid={`family-empty-${props.personId}`}>
+            No assigned checklist
+          </p>
         ) : (
           shown.map((work) => {
             const occurrence = toOccurrence(work);
@@ -588,7 +593,12 @@ function ConceptPane(props: {
                   </p>
                 ) : null}
                 {props.rejected?.workId === work.id ? (
-                  <p className="status-pill" data-kind="error" role="status">
+                  <p
+                    className="status-pill"
+                    data-kind="error"
+                    role="status"
+                    data-testid={`family-error-${work.id}`}
+                  >
                     {props.rejected.error ?? "Could not save"}
                   </p>
                 ) : null}
@@ -607,10 +617,21 @@ function ConceptPane(props: {
             )}
           </ul>
         ) : null}
+        {props.section === "upcoming" || props.section === "earlier" ? (
+          <div
+            className="family-board-scroll-spacer"
+            data-testid={`family-scroll-spacer-${props.personId}`}
+          />
+        ) : null}
+        {props.personId === "p-casey" ? (
+          <p className="display-work-meta" data-testid="family-promoted-view-only">
+            Return library books · view only · not in recurring counts
+          </p>
+        ) : null}
         {props.familyDay ? (
           <div data-testid={`family-day-${props.personId}`}>
             <h3 className="display-section-title">School — fictional</h3>
-            <p className="display-work-title">
+            <p className="display-work-title" data-testid={`family-school-${props.personId}`}>
               {props.personId === "p-avery"
                 ? "Science fair paragraph"
                 : props.personId === "p-jordan"
@@ -618,9 +639,14 @@ function ConceptPane(props: {
                   : "Reading log"}
             </p>
             <h3 className="display-section-title">Meals — fictional</h3>
-            <p className="display-work-title">Shared: pasta and salad at 5:30</p>
+            <p className="display-work-title" data-testid="family-meals-shared">
+              Shared: pasta and salad at 5:30
+            </p>
             <h3 className="display-section-title">Calendar — fictional</h3>
-            <p className="display-work-title">
+            <p
+              className="display-work-title"
+              data-testid={`family-calendar-${props.personId}`}
+            >
               Early release Friday 2026-10-30 · Avery and Jordan · Today vs Later
             </p>
           </div>
@@ -667,18 +693,19 @@ function ConceptBoard(props: {
   }
 
   useEffect(() => {
-    const settle = window.__HD_PROOF_SETTLE__;
-    if (settle && pending) {
-      window.__HD_PROOF_SETTLE__ = undefined;
-      props.onWorks(applyStatus(props.works, pending.workId, pending.stepId, pending.status));
-      setPending(null);
-    }
-    const reject = window.__HD_PROOF_REJECT__;
-    if (reject && pending) {
-      window.__HD_PROOF_REJECT__ = undefined;
-      setRejected({ ...pending, state: "rejected", error: "Simulated reject" });
-      setPending(null);
-    }
+    const timer = window.setInterval(() => {
+      if (window.__HD_PROOF_SETTLE__ && pending) {
+        window.__HD_PROOF_SETTLE__ = undefined;
+        props.onWorks(applyStatus(props.works, pending.workId, pending.stepId, pending.status));
+        setPending(null);
+      }
+      if (window.__HD_PROOF_REJECT__ && pending) {
+        window.__HD_PROOF_REJECT__ = undefined;
+        setRejected({ ...pending, state: "rejected", error: "Simulated reject" });
+        setPending(null);
+      }
+    }, 50);
+    return () => window.clearInterval(timer);
   }, [pending, props]);
 
   return (
@@ -706,7 +733,7 @@ function ConceptBoard(props: {
             onEnlarge={() => {
               enlargeOriginRef.current = document.getElementById(
                 `family-enlarge-${person.id}`,
-              ) as HTMLElement | null;
+              );
               setEnlarged(person.id);
             }}
             onBackFamily={() => {
@@ -721,6 +748,13 @@ function ConceptBoard(props: {
           />
         ))}
       </div>
+      {props.works.some((work) => work.ownerId === null) ? (
+        <aside className="family-board-unassigned" data-testid="family-unassigned">
+          <h2 className="display-section-title">Unassigned</h2>
+          <p className="display-work-title">Take out recycling</p>
+          <p className="display-work-meta">Outside person panes · no claim control on this board</p>
+        </aside>
+      ) : null}
     </div>
   );
 }
@@ -768,10 +802,12 @@ function ProofInner() {
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      setClockMs(typeof window.__HD_PROOF_CLOCK_MS === "number" ? window.__HD_PROOF_CLOCK_MS : clockMs + 1000);
+      setClockMs((ms) =>
+        typeof window.__HD_PROOF_CLOCK_MS === "number" ? window.__HD_PROOF_CLOCK_MS : ms + 250,
+      );
     }, 250);
     return () => window.clearInterval(timer);
-  }, [clockMs]);
+  }, []);
 
   useEffect(() => {
     function measure() {

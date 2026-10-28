@@ -593,4 +593,95 @@ describe("P0-009A display preview HTTP", () => {
     });
     expect(after.statusCode).toBe(401);
   });
+
+  it("AT5c: expired member session fails subsequent preview reads", async () => {
+    const harness = await createHttpHarness({ AUTO_SEED: "1" });
+    harnesses.push(harness);
+    const session = await httpClaimManager(harness);
+    const created = await createDisplay(harness, session, "Expire wall");
+    const ok = await harness.app.inject({
+      method: "GET",
+      url: previewUrls(created.display.id).dashboard,
+      headers: { cookie: session.cookieHeader },
+    });
+    expect(ok.statusCode).toBe(200);
+    const logout = await harness.app.inject({
+      method: "POST",
+      url: "/api/v1/auth/logout",
+      headers: authHeaders(harness, session),
+    });
+    expect(logout.statusCode).toBe(200);
+    const expired = await harness.app.inject({
+      method: "GET",
+      url: previewUrls(created.display.id).dashboard,
+      headers: { cookie: session.cookieHeader },
+    });
+    expect(expired.statusCode).toBe(401);
+    expect(expired.json()).not.toHaveProperty("dashboard");
+  });
+
+  it("AT5e restore: held preview releases shared lock; old session cannot read restored runtime", async () => {
+    const harness = await createHttpHarness({ AUTO_SEED: "1" });
+    harnesses.push(harness);
+    const session = await httpClaimManager(harness);
+    const created = await createDisplay(harness, session, "Restore hold wall");
+    const reauth = await harness.app.inject({
+      method: "POST",
+      url: "/api/v1/auth/reauthenticate",
+      headers: {
+        ...authHeaders(harness, session),
+        "content-type": "application/json",
+      },
+      payload: { passphrase: PASSPHRASE },
+    });
+    expect(reauth.statusCode, reauth.body).toBe(200);
+    const backup = await harness.app.inject({
+      method: "POST",
+      url: "/api/v1/household/backups",
+      headers: {
+        ...authHeaders(harness, session),
+        "content-type": "application/json",
+      },
+      payload: { mutationId: randomUUID() },
+    });
+    expect(backup.statusCode, backup.body).toBe(200);
+    const snapshot = (backup.json() as { backup: { id: string; contentDigest: string } })
+      .backup;
+    const started = Date.now();
+    const held = harness.app.inject({
+      method: "GET",
+      url: previewUrls(created.display.id).dashboard,
+      headers: {
+        cookie: session.cookieHeader,
+        "x-read-delay-ms": "400",
+      },
+    });
+    const restore = await harness.app.inject({
+      method: "POST",
+      url: "/api/v1/household/restore",
+      headers: {
+        ...authHeaders(harness, session),
+        "content-type": "application/json",
+      },
+      payload: {
+        mutationId: randomUUID(),
+        backupId: snapshot.id,
+        expectedDigest: snapshot.contentDigest,
+        expectedEpoch: harness.runtime.epoch,
+        confirmationText: "RESTORE",
+        saveBackupBeforeRestore: false,
+      },
+    });
+    expect(restore.statusCode, restore.body).toBe(200);
+    expect(Date.now() - started).toBeLessThan(10_000);
+    const heldRes = await held;
+    expect(heldRes.statusCode).toBe(401);
+    expect(heldRes.json()).not.toHaveProperty("dashboard");
+    const after = await harness.app.inject({
+      method: "GET",
+      url: previewUrls(created.display.id).dashboard,
+      headers: { cookie: session.cookieHeader },
+    });
+    expect(after.statusCode).toBe(401);
+  });
 });

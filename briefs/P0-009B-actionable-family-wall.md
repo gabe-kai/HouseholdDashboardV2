@@ -210,7 +210,9 @@ Project Lead evaluates the deployed working wall in a normal before-school sessi
 **Reviewed revision:** NOT REVIEWED  
 **Readiness:** NOT REVIEWED
 
-Review r2 in one consolidated pass. Verify route authority/DTO separation, owner placement, domain ordering, preview parity, pane freshness/fences, and matrix feasibility against the actual repository. Resolve ordinary implementation choices locally. Return READY unless a concrete material contradiction or unavailable prerequisite prevents responsible implementation. Implementation begins only after Architecture ACCEPT / PROCEED.
+Review r2 in one consolidated pass. Verify route authority/DTO separation, owner placement, domain ordering, preview parity, pane freshness/fences, and matrix feasibility against the actual repository. Resolve ordinary implementation choices locally. Return READY unless a concrete material contradiction or unavailable prerequisite prevents responsible implementation.
+
+**Architecture assignment / disposition (2026-10-28): ACCEPT.** The assigned contract is **P0-009B r2**, committed in planning change `79fbb57` over integrated code baseline `14af09e`. The BLOCKER in `reports/P0-009B-r1-engineering-readiness.md` concerns the superseded r1 assignment only; that report is not an r2 readiness result. Reuse its repository inspection and confirmed interpretations; do not reconstruct r1 or repeat unchanged investigation. Record a dedicated `reports/P0-009B-r2-engineering-readiness.md` and the r2 readiness fields above. **If r2 is READY with no unresolved material issue, Architecture authorizes PROCEED immediately in the same Engineering session.** No additional Architecture exchange is required for the numbering correction. A newly evidenced material issue returns to Architecture before coding. This resolves assignment/authorization only; the r2 behavior and acceptance contract are unchanged.
 
 ## Revision history
 

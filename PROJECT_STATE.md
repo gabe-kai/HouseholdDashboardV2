@@ -19,7 +19,7 @@
 
 ## Current focus
 
-Inspected 2026-10-28: integrated baseline remains `main` at **1acc4a1** (P0-008F, PR **#29**). P0-009A r2 is technically accepted on `brief/p0-009a-selected-display-preview-and-family-wall-proof` at evidence commit **3b494d8** plus uncommitted Engineering changes. Exact local PR/RC gates pass on the tested tree. Architecture acceptance is recorded in `reports/P0-009A-r2-architecture-review.md`; the Project Lead same-viewport checkpoint is now next. No hosted deployment, production-wall replacement, push, PR, or merge is asserted. Overall P0-008 Product acceptance remains separate, as does the reported `/` route anomaly.
+Inspected 2026-10-28: integrated baseline is `main` at **14af09e** after P0-009A r2 merged through PR **#30**. The Project Lead accepts the dashboard preview as good to proceed and will refine it later; no specific viewport measurement or new physical-use result is claimed. P0-009B **r2** supersedes the unreviewed r1 after Architecture's requested critique. It is awaiting Engineering readiness, with separate automatic day reads, shared read-only preview presentation, independent pane recovery, and assertion-level evidence. No production-wall replacement or new deployment result is asserted. Overall P0-008 Product acceptance remains separate, as does the reported `/` route anomaly.
 
 **P0-008E r1** is technically **ACCEPTED** and integrated via PR #28 at `bd05ad0`. **P0-008F r1** is technically accepted and integrated via PR #29 at `1acc4a1`. P0-008's overall Product acceptance remains separate; the reported `/` anomaly remains a separate investigation.
 
@@ -50,7 +50,8 @@ P0-007C's outstanding physical/Product judgments remain distinct from its techni
 | P0-008D - Guided Setup to the First Useful Household Day | r2 | ACCEPTED (technical) | Project Lead evaluation | Merged to `main` via PR #27 at `65e1949` | P0-008E integrated; overall P0-008 Product acceptance pending |
 | P0-008E - Clear First Run and One-View Work Editing | r1 | ACCEPTED (technical) | Project Lead evaluation | Merged to `main` via PR #28 at `bd05ad0` | Hands-on Product evaluation; overall P0-008 Product acceptance remains separate |
 | P0-008F - Keep a Household Intact Through Deployment | r1 | ACCEPTED (technical) | Project Lead evaluation | Merged to `main` via PR #29 at `1acc4a1` | Project Lead reports persistent control-store copy and new-household setup; prior-household recovery is not claimed |
-| P0-009A - Preview a Display and Judge the Family Board | r2 | ACCEPTED (technical) | Project Lead | `brief/p0-009a-selected-display-preview-and-family-wall-proof` @ `3b494d8` + uncommitted evidence delta | Same-viewport human checkpoint; then scope actionable-person-pane work; no deployment authorized |
+| P0-009A - Preview a Display and Judge the Family Board | r2 | ACCEPTED (technical); preview approved by Project Lead | Integrated foundation | Merged to `main` via PR #30 at `14af09e` | Further refinement may follow; no preview gate blocks B |
+| P0-009B - Actionable Person Panes on the Family Wall | r2 | IN REVIEW | Engineering readiness | `briefs/P0-009B-actionable-family-wall.md`, baseline `main` at `14af09e` | Review r2; r1 superseded before readiness/implementation |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -83,7 +84,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Project Lead: perform the P0-009A same-viewport checkpoint using the selected-display preview and local family-board proof. Record the viewport and evaluation outcome before scoping the actionable-person-pane brief. The live wall remains unchanged; deployment and replacement are not authorized. The root-route anomaly and live School/Meals/Calendar features are separate work.
+Engineering: review **P0-009B r2** for readiness against `main` at `14af09e`. Check the new automatic/person-detail read separation, read-only preview parity, pending-sign-in membership inclusion, per-pane freshness, and required evidence subrows. Return a consolidated readiness disposition before implementation. The Project Lead approves proceeding from the dashboard preview; later visual/physical evaluation is separate. The root-route anomaly and live School/Meals/Calendar features remain separate work.
 
 ## Notes for all teams
 

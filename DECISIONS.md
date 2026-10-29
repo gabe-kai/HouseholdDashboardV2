@@ -1244,3 +1244,25 @@ Relocating existing control state to persistent storage must use SQLite's backup
 **Implications:** Require an explicit hosted control path and validate configured data paths against the provider's mounted-volume boundary when available. Test a new application/container filesystem against a shared persistent data volume after both ordinary use and epoch-changing reset/restore. Prove fail-closed preservation for missing/invalid control and conservative cleanup. Keep this provider-neutral in the architecture and document Railway's concrete path configuration in deployment instructions.
 
 **Related briefs:** P0-008A/B and P0-008F r1. Preserves D-050–D-052 and does not authorize live deployment or data recovery.
+
+---
+
+## D-061 - The family wall uses per-person display reads and local pane state
+
+**Status:** Active technical direction; introduced for P0-009B r1, refined for r2 before Engineering readiness. The Project Lead accepts the dashboard preview as good to proceed on 2026-10-28; this does not assert a measured viewport or physical-family-use result.
+
+**Decision:** The production By person family board loads an allowlisted current-day snapshot through GET /api/v1/display/people/:membershipId/day. Keep this automatic read separate from the existing deliberate person-detail read, which includes unpromoted household-visible personal tasks. Automatic snapshots include permitted identity/order, assigned occurrence/ordered step detail, progress/state, date/time/generation/epoch, promoted open personal work, and the existing display command's minimal structural intent. Private and unpromoted personal-task values, IDs, and counts are absent. Pending sign-in does not exclude a non-departed person from the roster. The aggregate dashboard remains the source for By work and Needs an owner. Reuse current-day materialization; no arbitrary date read or second scheduler is added.
+
+Pane selection, expanded checklist, scroll position, and inactivity are transient client state keyed by membership/occurrence identity within the active page. Invalidation refreshes facts while preserving safe browsing state; a sanitized event may cause a coalesced all-pane refetch. Each pane has its own request arbitration, error/retry, and content freshness measured from request start. Another pane/dashboard/heartbeat cannot extend its 60-second content lease. Global authorization loss still clears all content. One existing display session/sync/outbox owner stays above the panes; D-046/D-047 commands and provenance are retained.
+
+The selected-display preview uses the same presentation through a read-only adapter and a member-authorized counterpart at GET /api/v1/displays/:displayId/preview/people/:membershipId/day. Reuse the common scoped projection, then strip execution intent, step logical IDs, CSRF/session fields. Preview never mounts DisplayApp or acquires display credentials/outbox; its browsing cannot steer a physical display or renew its contact. Keep D-057/D-059 authorization, response fences, and fixed target geometry.
+
+The initial 3×2 proof and 90-second local idle behavior supply a starting design. Preserve six-person reachability/readable next instructions at both target viewports; record a reasoned alternative if needed. Further hands-on refinement does not block readiness or local technical acceptance.
+
+**Reason:** Separate per-person reads allow an unavailable pane to recover locally and prevent one failed detail from hiding fresh work for everyone. Client-local browsing keeps simultaneous sibling use independent and prevents a wall's reading position from becoming household or cross-device state.
+
+**Implications:** Add the two explicit day routes to policy/CI evidence. Keep authority, independent content leases, monotonic request/invalidation fences, and date/generation/epoch consistent across wall and preview adapters. Preserve D-045 stale blanking and D-051 replacement fencing. No new execution authority, persisted browsing preferences, dependency, or schema migration is anticipated. P0-009B r2 remains awaiting readiness, not implemented.
+
+**Related decisions:** D-043–D-049, D-054, D-057–D-059.
+
+**Related brief:** P0-009B r2.

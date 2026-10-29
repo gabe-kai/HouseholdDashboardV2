@@ -100,7 +100,7 @@ Both C-3 slices contribute to **Act at the shared display without losing trust**
 
 ### CURRENT
 
-- **P0-009B r2 — Actionable Person Panes on the Family Wall:** implemented on `wall-refinements`, awaiting Architecture technical acceptance. Production By person panes use automatic `/day` reads, per-pane freshness, and a shared read-only preview. See `reports/P0-009B-r2-build-report.md`.
+- **P0-009B r2 — Actionable Person Panes on the Family Wall:** Architecture returned **FIX REQUIRED** on implementation `655970d`. Close the observed next-action layout/navigation, started-work recommendation, per-pane/preview freshness and error-feedback defects, and the named r2 evidence gaps before technical acceptance. See `reports/P0-009B-r2-architecture-review.md`.
 - **P0-009A r2 — Preview a display and judge the family board:** technically accepted and integrated through PR #30 at `14af09e`. On 2026-10-28 the Project Lead accepts the dashboard preview as good to proceed, with further refinement later. No specific viewport/hardware result is claimed. See `reports/P0-009A-r2-architecture-review.md`.
 
 ### LIKELY NEXT

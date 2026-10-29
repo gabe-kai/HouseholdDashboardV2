@@ -1690,6 +1690,17 @@ export async function fetchDisplayPreviewDashboard(displayId: string) {
   >(`/api/v1/displays/${encodeURIComponent(displayId)}/preview/dashboard`);
 }
 
+export async function fetchDisplayPreviewPersonDay(
+  displayId: string,
+  membershipId: string,
+) {
+  return request<
+    DisplayPreviewEnvelope & { personDay: import("./display-api").DisplayPersonDay }
+  >(
+    `/api/v1/displays/${encodeURIComponent(displayId)}/preview/people/${encodeURIComponent(membershipId)}/day`,
+  );
+}
+
 export async function fetchDisplayPreviewPerson(
   displayId: string,
   membershipId: string,

@@ -2,6 +2,7 @@
  * Shared current-wall presentation. Live wall and selected-display preview
  * both render through these components; only the data/action adapter differs.
  */
+import type { ReactNode } from "react";
 import { DAYPART_LABELS } from "../domain/daypart";
 import type {
   ResponsibilityOverviewRow,
@@ -129,6 +130,7 @@ export function DisplayAuthenticatedSurface(props: {
     originKey: string,
   ) => void;
   onBackToRoutine: (aggregateKey: string, originKey: string) => void;
+  personBoard?: ReactNode;
 }) {
   const clock = formatDisplayClock(
     props.dashboard.serverTime,
@@ -176,19 +178,22 @@ export function DisplayAuthenticatedSurface(props: {
           onBackToRoutine={props.onBackToRoutine}
         />
       ) : (
-        <DisplayOverview
-          dashboard={props.dashboard}
-          organization={props.organization}
-          loading={props.loading}
-          pendingCue={props.pendingCue}
-          retiredNotices={props.retiredNotices}
-          onDismissRetiredNotice={props.onDismissRetiredNotice}
-          onOrganizationChange={props.onOrganizationChange}
-          onOpenPerson={props.onOpenPerson}
-          onOpenResponsibility={props.onOpenResponsibility}
-          onOpenRoutine={props.onOpenRoutine}
-          onOpenPendingCue={props.onOpenPendingCue}
-        />
+        <div className="display-overview-host">
+          <DisplayOverview
+            dashboard={props.dashboard}
+            organization={props.organization}
+            loading={props.loading}
+            pendingCue={props.pendingCue}
+            retiredNotices={props.retiredNotices}
+            onDismissRetiredNotice={props.onDismissRetiredNotice}
+            onOrganizationChange={props.onOrganizationChange}
+            onOpenPerson={props.onOpenPerson}
+            onOpenResponsibility={props.onOpenResponsibility}
+            onOpenRoutine={props.onOpenRoutine}
+            onOpenPendingCue={props.onOpenPendingCue}
+            personBoard={props.personBoard}
+          />
+        </div>
       )}
     </div>
   );
@@ -206,6 +211,7 @@ export function DisplayOverview(props: {
   onOpenResponsibility: (occurrenceId: string, originKey: string) => void;
   onOpenRoutine: (aggregateKey: string, originKey: string) => void;
   onOpenPendingCue: (occurrenceId: string) => void;
+  personBoard?: ReactNode;
 }) {
   const unassigned = needsAssignmentRows(props.dashboard);
 
@@ -289,7 +295,15 @@ export function DisplayOverview(props: {
         </p>
       ) : null}
 
-      {props.organization === "by-person" ? (
+      {props.personBoard ? (
+        <div
+          className="family-board-host"
+          hidden={props.organization !== "by-person"}
+          inert={props.organization !== "by-person" ? true : undefined}
+        >
+          {props.personBoard}
+        </div>
+      ) : props.organization === "by-person" ? (
         <>
           {unassigned.length > 0 ? (
             <div className="display-needs-assignment" data-testid="display-needs-assignment">
@@ -365,13 +379,14 @@ export function DisplayOverview(props: {
             })}
           </ul>
         </>
-      ) : (
+      ) : null}
+      {props.organization === "by-work" ? (
         <DisplayByWork
           dashboard={props.dashboard}
           onOpenResponsibility={props.onOpenResponsibility}
           onOpenRoutine={props.onOpenRoutine}
         />
-      )}
+      ) : null}
     </section>
   );
 }

@@ -5,8 +5,10 @@
 import type {
   DisplayDashboard,
   DisplayOccurrenceDetail,
+  DisplayPersonDay,
   DisplayPersonDetail,
 } from "./display-api";
+import type { FamilyPanePhase } from "./family-board";
 import type { DisplayDetailState, DisplayOrganization } from "./display-presentation";
 
 export const PREVIEW_FRAME_PATH = "/preview-frame.html";
@@ -57,6 +59,8 @@ export type PreviewFrameState = {
   dashboard: DisplayDashboard | null;
   person: DisplayPersonDetail | null;
   occurrence: DisplayOccurrenceDetail | null;
+  personDays: Record<string, DisplayPersonDay | null>;
+  panePhase: Record<string, FamilyPanePhase>;
   organization: DisplayOrganization;
   detail: DisplayDetailState | null;
   loading: boolean;
@@ -77,7 +81,8 @@ export type PreviewFrameNav =
       originKey: string;
     }
   | { type: "hd-preview-back" }
-  | { type: "hd-preview-back-routine"; aggregateKey: string; originKey: string };
+  | { type: "hd-preview-back-routine"; aggregateKey: string; originKey: string }
+  | { type: "hd-preview-retry-pane"; membershipId: string };
 
 export function stripPreviewCommandMetadata<T extends object>(value: T): T {
   if (!value || typeof value !== "object") return value;
@@ -170,6 +175,7 @@ export function isPreviewFrameNav(value: unknown): value is PreviewFrameNav {
     type === "hd-preview-open-routine" ||
     type === "hd-preview-open-routine-person" ||
     type === "hd-preview-back" ||
-    type === "hd-preview-back-routine"
+    type === "hd-preview-back-routine" ||
+    type === "hd-preview-retry-pane"
   );
 }

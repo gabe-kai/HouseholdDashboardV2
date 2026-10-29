@@ -777,6 +777,17 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
   },
   {
     method: "GET",
+    path: "/api/v1/displays/:displayId/preview/people/:membershipId/day",
+    auth: "session",
+    principal: "member",
+    origin: "none",
+    csrf: "n/a",
+    grant: "household.display.manage",
+    notes:
+      "Automatic current-day person snapshot for preview panes; no unpromoted personal tasks or execution fields",
+  },
+  {
+    method: "GET",
     path: "/api/v1/displays/:displayId/preview/people/:membershipId",
     auth: "session",
     principal: "member",
@@ -824,6 +835,17 @@ export const ROUTE_POLICY_INVENTORY: RoutePolicyEntry[] = [
     csrf: "n/a",
     grant: null,
     notes: "Current-day by-person and by-work summaries; private tasks excluded",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/display/people/:membershipId/day",
+    auth: "display",
+    principal: "display",
+    origin: "none",
+    csrf: "n/a",
+    grant: null,
+    notes:
+      "Automatic current-day person snapshot for family-board panes; promoted personal tasks only",
   },
   {
     method: "GET",

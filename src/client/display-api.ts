@@ -61,6 +61,23 @@ export type DisplayDashboard = {
   }>;
 };
 
+export type DisplayPersonDay = {
+  membershipId: string;
+  displayName: string;
+  sortOrder: number;
+  status: "pending" | "active";
+  householdDate: string;
+  timezone: string;
+  serverTime: string;
+  activityGeneration: number;
+  installationEpoch: number;
+  recurringState: WorkState | "No assigned work today";
+  progress: StepProgressCounts | null;
+  progressLabel: string | null;
+  occurrences: DisplayOccurrenceDetail[];
+  promotedPersonalTasks: Array<{ id: string; title: string }>;
+};
+
 export type DisplayPersonDetail = {
   membershipId: string;
   displayName: string;
@@ -199,6 +216,15 @@ export async function fetchDisplayDashboard(): Promise<DisplayDashboard> {
     "/api/v1/display/dashboard",
   );
   return data.dashboard;
+}
+
+export async function fetchDisplayPersonDay(
+  membershipId: string,
+): Promise<DisplayPersonDay> {
+  const data = await displayRequest<{ personDay: DisplayPersonDay }>(
+    `/api/v1/display/people/${encodeURIComponent(membershipId)}/day`,
+  );
+  return data.personDay;
 }
 
 export async function fetchDisplayPerson(

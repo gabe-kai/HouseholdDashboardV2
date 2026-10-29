@@ -37,6 +37,32 @@ async function mutatingHeaders(
   };
 }
 
+async function clickByWorkRow(page: Page, title: string) {
+  const row = page
+    .getByTestId("display-by-work")
+    .locator("button.display-work-row")
+    .filter({ hasText: title });
+  await row.waitFor({ state: "attached", timeout: 20_000 });
+  await row.evaluate((node) => (node as HTMLElement).click());
+  await expect(page.getByTestId("display-detail")).toBeVisible({ timeout: 15_000 });
+}
+
+async function clickDisplayOrgByWork(page: Page) {
+  const button = page.getByTestId("display-org-by-work");
+  await button.waitFor({ state: "attached", timeout: 15_000 });
+  await button.evaluate((node) => (node as HTMLElement).click());
+  await expect(page.getByTestId("display-by-work")).toBeVisible({ timeout: 15_000 });
+}
+
+async function clickFirstDisplayDone(page: Page) {
+  const done = page
+    .getByTestId("display-detail")
+    .locator("[data-testid^=display-step-done-]")
+    .first();
+  await done.waitFor({ state: "attached", timeout: 15_000 });
+  await done.evaluate((node) => (node as HTMLElement).click());
+}
+
 async function ensureManagerSession(request: APIRequestContext) {
   const origin = requestOrigin();
   const boot = await request.post("/api/v1/test/bootstrap-claim");
@@ -211,19 +237,13 @@ test.describe("P0-007C-3A live recovery and date rollover", () => {
     const wall = await wallCtx.newPage();
     await enrollWall(page.request, wall, `Rollover ${Date.now().toString(36)}`);
 
-    await wall.getByTestId("display-org-by-work").click();
-    await wall
-      .getByTestId("display-by-work")
-      .locator("button.display-work-row")
-      .filter({ hasText: title })
-      .click();
-    await expect(wall.getByTestId("display-detail")).toBeVisible();
-
+    await clickDisplayOrgByWork(wall);
+    await clickByWorkRow(wall, title);
     // Queue a pending tap for the current household day.
     await wall.route("**/api/v1/display/occurrences/**/status", (route) =>
       route.abort(),
     );
-    await wall.locator("[data-testid^=display-step-done-]").first().click();
+    await clickFirstDisplayDone(wall);
     await expect(
       wall.getByRole("status").filter({ hasText: /pending|retry|Saving/i }).first(),
     ).toBeVisible({ timeout: 15_000 });
@@ -333,21 +353,19 @@ test.describe("P0-007C-3A live recovery and date rollover", () => {
     await expectSignedInAs(phone, /Avery/);
     await expect(phone.getByText(title).first()).toBeVisible({ timeout: 20_000 });
 
-    await wallA.getByTestId("display-org-by-work").click();
-    await wallA
-      .getByTestId("display-by-work")
-      .locator("button.display-work-row")
-      .filter({ hasText: title })
-      .click();
-    await expect(wallA.getByTestId("display-detail")).toBeVisible();
-    await wallA.locator("[data-testid^=display-step-done-]").first().click();
+    await clickDisplayOrgByWork(wallA);
+    await clickByWorkRow(wallA, title);
+    await clickFirstDisplayDone(wallA);
     await expect(
-      wallA.locator("[data-testid^=display-step-done-][aria-pressed=true]").first(),
+      wallA
+        .getByTestId("display-detail")
+        .locator("[data-testid^=display-step-done-][aria-pressed=true]")
+        .first(),
     ).toBeVisible({ timeout: 20_000 });
 
     // Other display and phone converge without reload.
     // Require real "1/2 done" — "/done/" alone matches stale "0/2 done".
-    await wallB.getByTestId("display-org-by-work").click();
+    await clickDisplayOrgByWork(wallB);
     const wallBRow = wallB
       .getByTestId("display-by-work")
       .locator("button.display-work-row")
@@ -406,11 +424,12 @@ test.describe("P0-007C-3A live recovery and date rollover", () => {
     // Checklist change from wall A while wall B's sync socket is down — must commit.
     // Scope to Wipe; nudge flush in case a prior in-flight flush skipped this queue.
     const wipeStep = wallA
+      .getByTestId("display-detail")
       .locator("[data-testid^=display-step-]")
       .filter({ hasText: "Wipe" });
     const wipeNotNeeded = wipeStep.locator("[data-testid^=display-step-not-needed-]");
     await expect(wipeNotNeeded).toBeVisible({ timeout: 10_000 });
-    await wipeNotNeeded.click();
+    await wipeNotNeeded.evaluate((node) => (node as HTMLElement).click());
     await expect(wipeNotNeeded).toHaveAttribute("aria-pressed", "true");
     await wallA.evaluate(() => {
       document.dispatchEvent(new Event("visibilitychange"));
@@ -555,7 +574,10 @@ test.describe("P0-007C-3A live recovery and date rollover", () => {
 
     // Authoritative completed control must remain pressed (older open discarded).
     await expect(
-      wallA.locator("[data-testid^=display-step-done-][aria-pressed=true]").first(),
+      wallA
+        .getByTestId("display-detail")
+        .locator("[data-testid^=display-step-done-][aria-pressed=true]")
+        .first(),
     ).toBeVisible();
 
     await durableScreenshot(

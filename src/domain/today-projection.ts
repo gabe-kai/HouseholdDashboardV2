@@ -13,7 +13,7 @@ export type ProjectableOccurrence = {
   completed: boolean;
   startedAt: string | null;
   kind?: string;
-  steps: Array<{ status: string; obligation?: string }>;
+  steps: Array<{ status: string; obligation?: string; id?: string }>;
   title?: string;
 };
 

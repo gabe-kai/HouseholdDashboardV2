@@ -121,19 +121,21 @@ test.describe("P0-007C-2 geometry", () => {
       const name = document.querySelector(".display-person-name");
       const time = document.querySelector(".display-time");
       const status = document.querySelector(".display-person-status");
-      const touch = document.querySelector(".display-person-card");
+      const panes = [
+        ...document.querySelectorAll(
+          '[data-testid="family-board"] .family-board-pane:not([hidden])',
+        ),
+      ];
       const style = (el: Element | null) =>
         el ? Number.parseFloat(getComputedStyle(el).fontSize) : 0;
-      const touchBox = touch?.getBoundingClientRect();
+      const boxes = panes.slice(0, 6).map((pane) => pane.getBoundingClientRect());
       return {
         namePx: style(name),
         timePx: style(time),
         statusPx: style(status),
-        touchH: touchBox?.height ?? 0,
-        touchW: touchBox?.width ?? 0,
-        people: document.querySelectorAll(
-          '[data-testid="display-by-person"] .display-person-card',
-        ).length,
+        touchH: boxes.reduce((max, box) => Math.max(max, box.height), 0),
+        touchW: boxes.reduce((max, box) => Math.max(max, box.width), 0),
+        people: panes.length,
       };
     });
 
@@ -150,7 +152,7 @@ test.describe("P0-007C-2 geometry", () => {
       const scroll = await page.evaluate(() => {
         const cards = [
           ...document.querySelectorAll(
-            '[data-testid="display-by-person"] .display-person-card',
+            '[data-testid="display-by-person"] .family-board-pane',
           ),
         ].slice(0, 6);
         const bottoms = cards.map((card) => card.getBoundingClientRect().bottom);
@@ -167,7 +169,7 @@ test.describe("P0-007C-2 geometry", () => {
 
       await page.getByTestId("display-org-by-work").focus();
       await expect(page.getByTestId("display-org-by-work")).toBeFocused();
-      const personCard = page.getByTestId("display-by-person").locator("button").first();
+      const personCard = page.locator('[id^="display-person-"]').first();
       await personCard.focus();
       await expect(personCard).toBeFocused();
 
@@ -200,7 +202,7 @@ test.describe("P0-007C-2 geometry", () => {
     );
 
     await page.getByTestId("display-org-by-person").click();
-    await page.getByTestId("display-by-person").locator("button").first().click();
+    await page.locator('[id^="display-person-"]').first().click();
     await expect(page.getByTestId("display-detail")).toBeVisible();
     await durableScreenshot(
       page,

@@ -182,14 +182,22 @@ test.describe("P0-008A AT10 old live clients", () => {
       timeout: 15_000,
     });
 
-    await wall.getByTestId("display-org-by-work").click();
-    await wall
+    const byWork = wall.getByTestId("display-org-by-work");
+    await byWork.waitFor({ state: "attached", timeout: 15_000 });
+    await byWork.evaluate((node) => (node as HTMLElement).click());
+    const workRow = wall
       .getByTestId("display-by-work")
       .locator("button.display-work-row")
-      .filter({ hasText: workTitle })
-      .click();
+      .filter({ hasText: workTitle });
+    await workRow.waitFor({ state: "attached", timeout: 20_000 });
+    await workRow.evaluate((node) => (node as HTMLElement).click());
     await expect(wall.getByTestId("display-detail")).toBeVisible();
-    await wall.locator("[data-testid^=display-step-done-]").first().click();
+    const done = wall
+      .getByTestId("display-detail")
+      .locator("[data-testid^=display-step-done-]")
+      .first();
+    await done.waitFor({ state: "attached", timeout: 15_000 });
+    await done.evaluate((node) => (node as HTMLElement).click());
     await expect(
       wall.getByRole("status").filter({ hasText: /pending|retry|Saving/i }).first(),
     ).toBeVisible({ timeout: 15_000 });

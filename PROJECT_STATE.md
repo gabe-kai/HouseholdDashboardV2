@@ -19,7 +19,7 @@
 
 ## Current focus
 
-Inspected 2026-10-28: integrated code baseline is `main` at **14af09e** after P0-009A r2 merged through PR **#30**; planning is committed on `wall-refinements` at **79fbb57**. The Project Lead accepts the dashboard preview as good to proceed and will refine it later; no specific viewport measurement or new physical-use result is claimed. Engineering received a superseded P0-009B r1 assignment and recorded an assignment-only BLOCKER, while confirming the r2 repository facts. Architecture explicitly reassigns **P0-009B r2** and ACCEPTs those interpretations. Engineering will record dedicated r2 readiness using the existing inspection; **PROCEED is authorized once r2 is READY**, without another numbering-only handoff. No r2 READY, implementation, deployment, or production-wall replacement is yet claimed. Overall P0-008 Product acceptance remains separate, as does the reported `/` route anomaly.
+Inspected 2026-10-29: integrated code baseline is `main` at **14af09e** after P0-009A r2 merged through PR **#30**. Planning/implementation is on `wall-refinements` (`79fbb57` brief; assignment `db37869` plus uncommitted r2 implementation). Exact local `validate:pr` and `validate:rc` both exit 0. Deployment, live-data, and production-wall replacement remain Project Lead operations. Overall P0-008 Product acceptance remains separate, as does the reported `/` route anomaly.
 
 **P0-008E r1** is technically **ACCEPTED** and integrated via PR #28 at `bd05ad0`. **P0-008F r1** is technically accepted and integrated via PR #29 at `1acc4a1`. P0-008's overall Product acceptance remains separate; the reported `/` anomaly remains a separate investigation.
 
@@ -51,7 +51,7 @@ P0-007C's outstanding physical/Product judgments remain distinct from its techni
 | P0-008E - Clear First Run and One-View Work Editing | r1 | ACCEPTED (technical) | Project Lead evaluation | Merged to `main` via PR #28 at `bd05ad0` | Hands-on Product evaluation; overall P0-008 Product acceptance remains separate |
 | P0-008F - Keep a Household Intact Through Deployment | r1 | ACCEPTED (technical) | Project Lead evaluation | Merged to `main` via PR #29 at `1acc4a1` | Project Lead reports persistent control-store copy and new-household setup; prior-household recovery is not claimed |
 | P0-009A - Preview a Display and Judge the Family Board | r2 | ACCEPTED (technical); preview approved by Project Lead | Integrated foundation | Merged to `main` via PR #30 at `14af09e` | Further refinement may follow; no preview gate blocks B |
-| P0-009B - Actionable Person Panes on the Family Wall | r2 | IN REVIEW | Engineering readiness, then implementation on READY | Planning `wall-refinements` @ `79fbb57`; code baseline `14af09e` | Record r2 readiness using existing inspection; conditional Architecture PROCEED already supplied |
+| P0-009B - Actionable Person Panes on the Family Wall | r2 | IMPLEMENTED | Architecture technical review | `wall-refinements` uncommitted implementation vs `14af09e`; planning `79fbb57` / `db37869` | Architecture acceptance; no commit/deploy/live-data |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -84,7 +84,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Engineering: **P0-009B r2 is formally assigned** (planning `79fbb57`, code baseline `14af09e`). Reuse the confirmed repository inspection in the r1 report and check only outstanding r2 readiness items. Record `reports/P0-009B-r2-engineering-readiness.md` and update the brief. If READY with no unresolved material issue, proceed directly to r2 implementation under Architecture's conditional ACCEPT / PROCEED; do not wait for a further numbering-only response. Preserve the r1 report as the earlier assignment-mismatch record. Later visual/physical evaluation is separate. The root-route anomaly and live School/Meals/Calendar features remain separate work.
+Architecture: **P0-009B r2 is IMPLEMENTED** on `wall-refinements` (readiness `reports/P0-009B-r2-engineering-readiness.md`; build `reports/P0-009B-r2-build-report.md`). r1 report remains the assignment-mismatch record. Suggest a commit; do not merge, deploy, or run live-data. Product checkpoint is a later before-school evaluation. The root-route anomaly and live School/Meals/Calendar features remain separate work.
 
 ## Notes for all teams
 

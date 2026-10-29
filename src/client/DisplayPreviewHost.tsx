@@ -3,14 +3,17 @@ import {
   fetchDisplayPreviewDashboard,
   fetchDisplayPreviewOccurrence,
   fetchDisplayPreviewPerson,
+  fetchDisplayPreviewPersonDay,
   type ApiError,
   type SessionInfo,
 } from "./api";
 import type {
   DisplayDashboard,
   DisplayOccurrenceDetail,
+  DisplayPersonDay,
   DisplayPersonDetail,
 } from "./display-api";
+import type { FamilyPanePhase } from "./family-board";
 import type { DisplayDetailState, DisplayOrganization } from "./display-presentation";
 import {
   PREVIEW_FRAME_PATH,
@@ -89,6 +92,13 @@ export function DisplayPreviewHost(props: {
   const [error, setError] = useState<string | null>(null);
   const [scale, setScale] = useState(1);
   const [frameReady, setFrameReady] = useState(false);
+  const [personDays, setPersonDays] = useState<Record<string, DisplayPersonDay | null>>({});
+  const [panePhase, setPanePhase] = useState<Record<string, FamilyPanePhase>>({});
+  const paneGenRef = useRef<Record<string, number>>({});
+  const paneLoadQueueRef = useRef<string[]>([]);
+  const paneLoadActiveRef = useRef(0);
+  const organizationRef = useRef(organization);
+  organizationRef.current = organization;
 
   const hostRef = useRef<HTMLDivElement | null>(null);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
@@ -122,6 +132,10 @@ export function DisplayPreviewHost(props: {
     setOccurrence(null);
     setDetail(null);
     setDetailUnavailable(false);
+    setPersonDays({});
+    setPanePhase({});
+    paneGenRef.current = {};
+    paneLoadQueueRef.current = [];
     lastSuccessStartRef.current = null;
     blankedAtRef.current = Date.now();
   }
@@ -199,6 +213,72 @@ export function DisplayPreviewHost(props: {
     return true;
   }
 
+  const loadPreviewPersonDay = useEffectEvent(async (membershipId: string) => {
+    const gen = (paneGenRef.current[membershipId] ?? 0) + 1;
+    paneGenRef.current[membershipId] = gen;
+    const startedAt = nowMs();
+    setPanePhase((current) => ({
+      ...current,
+      [membershipId]: current[membershipId] === "ready" ? "ready" : "loading",
+    }));
+    try {
+      const payload = await fetchDisplayPreviewPersonDay(props.displayId, membershipId);
+      if (paneGenRef.current[membershipId] !== gen) return;
+      if (nowMs() - startedAt > staleMaxMs()) {
+        setPersonDays((current) => ({ ...current, [membershipId]: null }));
+        setPanePhase((current) => ({ ...current, [membershipId]: "blank" }));
+        return;
+      }
+      if (payload.installationEpoch !== sessionRef.current.installationEpoch) return;
+      if (
+        lastSuccessDateRef.current &&
+        payload.householdDate !== lastSuccessDateRef.current
+      ) {
+        return;
+      }
+      if (
+        lastSuccessEpochRef.current !== null &&
+        payload.installationEpoch !== lastSuccessEpochRef.current
+      ) {
+        return;
+      }
+      const day = {
+        ...payload.personDay,
+        occurrences: payload.personDay.occurrences.map((occurrence) =>
+          stripPreviewCommandMetadata(occurrence),
+        ),
+      };
+      setPersonDays((current) => ({ ...current, [membershipId]: day }));
+      setPanePhase((current) => ({ ...current, [membershipId]: "ready" }));
+    } catch {
+      if (paneGenRef.current[membershipId] !== gen) return;
+      setPanePhase((current) => ({ ...current, [membershipId]: "unavailable" }));
+    }
+  });
+
+  const pumpPreviewPersonDays = useEffectEvent(() => {
+    const limit = 2;
+    while (paneLoadActiveRef.current < limit && paneLoadQueueRef.current.length > 0) {
+      const membershipId = paneLoadQueueRef.current.shift();
+      if (!membershipId) break;
+      paneLoadActiveRef.current += 1;
+      void loadPreviewPersonDay(membershipId).finally(() => {
+        paneLoadActiveRef.current = Math.max(0, paneLoadActiveRef.current - 1);
+        pumpPreviewPersonDays();
+      });
+    }
+  });
+
+  const refreshPreviewPersonDays = useEffectEvent((membershipIds: string[]) => {
+    if (organizationRef.current !== "by-person" || detailRef.current) return;
+    for (const membershipId of membershipIds) {
+      if (!paneLoadQueueRef.current.includes(membershipId)) {
+        paneLoadQueueRef.current.push(membershipId);
+      }
+    }
+    pumpPreviewPersonDays();
+  });
+
   const loadDashboard = useEffectEvent(async (reason: "poll" | "sync" | "open") => {
     const startedAt = nowMs();
     const startedWall = Date.now();
@@ -230,6 +310,7 @@ export function DisplayPreviewHost(props: {
       setStale(false);
       lastSuccessStartRef.current = startedAt;
       setLoading(false);
+      refreshPreviewPersonDays(nextDashboard.byPerson.map((row) => row.membershipId));
       const currentDetail = detailRef.current;
       if (currentDetail?.kind === "person") {
         if (
@@ -330,6 +411,11 @@ export function DisplayPreviewHost(props: {
   useEffect(() => {
     void loadDashboard("open");
   }, [props.displayId]);
+
+  useEffect(() => {
+    if (organization !== "by-person" || detail || !dashboard) return;
+    refreshPreviewPersonDays(dashboard.byPerson.map((row) => row.membershipId));
+  }, [organization, detail]);
 
   useEffect(() => {
     void loadDashboard("sync");
@@ -471,6 +557,10 @@ export function DisplayPreviewHost(props: {
           aggregateKey: message.aggregateKey,
           originKey: message.originKey,
         });
+        return;
+      }
+      if (message.type === "hd-preview-retry-pane") {
+        void loadPreviewPersonDay(message.membershipId);
       }
     }
     window.addEventListener("message", onMessage);
@@ -485,6 +575,8 @@ export function DisplayPreviewHost(props: {
       dashboard,
       person,
       occurrence,
+      personDays,
+      panePhase,
       organization,
       detail,
       loading,
@@ -496,6 +588,8 @@ export function DisplayPreviewHost(props: {
     dashboard,
     person,
     occurrence,
+    personDays,
+    panePhase,
     organization,
     detail,
     loading,

@@ -12,11 +12,13 @@ import {
   fetchDisplayDashboard,
   fetchDisplayOccurrence,
   fetchDisplayPerson,
+  fetchDisplayPersonDay,
   fetchDisplaySession,
   setDisplayStepStatus,
   type ApiError,
   type DisplayDashboard,
   type DisplayOccurrenceDetail,
+  type DisplayPersonDay,
   type DisplayPersonDetail,
   type DisplaySessionInfo,
 } from "./display-api";
@@ -38,6 +40,7 @@ import {
   retireMismatchedDisplayOutbox,
   type DisplayOutboxItem,
 } from "./display-outbox";
+import { FamilyBoard, unassignedRows, type FamilyPaneModel } from "./family-board";
 import { fetchMeta } from "./api";
 import { newClientId } from "./id";
 
@@ -56,11 +59,15 @@ declare global {
     __HD_DISPLAY_IDLE_MS?: number;
     /** Test override for disconnected/stale blank bound (default 60s). */
     __HD_DISPLAY_STALE_MS?: number;
+    /** Test override for per-pane freshness only; does not shorten the dashboard lease. */
+    __HD_DISPLAY_PANE_STALE_MS?: number;
     /** Test-only: mark sync disconnected and age last auth past the stale bound. */
     __HD_DISPLAY_FORCE_STALE__?: () => void;
     /** Test-only: close the live display sync WebSocket (reconnect may follow). */
     __HD_DISPLAY_CLOSE_SYNC__?: () => void;
     __HD_DISPLAY_RECONNECT_SYNC__?: () => void;
+    /** Test-only clock for pane idle/freshness. */
+    __HD_DISPLAY_NOW_MS?: number;
   }
 }
 
@@ -74,6 +81,18 @@ function staleMaxMs(): number {
   const override = window.__HD_DISPLAY_STALE_MS;
   if (typeof override === "number" && override > 0) return override;
   return DEFAULT_STALE_MAX_MS;
+}
+
+function paneStaleMaxMs(): number {
+  const override = window.__HD_DISPLAY_PANE_STALE_MS;
+  if (typeof override === "number" && override > 0) return override;
+  return staleMaxMs();
+}
+
+function displayNow(): number {
+  const override = window.__HD_DISPLAY_NOW_MS;
+  if (typeof override === "number" && override > 0) return override;
+  return performance.now();
 }
 
 function errorMessage(error: unknown): string {
@@ -152,6 +171,10 @@ export function DisplayApp() {
     Array<{ mutationId: string; message: string }>
   >([]);
   const [savedFlashByStep, setSavedFlashByStep] = useState<Record<string, number>>({});
+  const [paneDays, setPaneDays] = useState<Record<string, DisplayPersonDay | null>>({});
+  const [panePhase, setPanePhase] = useState<Record<string, FamilyPaneModel["phase"]>>({});
+  const panePhaseRef = useRef(panePhase);
+  panePhaseRef.current = panePhase;
 
   const lastAuthorizedAtRef = useRef<number | null>(null);
   const accessLostRef = useRef(false);
@@ -171,11 +194,35 @@ export function DisplayApp() {
   const flushInFlightRef = useRef(false);
   const flushAgainRef = useRef(false);
   const occurrenceDetailRef = useRef<DisplayOccurrenceDetail | null>(null);
+  const paneGenRef = useRef<Record<string, number>>({});
+  const paneStartedRef = useRef<Record<string, number>>({});
+  const paneSuccessStartedRef = useRef<Record<string, number>>({});
+  const paneFailedAtRef = useRef<Record<string, number>>({});
+  const paneEpochRef = useRef(0);
+  const activityGenerationRef = useRef<number | null>(null);
+  const paneLoadQueueRef = useRef<string[]>([]);
+  const paneLoadActiveRef = useRef(0);
+  const organizationRef = useRef(organization);
 
   detailRef.current = detail;
   sessionRef.current = session;
   outboxRef.current = outbox;
   occurrenceDetailRef.current = occurrenceDetail;
+  organizationRef.current = organization;
+
+  function familyBoardVisible() {
+    return organizationRef.current === "by-person" && detailRef.current == null;
+  }
+
+  function resetPaneSnapshots() {
+    paneEpochRef.current += 1;
+    paneLoadQueueRef.current = [];
+    setPaneDays({});
+    setPanePhase({});
+    paneStartedRef.current = {};
+    paneSuccessStartedRef.current = {};
+    paneFailedAtRef.current = {};
+  }
 
   function rememberSessionSecrets(next: DisplaySessionInfo | null) {
     csrfTokenRef.current = next?.csrfToken ?? null;
@@ -196,11 +243,14 @@ export function DisplayApp() {
     accessLostRef.current = true;
     lastAuthorizedAtRef.current = null;
     householdDateRef.current = null;
+    activityGenerationRef.current = null;
     rememberSessionSecrets(null);
     setDashboard(null);
     setPersonDetail(null);
     setOccurrenceDetail(null);
     setDetail(null);
+    resetPaneSnapshots();
+    paneGenRef.current = {};
     setSession(null);
     setOutbox([]);
     outboxRef.current = [];
@@ -254,11 +304,14 @@ export function DisplayApp() {
     }
     lastAuthorizedAtRef.current = null;
     householdDateRef.current = null;
+    activityGenerationRef.current = null;
     rememberSessionSecrets(null);
     setDashboard(null);
     setPersonDetail(null);
     setOccurrenceDetail(null);
     setDetail(null);
+    resetPaneSnapshots();
+    paneGenRef.current = {};
     setSession(null);
     setPendingCue(null);
     setSavedFlashByStep({});
@@ -442,6 +495,105 @@ export function DisplayApp() {
     }
   });
 
+  function overlayPersonDay(day: DisplayPersonDay): DisplayPersonDay {
+    let occurrences = day.occurrences;
+    for (const item of outboxRef.current) {
+      if (item.state === "rejected") continue;
+      occurrences = occurrences.map((occurrence) =>
+        occurrence.id === item.occurrenceId
+          ? applyOptimisticStepStatus(occurrence, item.stepId, item.status)
+          : occurrence,
+      );
+    }
+    return { ...day, occurrences };
+  }
+
+  const loadPersonDay = useEffectEvent(async (membershipId: string) => {
+    if (accessLostRef.current) return;
+    const epoch = paneEpochRef.current;
+    const gen = (paneGenRef.current[membershipId] ?? 0) + 1;
+    paneGenRef.current[membershipId] = gen;
+    const started = displayNow();
+    paneStartedRef.current[membershipId] = started;
+    setPanePhase((current) => ({
+      ...current,
+      [membershipId]: current[membershipId] === "ready" ? "ready" : "loading",
+    }));
+    try {
+      const day = await fetchDisplayPersonDay(membershipId);
+      if (paneEpochRef.current !== epoch) return;
+      if (paneGenRef.current[membershipId] !== gen || accessLostRef.current) return;
+      if (day.installationEpoch !== installationEpochRef.current) return;
+      if (
+        householdDateRef.current &&
+        day.householdDate !== householdDateRef.current
+      ) {
+        return;
+      }
+      if (
+        activityGenerationRef.current != null &&
+        day.activityGeneration !== activityGenerationRef.current
+      ) {
+        return;
+      }
+      if (displayNow() - started > paneStaleMaxMs()) {
+        setPaneDays((current) => ({ ...current, [membershipId]: null }));
+        setPanePhase((current) => ({ ...current, [membershipId]: "blank" }));
+        return;
+      }
+      paneSuccessStartedRef.current[membershipId] = started;
+      delete paneFailedAtRef.current[membershipId];
+      setPaneDays((current) => ({ ...current, [membershipId]: overlayPersonDay(day) }));
+      setPanePhase((current) => ({ ...current, [membershipId]: "ready" }));
+    } catch (error) {
+      if (paneEpochRef.current !== epoch) return;
+      if (paneGenRef.current[membershipId] !== gen) return;
+      if (isUnauthorized(error)) {
+        clearHouseholdState("Display access ended. Enter a new setup code.");
+        return;
+      }
+      const apiError = error as ApiError;
+      const successStarted = paneSuccessStartedRef.current[membershipId];
+      if (
+        successStarted != null &&
+        displayNow() - successStarted > paneStaleMaxMs()
+      ) {
+        setPaneDays((current) => ({ ...current, [membershipId]: null }));
+        setPanePhase((current) => ({ ...current, [membershipId]: "blank" }));
+        return;
+      }
+      if (paneFailedAtRef.current[membershipId] == null) {
+        paneFailedAtRef.current[membershipId] = started;
+      }
+      if (apiError.status === 404) {
+        setPaneDays((current) => ({ ...current, [membershipId]: null }));
+      }
+      setPanePhase((current) => ({ ...current, [membershipId]: "unavailable" }));
+    }
+  });
+
+  const pumpPaneLoads = useEffectEvent(() => {
+    const limit = 2;
+    while (paneLoadActiveRef.current < limit && paneLoadQueueRef.current.length > 0) {
+      const membershipId = paneLoadQueueRef.current.shift();
+      if (!membershipId) break;
+      paneLoadActiveRef.current += 1;
+      void loadPersonDay(membershipId).finally(() => {
+        paneLoadActiveRef.current = Math.max(0, paneLoadActiveRef.current - 1);
+        pumpPaneLoads();
+      });
+    }
+  });
+
+  const refreshPersonDays = useEffectEvent((membershipIds: string[]) => {
+    for (const membershipId of membershipIds) {
+      if (!paneLoadQueueRef.current.includes(membershipId)) {
+        paneLoadQueueRef.current.push(membershipId);
+      }
+    }
+    pumpPaneLoads();
+  });
+
   const refreshDashboard = useEffectEvent(async (opts?: { quiet?: boolean }) => {
     if (accessLostRef.current) return;
     const started = performance.now();
@@ -462,6 +614,9 @@ export function DisplayApp() {
       const previousDate = householdDateRef.current;
       const dateChanged =
         previousDate != null && previousDate !== next.householdDate;
+      const previousGeneration = activityGenerationRef.current;
+      const generationChanged =
+        previousGeneration != null && previousGeneration !== next.activityGeneration;
       const sessionId = sessionIdRef.current;
       if (sessionId) {
         const before = outboxRef.current;
@@ -493,16 +648,21 @@ export function DisplayApp() {
           }
         }
       }
-      if (dateChanged) {
-        // Close old-day detail before applying the new date/work snapshot.
+      if (dateChanged || generationChanged) {
+        // Close old-day/old-generation detail before applying the new snapshot.
         setDetail(null);
         setPersonDetail(null);
         setOccurrenceDetail(null);
+        resetPaneSnapshots();
         // Keep retiredNotices; clear only the pending (still-retryable) cue.
         setPendingCue(null);
       }
       householdDateRef.current = next.householdDate;
+      activityGenerationRef.current = next.activityGeneration;
       setDashboard(next);
+      if (familyBoardVisible()) {
+        refreshPersonDays(next.byPerson.map((person) => person.membershipId));
+      }
       setSession((current) =>
         current
           ? {
@@ -650,6 +810,10 @@ export function DisplayApp() {
         refreshTimer = null;
         void refreshDashboard({ quiet: true });
         void refreshDetail();
+        if (familyBoardVisible()) {
+          const ids = sessionRef.current ? Object.keys(paneGenRef.current) : [];
+          if (ids.length > 0) refreshPersonDays(ids);
+        }
       }, 250);
     };
 
@@ -681,6 +845,11 @@ export function DisplayApp() {
       if (refreshTimer) clearTimeout(refreshTimer);
     };
   }, [authPhase]);
+
+  useEffect(() => {
+    if (organization !== "by-person" || detail || !dashboard) return;
+    refreshPersonDays(dashboard.byPerson.map((person) => person.membershipId));
+  }, [organization, detail]);
 
   // Clock tick from server instant + elapsed client time.
   useEffect(() => {
@@ -732,6 +901,31 @@ export function DisplayApp() {
         }
       } else {
         setStale(false);
+      }
+      const paneBound = paneStaleMaxMs();
+      const now = displayNow();
+      const expired: string[] = [];
+      for (const [membershipId, phase] of Object.entries(panePhaseRef.current)) {
+        if (phase !== "unavailable") continue;
+        const leaseStart =
+          paneSuccessStartedRef.current[membershipId] ??
+          paneFailedAtRef.current[membershipId];
+        if (leaseStart != null && now - leaseStart > paneBound) expired.push(membershipId);
+      }
+      if (expired.length > 0) {
+        for (const membershipId of expired) {
+          paneGenRef.current[membershipId] = (paneGenRef.current[membershipId] ?? 0) + 1;
+        }
+        setPaneDays((current) => {
+          const next = { ...current };
+          for (const membershipId of expired) next[membershipId] = null;
+          return next;
+        });
+        setPanePhase((current) => {
+          const next = { ...current };
+          for (const membershipId of expired) next[membershipId] = "blank";
+          return next;
+        });
       }
     }, 500);
     return () => {
@@ -858,19 +1052,23 @@ export function DisplayApp() {
     setDetail(next);
     setPersonDetail(null);
     setOccurrenceDetail(null);
+    const gen = ++detailGenRef.current;
     if (!next) return;
     if (next.kind === "person") {
       void fetchDisplayPerson(next.membershipId)
         .then((person) => {
+          if (gen !== detailGenRef.current) return;
           markAuthorized();
           setPersonDetail(person);
         })
         .catch((error) => {
+          if (gen !== detailGenRef.current) return;
           if (isUnauthorized(error)) clearHouseholdState();
         });
     } else if (next.kind === "occurrence" || next.kind === "routine-person") {
       void fetchDisplayOccurrence(next.occurrenceId)
         .then((occurrence) => {
+          if (gen !== detailGenRef.current) return;
           markAuthorized();
           const pendingForOcc = outboxRef.current.filter(
             (item) =>
@@ -887,12 +1085,14 @@ export function DisplayApp() {
           setOccurrenceDetail(nextOccurrence);
         })
         .catch((error) => {
+          if (gen !== detailGenRef.current) return;
           if (isUnauthorized(error)) clearHouseholdState();
         });
     }
   }
 
   function closeDetail() {
+    detailGenRef.current += 1;
     const leaving = detailRef.current;
     if (
       leaving &&
@@ -1094,70 +1294,109 @@ export function DisplayApp() {
       ) : null}
 
       {authPhase === "authenticated" && dashboard ? (
-        detail ? (
-          <DisplayDetailPanel
-            detail={detail}
-            dashboard={dashboard}
-            personDetail={personDetail}
-            occurrenceDetail={occurrenceDetail}
-            outbox={outbox}
-            savedFlashByStep={savedFlashByStep}
-            canAct={canAct}
-            loading={loadingDash && !personDetail && !occurrenceDetail}
-            onBack={closeDetail}
-            onStepChange={(occurrence, stepId, status) =>
-              void queueDisplayStepChange(occurrence, stepId, status)
-            }
-            onOpenOccurrence={(occurrenceId, originKey) =>
-              openDetail({ kind: "occurrence", occurrenceId, originKey }, originKey)
-            }
-            onOpenRoutinePerson={(aggregateKey, occurrenceId, originKey) =>
-              openDetail(
-                { kind: "routine-person", aggregateKey, occurrenceId, originKey },
-                originKey,
-              )
-            }
-            onBackToRoutine={(aggregateKey, originKey) =>
-              openDetail({ kind: "routine", aggregateKey, originKey }, originKey)
-            }
-          />
-        ) : (
-          <DisplayOverview
-            dashboard={dashboard}
-            organization={organization}
-            loading={loadingDash}
-            pendingCue={pendingCue}
-            retiredNotices={retiredNotices}
-            onDismissRetiredNotice={(mutationId) => {
-              setRetiredNotices((current) =>
-                current.filter((n) => n.mutationId !== mutationId),
-              );
-              const sessionId = sessionIdRef.current;
-              if (!sessionId) return;
-              void removeDisplayOutboxItem(sessionId, mutationId).then((next) => {
-                if (sessionIdRef.current !== sessionId) return;
-                outboxRef.current = next;
-                setOutbox(next);
-              });
-            }}
-            onOrganizationChange={setOrganization}
-            onOpenPerson={(membershipId, originKey) =>
-              openDetail({ kind: "person", membershipId, originKey }, originKey)
-            }
-            onOpenResponsibility={(occurrenceId, originKey) =>
-              openDetail({ kind: "occurrence", occurrenceId, originKey }, originKey)
-            }
-            onOpenRoutine={(aggregateKey, originKey) =>
-              openDetail({ kind: "routine", aggregateKey, originKey }, originKey)
-            }
-            onOpenPendingCue={(occurrenceId) =>
-              openDetail(
-                { kind: "occurrence", occurrenceId, originKey: "display-pending-cue" },
-                "display-pending-cue",
-              )
-            }
-          />
-        )
+        <>
+          {detail ? (
+            <DisplayDetailPanel
+              detail={detail}
+              dashboard={dashboard}
+              personDetail={personDetail}
+              occurrenceDetail={occurrenceDetail}
+              outbox={outbox}
+              savedFlashByStep={savedFlashByStep}
+              canAct={canAct}
+              loading={loadingDash && !personDetail && !occurrenceDetail}
+              onBack={closeDetail}
+              onStepChange={(occurrence, stepId, status) =>
+                void queueDisplayStepChange(occurrence, stepId, status)
+              }
+              onOpenOccurrence={(occurrenceId, originKey) =>
+                openDetail({ kind: "occurrence", occurrenceId, originKey }, originKey)
+              }
+              onOpenRoutinePerson={(aggregateKey, occurrenceId, originKey) =>
+                openDetail(
+                  { kind: "routine-person", aggregateKey, occurrenceId, originKey },
+                  originKey,
+                )
+              }
+              onBackToRoutine={(aggregateKey, originKey) =>
+                openDetail({ kind: "routine", aggregateKey, originKey }, originKey)
+              }
+            />
+          ) : null}
+          <div
+            className="display-overview-host"
+            hidden={detail ? true : undefined}
+            inert={detail ? true : undefined}
+          >
+            <DisplayOverview
+              dashboard={dashboard}
+              organization={organization}
+              loading={loadingDash}
+              pendingCue={pendingCue}
+              retiredNotices={retiredNotices}
+              personBoard={
+                <FamilyBoard
+                  key={dashboard.householdDate}
+                  panes={dashboard.byPerson.map((person) => ({
+                    membershipId: person.membershipId,
+                    displayName: person.displayName,
+                    sortOrder: person.sortOrder,
+                    status: person.status,
+                    phase: panePhase[person.membershipId] ?? "loading",
+                    progressLabel: person.progressLabel,
+                    day: paneDays[person.membershipId]
+                      ? overlayPersonDay(paneDays[person.membershipId]!)
+                      : null,
+                  }))}
+                  unassigned={unassignedRows(dashboard)}
+                  outbox={outbox}
+                  savedFlashByStep={savedFlashByStep}
+                  canAct={canAct}
+                  idleMs={idleMs()}
+                  nowMs={displayNow}
+                  onRetryPane={(membershipId) => refreshPersonDays([membershipId])}
+                  onStepChange={(occurrence, stepId, status) =>
+                    void queueDisplayStepChange(occurrence, stepId, status)
+                  }
+                  onOpenUnassigned={(occurrenceId, originKey) =>
+                    openDetail({ kind: "occurrence", occurrenceId, originKey }, originKey)
+                  }
+                  onOpenPersonalDetail={(membershipId, originKey) =>
+                    openDetail({ kind: "person", membershipId, originKey }, originKey)
+                  }
+                />
+              }
+              onDismissRetiredNotice={(mutationId) => {
+                setRetiredNotices((current) =>
+                  current.filter((n) => n.mutationId !== mutationId),
+                );
+                const sessionId = sessionIdRef.current;
+                if (!sessionId) return;
+                void removeDisplayOutboxItem(sessionId, mutationId).then((next) => {
+                  if (sessionIdRef.current !== sessionId) return;
+                  outboxRef.current = next;
+                  setOutbox(next);
+                });
+              }}
+              onOrganizationChange={setOrganization}
+              onOpenPerson={(membershipId, originKey) =>
+                openDetail({ kind: "person", membershipId, originKey }, originKey)
+              }
+              onOpenResponsibility={(occurrenceId, originKey) =>
+                openDetail({ kind: "occurrence", occurrenceId, originKey }, originKey)
+              }
+              onOpenRoutine={(aggregateKey, originKey) =>
+                openDetail({ kind: "routine", aggregateKey, originKey }, originKey)
+              }
+              onOpenPendingCue={(occurrenceId) =>
+                openDetail(
+                  { kind: "occurrence", occurrenceId, originKey: "display-pending-cue" },
+                  "display-pending-cue",
+                )
+              }
+            />
+          </div>
+        </>
       ) : null}
     </div>
   );

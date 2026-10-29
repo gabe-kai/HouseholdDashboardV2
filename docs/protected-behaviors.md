@@ -100,6 +100,7 @@ invalidation/reconciliation semantics.
 | PB-63 | Draft routine preview matches execution audience/eligibility/applicability with zero materialization; Save rechecks reviewed preview basis | `tests/integration/p0-008d.test.ts` AT5/R4 | Developer |
 | PB-64 | Guide school Not now preserves calendar years/exceptions; unused guide people/work remain deletable and retired retries stay denied; restore scrubs all C claim purposes | `tests/integration/p0-008d.test.ts` R2/AT7/AT11 | Developer |
 | PB-65 | Hosted installation control is durable; missing/invalid control with leftover household/epoch/backup files fails closed; a valid control pointer must name an existing readable in-volume active database before any writable open; process replacement reopens the exact active image; epoch cleanup requires a named superseded path | `tests/integration/p0-008f.test.ts` | Developer |
+| PB-66 | Family-wall automatic person-day reads exclude private/unpromoted personal tasks; preview counterpart is member-authorized and does not execute or renew display contact; per-pane freshness cannot be renewed by a sibling/dashboard success | `tests/integration/p0-009b-family-wall.test.ts`; e2e `z-p0-009b-*.spec.ts` | Developer + PR |
 
 ### Environment-specific (not counted as automated acceptance)
 
@@ -138,6 +139,8 @@ Duplicate, late, and missed events must be safe.
 | POST `/responsibilities/:id/delete` | hard-delete unused; block started/reports/prior-date history | `responsibility` (definitionId) | Plan list | — | same `mutationId` replay; CONFLICT if retained | fetch responsibilities |
 | POST `/responsibilities/:id/schedule-entries/:entryId/move` | move upcoming | `responsibility` (definitionId) | Plan, today | — | same `mutationId` replay; CONFLICT occupied date | fetch responsibilities/today |
 | POST `/responsibilities/:id/schedule-entries/:entryId/delete` | cancel upcoming | `responsibility` (definitionId) | Plan, today | — | same `mutationId` replay | fetch responsibilities/today |
+| GET `/display/people/:membershipId/day` | current-day assigned snapshot (read-only; may materialize today) | *(none)* | — | — | no unpromoted/private personal tasks; no status writes | n/a |
+| GET `/displays/:displayId/preview/people/:membershipId/day` | member-authorized preview snapshot | *(none)* | — | — | no display contact/execution; strips command fields | n/a |
 | GET `/responsibilities/:id/preview` | saved seven-day resolution (read-only) | *(none)* | — | — | never materializes | n/a |
 | POST `/responsibilities/preview-draft` | draft/saved-plan preview (read-only; manager) | *(none)* | — | — | never materializes; no rotation advance | n/a |
 | POST `/occurrences/.../status` | occurrence step + report; locking statuses set `started_at` once; responsibility sets performer; intendedStructure bind | `occurrence` (+version) | today, history, activity | membership outbox overlay; pending locking action protects structure | same `mutationId` idempotent; started survivors allowed after audience/end; canceled unstarted rejected; undo never clears `started_at`; cross-kind receipt conflict | refresh today; flush outbox; merge keeps local structure while locking action pending |

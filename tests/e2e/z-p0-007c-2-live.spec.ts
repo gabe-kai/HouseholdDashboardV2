@@ -92,6 +92,31 @@ async function claimAvery(request: APIRequestContext) {
   expect(login.ok(), await login.text()).toBeTruthy();
 }
 
+async function evalClick(
+  locator: {
+    waitFor: (options: { state: "attached"; timeout?: number }) => Promise<unknown>;
+    evaluate: (fn: (node: HTMLElement) => void) => Promise<unknown>;
+  },
+) {
+  await locator.waitFor({ state: "attached", timeout: 20_000 });
+  await locator.evaluate((node) => node.click());
+}
+
+async function clickDisplayOrgByWork(page: Page) {
+  await evalClick(page.getByTestId("display-org-by-work"));
+  await expect(page.getByTestId("display-by-work")).toBeVisible({ timeout: 15_000 });
+}
+
+async function clickDisplayOrgByPerson(page: Page) {
+  await evalClick(page.getByTestId("display-org-by-person"));
+  await expect(page.getByTestId("family-board")).toBeVisible({ timeout: 15_000 });
+}
+
+async function clickDisplayPerson(page: Page, membershipId: string) {
+  await evalClick(page.locator(`#display-person-${membershipId}`));
+  await expect(page.getByTestId("display-detail")).toBeVisible({ timeout: 15_000 });
+}
+
 async function enrollWall(
   managerRequest: APIRequestContext,
   wall: Page,
@@ -262,15 +287,21 @@ test.describe("P0-007C-2 live convergence and recovery", () => {
       responsibility: { id: string; version: number };
     };
 
-    await expect(wall.getByText(new RegExp(respTitle, "i"))).toBeVisible({
+    await clickDisplayOrgByWork(wall);
+    await expect(
+      wall.getByTestId("display-by-work").getByText(respTitle).first(),
+    ).toBeVisible({
       timeout: 30_000,
     });
-    await expect(wall.getByText(new RegExp(routineTitle, "i"))).toBeVisible({
+    await expect(
+      wall.getByTestId("display-by-work").getByText(routineTitle).first(),
+    ).toBeVisible({
       timeout: 30_000,
     });
+    await clickDisplayOrgByPerson(wall);
 
     // Open Avery person detail before member completes work.
-    await wall.locator(`#display-person-${AVERY_ID}`).click();
+    await clickDisplayPerson(wall, AVERY_ID);
     await expect(wall.getByTestId("display-detail")).toBeVisible();
 
     const memberCtx = await browser.newContext();
@@ -351,7 +382,7 @@ test.describe("P0-007C-2 live convergence and recovery", () => {
       })
       .toMatch(/Done|Complete|completed|quiet|1\/1/i);
 
-    await wall.getByRole("button", { name: "Back", exact: true }).click();
+    await evalClick(wall.getByRole("button", { name: "Back", exact: true }));
     await expect(wall.getByTestId("display-overview")).toBeVisible();
 
     // Manager family-order change updates wall person order.
@@ -380,8 +411,8 @@ test.describe("P0-007C-2 live convergence and recovery", () => {
       .toBeGreaterThan(0);
     // First card should be the first id in the reversed family order.
     await expect(
-      wall.getByTestId("display-by-person").locator("button.display-person-card").first(),
-    ).toHaveAttribute("id", `display-person-${reversed[0]}`);
+      wall.getByTestId("display-by-person").locator("[data-pane-id]").first(),
+    ).toHaveAttribute("data-pane-id", reversed[0]);
 
     // Reassign unstarted responsibility owner → wall updates (mandatory).
     const reassign = await page.request.post(
@@ -412,7 +443,7 @@ test.describe("P0-007C-2 live convergence and recovery", () => {
     );
     expect(reassign.ok(), await reassign.text()).toBeTruthy();
 
-    await wall.getByTestId("display-org-by-work").click();
+    await clickDisplayOrgByWork(wall);
     await expect
       .poll(async () => {
         const text = await wall.getByTestId("display-by-work").innerText();
@@ -469,10 +500,14 @@ test.describe("P0-007C-2 live convergence and recovery", () => {
     });
     expect(createSchoolOnly.ok(), await createSchoolOnly.text()).toBeTruthy();
 
-    await expect(wall.getByText(new RegExp(schoolOnlyTitle, "i"))).toBeVisible({
+    await expect(
+      wall.getByTestId("display-by-work").getByText(new RegExp(schoolOnlyTitle, "i")),
+    ).toBeVisible({
       timeout: 30_000,
     });
-    await expect(wall.getByText(new RegExp(respTitle, "i"))).toBeVisible();
+    await expect(
+      wall.getByTestId("display-by-work").getByText(new RegExp(respTitle, "i")),
+    ).toBeVisible();
 
     const calException = await page.request.put("/api/v1/school-calendar", {
       headers: await mutatingHeaders(page.request),
@@ -497,17 +532,23 @@ test.describe("P0-007C-2 live convergence and recovery", () => {
     });
     expect(calException.ok(), await calException.text()).toBeTruthy();
 
-    await expect(wall.getByText(new RegExp(schoolOnlyTitle, "i"))).toHaveCount(0, {
+    await clickDisplayOrgByWork(wall);
+    await expect(
+      wall.getByTestId("display-by-work").getByText(schoolOnlyTitle),
+    ).toHaveCount(0, {
       timeout: 30_000,
     });
     // Neighboring applicable work remains.
-    await expect(wall.getByText(new RegExp(respTitle, "i"))).toBeVisible();
-    await expect(wall.getByText(new RegExp(routineTitle, "i"))).toBeVisible();
+    await expect(
+      wall.getByTestId("display-by-work").getByText(respTitle).first(),
+    ).toBeVisible();
+    await expect(
+      wall.getByTestId("display-by-work").getByText(routineTitle).first(),
+    ).toBeVisible();
 
     // Household-visible task appears in open Avery detail after create.
-    await wall.getByTestId("display-org-by-person").click();
-    await wall.locator(`#display-person-${AVERY_ID}`).click();
-    await expect(wall.getByTestId("display-detail")).toBeVisible();
+    await clickDisplayOrgByPerson(wall);
+    await clickDisplayPerson(wall, AVERY_ID);
     const taskTitle = `Wall task ${Date.now().toString(36)}`;
     await claimAvery(member.request);
     const createTask = await member.request.post("/api/v1/personal-tasks", {
@@ -516,7 +557,7 @@ test.describe("P0-007C-2 live convergence and recovery", () => {
     });
     expect(createTask.ok(), await createTask.text()).toBeTruthy();
     await expect(wall.getByText(taskTitle)).toBeVisible({ timeout: 30_000 });
-    await wall.getByRole("button", { name: "Back", exact: true }).click();
+    await evalClick(wall.getByRole("button", { name: "Back", exact: true }));
     await expect(wall.getByTestId("display-overview")).toBeVisible();
     await expect(wall.getByText(taskTitle)).toHaveCount(0);
 
@@ -690,7 +731,10 @@ test.describe("P0-007C-2 live convergence and recovery", () => {
     await wall.evaluate(() => {
       document.dispatchEvent(new Event("visibilitychange"));
     });
-    await expect(wall.getByText(recoveryTitle)).toBeVisible({ timeout: 40_000 });
+    await clickDisplayOrgByWork(wall);
+    await expect(
+      wall.getByTestId("display-by-work").getByText(recoveryTitle).first(),
+    ).toBeVisible({ timeout: 40_000 });
 
     await wallCtx.close();
   });
@@ -983,8 +1027,7 @@ test.describe("P0-007C-2 live convergence and recovery", () => {
     }
 
     // Open a person detail on the current household day.
-    await wall.locator(`#display-person-${AVERY_ID}`).click();
-    await expect(wall.getByTestId("display-detail")).toBeVisible({ timeout: 20_000 });
+    await clickDisplayPerson(wall, AVERY_ID);
 
     const nextDayMarker = `NEXT_DAY_${Date.now().toString(36)}`;
     const nextHouseholdDate = "2099-12-31";

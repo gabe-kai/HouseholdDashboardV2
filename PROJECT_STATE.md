@@ -19,7 +19,7 @@
 
 ## Current focus
 
-Inspected 2026-10-29: integrated code baseline is `main` at **14af09e** after P0-009A r2 merged through PR **#30**. P0-009B r2 implementation was committed by the Project Lead on `wall-refinements` at **655970d** after Engineering's uncommitted handoff. Architecture returns **FIX REQUIRED** for actual board geometry/navigation/recommendation, pane/preview freshness and pending feedback, plus incomplete assertion-level evidence; see `reports/P0-009B-r2-architecture-review.md`. Engineering reports exact local PR/RC gates passed; Architecture independently ran the 16 focused unit/integration tests. Deployment, live-data, and production-wall replacement remain Project Lead operations. Overall P0-008 Product acceptance and the `/` route anomaly remain separate.
+Inspected 2026-10-30: integrated code baseline is `main` at **14af09e** after P0-009A r2 merged through PR **#30**. On `wall-refinements`, P0-009B implementation `655970d` and initial review `8727cc0` are committed; Engineering's correction remains uncommitted. Architecture re-review retains **FIX REQUIRED** for target clipping, pending/expanded navigation, content-lease and preview withdrawal/authorization fences, and specific unproven r2 assertions; see `reports/P0-009B-r2-architecture-reassessment.md`. Engineering reports exact PR/RC gates passed on its correction tree; Architecture independently ran 18 focused unit/integration tests. Unrelated `PRODUCT.md` is dirty and remains untouched. Deployment, live-data, and production-wall replacement remain Project Lead operations. Overall P0-008 Product acceptance and the `/` route anomaly remain separate.
 
 **P0-008E r1** is technically **ACCEPTED** and integrated via PR #28 at `bd05ad0`. **P0-008F r1** is technically accepted and integrated via PR #29 at `1acc4a1`. P0-008's overall Product acceptance remains separate; the reported `/` anomaly remains a separate investigation.
 
@@ -51,7 +51,7 @@ P0-007C's outstanding physical/Product judgments remain distinct from its techni
 | P0-008E - Clear First Run and One-View Work Editing | r1 | ACCEPTED (technical) | Project Lead evaluation | Merged to `main` via PR #28 at `bd05ad0` | Hands-on Product evaluation; overall P0-008 Product acceptance remains separate |
 | P0-008F - Keep a Household Intact Through Deployment | r1 | ACCEPTED (technical) | Project Lead evaluation | Merged to `main` via PR #29 at `1acc4a1` | Project Lead reports persistent control-store copy and new-household setup; prior-household recovery is not claimed |
 | P0-009A - Preview a Display and Judge the Family Board | r2 | ACCEPTED (technical); preview approved by Project Lead | Integrated foundation | Merged to `main` via PR #30 at `14af09e` | Further refinement may follow; no preview gate blocks B |
-| P0-009B - Actionable Person Panes on the Family Wall | r2 | FIX REQUIRED | Engineering | `wall-refinements` @ `655970d`; planning `79fbb57` / `db37869` | Resolve consolidated Architecture findings on r2; return for re-review |
+| P0-009B - Actionable Person Panes on the Family Wall | r2 | FIX REQUIRED | Engineering | `wall-refinements` @ `8727cc0` plus uncommitted correction | Resolve C1–C5 in Architecture reassessment; return for re-review |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -84,7 +84,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Engineering: address the consolidated **P0-009B r2 FIX REQUIRED** findings in `reports/P0-009B-r2-architecture-review.md` on the existing work. Correct behavior and required assertion-level evidence, update the Build Report, and return for Architecture re-review. Suggest a commit message; the Project Lead manages Git. The later Product checkpoint and separate root-route/live-module work are unchanged.
+Engineering: address **P0-009B r2 FIX REQUIRED C1–C5** in `reports/P0-009B-r2-architecture-reassessment.md` on the existing correction. Preserve unrelated `PRODUCT.md`, update the Build Report with named assertion-level results, and return for Architecture re-review. Suggest a commit message; the Project Lead manages Git. The later Product checkpoint and separate root-route/live-module work are unchanged.
 
 ## Notes for all teams
 

@@ -131,7 +131,7 @@ Fixtures:
 
 ### Acceptance evidence matrix
 
-The initial results below were reported by Engineering. Architecture marked known unsatisfied or incompletely demonstrated subrows PARTIAL; remaining PASS entries are Engineering reports, not technical acceptance. See `reports/P0-009B-r2-architecture-review.md` for the consolidated findings. Engineering must correct and remap the required subrows against the same r2 contract.
+The initial results below were reported by Engineering. Architecture marked known unsatisfied or incompletely demonstrated subrows PARTIAL; remaining PASS entries are Engineering reports, not technical acceptance. The 2026-10-30 re-review found that started-work priority is corrected, while further contract and evidence gaps remain; see `reports/P0-009B-r2-architecture-reassessment.md`. Engineering must correct and remap the required subrows against the same r2 contract.
 
 | ID / assertion | Initial state / fixture | Action / transition | Exact expected observable or invariant | Evidence type / planned named check | Result |
 | --- | --- | --- | --- | --- | --- |

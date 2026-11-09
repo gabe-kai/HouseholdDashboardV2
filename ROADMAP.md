@@ -100,12 +100,12 @@ Both C-3 slices contribute to **Act at the shared display without losing trust**
 
 ### CURRENT
 
-- **P0-009B r2 — Actionable Person Panes on the Family Wall:** Architecture reviewed correction `a0106e5` on 2026-11-08 and retains **FIX REQUIRED**, narrowed to safe action identity after settlement, fresh pane reads on returning from By work/detail, two exact-status assertions, and final captured PR/RC exits. Keep the earlier clipping, pending-expansion, freshness and preview corrections closed. See `reports/P0-009B-r2-architecture-second-reassessment.md`.
+- **P0-009B r2 — Actionable Person Panes on the Family Wall:** Architecture reviewed `48be126` on 2026-11-09. D1/D2/E1 are closed, including exact local gate results and the combined stale-return evidence. **FIX REQUIRED** is narrowed to D3: retire an obsolete focused-action pin when activity clear replaces its occurrence, so the new ready next action appears. Card remains **In Progress**. See `reports/P0-009B-r2-architecture-third-reassessment.md`; integration and hands-on evaluation follow closure.
 - **P0-009A r2 — Preview a display and judge the family board:** technically accepted and integrated through PR #30 at `14af09e`. On 2026-10-28 the Project Lead accepts the dashboard preview as good to proceed, with further refinement later. No specific viewport/hardware result is claimed. See `reports/P0-009A-r2-architecture-review.md`.
 
 ### LIKELY NEXT
 
-- The Project Lead tests P0-009B during a real before-school session after an accepted build, recording next-task discovery, prompting, sibling interruptions, touch, and physical readability. Refine composition/idle from use; future live modules remain lightly scoped until this board proves useful.
+- Use the P0-009B hands-on before-school checkpoint to select the next small presentation/refinement outcome, preserving Product's setup/work-editing and wall/preview visual direction. Record prompting, sibling interruptions, navigation/touch and physical readability; technical acceptance does not decide appearance or usefulness. Future live modules remain lightly scoped until this board proves useful.
 - Keep the `/` → “view unavailable” report as a separate, unsequenced routing investigation. It is not a P0-009A dependency or acceptance gate.
 
 The shared card reaches Product Accepted only after hands-on acceptance. Coverage/release checkpoints: `reports/P0-008-architecture-sequencing.md`.

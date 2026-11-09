@@ -1261,7 +1261,7 @@ The initial 3×2 proof and 90-second local idle behavior supply a starting desig
 
 **Reason:** Separate per-person reads allow an unavailable pane to recover locally and prevent one failed detail from hiding fresh work for everyone. Client-local browsing keeps simultaneous sibling use independent and prevents a wall's reading position from becoming household or cross-device state.
 
-**Implications:** Add the two explicit day routes to policy/CI evidence. Keep authority, independent content leases, monotonic request/invalidation fences, and date/generation/epoch consistent across wall and preview adapters. Preserve D-045 stale blanking and D-051 replacement fencing. No new execution authority, persisted browsing preferences, dependency, or schema migration is anticipated. P0-009B r2 is implemented on `wall-refinements` and awaits Architecture technical acceptance.
+**Implications:** Add the two explicit day routes to policy/CI evidence. Keep authority, independent content leases, monotonic request/invalidation fences, and date/generation/epoch consistent across wall and preview adapters. Preserve D-045 stale blanking and D-051 replacement fencing. No new execution authority, persisted browsing preferences, dependency, or schema migration is anticipated. P0-009B r2 is implemented on `wall-refinements`; review of `48be126` closes D1/D2/E1 but retains FIX REQUIRED for obsolete interaction-state retirement after activity clear. See `reports/P0-009B-r2-architecture-third-reassessment.md`. Integration and Product evaluation remain separate.
 
 **Related decisions:** D-043–D-049, D-054, D-057–D-059.
 

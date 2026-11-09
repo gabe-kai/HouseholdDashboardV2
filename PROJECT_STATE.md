@@ -19,7 +19,7 @@
 
 ## Current focus
 
-Inspected 2026-11-08: integrated baseline remains `main` **14af09e** (P0-009A r2, PR **#30**). Engineering's P0-009B correction is committed on `wall-refinements` at **a0106e5**, after Architecture review `bcbf4ff`. Architecture retains **FIX REQUIRED**, narrowed to two independently reproduced defects: settlement retargets a focused action to the next task; returning from By work after pane expiry leaves panes blank without fresh reads. Two exact-status assertions and captured final gate exits also need closure. Earlier clipping, pending-expansion, freshness and preview corrections stay closed. Architecture independently ran 24 focused tests and disposable browser probes; see `reports/P0-009B-r2-architecture-second-reassessment.md`. Unrelated `PRODUCT.md` remains dirty and untouched. Deployment/live-data and Product evaluation remain separate.
+Inspected 2026-11-09: integrated baseline remains `main` **14af09e** (P0-009A r2, PR **#30**). Architecture reviewed committed correction **48be126** on `wall-refinements`: **D1/D2 and E1 are closed**. Engineering records exact PR/RC exit 0; Architecture passed the build, seven focused Chromium/WebKit checks (one intentional skip), and a distinguishable stale-body expiry-return probe. A further deterministic lifecycle check found **D3**: after activity clear replaces a focused occurrence, the obsolete pin hides the fresh next action in a ready pane. **FIX REQUIRED**, limited to D3; see `reports/P0-009B-r2-architecture-third-reassessment.md`. Card remains **In Progress**. Unrelated `PRODUCT.md` remains dirty and untouched; integration and Product evaluation are separate.
 
 **P0-008E r1** is technically **ACCEPTED** and integrated via PR #28 at `bd05ad0`. **P0-008F r1** is technically accepted and integrated via PR #29 at `1acc4a1`. P0-008's overall Product acceptance remains separate; the reported `/` anomaly remains a separate investigation.
 
@@ -51,7 +51,7 @@ P0-007C's outstanding physical/Product judgments remain distinct from its techni
 | P0-008E - Clear First Run and One-View Work Editing | r1 | ACCEPTED (technical) | Project Lead evaluation | Merged to `main` via PR #28 at `bd05ad0` | Hands-on Product evaluation; overall P0-008 Product acceptance remains separate |
 | P0-008F - Keep a Household Intact Through Deployment | r1 | ACCEPTED (technical) | Project Lead evaluation | Merged to `main` via PR #29 at `1acc4a1` | Project Lead reports persistent control-store copy and new-household setup; prior-household recovery is not claimed |
 | P0-009A - Preview a Display and Judge the Family Board | r2 | ACCEPTED (technical); preview approved by Project Lead | Integrated foundation | Merged to `main` via PR #30 at `14af09e` | Further refinement may follow; no preview gate blocks B |
-| P0-009B - Actionable Person Panes on the Family Wall | r2 | FIX REQUIRED | Engineering | `wall-refinements` @ `a0106e5` (committed correction) | Close D1/D2 and E1 in second reassessment; capture final gate exits; return for re-review |
+| P0-009B - Actionable Person Panes on the Family Wall | r2 | FIX REQUIRED | Engineering | `wall-refinements` @ `48be126` | D3 only: retire obsolete focused-action state after occurrence replacement; regression + final gates |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -85,7 +85,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Engineering: address **P0-009B r2 D1/D2 and E1** in `reports/P0-009B-r2-architecture-second-reassessment.md`: safe post-settlement action identity, fresh reads on return to an expired board, and exact remote/out-of-order status assertions. Retain closed corrections and reuse the named inherited evidence; capture both final PR/RC exit codes. Preserve unrelated `PRODUCT.md`; suggest a commit message without committing. Architecture is authorized to commit its own review documentation. The Product checkpoint and separate root-route/live-module work are unchanged.
+Engineering: **P0-009B r2 FIX REQUIRED — D3 only** in `reports/P0-009B-r2-architecture-third-reassessment.md`. Retire a pin/interaction guard when its action no longer exists in the current authorized occurrence set; prove fresh next-action recovery after focused activity clear. D1/D2/E1 and earlier closures stay closed. Run focused checks and exact final PR/RC gates; preserve unrelated `PRODUCT.md` and suggest a commit message without committing. Architecture is authorized to commit its review documentation. Integration and hands-on family-wall evaluation follow technical acceptance.
 
 ## Notes for all teams
 

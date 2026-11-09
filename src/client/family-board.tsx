@@ -344,12 +344,21 @@ function FamilyPane(props: {
       .map((item) => item.occurrenceId),
   );
   const lastNextRef = useRef<{ occurrenceId: string; stepId: string } | null>(null);
-  const pinned = lastNextRef.current && pendingIds.has(lastNextRef.current.occurrenceId)
+  const [actionFocused, setActionFocused] = useState(false);
+  const [actionPointerHeld, setActionPointerHeld] = useState(false);
+  useEffect(() => {
+    if (!actionPointerHeld) return;
+    const release = () => { setActionPointerHeld(false); props.onPointerHeld(false); };
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", release);
+    return () => { window.removeEventListener("pointerup", release); window.removeEventListener("pointercancel", release); };
+  }, [actionPointerHeld]);
+  const pinned = lastNextRef.current && (pendingIds.has(lastNextRef.current.occurrenceId) || actionFocused || actionPointerHeld)
     ? lastNextRef.current
     : null;
   const projection = projectFamilyPane(occurrences.map((occurrence) => {
     const row = toFamilyPaneOccurrence(occurrence);
-    if (occurrence.id !== pinned?.occurrenceId) return row;
+    if (occurrence.id !== pinned?.occurrenceId || !pendingIds.has(occurrence.id)) return row;
     // Project the pending recommendation as still open until it settles. The
     // rendered step keeps its optimistic state and pending feedback.
     return {
@@ -467,6 +476,10 @@ function FamilyPane(props: {
         <div
           className="family-board-current"
           data-testid={`family-current-${pane.membershipId}`}
+          onPointerDown={() => { setActionPointerHeld(true); props.onPointerHeld(true); }}
+          onPointerUp={() => { setActionPointerHeld(false); props.onPointerHeld(false); }}
+          onPointerCancel={() => { setActionPointerHeld(false); props.onPointerHeld(false); }}
+          onLostPointerCapture={() => { setActionPointerHeld(false); props.onPointerHeld(false); }}
         >
           <h3 className="display-work-title">{recommended.title}</h3>
           <p
@@ -477,6 +490,9 @@ function FamilyPane(props: {
             {firstOpenStep.additionHeading ? ` · ${firstOpenStep.additionHeading}` : firstOpenStep.source === "personal" ? " · Personal addition" : ""}
           </p>
           <div className="family-board-current-toolbar">
+            <div onFocus={() => setActionFocused(true)} onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setActionFocused(false);
+            }}>
             <PaneStepActions
               occurrence={recommended}
               step={firstOpenStep}
@@ -487,6 +503,7 @@ function FamilyPane(props: {
               onStepChange={props.onStepChange}
               onActivity={props.onActivity}
             />
+            </div>
             <button
               type="button"
               className="family-board-hit"

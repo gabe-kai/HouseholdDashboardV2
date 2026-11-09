@@ -909,7 +909,7 @@ export function DisplayApp() {
 
   useEffect(() => {
     if (organization !== "by-person" || detail || !dashboard) return;
-    refreshPersonDays(dashboard.byPerson.map((person) => person.membershipId));
+    refreshPersonDays(dashboard.byPerson.map((person) => person.membershipId), true);
   }, [organization, detail]);
 
   // Clock tick from server instant + elapsed client time.

@@ -1,5 +1,21 @@
 # Build Report - BRIEF P0-009B r2 (actionable family wall)
 
+## 2026-11-09 Engineering correction after second reassessment
+
+**Status:** returned for Architecture re-review; technical acceptance remains Architecture's decision. The implementation and evidence delta is uncommitted on `wall-refinements` at `a58fae2`. The unrelated `PRODUCT.md` edit remains untouched. No deployment, Railway, live-data, or Git operation was performed for this correction.
+
+- **D1 / AT6a / AT15b:** retain the acted recommendation while its pinned action has keyboard focus or an active pointer, including after settlement; the displayed step uses the authoritative settled status and permits reopening. Release/cancel and deliberate navigation permit advancement. `z-p0-009b-recovery.spec.ts` exercises a held final action, repeated Enter, held pointer, release and deliberate return; the following step remains open. Existing AT6a retains sibling and one-expanded-body checks. Chromium covers the held race; the composed WebKit interaction journey passed in RC.
+- **D2 / AT1b:** returning to By person or from detail forces fresh person-day authorization, including blank/unavailable panes, without changing the expiry lease or background retry policy. The new controlled-clock browser journey observes requests, ready panes and retained section on both return paths in Chromium and WebKit. It releases an older held body after recovery, but that fixture uses the same response content as the fresh read; this alone does not distinguish stale content visually. Existing R AT10a/11c separately verifies old-body fencing with a changed step. **AT1b is PARTIAL** for the exact combined stale-content assertion pending Architecture assessment.
+- **E1 / AT9a / AT10a:** the existing recovery journeys assert the specific remote or newer step's pressed state in its Earlier entry, and the latter waits for a newer read and delivery of the held old body. The sibling selection assertion remains in AT9a.
+
+**Checks:** build, lint and typecheck passed. Focused Chromium and WebKit checks passed, including three repeated expiry-return runs per browser. The first broader focused run had two return-fixture timing failures; the fixture was corrected and rerun. The first exact PR attempt exited 1 on the same expiry-fixture race; after correction, the final `npm run validate:pr` exited **0** (399 unit/integration, 187 browser passes / one skip, 12 Vite passes). The exact final `npm run validate:rc` exited **0** (399 unit/integration, 290 browser passes / 48 skips, 12 Vite passes). Logs are ignored local artifacts under `reports/_local-screenshots/p0-009b-r2/second-fix-*`. Only this report was updated after the gates.
+
+**Evidence reconciliation:** Architecture's second reassessment closes all rows outside AT1b, AT6a, AT9a, AT10a, AT15b and AT18b. In particular, reuse the `today-projection.test.ts` stable-tie test for AT3a; AT7a receipt/report and offline queue evidence for AT8a; the controlled rollover seam for AT14a; P0-008A lifecycle/reconnect coverage for AT14c/AT17c; and built preview plus Vite deep-link coverage for AT18c. The RC log records the required composed WebKit journeys; intentional Chromium-only held races and native geometry remain skipped in WebKit. AT6a, AT9a, AT10a, AT15b and AT18b have passing named evidence and gates; AT1b retains the limitation stated above. The People family-order issue after departure remains a separate follow-up.
+
+Suggested commit message: `fix(P0-009B): protect settled actions and refresh returning panes`.
+
+## Previous correction handoff (historical)
+
 > **2026-11-08 Engineering continuation — return for Architecture re-review, with evidence limitations below.**
 > The historical correction snapshot below does not certify the current tree. The current matrix supersedes it. No commit, PR, deployment, or live-data operation was performed; the unrelated `PRODUCT.md` edit was preserved.
 >

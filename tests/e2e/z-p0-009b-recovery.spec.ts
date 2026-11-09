@@ -300,6 +300,99 @@ test.describe("P0-009B family wall recovery", () => {
     await expect(pane.locator("[data-testid^='family-work-']")).toHaveCount(0);
   });
 
+  test("AT1b: returning to expired panes reauthorizes them", async ({ page, request }) => {
+    await page.addInitScript(() => { window.__HD_DISPLAY_PANE_STALE_MS = 1500; window.__HD_DISPLAY_NOW_MS = 10_000; });
+    await ensureManagerSession(request);
+    await enrollWall(request, page, `Return ${Date.now().toString(36)}`);
+    const pane = page.getByTestId(`family-pane-${AVERY_ID}`);
+    await expect(pane).toHaveAttribute("data-phase", "ready");
+    await clickFamilyControl(page, `family-upcoming-${AVERY_ID}`);
+    const oldBody = await (await page.request.get(`/api/v1/display/people/${AVERY_ID}/day`)).text();
+    const old = await armHeld(page, `**/api/v1/display/people/${AVERY_ID}/day`, oldBody);
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await old.captured;
+    await page.getByTestId("display-org-by-work").click();
+    const pauseNew = async (route: Route) => { await route.abort(); };
+    const dayMatcher = (url: URL) => url.pathname.endsWith(`/api/v1/display/people/${AVERY_ID}/day`);
+    await page.route(dayMatcher, pauseNew);
+    await page.evaluate(() => { window.__HD_DISPLAY_NOW_MS = 11_501; });
+    await expect(page.getByTestId(`family-blank-${AVERY_ID}`)).toBeAttached();
+    await page.unroute(dayMatcher, pauseNew);
+    const fresh = page.waitForResponse((response) => response.url().includes(`/api/v1/display/people/${AVERY_ID}/day`) && response.ok());
+    await page.getByTestId("display-org-by-person").click();
+    await fresh;
+    await expect(pane).toHaveAttribute("data-phase", "ready");
+    await expect(pane).toHaveAttribute("data-section", "upcoming");
+    await old.release();
+    await old.delivered;
+    await expect(pane).toHaveAttribute("data-phase", "ready");
+    await clickFamilyControl(page, `family-personal-${AVERY_ID}`);
+    await expect(page.getByTestId("display-detail")).toBeVisible();
+    await page.route(dayMatcher, pauseNew);
+    await page.waitForTimeout(500);
+    await page.evaluate(() => { window.__HD_DISPLAY_NOW_MS = 13_100; });
+    await expect(pane).toHaveAttribute("data-phase", "blank");
+    await page.unroute(dayMatcher, pauseNew);
+    const afterDetail = page.waitForResponse((response) => response.url().includes(`/api/v1/display/people/${AVERY_ID}/day`) && response.ok());
+    await page.getByRole("button", { name: "Back" }).click();
+    await afterDetail;
+    await expect(pane).toHaveAttribute("data-phase", "ready");
+    await expect(pane).toHaveAttribute("data-section", "upcoming");
+  });
+
+  test("AT6a/AT15b: settlement preserves the focused action identity", async ({ page, request }, testInfo) => {
+    test.skip(testInfo.project.name.startsWith("webkit"), "Chromium establishes held-write races");
+    await ensureManagerSession(request);
+    const stamp = Date.now().toString(36);
+    const first = `Focused first ${stamp}`;
+    const next = `Focused next ${stamp}`;
+    await createAssignedRoutine(request, { title: first, memberId: JORDAN_ID, daypart: "morning", steps: [{ text: first }] });
+    await createAssignedRoutine(request, { title: next, memberId: JORDAN_ID, daypart: "after_school", steps: [{ text: next }] });
+    await enrollWall(request, page, first);
+    await completeOtherOccurrences(page, JORDAN_ID, [first, next]);
+    await page.reload();
+    const pane = page.getByTestId(`family-pane-${JORDAN_ID}`);
+    await expect(page.getByTestId(`family-next-${JORDAN_ID}`)).toContainText(first);
+    let release = () => undefined as void;
+    let entered = () => undefined as void;
+    const hold = new Promise<void>((resolve) => { release = resolve; });
+    const captured = new Promise<void>((resolve) => { entered = resolve; });
+    await page.route("**/api/v1/display/occurrences/**/status", async (route) => { entered(); await hold; await route.continue(); });
+    const action = pane.getByRole("button", { name: `Mark ${first} done` }).first();
+    await action.focus();
+    await page.keyboard.press("Enter");
+    await captured;
+    release();
+    await expect(page.getByTestId(`family-pending-${JORDAN_ID}`)).toHaveCount(0, { timeout: 20_000 });
+    await expect(action).toBeFocused();
+    await expect(action).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId(`family-next-${JORDAN_ID}`)).toContainText(first);
+    await page.keyboard.press("Enter");
+    await expect.poll(async () => (await fetchPersonDay(page, JORDAN_ID)).occurrences.find((row) => row.title === next)?.steps[0]?.status).toBe("open");
+    await page.unrouteAll({ behavior: "wait" });
+    await expect(action).toHaveAttribute("aria-pressed", "false");
+    let releasePointer = () => undefined as void;
+    let enteredPointer = () => undefined as void;
+    const pointerHold = new Promise<void>((resolve) => { releasePointer = resolve; });
+    const pointerCaptured = new Promise<void>((resolve) => { enteredPointer = resolve; });
+    await page.route("**/api/v1/display/occurrences/**/status", async (route) => { enteredPointer(); await pointerHold; await route.continue(); });
+    await page.keyboard.press("Enter");
+    await pointerCaptured;
+    const box = await action.boundingBox();
+    expect(box).toBeTruthy();
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    await page.mouse.down();
+    releasePointer();
+    await expect(page.getByTestId(`family-pending-${JORDAN_ID}`)).toHaveCount(0, { timeout: 20_000 });
+    await expect(page.getByTestId(`family-next-${JORDAN_ID}`)).toContainText(first);
+    await page.mouse.move(box!.x + box!.width + 30, box!.y + box!.height + 30);
+    await page.mouse.up();
+    await clickFamilyControl(page, `family-back-next-${JORDAN_ID}`);
+    await expect(page.getByTestId(`family-next-${JORDAN_ID}`)).toContainText(next);
+    await expect.poll(async () => (await fetchPersonDay(page, JORDAN_ID)).occurrences.find((row) => row.title === next)?.steps[0]?.status).toBe("open");
+    await page.unrouteAll({ behavior: "wait" });
+  });
+
   test("AT6b/AT7b: rejected pane cue stays local; older Done cannot restore over reopen", async ({
     page,
     request,
@@ -442,9 +535,10 @@ test.describe("P0-009B family wall recovery", () => {
     const liveStep = averyOcc!.steps.find((row) => row.text === "Live step");
     expect(liveStep).toBeTruthy();
     await completeDisplayStep(remoteWall, averyOcc!, liveStep!.id);
-    await expect(page.getByTestId(`family-pane-${AVERY_ID}`)).toContainText(/Done|completed/i, {
-      timeout: 20_000,
-    });
+    await clickFamilyControl(page, `family-earlier-${AVERY_ID}`);
+    await expect(page.getByTestId(`family-heading-${averyOcc!.id}`)).toBeVisible({ timeout: 20_000 });
+    await clickFamilyControl(page, `family-heading-${averyOcc!.id}`);
+    await expect(page.getByTestId(`display-step-done-${liveStep!.id}`).last()).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId(`family-pane-${JORDAN_ID}`)).toHaveAttribute(
       "data-section",
       "upcoming",
@@ -690,20 +784,25 @@ test.describe("P0-009B family wall recovery", () => {
     expect(original?.intendedStructure).toBeTruthy();
     const originalStep = original!.steps.find((step) => step.text === "Original step");
     await completeDisplayStep(page, original!, originalStep!.id);
-    await expect(page.getByTestId(`family-pane-${AVERY_ID}`)).toContainText(/Done|completed/i, {
-      timeout: 20_000,
-    });
+    await clickFamilyControl(page, `family-earlier-${AVERY_ID}`);
+    await expect(page.getByTestId(`family-heading-${original!.id}`)).toBeVisible({ timeout: 20_000 });
+    await clickFamilyControl(page, `family-heading-${original!.id}`);
+    const originalDone = page.getByTestId(`display-step-done-${originalStep!.id}`).last();
+    await expect(originalDone).toHaveAttribute("aria-pressed", "true");
     const heldOld = await armHeld(page, `**/api/v1/display/people/${AVERY_ID}/day`, oldBody);
     await page.evaluate(() => {
       document.dispatchEvent(new Event("visibilitychange"));
     });
     await heldOld.captured;
+    const newerDay = page.waitForResponse((response) => response.url().includes(`/api/v1/display/people/${AVERY_ID}/day`) && response.ok());
     await page.evaluate(() => {
       document.dispatchEvent(new Event("visibilitychange"));
     });
-    await expect(page.getByTestId(`family-pane-${AVERY_ID}`)).toContainText(/Done|completed/i);
+    await newerDay;
+    await expect(originalDone).toHaveAttribute("aria-pressed", "true");
     await heldOld.release();
-    await expect(page.getByTestId(`family-pane-${AVERY_ID}`)).toContainText(/Done|completed/i);
+    await heldOld.delivered;
+    await expect(originalDone).toHaveAttribute("aria-pressed", "true");
 
     await page.unroute(`**/api/v1/display/people/${AVERY_ID}/day`);
     const currentBody = await (await page.request.get(`/api/v1/display/people/${AVERY_ID}/day`)).text();

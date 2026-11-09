@@ -5545,6 +5545,7 @@ export class AppStore {
   materializeHouseholdDate(
     householdId: string,
     householdDate: HouseholdDate,
+    filteredMemberIds?: Set<string>,
   ): OccurrenceView[] {
     if (!isValidHouseholdDate(householdDate)) fail("VALIDATION", "Invalid household date");
     const floor = this.getActivityResetFloor(householdId);
@@ -5648,7 +5649,10 @@ export class AppStore {
             householdDate,
             composed!,
           );
-          if (view.steps.length === 0 && !view.startedAt) continue;
+          if (view.steps.length === 0 && !view.startedAt) {
+            if (view.accountableMemberId) filteredMemberIds?.add(view.accountableMemberId);
+            continue;
+          }
           results.push(view);
           continue;
         }
@@ -5725,7 +5729,10 @@ export class AppStore {
             membershipId,
             "routine",
           );
-          if (view.steps.length === 0 && !view.startedAt) continue;
+          if (view.steps.length === 0 && !view.startedAt) {
+            filteredMemberIds?.add(membershipId);
+            continue;
+          }
           results.push(view);
         }
       }

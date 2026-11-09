@@ -155,6 +155,7 @@ function syntheticDashboard(
       timezone: "America/New_York",
       serverTime: opts?.serverTime ?? new Date().toISOString(),
       activityGeneration: 1,
+      promotedPersonalTasks: [],
       byPerson: [
         {
           membershipId: AVERY_ID,
@@ -1057,7 +1058,8 @@ test.describe("P0-007C-2 live convergence and recovery", () => {
       timeout: 20_000,
     });
     await expect(wall.getByTestId("display-overview")).toBeVisible();
-    await expect(wall.getByText(nextDayMarker).first()).toBeVisible({
+    await wall.getByTestId("display-org-by-work").click();
+    await expect(wall.getByTestId("display-by-work").getByText(nextDayMarker).first()).toBeVisible({
       timeout: 20_000,
     });
     const nextExpectedDate = new Intl.DateTimeFormat("en-US", {

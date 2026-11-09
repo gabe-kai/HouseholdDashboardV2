@@ -241,6 +241,7 @@ function toOccurrence(work: WorkRec): DisplayOccurrenceDetail {
       PEOPLE.find((person) => person.id === work.ownerId)?.name ?? "Unassigned",
     completed,
     state: workState({ completed, startedAt: null, steps: work.steps }),
+    startedAt: work.steps.some((step) => step.status !== "open") ? "x" : null,
     progress,
     progressLabel: formatStepProgress(progress),
     steps: work.steps.map((step) => ({

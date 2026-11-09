@@ -13,7 +13,10 @@ const MANAGER_PASS = "Unique-passphrase-ok!999";
 
 async function ownerIssueInvite(page: Page): Promise<string> {
   await page.context().clearCookies();
-  await page.goto("/owner");
+  const response = await page.goto("/owner");
+  // A browser keep-alive connection can still point at the server being closed
+  // during the test's rebind, even after a new health connection succeeds.
+  if (response?.status() === 503) await page.goto("/owner");
   await expect(page.getByTestId("owner-secret-input")).toBeVisible({ timeout: 20_000 });
   await page.getByTestId("owner-secret-input").fill(OWNER_SECRET);
   await page.getByTestId("owner-secret-form").locator("button[type=submit]").click();

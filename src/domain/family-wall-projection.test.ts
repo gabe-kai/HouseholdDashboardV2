@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   familyPaneItemsForSection,
+  paneOccurrenceStartedAt,
   projectFamilyPane,
+  toFamilyPaneOccurrence,
 } from "./family-wall-projection.js";
 import type { ProjectableOccurrence } from "./today-projection.js";
 
@@ -40,6 +42,34 @@ describe("projectFamilyPane (AT3a/AT3b/AT3c)", () => {
     expect(projection.next?.id).toBe("after");
     expect(projection.recommendedFocusId).toBe("after");
     expect(projection.upcoming.map((item) => item.id)).toContain("any");
+  });
+
+  it("AT3a: board adapter keeps startedAt after every step is reopened", () => {
+    const earlier = occ({
+      id: "earlier",
+      definitionId: "def-e",
+      daypart: "morning",
+    });
+    const laterReopened = toFamilyPaneOccurrence({
+      id: "later",
+      definitionId: "def-l",
+      daypart: "after_school",
+      completed: false,
+      startedAt: "2026-10-28T15:00:00.000Z",
+      state: "In progress",
+      title: "Later started",
+      steps: [
+        { status: "open", obligation: "required", id: "s1" },
+        { status: "open", obligation: "required", id: "s2" },
+      ],
+    });
+    expect(paneOccurrenceStartedAt({ startedAt: null, state: "In progress" })).toBe(
+      "in-progress",
+    );
+    expect(laterReopened.startedAt).toBe("2026-10-28T15:00:00.000Z");
+    const projection = projectFamilyPane([earlier, laterReopened]);
+    expect(projection.recommendedFocusId).toBe("later");
+    expect(projection.next?.id).toBe("later");
   });
 
   it("AT3a: undoing a step to open does not drop a started occurrence from next", () => {

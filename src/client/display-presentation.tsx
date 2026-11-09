@@ -15,6 +15,7 @@ import type {
   DisplayPersonDetail,
 } from "./display-api";
 import type { DisplayOutboxItem } from "./display-outbox";
+import type { FamilyPaneCue } from "./family-board";
 
 export type DisplayOrganization = "by-person" | "by-work";
 
@@ -212,6 +213,7 @@ export function DisplayOverview(props: {
   onOpenRoutine: (aggregateKey: string, originKey: string) => void;
   onOpenPendingCue: (occurrenceId: string) => void;
   personBoard?: ReactNode;
+  paneCues?: FamilyPaneCue[];
 }) {
   const unassigned = needsAssignmentRows(props.dashboard);
 
@@ -257,6 +259,34 @@ export function DisplayOverview(props: {
           >
             Return to {props.pendingCue.title}
           </button>
+        </div>
+      ) : null}
+
+      {props.paneCues && props.paneCues.length > 0 ? (
+        <div className="display-pane-cues" data-testid="family-board-cues">
+          {props.paneCues.map((cue) => (
+            <div
+              key={`${cue.kind}-${cue.membershipId}`}
+              className="display-pane-cue"
+              data-testid={`family-overview-${cue.kind}-${cue.membershipId}`}
+            >
+              <span
+                className="status-pill"
+                data-kind={cue.kind === "error" ? "error" : "pending"}
+                role="status"
+              >
+                {cue.message}
+              </span>
+              <button
+                type="button"
+                className="display-work-row family-board-hit"
+                data-testid={`family-overview-return-${cue.membershipId}`}
+                onClick={() => props.onOrganizationChange("by-person")}
+              >
+                Return to {cue.displayName}
+              </button>
+            </div>
+          ))}
         </div>
       ) : null}
 

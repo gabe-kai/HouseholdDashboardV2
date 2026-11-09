@@ -40,7 +40,12 @@ import {
   retireMismatchedDisplayOutbox,
   type DisplayOutboxItem,
 } from "./display-outbox";
-import { FamilyBoard, unassignedRows, type FamilyPaneModel } from "./family-board";
+import {
+  FamilyBoard,
+  familyPaneCues,
+  unassignedRows,
+  type FamilyPaneModel,
+} from "./family-board";
 import { fetchMeta } from "./api";
 import { newClientId } from "./id";
 
@@ -139,7 +144,13 @@ function applyOptimisticStepStatus(
     ...occurrence,
     steps,
     completed,
-    state: workState({ completed, startedAt: null, steps }),
+    state: workState({
+      completed,
+      startedAt: occurrence.startedAt ?? (occurrence.state === "In progress" ? "in-progress" : null),
+      steps,
+    }),
+    startedAt:
+      occurrence.startedAt ?? (occurrence.state === "In progress" ? "in-progress" : null),
     progress,
     progressLabel: formatStepProgress(progress),
   };
@@ -199,6 +210,7 @@ export function DisplayApp() {
   const paneSuccessStartedRef = useRef<Record<string, number>>({});
   const paneFailedAtRef = useRef<Record<string, number>>({});
   const paneEpochRef = useRef(0);
+  const promotedIdsRef = useRef<Set<string> | null>(null);
   const activityGenerationRef = useRef<number | null>(null);
   const paneLoadQueueRef = useRef<string[]>([]);
   const paneLoadActiveRef = useRef(0);
@@ -244,6 +256,7 @@ export function DisplayApp() {
     lastAuthorizedAtRef.current = null;
     householdDateRef.current = null;
     activityGenerationRef.current = null;
+    promotedIdsRef.current = null;
     rememberSessionSecrets(null);
     setDashboard(null);
     setPersonDetail(null);
@@ -435,6 +448,18 @@ export function DisplayApp() {
             csrf,
           );
           if (sessionIdRef.current !== sessionId) return;
+          const ownerId = result.occurrence.accountableMemberId;
+          if (ownerId) {
+            paneGenRef.current[ownerId] = (paneGenRef.current[ownerId] ?? 0) + 1;
+            setPaneDays((current) => {
+              const day = current[ownerId];
+              if (!day || !day.occurrences.some((row) => row.id === result.occurrence.id)) return current;
+              return { ...current, [ownerId]: {
+                ...day,
+                occurrences: day.occurrences.map((row) => row.id === result.occurrence.id ? result.occurrence : row),
+              } };
+            });
+          }
           items = await removeDisplayOutboxItem(sessionId, item.mutationId);
           outboxRef.current = items;
           setOutbox(items);
@@ -480,7 +505,14 @@ export function DisplayApp() {
           });
           outboxRef.current = items;
           setOutbox(items);
-          if (rejected) continue;
+          if (rejected) {
+            setRetiredNotices((current) =>
+              current.some((notice) => notice.mutationId === item.mutationId)
+                ? current
+                : [...current, { mutationId: item.mutationId, message }],
+            );
+            continue;
+          }
           break;
         }
       }
@@ -515,10 +547,13 @@ export function DisplayApp() {
     paneGenRef.current[membershipId] = gen;
     const started = displayNow();
     paneStartedRef.current[membershipId] = started;
-    setPanePhase((current) => ({
-      ...current,
-      [membershipId]: current[membershipId] === "ready" ? "ready" : "loading",
-    }));
+    setPanePhase((current) => {
+      const prev = current[membershipId];
+      const keep =
+        prev === "ready" || prev === "unavailable" || prev === "blank" ? prev : "loading";
+      if (prev === keep) return current;
+      return { ...current, [membershipId]: keep };
+    });
     try {
       const day = await fetchDisplayPersonDay(membershipId);
       if (paneEpochRef.current !== epoch) return;
@@ -536,14 +571,20 @@ export function DisplayApp() {
       ) {
         return;
       }
-      if (displayNow() - started > paneStaleMaxMs()) {
+      if (displayNow() - started >= paneStaleMaxMs()) {
         setPaneDays((current) => ({ ...current, [membershipId]: null }));
         setPanePhase((current) => ({ ...current, [membershipId]: "blank" }));
         return;
       }
       paneSuccessStartedRef.current[membershipId] = started;
       delete paneFailedAtRef.current[membershipId];
-      setPaneDays((current) => ({ ...current, [membershipId]: overlayPersonDay(day) }));
+      // Keep the authoritative snapshot separate from the optimistic overlay,
+      // so a rejected command can reveal the server's actual state again.
+      const allowed = promotedIdsRef.current;
+      const filtered = allowed
+        ? { ...day, promotedPersonalTasks: day.promotedPersonalTasks.filter((task) => allowed.has(task.id)) }
+        : day;
+      setPaneDays((current) => ({ ...current, [membershipId]: filtered }));
       setPanePhase((current) => ({ ...current, [membershipId]: "ready" }));
     } catch (error) {
       if (paneEpochRef.current !== epoch) return;
@@ -556,7 +597,7 @@ export function DisplayApp() {
       const successStarted = paneSuccessStartedRef.current[membershipId];
       if (
         successStarted != null &&
-        displayNow() - successStarted > paneStaleMaxMs()
+        displayNow() - successStarted >= paneStaleMaxMs()
       ) {
         setPaneDays((current) => ({ ...current, [membershipId]: null }));
         setPanePhase((current) => ({ ...current, [membershipId]: "blank" }));
@@ -568,7 +609,11 @@ export function DisplayApp() {
       if (apiError.status === 404) {
         setPaneDays((current) => ({ ...current, [membershipId]: null }));
       }
-      setPanePhase((current) => ({ ...current, [membershipId]: "unavailable" }));
+      setPanePhase((current) =>
+        current[membershipId] === "unavailable"
+          ? current
+          : { ...current, [membershipId]: "unavailable" },
+      );
     }
   });
 
@@ -585,8 +630,10 @@ export function DisplayApp() {
     }
   });
 
-  const refreshPersonDays = useEffectEvent((membershipIds: string[]) => {
+  const refreshPersonDays = useEffectEvent((membershipIds: string[], force = false) => {
     for (const membershipId of membershipIds) {
+      const phase = panePhaseRef.current[membershipId];
+      if (!force && (phase === "unavailable" || phase === "blank")) continue;
       if (!paneLoadQueueRef.current.includes(membershipId)) {
         paneLoadQueueRef.current.push(membershipId);
       }
@@ -648,6 +695,7 @@ export function DisplayApp() {
           }
         }
       }
+      if (gen !== dashGenRef.current || accessLostRef.current) return;
       if (dateChanged || generationChanged) {
         // Close old-day/old-generation detail before applying the new snapshot.
         setDetail(null);
@@ -659,6 +707,19 @@ export function DisplayApp() {
       }
       householdDateRef.current = next.householdDate;
       activityGenerationRef.current = next.activityGeneration;
+      const nextPromoted = new Set(next.promotedPersonalTasks.map((task) => task.id));
+      const previousPromoted = promotedIdsRef.current;
+      const promotionChanged = previousPromoted !== null &&
+        (previousPromoted.size !== nextPromoted.size || [...previousPromoted].some((id) => !nextPromoted.has(id)));
+      promotedIdsRef.current = nextPromoted;
+      if (promotionChanged) {
+        // Fence in-flight person reads and withdraw removed values immediately.
+        paneEpochRef.current += 1;
+        setPaneDays((current) => Object.fromEntries(Object.entries(current).map(([id, day]) => [
+          id,
+          day ? { ...day, promotedPersonalTasks: day.promotedPersonalTasks.filter((task) => nextPromoted.has(task.id)) } : null,
+        ])));
+      }
       setDashboard(next);
       if (familyBoardVisible()) {
         refreshPersonDays(next.byPerson.map((person) => person.membershipId));
@@ -871,6 +932,7 @@ export function DisplayApp() {
     const onOnline = () => {
       setSyncStatus("reconnecting");
       void flushDisplayOutbox();
+      if (familyBoardVisible()) refreshPersonDays(Object.keys(paneGenRef.current), true);
     };
     window.addEventListener("offline", onOffline);
     window.addEventListener("online", onOnline);
@@ -906,11 +968,16 @@ export function DisplayApp() {
       const now = displayNow();
       const expired: string[] = [];
       for (const [membershipId, phase] of Object.entries(panePhaseRef.current)) {
-        if (phase !== "unavailable") continue;
-        const leaseStart =
-          paneSuccessStartedRef.current[membershipId] ??
-          paneFailedAtRef.current[membershipId];
-        if (leaseStart != null && now - leaseStart > paneBound) expired.push(membershipId);
+        if (phase === "blank") continue;
+        const started = paneStartedRef.current[membershipId];
+        const success = paneSuccessStartedRef.current[membershipId];
+        const failed = paneFailedAtRef.current[membershipId];
+        // Only the request that produced the displayed snapshot grants its lease.
+        // A later pending or failed refresh cannot renew old content.
+        const leaseStart = success ?? failed ?? started;
+        if (leaseStart != null && now - leaseStart >= paneBound) {
+          expired.push(membershipId);
+        }
       }
       if (expired.length > 0) {
         for (const membershipId of expired) {
@@ -954,6 +1021,7 @@ export function DisplayApp() {
         void refreshDashboard({ quiet: true });
         void refreshDetail();
         void flushDisplayOutbox();
+        if (familyBoardVisible()) refreshPersonDays(Object.keys(paneGenRef.current), true);
       }
     };
     document.addEventListener("visibilitychange", onVisibility);
@@ -1159,6 +1227,12 @@ export function DisplayApp() {
 
     const next = await replaceDesiredStateForStep(sessionId, item);
     if (sessionIdRef.current !== sessionId) return;
+    const superseded = new Set(outboxRef.current.filter((existing) =>
+      existing.occurrenceId === occurrence.id && existing.stepId === stepId && existing.state === "rejected",
+    ).map((existing) => existing.mutationId));
+    if (superseded.size > 0) {
+      setRetiredNotices((current) => current.filter((notice) => !superseded.has(notice.mutationId)));
+    }
     outboxRef.current = next;
     setOutbox(next);
     if (typeof navigator === "undefined" || navigator.onLine) {
@@ -1334,6 +1408,20 @@ export function DisplayApp() {
               loading={loadingDash}
               pendingCue={pendingCue}
               retiredNotices={retiredNotices}
+              paneCues={familyPaneCues(
+                dashboard.byPerson.map((person) => ({
+                  membershipId: person.membershipId,
+                  displayName: person.displayName,
+                  sortOrder: person.sortOrder,
+                  status: person.status,
+                  phase: panePhase[person.membershipId] ?? "loading",
+                  progressLabel: person.progressLabel,
+                  day: paneDays[person.membershipId]
+                    ? overlayPersonDay(paneDays[person.membershipId]!)
+                    : null,
+                })),
+                outbox,
+              )}
               personBoard={
                 <FamilyBoard
                   key={dashboard.householdDate}
@@ -1354,7 +1442,7 @@ export function DisplayApp() {
                   canAct={canAct}
                   idleMs={idleMs()}
                   nowMs={displayNow}
-                  onRetryPane={(membershipId) => refreshPersonDays([membershipId])}
+                  onRetryPane={(membershipId) => refreshPersonDays([membershipId], true)}
                   onStepChange={(occurrence, stepId, status) =>
                     void queueDisplayStepChange(occurrence, stepId, status)
                   }

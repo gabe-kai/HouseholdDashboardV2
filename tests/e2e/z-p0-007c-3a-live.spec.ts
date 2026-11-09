@@ -159,6 +159,7 @@ function syntheticDashboard(
       timezone: "America/New_York",
       serverTime: opts?.serverTime ?? new Date().toISOString(),
       activityGeneration: opts?.activityGeneration ?? 1,
+      promotedPersonalTasks: [],
       byPerson: [
         {
           membershipId: AVERY_ID,
@@ -282,6 +283,7 @@ test.describe("P0-007C-3A live recovery and date rollover", () => {
     await expect(
       wall.getByText(/previous day|was not saved/i).first(),
     ).toBeVisible();
+    await wall.getByTestId("display-org-by-work").click();
     await expect(wall.getByText(nextDayMarker).first()).toBeVisible();
     // Pending cue for the old day must not remain as still-retryable.
     await expect(wall.getByTestId("display-pending-cue")).toHaveCount(0);

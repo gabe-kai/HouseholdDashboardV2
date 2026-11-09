@@ -89,7 +89,8 @@ export async function patchDisplayOutboxItem(
 
 /**
  * Rapid taps on the same step keep the latest desired status and one active
- * pending/retrying lineage: prior unfinished commands for that step are superseded.
+ * lineage: an explicit new attempt also supersedes a previous rejection for
+ * that same step, while other steps' notices remain independent.
  */
 export async function replaceDesiredStateForStep(
   sessionId: string,
@@ -101,8 +102,7 @@ export async function replaceDesiredStateForStep(
       (existing) =>
         !(
           existing.occurrenceId === item.occurrenceId &&
-          existing.stepId === item.stepId &&
-          (existing.state === "pending" || existing.state === "retrying")
+          existing.stepId === item.stepId
         ),
     );
     next = [...kept, item];

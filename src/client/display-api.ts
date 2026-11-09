@@ -71,9 +71,10 @@ export type DisplayPersonDay = {
   serverTime: string;
   activityGeneration: number;
   installationEpoch: number;
-  recurringState: WorkState | "No assigned work today";
+  recurringState: WorkState | "No assigned work today" | "Nothing on the board today";
   progress: StepProgressCounts | null;
   progressLabel: string | null;
+  filteredOmission?: boolean;
   occurrences: DisplayOccurrenceDetail[];
   promotedPersonalTasks: Array<{ id: string; title: string }>;
 };
@@ -115,6 +116,7 @@ export type DisplayOccurrenceDetail = {
   accountableMemberName: string;
   completed: boolean;
   state: WorkState;
+  startedAt: string | null;
   progress: StepProgressCounts;
   progressLabel: string;
   /** Minimal first-action intent; IDs only — no plan/audit payload. */
@@ -127,6 +129,7 @@ export type DisplayOccurrenceDetail = {
     position: number;
     logicalItemId?: string;
     source?: string;
+    additionHeading?: string;
   }>;
 };
 

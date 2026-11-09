@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 
 export const PASSPHRASE = "unique-passphrase-ok!";
 export const MANAGER_LOGIN = "e2e.manager";
@@ -122,6 +122,8 @@ type PersonDayOccurrence = {
   title: string;
   kind: string;
   householdDate: string;
+  startedAt?: string | null;
+  state?: string;
   intendedStructure?: unknown;
   steps: Array<{ id: string; text: string; status: string; obligation?: string }>;
 };
@@ -140,7 +142,7 @@ export async function completeDisplayStep(
   page: Page,
   occurrence: PersonDayOccurrence,
   stepId: string,
-  status: "completed" | "not_needed" = "completed",
+  status: "completed" | "not_needed" | "open" = "completed",
 ) {
   const session = await page.request.get("/api/v1/display/session");
   expect(session.ok()).toBeTruthy();
@@ -192,11 +194,16 @@ export async function completeOtherOpenSteps(page: Page, membershipId: string, k
   }
 }
 
-/** Complete every assigned occurrence except the one with this title. */
-export async function completeOtherOccurrences(page: Page, membershipId: string, keepTitle: string) {
+/** Complete every assigned occurrence except the kept title(s). */
+export async function completeOtherOccurrences(
+  page: Page,
+  membershipId: string,
+  keepTitle: string | string[],
+) {
+  const keep = new Set(Array.isArray(keepTitle) ? keepTitle : [keepTitle]);
   const personDay = await fetchPersonDay(page, membershipId);
   for (const occurrence of personDay.occurrences) {
-    if (occurrence.title === keepTitle || !occurrence.intendedStructure) continue;
+    if (keep.has(occurrence.title) || !occurrence.intendedStructure) continue;
     for (const step of occurrence.steps) {
       if (step.status !== "open") continue;
       const status = step.obligation === "as_needed" ? "not_needed" : "completed";
@@ -205,18 +212,94 @@ export async function completeOtherOccurrences(page: Page, membershipId: string,
   }
 }
 
+export async function waitForReadyPanes(page: Page, membershipIds: readonly string[]) {
+  for (const id of membershipIds) {
+    await expect(page.getByTestId(`family-pane-${id}`)).toHaveAttribute("data-phase", "ready", {
+      timeout: 20_000,
+    });
+  }
+}
+
 export async function clickFamilyControl(
-  root: {
-    getByTestId: (testId: string) => {
-      waitFor: (options: { state: "attached"; timeout?: number }) => Promise<unknown>;
-      evaluate: (fn: (node: HTMLElement) => void) => Promise<unknown>;
-    };
-  },
+  root: { getByTestId: (testId: string) => Locator },
   testId: string,
 ) {
   const locator = root.getByTestId(testId);
-  await locator.waitFor({ state: "attached", timeout: 20_000 });
-  await locator.evaluate((node) => node.click());
+  await locator.click({ timeout: 20_000 });
+}
+
+export async function assertVisibleInClippingAncestors(locator: Locator) {
+  await expect(locator).toBeVisible();
+  const clipped = await locator.evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    if (rect.width < 1 || rect.height < 1) return "degenerate";
+    if (rect.top < 0 || rect.left < 0 || rect.right > innerWidth || rect.bottom > innerHeight) {
+      return "viewport";
+    }
+    let parent = node.parentElement;
+    while (parent) {
+      const style = getComputedStyle(parent);
+      const ox = style.overflowX;
+      const oy = style.overflowY;
+      if (/(auto|scroll|hidden)/.test(`${ox} ${oy}`)) {
+        const box = parent.getBoundingClientRect();
+        const visible = rect.top >= box.top - 0.5 && rect.bottom <= box.bottom + 0.5 &&
+          rect.left >= box.left - 0.5 && rect.right <= box.right + 0.5;
+        if (!visible) {
+          const name = parent.getAttribute("data-testid") ?? parent.className ?? parent.tagName;
+          return `${name} el=${JSON.stringify({ t: rect.top, b: rect.bottom, l: rect.left, r: rect.right })} clip=${JSON.stringify({ t: box.top, b: box.bottom, l: box.left, r: box.right })}`;
+        }
+      }
+      parent = parent.parentElement;
+    }
+    return null;
+  });
+  expect(clipped, `clipped by ${clipped}`).toBeNull();
+}
+
+export async function assertNonOverlappingHits(root: Locator | Page, min = 48) {
+  const hits = root.locator(".family-board-hit");
+  const boxes = await hits.evaluateAll((nodes) =>
+    nodes
+      .map((node) => {
+        const box = (node as HTMLElement).getBoundingClientRect();
+        if (box.width < 8 || box.height < 8) return null;
+        let parent = node.parentElement;
+        let top = Math.max(0, box.top);
+        let bottom = Math.min(innerHeight, box.bottom);
+        let left = Math.max(0, box.left);
+        let right = Math.min(innerWidth, box.right);
+        while (parent) {
+          const style = getComputedStyle(parent);
+          if (/(auto|scroll|hidden)/.test(`${style.overflowX} ${style.overflowY}`)) {
+            const clip = parent.getBoundingClientRect();
+            top = Math.max(top, clip.top);
+            left = Math.max(left, clip.left);
+            bottom = Math.min(bottom, clip.bottom);
+            right = Math.min(right, clip.right);
+          }
+          parent = parent.parentElement;
+        }
+        const w = right - left;
+        const h = bottom - top;
+        if (w < 8 || h < 8) return null;
+        return { x: left, y: top, w, h, minEdge: Math.min(w, h) };
+      })
+      .filter((box): box is NonNullable<typeof box> => box !== null),
+  );
+  expect(boxes.length).toBeGreaterThan(0);
+  for (const box of boxes) {
+    expect(box.minEdge).toBeGreaterThanOrEqual(min);
+  }
+  for (let i = 0; i < boxes.length; i += 1) {
+    for (let j = i + 1; j < boxes.length; j += 1) {
+      const a = boxes[i]!;
+      const b = boxes[j]!;
+      const overlap =
+        a.x < b.x + b.w - 1 && a.x + a.w > b.x + 1 && a.y < b.y + b.h - 1 && a.y + a.h > b.y + 1;
+      expect(overlap, `hit ${i} overlaps ${j}`).toBe(false);
+    }
+  }
 }
 
 export async function createAssignedRoutine(

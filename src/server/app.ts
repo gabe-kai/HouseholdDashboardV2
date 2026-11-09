@@ -139,6 +139,11 @@ export type BuildAppOptions = {
   /** Override claim rate limit (auth claim + display claim). Tests may lower this under APP_PROFILE=test. */
   claimRateLimit?: { max: number; timeWindow: string | number };
   faultHooks?: import("./lifecycle-runtime.js").LifecycleFaultHooks;
+  /** Deterministic lifecycle race seams, active only in the test profile. */
+  testHooks?: {
+    beforeDisplayStatusShared?: () => Promise<void>;
+    afterDisplayDayReadRelease?: () => Promise<void>;
+  };
 };
 
 export async function buildApp(
@@ -213,6 +218,10 @@ export async function buildApp(
       pathOnly === "/api/v1/fixtures/remediation/apply"
     ) {
       return;
+    }
+    if (config.profile === "test" && request.headers["x-test-hold"] === "status" &&
+        /^\/api\/v1\/display\/occurrences\/[^/]+\/steps\/[^/]+\/status$/.test(pathOnly)) {
+      await options?.testHooks?.beforeDisplayStatusShared?.();
     }
     await runtime.acquireShared();
     lifecycleSharedHeld.set(request, true);
@@ -2166,6 +2175,16 @@ export async function buildApp(
         getInstallationEpoch(),
       ),
     };
+    if (config.profile === "test" && request.headers["x-test-hold"] === "day" && options?.testHooks?.afterDisplayDayReadRelease) {
+      releaseSharedNow(request);
+      await options.testHooks.afterDisplayDayReadRelease();
+      requestDisplays.delete(request);
+      const live = requireDisplay(request, reply);
+      if (!live) return;
+      if (live.displayId !== captured.displayId || live.sessionId !== captured.sessionId) {
+        return reply.code(401).send(errorBody("UNAUTHORIZED", "Display authentication required", request.id));
+      }
+    }
     const delayMs = Number(request.headers["x-read-delay-ms"] ?? 0);
     if (config.profile !== "hosted" && delayMs > 0) {
       releaseSharedNow(request);

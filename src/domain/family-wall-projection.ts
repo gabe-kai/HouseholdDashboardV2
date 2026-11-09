@@ -90,6 +90,36 @@ export function projectFamilyPane<O extends ProjectableOccurrence>(
   };
 }
 
+export function paneOccurrenceStartedAt(occurrence: {
+  startedAt?: string | null;
+  state?: string;
+}): string | null {
+  if (occurrence.startedAt) return occurrence.startedAt;
+  if (occurrence.state === "In progress") return "in-progress";
+  return null;
+}
+
+export function toFamilyPaneOccurrence<O extends {
+  id: string;
+  definitionId: string;
+  daypart: string;
+  completed: boolean;
+  startedAt?: string | null;
+  state?: string;
+  steps: ProjectableOccurrence["steps"];
+  title?: string;
+}>(occurrence: O): ProjectableOccurrence {
+  return {
+    id: occurrence.id,
+    definitionId: occurrence.definitionId,
+    daypart: occurrence.daypart as Daypart,
+    completed: occurrence.completed,
+    startedAt: paneOccurrenceStartedAt(occurrence),
+    steps: occurrence.steps,
+    title: occurrence.title,
+  };
+}
+
 export function familyPaneItemsForSection<O extends ProjectableOccurrence>(
   projection: FamilyPaneProjection<O>,
   section: FamilyPaneSection,

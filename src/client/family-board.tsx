@@ -346,6 +346,11 @@ function FamilyPane(props: {
   const lastNextRef = useRef<{ occurrenceId: string; stepId: string } | null>(null);
   const [actionFocused, setActionFocused] = useState(false);
   const [actionPointerHeld, setActionPointerHeld] = useState(false);
+  const retained = lastNextRef.current;
+  const retainedExists = retained != null && occurrences.some((occurrence) =>
+    occurrence.id === retained.occurrenceId && occurrence.steps.some((step) => step.id === retained.stepId),
+  );
+  const obsoleteInteraction = retained != null && !retainedExists;
   useEffect(() => {
     if (!actionPointerHeld) return;
     const release = () => { setActionPointerHeld(false); props.onPointerHeld(false); };
@@ -353,7 +358,13 @@ function FamilyPane(props: {
     window.addEventListener("pointercancel", release);
     return () => { window.removeEventListener("pointerup", release); window.removeEventListener("pointercancel", release); };
   }, [actionPointerHeld]);
-  const pinned = lastNextRef.current && (pendingIds.has(lastNextRef.current.occurrenceId) || actionFocused || actionPointerHeld)
+  useEffect(() => {
+    if (!obsoleteInteraction) return;
+    setActionFocused(false);
+    setActionPointerHeld(false);
+    props.onPointerHeld(false);
+  }, [obsoleteInteraction]);
+  const pinned = retainedExists && lastNextRef.current && (pendingIds.has(lastNextRef.current.occurrenceId) || actionFocused || actionPointerHeld)
     ? lastNextRef.current
     : null;
   const projection = projectFamilyPane(occurrences.map((occurrence) => {

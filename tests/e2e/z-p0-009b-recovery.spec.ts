@@ -1003,6 +1003,51 @@ test.describe("P0-009B family wall recovery", () => {
     await expect(page.getByTestId("display-pending-cue")).toHaveCount(0);
   });
 
+  test("AT14b/AT15b: activity clear retires a focused action and restores a usable next action", async ({ page, request }, testInfo) => {
+    test.skip(testInfo.project.name.startsWith("webkit"), "Chromium establishes the generation interaction race");
+    await ensureManagerSession(request);
+    const title = `Focused clear ${Date.now().toString(36)}`;
+    await createAssignedRoutine(request, { title, memberId: JORDAN_ID, daypart: "morning", steps: [{ text: title }] });
+    await enrollWall(request, page, title);
+    await completeOtherOccurrences(page, JORDAN_ID, title);
+    await page.reload();
+    await expect(page.getByTestId(`family-next-${JORDAN_ID}`)).toContainText(title);
+    const oldDay = await fetchPersonDay(page, JORDAN_ID);
+    const oldOccurrence = oldDay.occurrences.find((row) => row.title === title)!;
+    const oldStep = oldOccurrence.steps[0];
+    const oldAction = page.getByTestId(`display-step-done-${oldStep.id}`).first();
+    await oldAction.focus();
+    await expect(oldAction).toBeFocused();
+    await clickFamilyControl(page, `family-upcoming-${AVERY_ID}`);
+    await oldAction.focus();
+    const today = await request.get("/api/v1/today");
+    expect(today.ok()).toBeTruthy();
+    const { activityGeneration } = await today.json() as { activityGeneration: number };
+    const newer = page.waitForResponse(async (response) => {
+      if (!response.ok() || !response.url().includes(`/api/v1/display/people/${JORDAN_ID}/day`)) return false;
+      const body = await response.json() as { personDay: { activityGeneration: number } };
+      return body.personDay.activityGeneration > activityGeneration;
+    });
+    const clear = await request.post("/api/v1/household/activity/clear", {
+      headers: await csrfHeaders(request),
+      data: { mutationId: crypto.randomUUID(), expectedGeneration: activityGeneration, acknowledgedScope: "routines_and_responsibilities" },
+    });
+    expect(clear.ok(), await clear.text()).toBeTruthy();
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await newer;
+    await expect(page.getByTestId(`family-pane-${JORDAN_ID}`)).toHaveAttribute("data-phase", "ready");
+    await expect(page.getByTestId(`display-step-done-${oldStep.id}`)).toHaveCount(0);
+    const freshDay = await fetchPersonDay(page, JORDAN_ID);
+    const nextText = await page.getByTestId(`family-next-${JORDAN_ID}`).innerText();
+    const freshOccurrence = freshDay.occurrences.find((row) => row.steps.some((step) => nextText.includes(step.text)))!;
+    expect(freshOccurrence).toBeTruthy();
+    expect(freshOccurrence.id).not.toBe(oldOccurrence.id);
+    const freshStep = freshOccurrence.steps.find((step) => nextText.includes(step.text))!;
+    await page.getByTestId(`display-step-done-${freshStep.id}`).first().click();
+    await expect.poll(async () => (await fetchPersonDay(page, JORDAN_ID)).occurrences.find((row) => row.id === freshOccurrence.id)?.steps.find((step) => step.id === freshStep.id)?.status).toBe("completed");
+    await expect(page.getByTestId(`family-pane-${AVERY_ID}`)).toHaveAttribute("data-section", "upcoming");
+  });
+
   test("AT14b: activity clear retires old generation pane bodies", async ({ page, request }) => {
     await ensureManagerSession(request);
     const stamp = Date.now().toString(36);

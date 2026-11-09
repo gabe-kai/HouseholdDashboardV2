@@ -1,5 +1,15 @@
 # Build Report - BRIEF P0-009B r2 (actionable family wall)
 
+## 2026-11-09 Engineering correction after third reassessment
+
+**D3 corrected; returning for Architecture re-review.** On `wall-refinements` at baseline `001eb4b`, the pane only retains a recommendation pin while its occurrence and step exist in the current authorized snapshot. An obsolete identity is excluded immediately and its focus/pointer flags are cleared; a still-valid focused or held action retains the D1 settlement protection. The new AT14b/AT15b Chromium journey focuses an old action, performs a real activity clear, waits for a strictly newer person-day generation, verifies the old control is gone and the new recommendation belongs to the current day, completes that exact action, and checks a sibling's browsing position. The pre-existing held keyboard/pointer and pending tests remain passing. The first focused attempt exposed legitimate previously completed routines becoming eligible after clear; the assertion was corrected to identify the actual current recommendation, and the focused rerun passed three tests.
+
+Build, lint and typecheck passed. On the final implementation/test tree, exact `npm run validate:pr` exited **0**: 399 unit/integration tests, 188 browser passes / 1 skip, and 12 Vite passes. Exact `npm run validate:rc` exited **0**: 399 unit/integration tests, 291 browser passes / 49 skips, and 12 Vite passes. The additional RC skip is the intentionally Chromium-only new generation-interaction test. Ignored local logs: `reports/_local-screenshots/p0-009b-r2/third-fix-focused-rerun.log`, `third-fix-validate-pr.log`, and `third-fix-validate-rc.log`. This report writeback followed the gates. Architecture's third reassessment closes D1, D2, E1 and AT1b, including its independently verified distinguishable old-body return probe; earlier C1–C5 closures remain intact.
+
+The unrelated `PRODUCT.md` edit was preserved. Railway, live data, deployment, push and merge were outside this correction. Suggested commit: `fix(P0-009B): retire obsolete pane action pins`.
+
+## Previous correction handoff (historical)
+
 ## 2026-11-09 Engineering correction after second reassessment
 
 **Status:** returned for Architecture re-review; technical acceptance remains Architecture's decision. The implementation and evidence delta is uncommitted on `wall-refinements` at `a58fae2`. The unrelated `PRODUCT.md` edit remains untouched. No deployment, Railway, live-data, or Git operation was performed for this correction.

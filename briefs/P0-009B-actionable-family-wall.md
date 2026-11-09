@@ -1,7 +1,7 @@
 # BRIEF P0-009B — Actionable Person Panes on the Family Wall
 
 **Revision:** 2  
-**Status:** FIX REQUIRED
+**Status:** ACCEPTED (technical, 2026-11-09; implementation `436d852`)
 
 **Product input:** PRODUCT.md → Family wall experience proposal, revised 2026-10-25  
 **Inspected baseline:** integrated main at 14af09e (PR #30, P0-009A r2)  
@@ -28,7 +28,7 @@ A tap completes or reopens a permitted step; As needed work also offers Not need
 ## Project card
 
 **Card title:** Find and finish the next task on the family wall  
-**Suggested column:** In Progress
+**Suggested column:** Ready to Evaluate
 
 **Player-facing goal:** Each person can see and complete their next assigned task while the family keeps its place.  
 **Done when:** Six people can find their next concrete instruction and act directly from independent panes, with understandable pending/error feedback and recovery.  
@@ -132,7 +132,7 @@ Fixtures:
 
 ### Acceptance evidence matrix
 
-Architecture reviewed committed correction `48be126` on 2026-11-09. D1/D2 and E1 are closed, including the combined stale-return limitation through an independent distinguishable-body probe. Exact Engineering PR/RC exits are recorded as 0; the independent build and seven focused Chromium/WebKit checks passed. **D3 remains:** an obsolete focused-action pin survives activity clear and hides the new current next action. Only AT14b and the affected interaction-state portion of AT15b remain PARTIAL; other reviewed rows stay closed. See `reports/P0-009B-r2-architecture-third-reassessment.md`. The contract/revision is unchanged; Product and physical evaluation remain separate.
+Architecture technically accepted committed correction `436d852` on 2026-11-09. All 47 required subrows have sufficient reviewed evidence. D3 is closed by the exact generation-clear/usable-action regression and Architecture's original reproduction; D1/D2/E1 and earlier closures remain valid. Exact final Engineering PR/RC exits are recorded as 0, and Architecture independently passed the build and focused checks. See `reports/P0-009B-r2-architecture-acceptance.md` for evidence and limits. Earlier FIX REQUIRED reports remain historical. The contract/revision is unchanged; Product and physical acceptance remain separate.
 
 | ID / assertion | Initial state / fixture | Action / transition | Exact expected observable or invariant | Evidence type / planned named check | Result |
 | --- | --- | --- | --- | --- | --- |
@@ -165,12 +165,12 @@ Architecture reviewed committed correction `48be126` on 2026-11-09. D1/D2 and E1
 | AT13b — Deliberate detail | Unpromoted household-visible task | Enlarge, then explicitly open shared personal detail | Enlargement alone neither fetches nor reveals it; explicit action uses permitted detail; no personal-task status control | B + P · AT13b | PASS |
 | AT13c — Withdrawal | Held promoted/detail response | Owner makes task Private/unpromoted, invalidate, release old reply | Withdrawn values disappear from affected placement and do not resurrect; sync contains no private ID | I + R · AT13c | PASS |
 | AT14a — Day boundary | Pending yesterday action and held person read | Controlled household-date rollover | Old body/command cannot reappear/execute; retirement feedback; today's panes reload without retained yesterday focus | I + R · AT14a | PASS |
-| AT14b — Activity generation | Pending command/held pane | Clear activity, then deliver old data | Old generation retired/rejected; no snapshot resurrection; current panes recover | I + R · AT14b | PARTIAL |
+| AT14b — Activity generation | Pending command/held pane | Clear activity, then deliver old data | Old generation retired/rejected; no snapshot resurrection; current panes recover | I + R · AT14b | PASS |
 | AT14c — Installation replacement | F-races; parameterize reset and restore | Replace epoch while pane read/action pending | Exclusive operation completes; old auth/read/write fenced, no new-epoch effect; recovery uses existing setup/enrollment | I + R · AT14c; reuse lifecycle command matrix where exact | PASS |
 | AT14d — Authority loss | Open multi-pane wall; pending command | Revoke/replace/expire display authorization | All household content clears, delayed success cannot restore it, unsafe intent rejected/retired with feedback | I inherited matrix + R one new-board denial journey · AT14d | PASS |
 | AT14e — Departure/owner change | Pending/open person's work | Depart assignee or revise unstarted owner | Departed person/old-owner work is removed from current placement; fresh work appears only for effective owner; old intent not transferred | I + R · AT14e | PASS |
 | AT15a — Local idle | Distinct browsing times in two panes | Controlled 90s inactivity; unrelated polling/user action | Only eligible idle pane returns; sibling interaction/poll does not reset its timer or move sibling | B · AT15a | PASS |
-| AT15b — Movement guards | Pending action, held pointer/scroll, keyboard focus | Advance idle deadline, then safely end guard | No control/focus displacement while guarded; cancel/release recovers; safe return can resume | B · AT15b | PARTIAL |
+| AT15b — Movement guards | Pending action, held pointer/scroll, keyboard focus | Advance idle deadline, then safely end guard | No control/focus displacement while guarded; cancel/release recovers; safe return can resume | B · AT15b | PASS |
 | AT15c — Enlarge/return | Two stored pane positions | Enlarge deliberately; Back, then controlled enlarged idle return | Same person/section/reading context; Back restores board positions/origin focus; idle return is safe | B · AT15c | PASS |
 | AT16a — Crowded target | F-crowded at 3840×2160 and 1920×1080 | Inspect native board | Six anchored identities, step-three long instruction, truthful 2/5 context, upcoming headings/More; no page scroll/clipped essential content; stable type hierarchy recorded | B geometry + ignored paired captures · AT16a | PASS |
 | AT16b — Input/a11y | Same board, touch and keyboard, reduced motion | Touch drag/release; keyboard act/navigate/enlarge | No accidental status/enlargement; visible focus/textual states; action hitboxes ≥48×48 without overlap; reduced motion honored | B touch/CDP + keyboard · AT16b | PASS |

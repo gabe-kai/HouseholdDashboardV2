@@ -100,7 +100,7 @@ Both C-3 slices contribute to **Act at the shared display without losing trust**
 
 ### CURRENT
 
-- **P0-009B r2 — Actionable Person Panes on the Family Wall:** Architecture reviewed `48be126` on 2026-11-09. D1/D2/E1 are closed, including exact local gate results and the combined stale-return evidence. **FIX REQUIRED** is narrowed to D3: retire an obsolete focused-action pin when activity clear replaces its occurrence, so the new ready next action appears. Card remains **In Progress**. See `reports/P0-009B-r2-architecture-third-reassessment.md`; integration and hands-on evaluation follow closure.
+- **P0-009B r2 — Actionable Person Panes on the Family Wall:** Technically **ACCEPTED** on 2026-11-09 at `436d852`; D3 and all earlier required corrections are closed. Move “Find and finish the next task on the family wall” to **Ready to Evaluate**. Project Lead publishes/merges after required CI, then evaluates the existing household on the physical wall. See `reports/P0-009B-r2-architecture-acceptance.md`; appearance and usefulness remain Product judgments.
 - **P0-009A r2 — Preview a display and judge the family board:** technically accepted and integrated through PR #30 at `14af09e`. On 2026-10-28 the Project Lead accepts the dashboard preview as good to proceed, with further refinement later. No specific viewport/hardware result is claimed. See `reports/P0-009A-r2-architecture-review.md`.
 
 ### LIKELY NEXT

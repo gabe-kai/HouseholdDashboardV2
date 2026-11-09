@@ -19,7 +19,7 @@
 
 ## Current focus
 
-Inspected 2026-10-30: integrated code baseline is `main` at **14af09e** after P0-009A r2 merged through PR **#30**. On `wall-refinements`, P0-009B implementation `655970d` and initial review `8727cc0` are committed; Engineering's correction remains uncommitted. Architecture re-review retains **FIX REQUIRED** for target clipping, pending/expanded navigation, content-lease and preview withdrawal/authorization fences, and specific unproven r2 assertions; see `reports/P0-009B-r2-architecture-reassessment.md`. Engineering reports exact PR/RC gates passed on its correction tree; Architecture independently ran 18 focused unit/integration tests. Unrelated `PRODUCT.md` is dirty and remains untouched. Deployment, live-data, and production-wall replacement remain Project Lead operations. Overall P0-008 Product acceptance and the `/` route anomaly remain separate.
+Inspected 2026-11-08: integrated baseline remains `main` **14af09e** (P0-009A r2, PR **#30**). Engineering's P0-009B correction is committed on `wall-refinements` at **a0106e5**, after Architecture review `bcbf4ff`. Architecture retains **FIX REQUIRED**, narrowed to two independently reproduced defects: settlement retargets a focused action to the next task; returning from By work after pane expiry leaves panes blank without fresh reads. Two exact-status assertions and captured final gate exits also need closure. Earlier clipping, pending-expansion, freshness and preview corrections stay closed. Architecture independently ran 24 focused tests and disposable browser probes; see `reports/P0-009B-r2-architecture-second-reassessment.md`. Unrelated `PRODUCT.md` remains dirty and untouched. Deployment/live-data and Product evaluation remain separate.
 
 **P0-008E r1** is technically **ACCEPTED** and integrated via PR #28 at `bd05ad0`. **P0-008F r1** is technically accepted and integrated via PR #29 at `1acc4a1`. P0-008's overall Product acceptance remains separate; the reported `/` anomaly remains a separate investigation.
 
@@ -51,7 +51,7 @@ P0-007C's outstanding physical/Product judgments remain distinct from its techni
 | P0-008E - Clear First Run and One-View Work Editing | r1 | ACCEPTED (technical) | Project Lead evaluation | Merged to `main` via PR #28 at `bd05ad0` | Hands-on Product evaluation; overall P0-008 Product acceptance remains separate |
 | P0-008F - Keep a Household Intact Through Deployment | r1 | ACCEPTED (technical) | Project Lead evaluation | Merged to `main` via PR #29 at `1acc4a1` | Project Lead reports persistent control-store copy and new-household setup; prior-household recovery is not claimed |
 | P0-009A - Preview a Display and Judge the Family Board | r2 | ACCEPTED (technical); preview approved by Project Lead | Integrated foundation | Merged to `main` via PR #30 at `14af09e` | Further refinement may follow; no preview gate blocks B |
-| P0-009B - Actionable Person Panes on the Family Wall | r2 | FIX REQUIRED | Engineering | `wall-refinements` @ `8727cc0` plus uncommitted correction | Resolve C1–C5 in Architecture reassessment; return for re-review |
+| P0-009B - Actionable Person Panes on the Family Wall | r2 | FIX REQUIRED | Engineering | `wall-refinements` @ `a0106e5` (committed correction) | Close D1/D2 and E1 in second reassessment; capture final gate exits; return for re-review |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -81,10 +81,11 @@ This table is the short repository-side coordination index. An external project 
 ## Open follow-ups
 
 - Overall P0-008 Product acceptance and exact hosted deployed-SHA/operations record remain separate. The reported `/` anomaly remains open.
+- Separate People defect discovered during B: directory reads exclude departed people, but the family-order write still requires their IDs. Preserve for a bounded follow-up; do not expand B's wall correction.
 
 ## Next likely handoff
 
-Engineering: address **P0-009B r2 FIX REQUIRED C1–C5** in `reports/P0-009B-r2-architecture-reassessment.md` on the existing correction. Preserve unrelated `PRODUCT.md`, update the Build Report with named assertion-level results, and return for Architecture re-review. Suggest a commit message; the Project Lead manages Git. The later Product checkpoint and separate root-route/live-module work are unchanged.
+Engineering: address **P0-009B r2 D1/D2 and E1** in `reports/P0-009B-r2-architecture-second-reassessment.md`: safe post-settlement action identity, fresh reads on return to an expired board, and exact remote/out-of-order status assertions. Retain closed corrections and reuse the named inherited evidence; capture both final PR/RC exit codes. Preserve unrelated `PRODUCT.md`; suggest a commit message without committing. Architecture is authorized to commit its own review documentation. The Product checkpoint and separate root-route/live-module work are unchanged.
 
 ## Notes for all teams
 

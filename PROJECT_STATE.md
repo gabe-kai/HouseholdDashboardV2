@@ -19,7 +19,7 @@
 
 ## Current focus
 
-Inspected 2026-11-10: P0-009B r2 is technically accepted, merged via PR #31 at `a155169`, and reported deployed. A read-only post-deployment check found the same installation, epoch, active database, household/account/display counts and passing SQLite integrity; the app backup catalog had zero entries (a separate Railway backup was not verified). The Project Lead rejected the wall presentation; functional Product acceptance remains pending. Architecture has prepared **P0-009C r1** for urgent per-person list recovery and a separate timeline design review. The Product direction is in the uncommitted `PRODUCT.md` and must be integrated before Engineering implementation.
+Inspected 2026-11-10: P0-009B r2 is technically accepted, merged via PR #31 at `a155169`, and reported deployed. A read-only post-deployment check found the same installation, epoch, active database, household/account/display counts and passing SQLite integrity; the app backup catalog had zero entries (a separate Railway backup was not verified). The Project Lead rejected the wall presentation; functional Product acceptance remains pending. Architecture has prepared **P0-009C r1** for urgent per-person list recovery and a separate timeline design review. The approved immediate wall direction is committed on the brief branch at `82144ce`; unrelated Product edits remain uncommitted. Engineering identified no other material blockers, and Architecture has authorized r1 to proceed after Engineering verifies the baseline.
 
 **P0-008E r1** is technically **ACCEPTED** and integrated via PR #28 at `bd05ad0`. **P0-008F r1** is technically accepted and integrated via PR #29 at `1acc4a1`. P0-008's overall Product acceptance remains separate; the reported `/` anomaly remains a separate investigation.
 
@@ -52,7 +52,7 @@ P0-007C's outstanding physical/Product judgments remain distinct from its techni
 | P0-008F - Keep a Household Intact Through Deployment | r1 | ACCEPTED (technical) | Project Lead evaluation | Merged to `main` via PR #29 at `1acc4a1` | Project Lead reports persistent control-store copy and new-household setup; prior-household recovery is not claimed |
 | P0-009A - Preview a Display and Judge the Family Board | r2 | ACCEPTED (technical); preview approved by Project Lead | Integrated foundation | Merged to `main` via PR #30 at `14af09e` | Further refinement may follow; no preview gate blocks B |
 | P0-009B - Actionable Person Panes on the Family Wall | r2 | ACCEPTED (technical); presentation rejected | Product / Architecture | Merged PR #31 at `a155169`; deployed | P0-009C recovery; functional Product evaluation remains pending |
-| P0-009C - Recover Each Person's Lists on the Wall | r1 | IN REVIEW | Engineering | Brief prepared from `main` | Product direction integration and Engineering readiness |
+| P0-009C - Recover Each Person's Lists on the Wall | r1 | IN REVIEW; Architecture ACCEPT / PROCEED | Engineering | Brief branch based on `main` `a155169`; Product direction `82144ce` | Confirm final readiness and implement r1 |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -86,7 +86,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Engineering: review **P0-009C r1** for the urgent all-lists recovery, after the Product direction and brief are integrated into the planning baseline. Architecture will respond to readiness. Separately, Product/Project Lead reviews `docs/p0-009-wall-timeline-design-review.md`; a real fixed-viewport visual proof and decision precede the larger timeline implementation brief.
+Engineering: confirm the committed Product baseline and final readiness, then implement **P0-009C r1** for the urgent all-lists recovery. Architecture has authorized proceeding without another handoff unless a new material issue arises. Separately, Product/Project Lead reviews `docs/p0-009-wall-timeline-design-review.md`; a real fixed-viewport visual proof and decision precede the larger timeline implementation brief.
 
 ## Notes for all teams
 

@@ -3,7 +3,7 @@
 **Revision:** 1
 **Status:** IN REVIEW
 
-**Product input:** `PRODUCT.md` → Immediate wall follow-up, 2026-11-10. Product's working-tree edit is presently uncommitted and must be integrated with this brief before implementation.
+**Product input:** `PRODUCT.md` → Immediate wall follow-up, 2026-11-10. The approved follow-up is committed on the brief branch at `82144ce`; unrelated Product edits remain outside the planning baseline.
 **Inspected baseline:** `main` `a155169`, P0-009B r2 merged via PR #31 and reported deployed.
 **Disposition:** urgent, temporary presentation/navigation recovery. Product acceptance of P0-009B remains pending; its technical acceptance stands.
 
@@ -29,7 +29,7 @@ From each person's pane, a clearly named action such as **All my lists** opens t
 
 ## Current system
 
-- P0-009B is integrated and technically accepted; the Project Lead rejects its presentation and could not fairly judge function. `PRODUCT.md` contains the observed follow-up, currently uncommitted.
+- P0-009B is integrated and technically accepted; the Project Lead rejects its presentation and could not fairly judge function. `PRODUCT.md` contains the observed follow-up, committed at `82144ce`.
 - `FamilyBoard` shares presentation between the display and `preview-frame.tsx`; `DisplayApp` owns display session/sync/outbox and `DisplayPreviewHost` owns member-authorized read-only preview.
 - `getDisplayPersonDetail` returns current-day assigned recurring occurrences, including completed work, and household-visible personal tasks, including unpromoted ones. `PersonDetailView` renders recurring names and opens occurrence detail. The pane calls this route through **Shared personal work**, which does not communicate the recurring-list route.
 - Enlarged panes currently reuse the same board controls. Existing person/occurrence routes, preview messaging, focus return and lifecycle fences are available for reuse; verify their actual behavior under this change.
@@ -72,7 +72,7 @@ Use disposable fictional data representing one person's **three distinct routine
 
 ## Dependencies
 
-- P0-009B r2 on `main` at `a155169`; exact reviewed Product direction must be committed/integrated before Engineering begins.
+- P0-009B r2 on `main` at `a155169`; the reviewed Product direction is integrated on this brief branch at `82144ce`.
 - Disposable local fixtures; no production data or hosted deployment required for implementation.
 
 ## Relevant decisions
@@ -87,10 +87,9 @@ D-041–D-049, D-051, D-054, D-057–D-061 remain active. Product's newer presen
 
 ## Engineering readiness
 
-**Reviewed revision:** NOT REVIEWED
-**Readiness:** NOT REVIEWED
-
-Engineering: review this exact r1 against `main`, consolidate material findings and return READY before implementation. Architecture owns disposition.
+**Reviewed revision:** 1
+**Engineering readiness at review:** BLOCKER solely because the approved Product direction was uncommitted; see `reports/P0-009C-r1-engineering-readiness.md`. No other material blocker or question was identified.
+**Architecture disposition:** ACCEPT / PROCEED. The cited Product prerequisite is resolved by `82144ce` on this brief branch. Engineering should verify the baseline, record its final readiness disposition, and implement r1 without another Architecture handoff unless a new material issue arises. The behavioral contract is unchanged.
 
 ## Revision history
 

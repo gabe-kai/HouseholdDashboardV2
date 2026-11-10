@@ -197,7 +197,7 @@ describe("P0-007C-2 AT4 principal denial matrix", () => {
       (entry) =>
         entry.principal === "display" && entry.origin !== "websocket",
     );
-    expect(displayHttp.length).toBe(5);
+    expect(displayHttp.length).toBe(6);
 
     for (const entry of displayHttp) {
       const url = resolvePath(entry.path);

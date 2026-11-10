@@ -2,6 +2,7 @@ import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { StepStatus } from "../shared/schemas";
 import type { DisplayOccurrenceDetail } from "./display-api";
+import { FamilyBoard, unassignedRows } from "./family-board";
 import {
   DisplayAuthenticatedSurface,
   type DisplayDetailState,
@@ -12,6 +13,12 @@ import {
   type PreviewFrameState,
 } from "./display-preview";
 import "./styles.css";
+
+declare global {
+  interface Window {
+    __HD_PREVIEW_NOW_MS?: number;
+  }
+}
 
 function postNav(message: Record<string, unknown>) {
   if (window.parent === window) return;
@@ -26,6 +33,8 @@ function PreviewFrameApp() {
     occurrence: null,
     organization: "by-person",
     detail: null,
+    personDays: {},
+    panePhase: {},
     loading: true,
     stale: false,
     detailUnavailable: false,
@@ -110,6 +119,39 @@ function PreviewFrameApp() {
       }
       onBackToRoutine={(aggregateKey, originKey) =>
         postNav({ type: "hd-preview-back-routine", aggregateKey, originKey })
+      }
+      personBoard={
+        <FamilyBoard
+          panes={state.dashboard.byPerson.map((person) => ({
+            membershipId: person.membershipId,
+            displayName: person.displayName,
+            sortOrder: person.sortOrder,
+            status: person.status,
+            phase: state.panePhase[person.membershipId] ?? "loading",
+            progressLabel: person.progressLabel,
+            day: state.personDays[person.membershipId] ?? null,
+          }))}
+          unassigned={unassignedRows(state.dashboard)}
+          outbox={[]}
+          savedFlashByStep={{}}
+          canAct={false}
+          idleMs={90_000}
+          nowMs={() =>
+            typeof window.__HD_PREVIEW_NOW_MS === "number"
+              ? window.__HD_PREVIEW_NOW_MS
+              : performance.now()
+          }
+          onRetryPane={(membershipId) =>
+            postNav({ type: "hd-preview-retry-pane", membershipId })
+          }
+          onStepChange={() => undefined}
+          onOpenUnassigned={(occurrenceId, originKey) =>
+            postNav({ type: "hd-preview-open-occurrence", occurrenceId, originKey })
+          }
+          onOpenPersonalDetail={(membershipId, originKey) =>
+            postNav({ type: "hd-preview-open-person", membershipId, originKey })
+          }
+        />
       }
     />
   );

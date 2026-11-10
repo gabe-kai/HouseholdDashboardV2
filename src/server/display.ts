@@ -173,6 +173,28 @@ export type DisplayPersonDetail = {
   }>;
 };
 
+export type DisplayPersonDay = {
+  membershipId: string;
+  displayName: string;
+  sortOrder: number;
+  status: "pending" | "active";
+  householdDate: HouseholdDate;
+  timezone: string;
+  serverTime: string;
+  activityGeneration: number;
+  installationEpoch: number;
+  recurringState: WorkState | "No assigned work today" | "Nothing on the board today";
+  progress: StepProgressCounts | null;
+  progressLabel: string | null;
+  filteredOmission: boolean;
+  occurrences: DisplayOccurrenceDetail[];
+  promotedPersonalTasks: Array<{ id: string; title: string }>;
+};
+
+export type DisplayPreviewPersonDay = Omit<DisplayPersonDay, "occurrences"> & {
+  occurrences: DisplayPreviewOccurrenceDetail[];
+};
+
 export type DisplayOccurrenceDetail = {
   id: string;
   definitionId: string;
@@ -185,6 +207,7 @@ export type DisplayOccurrenceDetail = {
   accountableMemberName: string;
   completed: boolean;
   state: WorkState;
+  startedAt: string | null;
   progress: StepProgressCounts;
   progressLabel: string;
   /** Minimal first-action intent; IDs only — no plan/audit payload. */
@@ -202,6 +225,7 @@ export type DisplayOccurrenceDetail = {
     position: number;
     logicalItemId?: string;
     source?: string;
+    additionHeading?: string;
   }>;
 };
 
@@ -256,6 +280,7 @@ function stripPreviewOccurrence(
     accountableMemberName: occurrence.accountableMemberName,
     completed: occurrence.completed,
     state: occurrence.state,
+    startedAt: occurrence.startedAt,
     progress: occurrence.progress,
     progressLabel: occurrence.progressLabel,
     steps: occurrence.steps.map((step) => ({
@@ -265,6 +290,7 @@ function stripPreviewOccurrence(
       obligation: step.obligation,
       position: step.position,
       ...(step.source ? { source: step.source } : {}),
+      ...(step.additionHeading ? { additionHeading: step.additionHeading } : {}),
     })),
   };
 }
@@ -733,14 +759,17 @@ export class DisplayStore {
     householdDate: HouseholdDate;
     timezone: string;
     serverTime: string;
+    filteredMemberIds: Set<string>;
   } {
     const serverTime = nowUtcIso();
     const householdDate = householdDateFromInstant(new Date(serverTime), scope.timezone);
+    const filteredMemberIds = new Set<string>();
     return {
-      occurrences: this.appStore.materializeHouseholdDate(scope.householdId, householdDate),
+      occurrences: this.appStore.materializeHouseholdDate(scope.householdId, householdDate, filteredMemberIds),
       householdDate,
       timezone: scope.timezone,
       serverTime,
+      filteredMemberIds,
     };
   }
 
@@ -921,6 +950,89 @@ export class DisplayStore {
     };
   }
 
+  getDisplayPersonDay(
+    ctx: DisplayReadScope,
+    membershipId: string,
+    installationEpoch: number,
+  ): DisplayPersonDay {
+    const person = this.listHouseholdPeople(ctx.householdId).find(
+      (entry) => entry.id === membershipId,
+    );
+    if (!person) fail("NOT_FOUND", "Person not found");
+    const captured = this.materializeCurrentDayScope(ctx);
+    const mine = captured.occurrences.filter(
+      (occurrence) => occurrence.accountableMemberId === membershipId,
+    );
+    const occurrences = mine.map((occurrence) => this.toOccurrenceDetail(occurrence));
+    const promotedPersonalTasks = this.listPromotedOpenPersonalTasks(ctx.householdId)
+      .filter((row) => row.ownerMembershipId === membershipId)
+      .map((row) => ({ id: row.id, title: row.title }));
+    const flatSteps = mine.flatMap((occurrence) => occurrence.steps);
+    const progress = mine.length === 0 ? null : stepProgressCounts(flatSteps);
+    const allComplete = mine.length > 0 && mine.every((occurrence) => occurrence.completed);
+    const anyBegun = mine.some(
+      (occurrence) =>
+        occurrence.completed ||
+        occurrence.startedAt ||
+        occurrence.steps.some((step) => step.status !== "open"),
+    );
+    const recurringState: DisplayPersonDay["recurringState"] =
+      mine.length === 0
+        ? captured.filteredMemberIds.has(membershipId) ? "Nothing on the board today" : "No assigned work today"
+        : allComplete
+          ? "Complete"
+          : anyBegun
+            ? "In progress"
+            : "Not started";
+    return {
+      membershipId: person.id,
+      displayName: person.displayName,
+      sortOrder: person.sortOrder,
+      status: person.status,
+      householdDate: captured.householdDate,
+      timezone: captured.timezone,
+      serverTime: captured.serverTime,
+      activityGeneration: this.appStore.getActivityGeneration(ctx.householdId),
+      installationEpoch,
+      filteredOmission: captured.filteredMemberIds.has(membershipId),
+      recurringState,
+      progress,
+      progressLabel: progress ? formatStepProgress(progress) : null,
+      occurrences,
+      promotedPersonalTasks,
+    };
+  }
+
+  getPreviewPersonDay(
+    ctx: AuthContext,
+    displayId: string,
+    membershipId: string,
+    installationEpoch: number,
+  ): DisplayPreviewContext & { personDay: DisplayPreviewPersonDay } {
+    const display = this.requirePreviewDisplay(ctx, displayId);
+    const scope: DisplayReadScope = {
+      householdId: display.householdId,
+      timezone: display.timezone,
+    };
+    const personDay = this.getDisplayPersonDay(scope, membershipId, installationEpoch);
+    return {
+      displayId: display.id,
+      label: display.label,
+      householdDate: personDay.householdDate,
+      timezone: personDay.timezone,
+      serverTime: personDay.serverTime,
+      activityGeneration: personDay.activityGeneration,
+      installationEpoch: personDay.installationEpoch,
+      personDay: {
+        ...personDay,
+        occurrences: personDay.occurrences.map((occurrence) => {
+          const { intendedStructure: _omit, ...rest } = occurrence;
+          return stripPreviewOccurrence(rest);
+        }),
+      },
+    };
+  }
+
   getDisplayPersonDetail(
     ctx: DisplayReadScope,
     membershipId: string,
@@ -992,51 +1104,7 @@ export class DisplayStore {
     const occurrences = this.materializeCurrentDayScope(ctx).occurrences;
     const occurrence = occurrences.find((item) => item.id === occurrenceId);
     if (!occurrence) fail("NOT_FOUND", "Occurrence not found");
-
-    const progress = stepProgressCounts(occurrence.steps);
-    const stepLogicalIds = occurrence.steps
-      .map((step) => step.logicalItemId)
-      .filter((id): id is string => typeof id === "string" && id.length > 0);
-    const fingerprintRow = this.db
-      .prepare(`SELECT structure_fingerprint FROM occurrences WHERE id = ?`)
-      .get(occurrence.id) as { structure_fingerprint: string | null } | undefined;
-    const structureFingerprint = fingerprintRow?.structure_fingerprint ?? null;
-    const intendedStructure =
-      occurrence.accountableMemberId && stepLogicalIds.length > 0
-        ? {
-            revisionId: occurrence.revisionId,
-            accountableMemberId: occurrence.accountableMemberId,
-            stepLogicalIds,
-            ...(structureFingerprint
-              ? { structureFingerprint }
-              : {}),
-          }
-        : undefined;
-    return {
-      id: occurrence.id,
-      definitionId: occurrence.definitionId,
-      revisionId: occurrence.revisionId,
-      title: occurrence.title,
-      kind: occurrence.kind,
-      daypart: occurrence.daypart,
-      householdDate: occurrence.householdDate,
-      accountableMemberId: occurrence.accountableMemberId,
-      accountableMemberName: occurrence.accountableMemberName,
-      completed: occurrence.completed,
-      state: workState(occurrence),
-      progress,
-      progressLabel: formatStepProgress(progress),
-      ...(intendedStructure ? { intendedStructure } : {}),
-      steps: occurrence.steps.map((step, index) => ({
-        id: step.id,
-        text: step.text,
-        status: step.status,
-        obligation: step.obligation,
-        position: index,
-        ...(step.logicalItemId ? { logicalItemId: step.logicalItemId } : {}),
-        ...(step.source ? { source: step.source } : {}),
-      })),
-    };
+    return this.toOccurrenceDetail(occurrence);
   }
 
   /**
@@ -1266,6 +1334,57 @@ export class DisplayStore {
       claimExpiresAt: claim?.expires_at ?? null,
       lastSeenAt: session?.last_seen_at ?? null,
       absoluteExpiresAt: session?.absolute_expires_at ?? null,
+    };
+  }
+
+  private toOccurrenceDetail(occurrence: OccurrenceView): DisplayOccurrenceDetail {
+    const progress = stepProgressCounts(occurrence.steps);
+    const stepLogicalIds = occurrence.steps
+      .map((step) => step.logicalItemId)
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+    const fingerprintRow = this.db
+      .prepare(`SELECT structure_fingerprint FROM occurrences WHERE id = ?`)
+      .get(occurrence.id) as { structure_fingerprint: string | null } | undefined;
+    const structureFingerprint = fingerprintRow?.structure_fingerprint ?? null;
+    const additionHeadings = new Map(
+      (this.db.prepare(`SELECT id, addition_heading FROM occurrence_steps WHERE occurrence_id = ? AND addition_heading IS NOT NULL`)
+        .all(occurrence.id) as Array<{ id: string; addition_heading: string }>).map((row) => [row.id, row.addition_heading]),
+    );
+    const intendedStructure =
+      occurrence.accountableMemberId && stepLogicalIds.length > 0
+        ? {
+            revisionId: occurrence.revisionId,
+            accountableMemberId: occurrence.accountableMemberId,
+            stepLogicalIds,
+            ...(structureFingerprint ? { structureFingerprint } : {}),
+          }
+        : undefined;
+    return {
+      id: occurrence.id,
+      definitionId: occurrence.definitionId,
+      revisionId: occurrence.revisionId,
+      title: occurrence.title,
+      kind: occurrence.kind,
+      daypart: occurrence.daypart,
+      householdDate: occurrence.householdDate,
+      accountableMemberId: occurrence.accountableMemberId,
+      accountableMemberName: occurrence.accountableMemberName,
+      completed: occurrence.completed,
+      state: workState(occurrence),
+      startedAt: occurrence.startedAt,
+      progress,
+      progressLabel: formatStepProgress(progress),
+      ...(intendedStructure ? { intendedStructure } : {}),
+      steps: occurrence.steps.map((step, index) => ({
+        id: step.id,
+        text: step.text,
+        status: step.status,
+        obligation: step.obligation,
+        position: index,
+        ...(step.logicalItemId ? { logicalItemId: step.logicalItemId } : {}),
+        ...(step.source ? { source: step.source } : {}),
+        ...(additionHeadings.has(step.id) ? { additionHeading: additionHeadings.get(step.id) } : {}),
+      })),
     };
   }
 

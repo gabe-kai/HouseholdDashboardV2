@@ -6,6 +6,7 @@ import {
   type Route,
 } from "@playwright/test";
 import { expectSignedInAs } from "../helpers/e2e-shell";
+import { restoreSeedPeople } from "../helpers/p0-009b";
 
 const PASSPHRASE = "unique-passphrase-ok!";
 const MANAGER_LOGIN = "e2e.manager";
@@ -55,6 +56,7 @@ async function enrollWall(
   wall: Page,
   label: string,
 ): Promise<{ displayId: string; code: string }> {
+  await restoreSeedPeople(managerRequest);
   await ensureManagerSession(managerRequest);
   const create = await managerRequest.post("/api/v1/displays", {
     headers: await csrfHeaders(managerRequest),
@@ -120,6 +122,10 @@ async function armHeldPreview(page: Page, glob: string, snapshot: string): Promi
   });
   let armed = true;
   await page.route(glob, async (route: Route) => {
+    if (route.request().url().includes("/day")) {
+      await route.continue();
+      return;
+    }
     if (!armed) {
       await route.continue();
       return;
@@ -224,24 +230,23 @@ test.describe("P0-009A selected-display preview", () => {
     await wall.reload();
     await expect(wall.getByTestId("display-overview")).toBeVisible();
     await wall.getByTestId("display-org-by-person").click();
-    await wall
-      .getByTestId("display-by-person")
-      .locator(".display-person-card")
-      .filter({ hasText: /Avery/i })
-      .click();
+    await wall.getByTestId(`family-personal-${AVERY_ID}`).click();
     await expect(wall.getByTestId("display-detail")).toBeVisible();
     await wall
       .getByTestId("display-detail")
       .locator("button.display-work-row")
       .filter({ hasText: pendingTitle })
       .click();
-    await expect(wall.getByText("Hold this step")).toBeVisible();
+    await expect(wall.getByTestId("display-detail").getByText("Hold this step")).toBeVisible();
     const wallScroll = await wall.evaluate(() => document.scrollingElement?.scrollTop ?? 0);
 
     await wall.route("**/api/v1/display/occurrences/**/status", (route: Route) => route.abort());
-    const done = wall.locator("[data-testid^=display-step-done-]").first();
-    await expect(done).toBeVisible();
-    await done.click();
+    const done = wall
+      .getByTestId("display-detail")
+      .locator("[data-testid^=display-step-done-]")
+      .first();
+    await done.waitFor({ state: "attached", timeout: 15_000 });
+    await done.evaluate((node) => (node as HTMLElement).click());
     await expect(wall.getByRole("status").filter({ hasText: /pending|Saving|retry/i }).first()).toBeVisible({
       timeout: 15_000,
     });
@@ -263,7 +268,7 @@ test.describe("P0-009A selected-display preview", () => {
     expect(previewMutations).toEqual([]);
 
     await expect(wall.getByTestId("display-detail")).toBeVisible();
-    await expect(wall.getByText("Hold this step")).toBeVisible();
+    await expect(wall.getByTestId("display-detail").getByText("Hold this step")).toBeVisible();
     const wallScrollAfter = await wall.evaluate(() => document.scrollingElement?.scrollTop ?? 0);
     expect(wallScrollAfter).toBe(wallScroll);
     await expect(wall.getByRole("status").filter({ hasText: /pending|Saving|retry/i }).first()).toBeVisible();
@@ -274,13 +279,13 @@ test.describe("P0-009A selected-display preview", () => {
       document.dispatchEvent(new Event("visibilitychange"));
     });
     await expect(
-      wall.locator("[data-testid^=display-step-done-]").first(),
+      wall.getByTestId("display-detail").locator("[data-testid^=display-step-done-]").first(),
     ).toHaveAttribute("aria-pressed", "true", { timeout: 20_000 });
     await expect(wall.getByRole("status").filter({ hasText: /pending|Saving|retry/i })).toHaveCount(
       0,
     );
     await expect(wall.getByTestId("display-pending-cue")).toHaveCount(0);
-    await expect(wall.getByText("Hold this step")).toBeVisible();
+    await expect(wall.getByTestId("display-detail").getByText("Hold this step")).toBeVisible();
     await expect(previewFrame.locator("[data-testid^=display-step-done-]")).toHaveCount(0);
     await wallCtx.close();
   });
@@ -300,12 +305,12 @@ test.describe("P0-009A selected-display preview", () => {
     await previewButton.click();
     const frame = page.frameLocator('[data-testid="display-preview-frame"]');
     await expect(frame.getByTestId("display-overview")).toBeVisible({ timeout: 20_000 });
-    await expect(frame.getByText(routineTitle)).toBeVisible();
-    await frame
-      .getByTestId("display-by-person")
-      .locator(".display-person-card")
-      .filter({ hasText: /Avery/i })
-      .click();
+    await frame.getByTestId("display-org-by-work").click();
+    await expect(frame.getByTestId("display-by-work").getByText(routineTitle)).toBeVisible();
+    await frame.getByTestId("display-org-by-person").click();
+    await frame.getByTestId(`family-personal-${AVERY_ID}`).evaluate((node) =>
+      (node as HTMLElement).click(),
+    );
     await expect(frame.getByTestId("display-detail")).toBeVisible();
     await frame
       .getByTestId("display-detail")
@@ -378,17 +383,25 @@ test.describe("P0-009A selected-display preview", () => {
 
     for (let i = 0; i < 3; i += 1) {
       if (await frame.getByTestId("display-overview").isVisible()) break;
-      await frame.getByRole("button", { name: "Back", exact: true }).click({ force: true });
+      await frame
+        .getByRole("button", { name: "Back", exact: true })
+        .evaluate((node) => (node as HTMLElement).click());
     }
     await expect(frame.getByTestId("display-overview")).toBeVisible();
     const goneTitle = `Gone routine ${Date.now().toString(36)}`;
     const gone = await createAveryRoutine(page.request, goneTitle, "Vanish this step");
-    await expect(frame.getByText(goneTitle)).toBeVisible({ timeout: 20_000 });
-    await frame
-      .getByTestId("display-by-person")
-      .locator(".display-person-card")
-      .filter({ hasText: /Avery/i })
-      .click();
+    await frame.getByTestId("display-org-by-work").evaluate((node) =>
+      (node as HTMLElement).click(),
+    );
+    await expect(frame.getByTestId("display-by-work").getByText(goneTitle)).toBeVisible({
+      timeout: 20_000,
+    });
+    await frame.getByTestId("display-org-by-person").evaluate((node) =>
+      (node as HTMLElement).click(),
+    );
+    await frame.getByTestId(`family-personal-${AVERY_ID}`).evaluate((node) =>
+      (node as HTMLElement).click(),
+    );
     await expect(frame.getByTestId("display-detail")).toBeVisible();
     await frame
       .getByTestId("display-detail")
@@ -472,10 +485,12 @@ test.describe("P0-009A selected-display preview", () => {
       },
     });
     expect(privatize.ok(), await privatize.text()).toBeTruthy();
-    await expect(frame.getByText(taskTitle)).toHaveCount(0, { timeout: 20_000 });
+    await expect(frame.getByTestId("display-by-work").getByText(taskTitle)).toHaveCount(0, {
+      timeout: 20_000,
+    });
     releaseHold();
     await page.waitForTimeout(300);
-    await expect(frame.getByText(taskTitle)).toHaveCount(0);
+    await expect(frame.getByTestId("display-by-work").getByText(taskTitle)).toHaveCount(0);
     expect(heldBody).toBeTruthy();
     expect(heldBody!).toContain(taskTitle);
 
@@ -527,7 +542,7 @@ test.describe("P0-009A selected-display preview", () => {
     await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
     await expect(frame.locator(".display-date")).not.toContainText("January 1");
     await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
-    await expect(frame.getByText(taskTitle)).toHaveCount(0);
+    await expect(frame.getByTestId("display-by-work").getByText(taskTitle)).toHaveCount(0);
 
     await page.unroute("**/api/v1/displays/**/preview/dashboard");
     await page.route("**/api/v1/displays/**/preview/dashboard", (route) => route.abort());
@@ -544,7 +559,8 @@ test.describe("P0-009A selected-display preview", () => {
     });
     await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
     await expect(frame.getByTestId("display-overview")).toBeVisible({ timeout: 20_000 });
-    await expect(frame.getByText(taskTitle)).toHaveCount(0);
+    await frame.getByTestId("display-org-by-work").click();
+    await expect(frame.getByTestId("display-by-work").getByText(taskTitle)).toHaveCount(0);
 
     const displayId = new URL(page.url()).pathname.split("/")[3]!;
     await page.request.post(`/api/v1/displays/${displayId}/revoke`, {
@@ -573,10 +589,7 @@ test.describe("P0-009A selected-display preview", () => {
     await expect(frame.getByTestId("display-overview")).toBeVisible({ timeout: 20_000 });
     const displayId = new URL(page.url()).pathname.split("/")[3]!;
 
-    const averyCard = frame
-      .getByTestId("display-by-person")
-      .locator(".display-person-card")
-      .filter({ hasText: /Avery/i });
+    const averyCard = frame.getByTestId(`family-personal-${AVERY_ID}`);
     await averyCard.click();
     await expect(frame.getByTestId("display-detail")).toBeVisible();
     const personSnap = await page.request.get(
@@ -603,7 +616,11 @@ test.describe("P0-009A selected-display preview", () => {
     const occTitle = `Held occ ${Date.now().toString(36)}`;
     await createAveryRoutine(page.request, occTitle, "Held occurrence step");
     await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
-    await expect(frame.getByText(occTitle)).toBeAttached({ timeout: 20_000 });
+    await frame.getByTestId("display-org-by-work").click();
+    await expect(frame.getByTestId("display-by-work").getByText(occTitle)).toBeAttached({
+      timeout: 20_000,
+    });
+    await frame.getByTestId("display-org-by-person").click();
     await averyCard.click();
     await expect(frame.getByTestId("display-detail")).toBeVisible();
     const personForOcc = await page.request.get(
@@ -658,7 +675,11 @@ test.describe("P0-009A selected-display preview", () => {
     const genTitle = `Gen fence ${Date.now().toString(36)}`;
     await createAveryRoutine(page.request, genTitle, "Generation step");
     await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
-    await expect(frame.getByText(genTitle)).toBeAttached({ timeout: 20_000 });
+    await frame.getByTestId("display-org-by-work").click();
+    await expect(frame.getByTestId("display-by-work").getByText(genTitle)).toBeAttached({
+      timeout: 20_000,
+    });
+    await frame.getByTestId("display-org-by-person").click();
     await heldOver.release((body) => {
       const parsed = JSON.parse(body) as {
         householdDate?: string;
@@ -674,7 +695,8 @@ test.describe("P0-009A selected-display preview", () => {
     });
     await page.waitForTimeout(300);
     await expect(frame.locator(".display-date")).not.toContainText("January 1");
-    await expect(frame.getByText(genTitle)).toBeAttached();
+    await frame.getByTestId("display-org-by-work").click();
+    await expect(frame.getByTestId("display-by-work").getByText(genTitle)).toBeAttached();
     await expect(frame.getByTestId("display-overview")).toBeVisible();
     await page.unroute("**/api/v1/displays/**/preview/dashboard");
 

@@ -89,7 +89,7 @@ test.describe("P0-007C-2 manager-to-wall enrollment", () => {
     for (const name of PEOPLE) {
       const person = wallPage
         .getByTestId("display-by-person")
-        .locator(".display-person-card")
+        .locator(".display-person-name")
         .filter({ hasText: name.split(" ")[0]! });
       await expect(person).toBeVisible({ timeout: 20_000 });
     }

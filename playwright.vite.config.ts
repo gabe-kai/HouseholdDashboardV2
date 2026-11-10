@@ -67,6 +67,7 @@ export default defineConfig({
         "**/z-p0-007c-2-vite-deeplink.spec.ts",
         "**/z-p0-008d-vite-deeplink.spec.ts",
         "**/z-p0-009a-vite-deeplink.spec.ts",
+        "**/z-p0-009b-vite-deeplink.spec.ts",
       ],
       use: { ...devices["Pixel 7"], baseURL: viteURL },
     },

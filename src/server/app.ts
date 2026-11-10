@@ -139,6 +139,11 @@ export type BuildAppOptions = {
   /** Override claim rate limit (auth claim + display claim). Tests may lower this under APP_PROFILE=test. */
   claimRateLimit?: { max: number; timeWindow: string | number };
   faultHooks?: import("./lifecycle-runtime.js").LifecycleFaultHooks;
+  /** Deterministic lifecycle race seams, active only in the test profile. */
+  testHooks?: {
+    beforeDisplayStatusShared?: () => Promise<void>;
+    afterDisplayDayReadRelease?: () => Promise<void>;
+  };
 };
 
 export async function buildApp(
@@ -213,6 +218,10 @@ export async function buildApp(
       pathOnly === "/api/v1/fixtures/remediation/apply"
     ) {
       return;
+    }
+    if (config.profile === "test" && request.headers["x-test-hold"] === "status" &&
+        /^\/api\/v1\/display\/occurrences\/[^/]+\/steps\/[^/]+\/status$/.test(pathOnly)) {
+      await options?.testHooks?.beforeDisplayStatusShared?.();
     }
     await runtime.acquireShared();
     lifecycleSharedHeld.set(request, true);
@@ -446,7 +455,9 @@ export async function buildApp(
       return;
     }
     if (resource === "activity_reset") {
-      displayInvalidate(session.householdId, "reset");
+      // Generation bump is not an installation replacement. Displays refresh
+      // assigned work; epoch-fenced reset/restore still use hub closeAll.
+      displayInvalidate(session.householdId, "work");
       return;
     }
     if (
@@ -1969,6 +1980,40 @@ export async function buildApp(
   });
 
   app.get(
+    "/api/v1/displays/:displayId/preview/people/:membershipId/day",
+    async (request, reply) => {
+      const session = requireSession(request, reply);
+      if (!session) return;
+      const { displayId, membershipId } = request.params as {
+        displayId: string;
+        membershipId: string;
+      };
+      if (!UuidSchema.safeParse(displayId).success) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid display id", request.id));
+      }
+      if (!UuidSchema.safeParse(membershipId).success) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Invalid membership id", request.id));
+      }
+      if (previewDateOverrideRequested(request)) {
+        return reply
+          .code(400)
+          .send(errorBody("VALIDATION", "Preview does not accept a date override", request.id));
+      }
+      const body = displayStore.getPreviewPersonDay(
+        session,
+        displayId,
+        membershipId,
+        getInstallationEpoch(),
+      );
+      return deliverPreviewAfterHold(request, reply, session, displayId, body);
+    },
+  );
+
+  app.get(
     "/api/v1/displays/:displayId/preview/people/:membershipId",
     async (request, reply) => {
       const session = requireSession(request, reply);
@@ -2106,6 +2151,54 @@ export async function buildApp(
     const liveDisplay = requireDisplay(request, reply);
     if (!liveDisplay) return;
     return { dashboard: displayStore.getDisplayDashboard(liveDisplay) };
+  });
+
+  app.get("/api/v1/display/people/:membershipId/day", async (request, reply) => {
+    const display = requireDisplay(request, reply);
+    if (!display) return;
+    const { membershipId } = request.params as { membershipId: string };
+    if (!UuidSchema.safeParse(membershipId).success) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Invalid membership id", request.id));
+    }
+    if (previewDateOverrideRequested(request)) {
+      return reply
+        .code(400)
+        .send(errorBody("VALIDATION", "Display reads do not accept a date override", request.id));
+    }
+    const captured = display;
+    const body = {
+      personDay: displayStore.getDisplayPersonDay(
+        captured,
+        membershipId,
+        getInstallationEpoch(),
+      ),
+    };
+    if (config.profile === "test" && request.headers["x-test-hold"] === "day" && options?.testHooks?.afterDisplayDayReadRelease) {
+      releaseSharedNow(request);
+      await options.testHooks.afterDisplayDayReadRelease();
+      requestDisplays.delete(request);
+      const live = requireDisplay(request, reply);
+      if (!live) return;
+      if (live.displayId !== captured.displayId || live.sessionId !== captured.sessionId) {
+        return reply.code(401).send(errorBody("UNAUTHORIZED", "Display authentication required", request.id));
+      }
+    }
+    const delayMs = Number(request.headers["x-read-delay-ms"] ?? 0);
+    if (config.profile !== "hosted" && delayMs > 0) {
+      releaseSharedNow(request);
+      await new Promise((resolve) => setTimeout(resolve, Math.min(delayMs, 10_000)));
+      requestDisplays.delete(request);
+      const live = requireDisplay(request, reply);
+      if (!live) return;
+      if (live.displayId !== captured.displayId || live.sessionId !== captured.sessionId) {
+        return reply
+          .code(401)
+          .send(errorBody("UNAUTHORIZED", "Display authentication required", request.id));
+      }
+    }
+    return body;
   });
 
   app.get("/api/v1/display/people/:membershipId", async (request, reply) => {

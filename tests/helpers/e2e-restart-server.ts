@@ -8,7 +8,22 @@ export function e2eDbPathForPort(port: number): string {
   if (port === 8791) return path.resolve(root, "runtime/e2e-webkit.sqlite");
   if (port === 8792) return path.resolve(root, "runtime/e2e-chromium-008a.sqlite");
   if (port === 8793) return path.resolve(root, "runtime/e2e-webkit-008a.sqlite");
+  if (port === 8794) return path.resolve(root, "runtime/e2e-chromium-009b.sqlite");
+  if (port === 8795) return path.resolve(root, "runtime/e2e-webkit-009b.sqlite");
   return path.resolve(root, "runtime/e2e-chromium.sqlite");
+}
+
+/** Reset the disposable, auto-seeded family-wall server between fixture cases. */
+export async function wipeSeededE2eServer(baseURL: string): Promise<void> {
+  const url = new URL(baseURL);
+  const port = Number(url.port);
+  const before = readGeneration(port);
+  await waitForHealth(url.origin);
+  const flag = wipeFlagPathForPort(port);
+  fs.mkdirSync(path.dirname(flag), { recursive: true });
+  fs.writeFileSync(flag, `${Date.now()}\n`, "utf8");
+  await waitForGeneration(port, before + 1);
+  await waitForHealth(url.origin);
 }
 
 function restartFlagPathForPort(port: number): string {

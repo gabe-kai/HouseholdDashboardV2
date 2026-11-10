@@ -1808,6 +1808,56 @@ input[type="time"] {
   color: var(--text);
 }
 
+html:has(.display-overview-host:not([hidden]) .family-board-host:not([hidden])),
+html:has(.display-overview-host:not([hidden]) .family-board-host:not([hidden])) body,
+html:has(.display-overview-host:not([hidden]) .family-board-host:not([hidden])) #root {
+  height: 100%;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
+.display-shell:has(.display-overview-host:not([hidden]) .family-board-host:not([hidden])) {
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  align-content: stretch;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.display-shell:has(.display-overview-host:not([hidden]) .family-board-host:not([hidden])) > .display-overview-host:not([hidden]) {
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  display: grid;
+}
+
+.display-shell:has(.display-overview-host:not([hidden]) .family-board-host:not([hidden])) .display-overview {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.display-shell:has(.display-overview-host:not([hidden]) .family-board-host:not([hidden])) .display-overview > .display-org-toggle {
+  flex: 0 0 auto;
+  margin-bottom: var(--space-2);
+}
+
+.display-shell:has(.display-overview-host:not([hidden]) .family-board-host:not([hidden])) .display-overview > div:not([hidden]):has([data-testid="family-board"]) {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.display-overview-host[hidden],
+.family-board-host[hidden] {
+  display: none !important;
+  pointer-events: none !important;
+}
+
 .display-header {
   display: grid;
   gap: var(--space-2);
@@ -2262,6 +2312,33 @@ input[type="time"] {
   margin: 0;
 }
 
+.display-overview .family-board-proof-stage {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.display-overview .family-board-grid {
+  flex: 1 1 0%;
+  min-height: min(24rem, 50dvh);
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  grid-auto-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.family-board-overflow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  flex: 0 1 auto;
+  max-height: 5rem;
+  min-height: 0;
+  overflow: auto;
+  margin-top: var(--space-3);
+}
+
 .family-board-proof {
   display: grid;
   gap: var(--space-3);
@@ -2277,17 +2354,26 @@ input[type="time"] {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   grid-template-rows: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(8rem, auto);
   gap: var(--space-3);
   height: 100%;
   min-height: 0;
-  overflow: hidden;
+  overflow: auto;
+}
+
+.family-board-next .display-work-title {
+  font-weight: 650;
 }
 
 .family-board-pane {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  --display-touch: 48px;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   min-width: 0;
+  isolation: isolate;
+  position: relative;
+  z-index: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
@@ -2296,15 +2382,70 @@ input[type="time"] {
 
 .family-board-pane-header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   gap: var(--space-2);
-  padding: 0.6em 0.8em;
+  flex: 0 0 auto;
+  padding: 0.35em 0.7em;
   border-bottom: 1px solid var(--border);
+}
+
+.family-board-pane-header .display-person-name {
+  min-width: 2rem;
+  flex: 1 1 auto;
+  margin: 0;
+}
+
+.family-board-current {
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 0.25em 0.7em 0.4em;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.family-board-current .display-work-title,
+.family-board-current .display-person-status {
+  margin: 0;
+  overflow-wrap: anywhere;
+  line-height: var(--line-tight);
+}
+
+.family-board-current-actions {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.family-board-current-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35em;
+  margin-top: 0.3em;
+}
+
+.family-board-pane-nav {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.35em;
+  flex: 0 0 auto;
+  padding: 0.3em 0.7em;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  position: relative;
+  z-index: 1;
+  overflow-x: auto;
+}
+
+.family-board-pane-nav .family-board-hit {
+  font-size: max(1rem, min(var(--display-secondary), 1.75rem));
 }
 
 .family-board-pane-body {
   overflow: auto;
+  flex: 1 1 auto;
   min-height: 0;
   padding: 0.6em 0.8em;
 }
@@ -2328,10 +2469,37 @@ input[type="time"] {
   min-width: 48px;
 }
 
-.family-board-pane .display-org-toggle,
 .family-board-pane .display-step-actions {
   display: flex;
   flex-wrap: wrap;
+  gap: 0.4em;
+}
+
+.family-board-pane .display-step-action {
+  min-height: 48px;
+  min-width: 48px;
+  padding: 0.2em 0.55em;
+}
+
+.display-pane-cues {
+  display: grid;
+  gap: var(--space-2);
+  padding: 0.4em 0;
+}
+
+.display-overview > .display-pane-cues,
+.display-overview > .display-retired-notices,
+.display-overview > .display-pending-cue {
+  max-height: 18vh;
+  min-height: 0;
+  overflow: auto;
+  flex: 0 1 auto;
+}
+
+.display-pane-cue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 0.4em;
 }
 
@@ -2340,6 +2508,10 @@ input[type="time"] {
   padding: 0.6em 0.8em;
   border: 1px dashed var(--border);
   border-radius: var(--radius);
+  flex: 0 1 auto;
+  max-height: 5rem;
+  min-height: 0;
+  overflow: auto;
 }
 
 .family-board-scroll-spacer {

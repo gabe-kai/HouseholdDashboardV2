@@ -1309,7 +1309,21 @@ describe("P0-008C member access and safe removal", () => {
           ["people", "tasks"].includes((m as { reason?: string }).reason ?? ""),
       ),
     ).toBe(true);
-    ws.close();
+    await new Promise<void>((resolve) => {
+      if (ws.readyState === WebSocket.CLOSED) {
+        resolve();
+        return;
+      }
+      const timer = setTimeout(() => {
+        ws.terminate();
+        resolve();
+      }, 1000);
+      ws.once("close", () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      ws.close();
+    });
 
     for (const cookie of [cookieA, cookieB]) {
       const after = await h.app.inject({

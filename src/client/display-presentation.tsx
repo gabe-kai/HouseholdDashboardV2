@@ -2,6 +2,7 @@
  * Shared current-wall presentation. Live wall and selected-display preview
  * both render through these components; only the data/action adapter differs.
  */
+import type { ReactNode } from "react";
 import { DAYPART_LABELS } from "../domain/daypart";
 import type {
   ResponsibilityOverviewRow,
@@ -14,6 +15,7 @@ import type {
   DisplayPersonDetail,
 } from "./display-api";
 import type { DisplayOutboxItem } from "./display-outbox";
+import type { FamilyPaneCue } from "./family-board";
 
 export type DisplayOrganization = "by-person" | "by-work";
 
@@ -129,6 +131,7 @@ export function DisplayAuthenticatedSurface(props: {
     originKey: string,
   ) => void;
   onBackToRoutine: (aggregateKey: string, originKey: string) => void;
+  personBoard?: ReactNode;
 }) {
   const clock = formatDisplayClock(
     props.dashboard.serverTime,
@@ -176,19 +179,22 @@ export function DisplayAuthenticatedSurface(props: {
           onBackToRoutine={props.onBackToRoutine}
         />
       ) : (
-        <DisplayOverview
-          dashboard={props.dashboard}
-          organization={props.organization}
-          loading={props.loading}
-          pendingCue={props.pendingCue}
-          retiredNotices={props.retiredNotices}
-          onDismissRetiredNotice={props.onDismissRetiredNotice}
-          onOrganizationChange={props.onOrganizationChange}
-          onOpenPerson={props.onOpenPerson}
-          onOpenResponsibility={props.onOpenResponsibility}
-          onOpenRoutine={props.onOpenRoutine}
-          onOpenPendingCue={props.onOpenPendingCue}
-        />
+        <div className="display-overview-host">
+          <DisplayOverview
+            dashboard={props.dashboard}
+            organization={props.organization}
+            loading={props.loading}
+            pendingCue={props.pendingCue}
+            retiredNotices={props.retiredNotices}
+            onDismissRetiredNotice={props.onDismissRetiredNotice}
+            onOrganizationChange={props.onOrganizationChange}
+            onOpenPerson={props.onOpenPerson}
+            onOpenResponsibility={props.onOpenResponsibility}
+            onOpenRoutine={props.onOpenRoutine}
+            onOpenPendingCue={props.onOpenPendingCue}
+            personBoard={props.personBoard}
+          />
+        </div>
       )}
     </div>
   );
@@ -206,6 +212,8 @@ export function DisplayOverview(props: {
   onOpenResponsibility: (occurrenceId: string, originKey: string) => void;
   onOpenRoutine: (aggregateKey: string, originKey: string) => void;
   onOpenPendingCue: (occurrenceId: string) => void;
+  personBoard?: ReactNode;
+  paneCues?: FamilyPaneCue[];
 }) {
   const unassigned = needsAssignmentRows(props.dashboard);
 
@@ -254,6 +262,34 @@ export function DisplayOverview(props: {
         </div>
       ) : null}
 
+      {props.paneCues && props.paneCues.length > 0 ? (
+        <div className="display-pane-cues" data-testid="family-board-cues">
+          {props.paneCues.map((cue) => (
+            <div
+              key={`${cue.kind}-${cue.membershipId}`}
+              className="display-pane-cue"
+              data-testid={`family-overview-${cue.kind}-${cue.membershipId}`}
+            >
+              <span
+                className="status-pill"
+                data-kind={cue.kind === "error" ? "error" : "pending"}
+                role="status"
+              >
+                {cue.message}
+              </span>
+              <button
+                type="button"
+                className="display-work-row family-board-hit"
+                data-testid={`family-overview-return-${cue.membershipId}`}
+                onClick={() => props.onOrganizationChange("by-person")}
+              >
+                Return to {cue.displayName}
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       <div className="display-org-toggle" role="group" aria-label="Organization">
         <button
           type="button"
@@ -289,7 +325,15 @@ export function DisplayOverview(props: {
         </p>
       ) : null}
 
-      {props.organization === "by-person" ? (
+      {props.personBoard ? (
+        <div
+          className="family-board-host"
+          hidden={props.organization !== "by-person"}
+          inert={props.organization !== "by-person" ? true : undefined}
+        >
+          {props.personBoard}
+        </div>
+      ) : props.organization === "by-person" ? (
         <>
           {unassigned.length > 0 ? (
             <div className="display-needs-assignment" data-testid="display-needs-assignment">
@@ -365,13 +409,14 @@ export function DisplayOverview(props: {
             })}
           </ul>
         </>
-      ) : (
+      ) : null}
+      {props.organization === "by-work" ? (
         <DisplayByWork
           dashboard={props.dashboard}
           onOpenResponsibility={props.onOpenResponsibility}
           onOpenRoutine={props.onOpenRoutine}
         />
-      )}
+      ) : null}
     </section>
   );
 }

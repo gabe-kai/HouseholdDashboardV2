@@ -249,24 +249,32 @@ test.describe("P0-007C-3B personal wall promotion", () => {
       if (heldCount === 0) {
         heldCount += 1;
         await olderGate;
-        const response = await route.fetch();
-        const json = (await response.json()) as Record<string, unknown>;
-        json.promotedPersonalTasks = [
-          {
-            id: "00000000-0000-4000-8000-000000000099",
-            title,
-            ownerMembershipId: AVERY_ID,
-            ownerDisplayName: "Avery",
-          },
-        ];
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify(json),
-        });
+        try {
+          const response = await route.fetch();
+          const json = (await response.json()) as Record<string, unknown>;
+          json.promotedPersonalTasks = [
+            {
+              id: "00000000-0000-4000-8000-000000000099",
+              title,
+              ownerMembershipId: AVERY_ID,
+              ownerDisplayName: "Avery",
+            },
+          ];
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify(json),
+          });
+        } catch {
+          // Request may be disposed after unroute / test teardown.
+        }
         return;
       }
-      await route.continue();
+      try {
+        await route.continue();
+      } catch {
+        // Request may be disposed after unroute / test teardown.
+      }
     });
 
     const row = page.locator(".activity-entry").filter({ hasText: title });
@@ -299,6 +307,7 @@ test.describe("P0-007C-3B personal wall promotion", () => {
       .toBeTruthy();
 
     releaseOlder?.();
+    await wallB.unrouteAll({ behavior: "ignoreErrors" }).catch(() => undefined);
     await wallB.waitForTimeout(500);
     await expect
       .poll(

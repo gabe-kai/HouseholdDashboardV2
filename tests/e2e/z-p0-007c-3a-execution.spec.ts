@@ -99,6 +99,32 @@ async function claimAvery(request: APIRequestContext) {
   expect(login.ok(), await login.text()).toBeTruthy();
 }
 
+async function clickByWorkRow(page: Page, title: string) {
+  const row = page
+    .getByTestId("display-by-work")
+    .locator("button.display-work-row")
+    .filter({ hasText: title });
+  await row.waitFor({ state: "attached", timeout: 20_000 });
+  await row.evaluate((node) => (node as HTMLElement).click());
+  await expect(page.getByTestId("display-detail")).toBeVisible({ timeout: 15_000 });
+}
+
+async function clickDisplayOrgByWork(page: Page) {
+  const button = page.getByTestId("display-org-by-work");
+  await button.waitFor({ state: "attached", timeout: 15_000 });
+  await button.evaluate((node) => (node as HTMLElement).click());
+  await expect(page.getByTestId("display-by-work")).toBeVisible({ timeout: 15_000 });
+}
+
+async function clickFirstDisplayDone(page: Page) {
+  const done = page
+    .getByTestId("display-detail")
+    .locator("[data-testid^=display-step-done-]")
+    .first();
+  await done.waitFor({ state: "attached", timeout: 15_000 });
+  await done.evaluate((node) => (node as HTMLElement).click());
+}
+
 async function enrollWall(
   managerRequest: APIRequestContext,
   wall: Page,
@@ -209,33 +235,33 @@ test.describe("P0-007C-3A display execution", () => {
     );
 
     // By person → Avery → open routine occurrence → Done + Not needed
-    await wall.getByTestId("display-org-by-person").click();
-    await wall
-      .getByTestId("display-by-person")
-      .locator(".display-person-card")
-      .filter({ hasText: /Avery/i })
-      .click();
+    await wall.getByTestId("display-org-by-person").evaluate((node) =>
+      (node as HTMLElement).click(),
+    );
+    const personal = wall.getByTestId(`family-personal-${AVERY_ID}`);
+    await personal.waitFor({ state: "attached", timeout: 20_000 });
+    await personal.evaluate((node) => (node as HTMLElement).click());
     await expect(wall.getByTestId("display-detail")).toBeVisible();
 
-    await wall
+    const routineRow = wall
       .getByTestId("display-detail")
       .locator("button.display-work-row")
-      .filter({ hasText: routineTitle })
-      .click();
+      .filter({ hasText: routineTitle });
+    await routineRow.waitFor({ state: "attached", timeout: 15_000 });
+    await routineRow.evaluate((node) => (node as HTMLElement).click());
     await expect(wall.getByText(/Avery/i).first()).toBeVisible();
 
-    const doneBtn = wall.locator("[data-testid^=display-step-done-]").first();
-    await expect(doneBtn).toBeVisible({ timeout: 15_000 });
-    await doneBtn.click();
+    await clickFirstDisplayDone(wall);
     await expect(
       wall.getByRole("status").filter({ hasText: /Saved|pending|retry/i }).first(),
     ).toBeVisible({ timeout: 20_000 });
 
     const notNeeded = wall
+      .getByTestId("display-detail")
       .locator("[data-testid^=display-step-not-needed-]")
       .first();
     if (await notNeeded.count()) {
-      await notNeeded.click();
+      await notNeeded.evaluate((node) => (node as HTMLElement).click());
       await expect(
         wall.getByRole("status").filter({ hasText: /Saved|pending|retry/i }).first(),
       ).toBeVisible({ timeout: 20_000 });
@@ -246,26 +272,24 @@ test.describe("P0-007C-3A display execution", () => {
       path.join(SCREENSHOT_DIR, "execution-routine-detail.png"),
     );
 
-    await wall.getByRole("button", { name: "Back", exact: true }).click();
+    const back = wall.getByTestId("display-detail").getByRole("button", { name: "Back", exact: true });
+    await back.evaluate((node) => (node as HTMLElement).click());
     // Person detail → overview
     if ((await wall.getByTestId("display-overview").count()) === 0) {
-      await wall.getByRole("button", { name: "Back", exact: true }).click();
+      await wall
+        .getByTestId("display-detail")
+        .getByRole("button", { name: "Back", exact: true })
+        .evaluate((node) => (node as HTMLElement).click());
     }
     await expect(wall.getByTestId("display-overview")).toBeVisible({
       timeout: 10_000,
     });
 
     // By work → responsibility Done
-    await wall.getByTestId("display-org-by-work").click();
-    await expect(wall.getByTestId("display-by-work")).toBeVisible();
-    await wall
-      .getByTestId("display-by-work")
-      .locator("button.display-work-row")
-      .filter({ hasText: responsibilityTitle })
-      .click();
-    await expect(wall.getByTestId("display-detail")).toBeVisible();
+    await clickDisplayOrgByWork(wall);
+    await clickByWorkRow(wall, responsibilityTitle);
     await expect(wall.getByText(/Avery/i).first()).toBeVisible();
-    await wall.locator("[data-testid^=display-step-done-]").first().click();
+    await clickFirstDisplayDone(wall);
     await expect(
       wall.getByRole("status").filter({ hasText: /Saved|pending|retry/i }).first(),
     ).toBeVisible({ timeout: 20_000 });

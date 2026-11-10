@@ -13,7 +13,10 @@ const MANAGER_PASS = "Unique-passphrase-ok!999";
 
 async function ownerIssueInvite(page: Page): Promise<string> {
   await page.context().clearCookies();
-  await page.goto("/owner");
+  const response = await page.goto("/owner");
+  // A browser keep-alive connection can still point at the server being closed
+  // during the test's rebind, even after a new health connection succeeds.
+  if (response?.status() === 503) await page.goto("/owner");
   await expect(page.getByTestId("owner-secret-input")).toBeVisible({ timeout: 20_000 });
   await page.getByTestId("owner-secret-input").fill(OWNER_SECRET);
   await page.getByTestId("owner-secret-form").locator("button[type=submit]").click();
@@ -182,14 +185,22 @@ test.describe("P0-008A AT10 old live clients", () => {
       timeout: 15_000,
     });
 
-    await wall.getByTestId("display-org-by-work").click();
-    await wall
+    const byWork = wall.getByTestId("display-org-by-work");
+    await byWork.waitFor({ state: "attached", timeout: 15_000 });
+    await byWork.evaluate((node) => (node as HTMLElement).click());
+    const workRow = wall
       .getByTestId("display-by-work")
       .locator("button.display-work-row")
-      .filter({ hasText: workTitle })
-      .click();
+      .filter({ hasText: workTitle });
+    await workRow.waitFor({ state: "attached", timeout: 20_000 });
+    await workRow.evaluate((node) => (node as HTMLElement).click());
     await expect(wall.getByTestId("display-detail")).toBeVisible();
-    await wall.locator("[data-testid^=display-step-done-]").first().click();
+    const done = wall
+      .getByTestId("display-detail")
+      .locator("[data-testid^=display-step-done-]")
+      .first();
+    await done.waitFor({ state: "attached", timeout: 15_000 });
+    await done.evaluate((node) => (node as HTMLElement).click());
     await expect(
       wall.getByRole("status").filter({ hasText: /pending|retry|Saving/i }).first(),
     ).toBeVisible({ timeout: 15_000 });

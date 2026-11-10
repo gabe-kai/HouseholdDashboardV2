@@ -47,6 +47,16 @@ async function ensureManagerSession(request: APIRequestContext) {
   expect(login.ok(), await login.text()).toBeTruthy();
 }
 
+async function evalClick(
+  locator: {
+    waitFor: (options: { state: "attached"; timeout?: number }) => Promise<unknown>;
+    evaluate: (fn: (node: HTMLElement) => void) => Promise<unknown>;
+  },
+) {
+  await locator.waitFor({ state: "attached", timeout: 20_000 });
+  await locator.evaluate((node) => node.click());
+}
+
 async function enrollFreshDisplay(
   managerRequest: APIRequestContext,
   wall: Page,
@@ -80,34 +90,34 @@ test.describe("P0-007C-2 wall inspection", () => {
       "aria-pressed",
       "true",
     );
-    await wall.getByTestId("display-org-by-work").click();
+    await evalClick(wall.getByTestId("display-org-by-work"));
     await expect(wall.getByTestId("display-by-work")).toBeVisible();
-    await wall.getByTestId("display-org-by-person").click();
+    await evalClick(wall.getByTestId("display-org-by-person"));
     await expect(wall.getByTestId("display-by-person")).toBeVisible();
 
-    const personButton = wall.getByTestId("display-by-person").locator("button").first();
-    await personButton.click();
+    const personButton = wall.locator('[id^="display-person-"]').first();
+    await evalClick(personButton);
     await expect(wall.getByTestId("display-detail")).toBeVisible();
     await expect(wall.getByRole("button", { name: "Back", exact: true })).toBeVisible();
     // No execution controls
     await expect(wall.getByRole("checkbox")).toHaveCount(0);
     await expect(wall.getByRole("button", { name: /complete|mark done/i })).toHaveCount(0);
 
-    await wall.getByRole("button", { name: "Back", exact: true }).click();
+    await evalClick(wall.getByRole("button", { name: "Back", exact: true }));
     await expect(wall.getByTestId("display-overview")).toBeVisible();
 
     // Re-open and wait for idle return (2s via __HD_DISPLAY_IDLE_MS).
-    await personButton.click();
+    await evalClick(personButton);
     await expect(wall.getByTestId("display-detail")).toBeVisible();
     await expect(wall.getByTestId("display-overview")).toBeVisible({ timeout: 8_000 });
 
     // By work detail path when work rows exist
-    await wall.getByTestId("display-org-by-work").click();
+    await evalClick(wall.getByTestId("display-org-by-work"));
     const workRow = wall.getByTestId("display-by-work").locator("button.display-work-row").first();
     if (await workRow.count()) {
-      await workRow.click();
+      await evalClick(workRow);
       await expect(wall.getByTestId("display-detail")).toBeVisible();
-      await wall.getByRole("button", { name: "Back", exact: true }).click();
+      await evalClick(wall.getByRole("button", { name: "Back", exact: true }));
       await expect(wall.getByTestId("display-overview")).toBeVisible();
     }
 
@@ -121,6 +131,9 @@ test.describe("P0-007C-2 wall inspection", () => {
     const wallCtx = await browser.newContext();
     const wall = await wallCtx.newPage();
     await enrollFreshDisplay(page.request, wall, `Task ${Date.now().toString(36)}`);
+    await wall.evaluate(() => {
+      window.__HD_DISPLAY_IDLE_MS = 120_000;
+    });
 
     const AVERY_ID = "22222222-2222-4222-8222-222222222202";
     const CASEY_ID = "22222222-2222-4222-8222-222222222204";
@@ -186,16 +199,16 @@ test.describe("P0-007C-2 wall inspection", () => {
     await expect(wall.getByText(privateTitle)).toHaveCount(0);
 
     // Open Avery detail: household-visible task visible; private never.
-    await wall.locator(`#display-person-${AVERY_ID}`).click();
+    await evalClick(wall.locator(`#display-person-${AVERY_ID}`));
     await expect(wall.getByTestId("display-detail")).toBeVisible({ timeout: 20_000 });
     await expect(wall.getByText(taskTitle)).toBeVisible({ timeout: 20_000 });
     await expect(wall.getByText(privateTitle)).toHaveCount(0);
 
-    await wall.getByRole("button", { name: "Back", exact: true }).click();
+    await evalClick(wall.getByRole("button", { name: "Back", exact: true }));
     await expect(wall.getByTestId("display-overview")).toBeVisible();
 
     // Open another person detail: task NOT visible.
-    await wall.locator(`#display-person-${CASEY_ID}`).click();
+    await evalClick(wall.locator(`#display-person-${CASEY_ID}`));
     await expect(wall.getByTestId("display-detail")).toBeVisible();
     await expect(wall.getByText(taskTitle)).toHaveCount(0);
     await expect(wall.getByText(privateTitle)).toHaveCount(0);

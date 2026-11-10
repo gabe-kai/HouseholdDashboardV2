@@ -9,12 +9,16 @@ import { defineConfig, devices } from "@playwright/test";
  */
 const chromiumPort = Number(process.env.E2E_CHROMIUM_PORT ?? 8790);
 const chromium008aPort = Number(process.env.E2E_CHROMIUM_008A_PORT ?? 8792);
+const chromium009bPort = Number(process.env.E2E_CHROMIUM_009B_PORT ?? 8794);
 const webkitPort = Number(process.env.E2E_WEBKIT_PORT ?? 8791);
 const webkit008aPort = Number(process.env.E2E_WEBKIT_008A_PORT ?? 8793);
+const webkit009bPort = Number(process.env.E2E_WEBKIT_009B_PORT ?? 8795);
 const chromiumURL = `http://127.0.0.1:${chromiumPort}`;
 const chromium008aURL = `http://127.0.0.1:${chromium008aPort}`;
+const chromium009bURL = `http://127.0.0.1:${chromium009bPort}`;
 const webkitURL = `http://127.0.0.1:${webkitPort}`;
 const webkit008aURL = `http://127.0.0.1:${webkit008aPort}`;
+const webkit009bURL = `http://127.0.0.1:${webkit009bPort}`;
 
 const E2E_008A_OWNER_SECRET =
   "e2e-installation-owner-secret-with-enough-entropy-0123456789ab";
@@ -49,6 +53,7 @@ export default defineConfig({
     "**/z-p0-008d-vite-deeplink.spec.ts",
     "**/z-p0-009a-vite-deeplink.spec.ts",
     "**/z-p0-009a-proof-vite.spec.ts",
+    "**/z-p0-009b-vite-deeplink.spec.ts",
   ],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
@@ -95,6 +100,17 @@ export default defineConfig({
       },
     },
     {
+      command: process.env.E2E_SKIP_BUILD
+        ? `npx tsx tests/e2e/start-server.ts`
+        : `npm run build && npx tsx tests/e2e/start-server.ts`,
+      url: `${chromium009bURL}/api/v1/health`,
+      reuseExistingServer: false,
+      timeout: 180_000,
+      stdout: "pipe",
+      stderr: "pipe",
+      env: serverEnv(chromium009bPort, "runtime/e2e-chromium-009b.sqlite", chromium009bURL),
+    },
+    {
       command: `npx tsx tests/e2e/start-server.ts`,
       url: `${webkitURL}/api/v1/health`,
       reuseExistingServer: false,
@@ -121,6 +137,15 @@ export default defineConfig({
         INSTALLATION_CONTROL_PATH: "runtime/e2e-webkit-008a-control.sqlite",
       },
     },
+    {
+      command: `npx tsx tests/e2e/start-server.ts`,
+      url: `${webkit009bURL}/api/v1/health`,
+      reuseExistingServer: false,
+      timeout: 180_000,
+      stdout: "pipe",
+      stderr: "pipe",
+      env: serverEnv(webkit009bPort, "runtime/e2e-webkit-009b.sqlite", webkit009bURL),
+    },
   ],
   projects: [
     {
@@ -132,6 +157,7 @@ export default defineConfig({
         "**/z-p0-008d-*.spec.ts",
         "**/z-p0-008e-setup.spec.ts",
         "**/z-p0-009a-*.spec.ts",
+        "**/z-p0-009b-*.spec.ts",
       ],
       use: { ...devices["Pixel 7"], baseURL: chromiumURL },
     },
@@ -207,6 +233,7 @@ export default defineConfig({
         "**/z-p0-008d-*.spec.ts",
         "**/z-p0-008e-setup.spec.ts",
         "**/z-p0-009a-*.spec.ts",
+        "**/z-p0-009b-*.spec.ts",
       ],
       use: { ...devices["iPhone 13"], baseURL: webkitURL },
     },
@@ -217,6 +244,29 @@ export default defineConfig({
         ...devices["Desktop Chrome"],
         viewport: { width: 1280, height: 800 },
         baseURL: chromiumURL,
+      },
+    },
+    {
+      name: "chromium-009b",
+      testMatch: [
+        "**/z-p0-009b-family-wall.spec.ts",
+        "**/z-p0-009b-recovery.spec.ts",
+        "**/z-p0-009b-preview.spec.ts",
+      ],
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1280, height: 800 },
+        baseURL: chromium009bURL,
+      },
+    },
+    {
+      name: "chromium-009b-display",
+      testMatch: ["**/z-p0-009b-family-wall.spec.ts"],
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 3840, height: 2160 },
+        deviceScaleFactor: 1,
+        baseURL: chromium009bURL,
       },
     },
     {
@@ -239,6 +289,19 @@ export default defineConfig({
       ],
       testIgnore: ["**/z-p0-008d-vite-deeplink.spec.ts"],
       use: { ...devices["iPhone 13"], baseURL: webkit008aURL },
+    },
+    {
+      name: "webkit-009b",
+      testMatch: [
+        "**/z-p0-009b-family-wall.spec.ts",
+        "**/z-p0-009b-recovery.spec.ts",
+        "**/z-p0-009b-preview.spec.ts",
+      ],
+      use: {
+        ...devices["Desktop Safari"],
+        viewport: { width: 1280, height: 800 },
+        baseURL: webkit009bURL,
+      },
     },
   ],
 });

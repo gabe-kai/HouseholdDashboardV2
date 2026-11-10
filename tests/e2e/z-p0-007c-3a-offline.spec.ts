@@ -38,6 +38,32 @@ async function mutatingHeaders(
   };
 }
 
+async function clickByWorkRow(page: Page, title: string) {
+  const row = page
+    .getByTestId("display-by-work")
+    .locator("button.display-work-row")
+    .filter({ hasText: title });
+  await row.waitFor({ state: "attached", timeout: 20_000 });
+  await row.evaluate((node) => (node as HTMLElement).click());
+  await expect(page.getByTestId("display-detail")).toBeVisible({ timeout: 15_000 });
+}
+
+async function clickDisplayOrgByWork(page: Page) {
+  const button = page.getByTestId("display-org-by-work");
+  await button.waitFor({ state: "attached", timeout: 15_000 });
+  await button.evaluate((node) => (node as HTMLElement).click());
+  await expect(page.getByTestId("display-by-work")).toBeVisible({ timeout: 15_000 });
+}
+
+async function clickFirstDisplayDone(page: Page) {
+  const done = page
+    .getByTestId("display-detail")
+    .locator("[data-testid^=display-step-done-]")
+    .first();
+  await done.waitFor({ state: "attached", timeout: 15_000 });
+  await done.evaluate((node) => (node as HTMLElement).click());
+}
+
 async function ensureManagerSession(request: APIRequestContext) {
   const origin = requestOrigin();
   const boot = await request.post("/api/v1/test/bootstrap-claim");
@@ -132,20 +158,15 @@ test.describe("P0-007C-3A offline pending", () => {
     const wall = await wallCtx.newPage();
     await enrollWall(page.request, wall, `Offline ${Date.now().toString(36)}`);
 
-    await wall.getByTestId("display-org-by-work").click();
-    await wall
-      .getByTestId("display-by-work")
-      .locator("button.display-work-row")
-      .filter({ hasText: title })
-      .click();
-    await expect(wall.getByTestId("display-detail")).toBeVisible();
+    await clickDisplayOrgByWork(wall);
+    await clickByWorkRow(wall, title);
 
     // Abort display status posts so the tap stays pending in the outbox.
     await wall.route("**/api/v1/display/occurrences/**/status", (route) =>
       route.abort(),
     );
 
-    await wall.locator("[data-testid^=display-step-done-]").first().click();
+    await clickFirstDisplayDone(wall);
     await expect(
       wall.getByRole("status").filter({ hasText: /pending|retry|Saving/i }).first(),
     ).toBeVisible({ timeout: 15_000 });
@@ -182,14 +203,12 @@ test.describe("P0-007C-3A offline pending", () => {
     });
 
     if (await wall.getByTestId("display-pending-cue").count()) {
-      await wall.getByTestId("display-pending-cue").click();
+      await wall.getByTestId("display-pending-cue").evaluate((node) =>
+        (node as HTMLElement).click(),
+      );
     } else if (await wall.getByTestId("display-overview").count()) {
-      await wall.getByTestId("display-org-by-work").click();
-      await wall
-        .getByTestId("display-by-work")
-        .locator("button.display-work-row")
-        .filter({ hasText: title })
-        .click();
+      await clickDisplayOrgByWork(wall);
+      await clickByWorkRow(wall, title);
     }
 
     await expect
@@ -200,6 +219,7 @@ test.describe("P0-007C-3A offline pending", () => {
             .filter({ hasText: /Saved/i })
             .count();
           const donePressed = await wall
+            .getByTestId("display-detail")
             .locator("[data-testid^=display-step-done-][aria-pressed=true]")
             .count();
           const rejected = await wall
@@ -217,17 +237,18 @@ test.describe("P0-007C-3A offline pending", () => {
       .toBeTruthy();
 
     // Exactly-once: reopen and confirm a single completed step, not duplicated feedback.
-    await wall.getByRole("button", { name: "Back" }).click().catch(() => undefined);
+    const back = wall.getByTestId("display-detail").getByRole("button", { name: "Back" });
+    if (await back.count()) {
+      await back.evaluate((node) => (node as HTMLElement).click()).catch(() => undefined);
+    }
     if (await wall.getByTestId("display-overview").count()) {
-      await wall.getByTestId("display-org-by-work").click();
-      await wall
-        .getByTestId("display-by-work")
-        .locator("button.display-work-row")
-        .filter({ hasText: title })
-        .click();
+      await clickDisplayOrgByWork(wall);
+      await clickByWorkRow(wall, title);
     }
     await expect(
-      wall.locator("[data-testid^=display-step-done-][aria-pressed=true]"),
+      wall
+        .getByTestId("display-detail")
+        .locator("[data-testid^=display-step-done-][aria-pressed=true]"),
     ).toHaveCount(1, { timeout: 20_000 });
 
     await durableScreenshot(

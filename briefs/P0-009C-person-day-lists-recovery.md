@@ -1,7 +1,7 @@
 # BRIEF P0-009C — Recover Each Person’s Lists on the Wall
 
 **Revision:** 1
-**Status:** IN REVIEW
+**Status:** FIX REQUIRED
 
 **Product input:** `PRODUCT.md` → Immediate wall follow-up, 2026-11-10. The approved follow-up is committed on the brief branch at `82144ce`; unrelated Product edits remain outside the planning baseline.
 **Inspected baseline:** `main` `a155169`, P0-009B r2 merged via PR #31 and reported deployed.
@@ -22,7 +22,7 @@ From each person's pane, a clearly named action such as **All my lists** opens t
 ## Project card
 
 **Card title:** Find all my lists on the family wall
-**Suggested column:** Up Next
+**Suggested column:** In Progress
 **Player-facing goal:** Find and open any of my routines or chores on the wall.
 **Done when:** A person can reach and use their named lists, including finished and later work, from their pane and its expanded view.
 **Tracking relationship:** Contributes to the family-wall outcome; visual timeline acceptance remains separate.
@@ -90,6 +90,10 @@ D-041–D-049, D-051, D-054, D-057–D-061 remain active. Product's newer presen
 **Reviewed revision:** 1
 **Engineering readiness at review:** BLOCKER solely because the approved Product direction was uncommitted; see `reports/P0-009C-r1-engineering-readiness.md`. No other material blocker or question was identified.
 **Architecture disposition:** ACCEPT / PROCEED. The cited Product prerequisite is resolved by `82144ce` on this brief branch. Engineering should verify the baseline, record its final readiness disposition, and implement r1 without another Architecture handoff unless a new material issue arises. The behavioral contract is unchanged.
+
+## Technical acceptance
+
+Architecture reviewed implementation `3611a31`: **FIX REQUIRED**, unchanged r1. See `reports/P0-009C-r1-architecture-review.md`. AT2/AT3 have sufficient combined evidence; close changed-route AT8 evidence and final exact PR/RC gates before acceptance. Product evaluation and the separate timeline design remain pending.
 
 ## Revision history
 

@@ -93,7 +93,7 @@ D-041–D-049, D-051, D-054, D-057–D-061 remain active. Product's newer presen
 
 ## Technical acceptance
 
-Architecture reviewed implementation `3611a31`: **FIX REQUIRED**, unchanged r1. See `reports/P0-009C-r1-architecture-review.md`. AT2/AT3 have sufficient combined evidence; close changed-route AT8 evidence and final exact PR/RC gates before acceptance. Product evaluation and the separate timeline design remain pending.
+Architecture reviewed implementation `3611a31`: **FIX REQUIRED**, unchanged r1. See `reports/P0-009C-r1-architecture-review.md`. Re-review at `d472e88` closes AT1–AT9, including the changed-route AT8 evidence. AT10 remains open: diagnose the departure-notice gate failure and pass final exact PR/RC gates before acceptance. Product evaluation and the separate timeline design remain pending.
 
 ## Revision history
 

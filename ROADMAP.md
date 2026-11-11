@@ -100,7 +100,7 @@ Both C-3 slices contribute to **Act at the shared display without losing trust**
 
 ### CURRENT
 
-- **P0-009C r1 — Find all my lists on the family wall:** urgent recovery implemented at `3611a31`; Architecture FIX REQUIRED is limited to changed-route AT8 evidence and final PR/RC gates. Restore an obvious per-person path to all named current-day recurring lists and a useful expanded experience on wall and preview. P0-009B is technically accepted and integrated at `a155169`, but its presentation was rejected; functional Product acceptance remains pending.
+- **P0-009C r1 — Find all my lists on the family wall:** urgent recovery implemented at `3611a31`; correction `d472e88` closes AT1–AT9; Architecture FIX REQUIRED remains only for AT10 gate diagnosis and final PR/RC passes. Restore an obvious per-person path to all named current-day recurring lists and a useful expanded experience on wall and preview. P0-009B is technically accepted and integrated at `a155169`, but its presentation was rejected; functional Product acceptance remains pending.
 - **P0-009A r2 — Preview a display and judge the family board:** technically accepted and integrated through PR #30 at `14af09e`. On 2026-10-28 the Project Lead accepts the dashboard preview as good to proceed, with further refinement later. No specific viewport/hardware result is claimed. See `reports/P0-009A-r2-architecture-review.md`.
 
 ### LIKELY NEXT

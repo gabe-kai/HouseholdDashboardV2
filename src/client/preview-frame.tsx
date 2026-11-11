@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useState } from "react";
+import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { StepStatus } from "../shared/schemas";
 import type { DisplayOccurrenceDetail } from "./display-api";
@@ -39,6 +39,18 @@ function PreviewFrameApp() {
     stale: false,
     detailUnavailable: false,
   });
+  const previousDetail = useRef<DisplayDetailState | null>(null);
+  const focusAfterLoad = useRef<string | null>(null);
+  useEffect(() => {
+    const previous = previousDetail.current;
+    if (previous && !state.detail) focusAfterLoad.current = previous.originKey;
+    if (previous?.kind === "occurrence" && state.detail?.kind === "person") focusAfterLoad.current = previous.originKey;
+    previousDetail.current = state.detail;
+    if (focusAfterLoad.current && (!state.detail || state.person)) {
+      const target = document.getElementById(focusAfterLoad.current);
+      if (target) { target.focus(); focusAfterLoad.current = null; }
+    }
+  }, [state.detail, state.person]);
 
   useEffect(() => {
     function onMessage(event: MessageEvent) {
@@ -80,7 +92,7 @@ function PreviewFrameApp() {
       outbox={[]}
       savedFlashByStep={{}}
       canAct={false}
-      loading={state.loading}
+      loading={state.loading || Boolean(detail && !state.person && !state.occurrence && !state.detailUnavailable)}
       stale={state.stale}
       pendingCue={null}
       retiredNotices={[]}
@@ -101,6 +113,10 @@ function PreviewFrameApp() {
       }
       onOpenPendingCue={() => undefined}
       onBack={() => postNav({ type: "hd-preview-back" })}
+      onRetry={() => {
+        if (detail?.kind === "person") postNav({ type: "hd-preview-open-person", membershipId: detail.membershipId, originKey: detail.originKey });
+        if (detail?.kind === "occurrence") postNav({ type: "hd-preview-open-occurrence", occurrenceId: detail.occurrenceId, originKey: detail.originKey });
+      }}
       onStepChange={(
         _occurrence: DisplayOccurrenceDetail,
         _stepId: string,
@@ -135,6 +151,7 @@ function PreviewFrameApp() {
           outbox={[]}
           savedFlashByStep={{}}
           canAct={false}
+          active={!detail && state.organization === "by-person"}
           idleMs={90_000}
           nowMs={() =>
             typeof window.__HD_PREVIEW_NOW_MS === "number"

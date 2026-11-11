@@ -274,13 +274,9 @@ test.describe("P0-007C-3A display execution", () => {
 
     const back = wall.getByTestId("display-detail").getByRole("button", { name: "Back", exact: true });
     await back.evaluate((node) => (node as HTMLElement).click());
-    // Person detail → overview
-    if ((await wall.getByTestId("display-overview").count()) === 0) {
-      await wall
-        .getByTestId("display-detail")
-        .getByRole("button", { name: "Back", exact: true })
-        .evaluate((node) => (node as HTMLElement).click());
-    }
+    // Checklist → person's lists → overview.
+    await expect(wall.getByTestId("display-detail").getByRole("heading", { name: "Recurring work" })).toBeVisible();
+    await wall.getByTestId("display-detail").getByRole("button", { name: "Back", exact: true }).click();
     await expect(wall.getByTestId("display-overview")).toBeVisible({
       timeout: 10_000,
     });

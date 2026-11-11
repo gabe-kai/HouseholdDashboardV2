@@ -395,6 +395,7 @@ function CurrentProof(props: {
       }}
       onOpenRoutine={(aggregateKey) => props.onNavigate("routine", aggregateKey)}
       onOpenPendingCue={() => undefined}
+      onRetry={props.onRetry}
       onBack={() => {
         if (props.failDetail) props.onRetry();
         setDetailId(null);

@@ -119,6 +119,7 @@ export function DisplayAuthenticatedSurface(props: {
   onOpenRoutine: (aggregateKey: string, originKey: string) => void;
   onOpenPendingCue: (occurrenceId: string) => void;
   onBack: () => void;
+  onRetry: () => void;
   onStepChange: (
     occurrence: DisplayOccurrenceDetail,
     stepId: string,
@@ -173,13 +174,14 @@ export function DisplayAuthenticatedSurface(props: {
           canAct={props.canAct}
           loading={props.loading && !props.personDetail && !props.occurrenceDetail}
           onBack={props.onBack}
+          onRetry={props.onRetry}
           onStepChange={props.onStepChange}
           onOpenOccurrence={props.onOpenOccurrence}
           onOpenRoutinePerson={props.onOpenRoutinePerson}
           onBackToRoutine={props.onBackToRoutine}
         />
-      ) : (
-        <div className="display-overview-host">
+      ) : null}
+        <div className="display-overview-host" hidden={Boolean(props.detail)} inert={props.detail ? true : undefined}>
           <DisplayOverview
             dashboard={props.dashboard}
             organization={props.organization}
@@ -195,7 +197,6 @@ export function DisplayAuthenticatedSurface(props: {
             personBoard={props.personBoard}
           />
         </div>
-      )}
     </div>
   );
 }
@@ -565,6 +566,7 @@ export function DisplayDetailPanel(props: {
   canAct: boolean;
   loading: boolean;
   onBack: () => void;
+  onRetry: () => void;
   onStepChange: (
     occurrence: DisplayOccurrenceDetail,
     stepId: string,
@@ -593,8 +595,8 @@ export function DisplayDetailPanel(props: {
           </p>
         ) : (
           <p className="display-status" role="status" data-testid="display-detail-unavailable">
-            This person is no longer available.{" "}
-            <button type="button" className="display-back" onClick={props.onBack}>
+            This person could not be loaded.{" "}
+            <button type="button" className="display-back" onClick={props.onRetry}>
               Retry
             </button>
           </p>
@@ -624,8 +626,8 @@ export function DisplayDetailPanel(props: {
           </p>
         ) : (
           <p className="display-status" role="status" data-testid="display-detail-unavailable">
-            This checklist is no longer available.{" "}
-            <button type="button" className="display-back" onClick={props.onBack}>
+            This checklist could not be loaded.{" "}
+            <button type="button" className="display-back" onClick={props.onRetry}>
               Retry
             </button>
           </p>
@@ -808,7 +810,7 @@ function OccurrenceDetailView(props: {
                       }
                       data-testid={`display-step-open-${step.id}`}
                     >
-                      Open
+                      {step.status === "open" ? "Open" : "Reopen"}
                     </button>
                   </div>
                 ) : null}

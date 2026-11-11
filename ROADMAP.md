@@ -100,12 +100,12 @@ Both C-3 slices contribute to **Act at the shared display without losing trust**
 
 ### CURRENT
 
-- **P0-009B r2 — Actionable Person Panes on the Family Wall:** Technically **ACCEPTED** on 2026-11-09 at `436d852`; D3 and all earlier required corrections are closed. Move “Find and finish the next task on the family wall” to **Ready to Evaluate**. Project Lead publishes/merges after required CI, then evaluates the existing household on the physical wall. See `reports/P0-009B-r2-architecture-acceptance.md`; appearance and usefulness remain Product judgments.
+- **P0-009C r1 — Find all my lists on the family wall:** technically ACCEPTED on 2026-11-11 against tested `dfa62d0`; all required evidence and exact PR/RC gates passed. Ready to Evaluate; integration/deployment authorization remains pending. Restore an obvious per-person path to all named current-day recurring lists and a useful expanded experience on wall and preview. P0-009B is technically accepted and integrated at `a155169`, but its presentation was rejected; functional Product acceptance remains pending.
 - **P0-009A r2 — Preview a display and judge the family board:** technically accepted and integrated through PR #30 at `14af09e`. On 2026-10-28 the Project Lead accepts the dashboard preview as good to proceed, with further refinement later. No specific viewport/hardware result is claimed. See `reports/P0-009A-r2-architecture-review.md`.
 
 ### LIKELY NEXT
 
-- Use the P0-009B hands-on before-school checkpoint to select the next small presentation/refinement outcome, preserving Product's setup/work-editing and wall/preview visual direction. Record prompting, sibling interruptions, navigation/touch and physical readability; technical acceptance does not decide appearance or usefulness. Future live modules remain lightly scoped until this board proves useful.
+- Review `docs/p0-009-wall-timeline-design-review.md`, then produce a real comparable 1920×1080 / 3840×2160 six-person and expanded-view proof for Project Lead judgment before locking a separate single-timeline implementation brief. Keep setup/work-editing polish as a separate later candidate.
 - Keep the `/` → “view unavailable” report as a separate, unsequenced routing investigation. It is not a P0-009A dependency or acceptance gate.
 
 The shared card reaches Product Accepted only after hands-on acceptance. Coverage/release checkpoints: `reports/P0-008-architecture-sequencing.md`.

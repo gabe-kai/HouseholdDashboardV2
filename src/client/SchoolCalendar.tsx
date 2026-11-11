@@ -164,6 +164,7 @@ export function SchoolCalendarView(props: {
   const [editing, setEditing] = useState(false);
   const [draftYears, setDraftYears] = useState<YearDraft[]>([]);
   const [baselineSnapshot, setBaselineSnapshot] = useState("");
+  const [draftVersion, setDraftVersion] = useState<number | null>(null);
   const [fieldIssues, setFieldIssues] = useState<Array<{ path: string; message: string }>>(
     [],
   );
@@ -206,6 +207,7 @@ export function SchoolCalendarView(props: {
     const snapshot = draftSnapshot(years);
     setDraftYears(years);
     setBaselineSnapshot(snapshot);
+    setDraftVersion(calendar.version);
     setFieldIssues([]);
     setError(null);
     setEditing(true);
@@ -215,6 +217,7 @@ export function SchoolCalendarView(props: {
     setEditing(false);
     setDraftYears([]);
     setBaselineSnapshot("");
+    setDraftVersion(null);
     setFieldIssues([]);
     setError(null);
   }
@@ -285,7 +288,7 @@ export function SchoolCalendarView(props: {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!calendar || busy) return;
+    if (!calendar || draftVersion == null || busy) return;
     const issues = validateSchoolCalendarDraft(draftYears);
     setFieldIssues(issues);
     if (issues.length > 0) {
@@ -297,12 +300,13 @@ export function SchoolCalendarView(props: {
     try {
       const result = await persistCalendar({
         mutationId: newClientId(),
-        expectedVersion: calendar.version,
+        expectedVersion: draftVersion,
         years: draftYears.map(({ clientKey: _clientKey, ...year }) => year),
       });
       setCalendar(result.calendar);
       setEditing(false);
       setBaselineSnapshot("");
+      setDraftVersion(null);
       setDraftYears([]);
       setFieldIssues([]);
       props.onDirtyChange?.(false);
@@ -344,7 +348,7 @@ export function SchoolCalendarView(props: {
             )}
           </>
         ) : null}
-        {!loading && calendar && editing ? (
+        {calendar && editing ? (
           <form className="form-grid" onSubmit={submit}>
             {generalIssues.map((message) => (
               <p key={message} role="alert" className="form-error">

@@ -657,6 +657,9 @@ test.describe("P0-009B family wall", () => {
     await page.evaluate(() => { window.__HD_DISPLAY_NOW_MS = 2400; });
     await page.waitForTimeout(400);
     await expect(pane).toHaveClass(/enlarged/);
+    const nameBox = await pane.locator(".display-person-name").boundingBox();
+    expect(nameBox).toBeTruthy();
+    await page.mouse.move(nameBox!.x + 5, nameBox!.y + 5);
     await page.mouse.up();
     await page.evaluate(() => (document.activeElement as HTMLElement).blur());
     await page.evaluate(() => { window.__HD_DISPLAY_NOW_MS = 4000; });
@@ -699,7 +702,7 @@ test.describe("P0-009B family wall", () => {
   });
 
   test("AT4b/AT15c: wheel-browsed pane position survives enlargement and return", async ({ page, request }) => {
-    await ensureCrowdedWork(request);
+    const { stamp } = await ensureCrowdedWork(request);
     for (let index = 0; index < 5; index += 1) {
       await createAssignedRoutine(request, { title: `Jordan scroll ${index} ${Date.now()}`, memberId: JORDAN_ID, daypart: "evening", steps: [{ text: `Jordan scroll step ${index}` }] });
     }
@@ -725,6 +728,16 @@ test.describe("P0-009B family wall", () => {
     await expect(pane).toHaveClass(/enlarged/);
     await clickFamilyControl(page, `family-back-${AVERY_ID}`);
     await expect(page.getByTestId(`family-enlarge-${AVERY_ID}`)).toBeFocused();
+    await expect.poll(() => surface.evaluate((node) => node.scrollTop)).toBe(before);
+    await expect(page.getByTestId(`family-pane-${JORDAN_ID}`)).toHaveAttribute("data-section", "upcoming");
+    await expect.poll(() => siblingSurface.evaluate((node) => node.scrollTop)).toBe(siblingPosition);
+    await clickFamilyControl(page, `family-personal-${AVERY_ID}`);
+    const detail = page.getByTestId("display-detail");
+    await detail.getByRole("button", { name: new RegExp(`Morning ${stamp}`) }).click();
+    await expect(detail.getByText(`Get dressed ${stamp}`)).toBeVisible();
+    await detail.getByRole("button", { name: "Back", exact: true }).click();
+    await detail.getByRole("button", { name: "Back", exact: true }).click();
+    await expect(page.getByTestId(`family-personal-${AVERY_ID}`)).toBeFocused();
     await expect.poll(() => surface.evaluate((node) => node.scrollTop)).toBe(before);
     await expect(page.getByTestId(`family-pane-${JORDAN_ID}`)).toHaveAttribute("data-section", "upcoming");
     await expect.poll(() => siblingSurface.evaluate((node) => node.scrollTop)).toBe(siblingPosition);

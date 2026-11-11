@@ -1,0 +1,72 @@
+# Architecture review — P0-009C r1
+
+**Date:** 2026-11-10
+**Role:** Architecture
+**Reviewed implementation:** `3611a31` on `brief/p0-009c-person-day-lists-recovery`.
+**Disposition:** FIX REQUIRED — evidence closure under the unchanged r1 contract.
+
+Engineering correctly reported an incomplete handoff rather than claiming acceptance. The person/list/detail bridge, retained overview subtree, explicit Retry, read-only preview adapter, and expanded list presentation are a bounded implementation of the requested recovery. No server, schema or production-data change is included. Unrelated Product edits remain untouched.
+
+## Consolidated evidence assessment
+
+- **AT1, AT4–AT7, AT9:** retain the named evidence accepted for this review. Architecture inspected the changed navigation/authority paths, the new C journey and inherited return test, and the 1920 expanded/checklist captures. Physical usability and Product acceptance are separate; screenshots do not accept the final timeline design.
+- **AT2:** sufficient scope evidence. Three named routines plus a take-turns chore, unique person-list rows, completed state and later dayparts satisfy this current-day navigation slice. A controlled clock proving future timing is not an additional requirement; later means current-day later work.
+- **AT3:** sufficient combined evidence. The new C UI journey inspects ordered steps and selected-occurrence Done/Reopen/Not needed. Reuse `p0-009b-family-wall.test.ts` AT5a and AT5b/AT7a for shared command/replay and `p0-007c-3a.test.ts` populated-upgrade actor/receipt assertions for display provenance. The brief does not require every UI action to independently query storage. Add that exact provenance citation to the Build Report; no duplicate tests are requested.
+- **AT8:** incomplete changed-route evidence. The held-action test verifies the old response does not replace the second checklist, but does not assert the original pending cue remains reachable or that the queue settles without duplicate application. The reused remote/reconnect scenario covers the board rather than explicitly demonstrating live person-list/detail convergence after this navigation change. Separate named tests and inherited exact assertions may be combined; a single large scenario is not required.
+- **AT10:** not passed. Exact PR/RC failures remain failures despite isolated passes. Their causes are unknown; do not label them harmless flakes or infer a product regression from them without investigation. Vite selection still needs to execute.
+
+## Required closure (same r1)
+
+1. **AT8:** strengthen the existing held-action journey to demonstrate an understandable reachable pending indication for the original work during list/detail navigation, then settlement with the original result, no lingering pending item and no replacement of the second selection. Existing exact receipt/idempotency tests may establish single application; name them. Prove a remote authorized change updates an open person list or checklist without reload through the new route, with selection and sibling position preserved. Reuse existing stale-response evidence where it establishes the exact invariant. Fix implementation only where these assertions reveal a defect.
+2. **AT10:** investigate the failed native setup, 008A reset/outbox notice, and WebKit school-calendar cases using the existing failure artifacts. Apply only justified, bounded product/test corrections; preserve the protected assertions and do not add blanket retries, skips, or timeout increases to obtain green. Once focused checks pass, run exact `npm run validate:pr` and `npm run validate:rc` through their Vite stages on the final tree. Report any continuing diagnosed blocker with its evidence instead of repeated undiagnosed full-suite retries.
+3. **Build Report:** record the accepted evidence interpretation for AT2/AT3, the named AT8 closure and exact gate outcomes, including remaining skips and tested commit/tree. No brief revision or fresh readiness review is required.
+
+Architecture independently ran `npm.cmd test -- --run tests/integration/p0-007c-3a.test.ts tests/integration/p0-009b-family-wall.test.ts`: **26/26 PASS**, exit 0. Full gates and new browser checks were not rerun by Architecture; Engineering's reported failures remain the gate state.
+
+**Next owner:** Engineering. Card **Find all my lists on the family wall** remains **In Progress**. No merge, publish, deploy, household reset, rollback or re-enrollment is authorized. The larger timeline proof remains separate.
+
+## Re-review at d472e88
+
+**Disposition:** FIX REQUIRED limited to AT10. AT1–AT9 are closed for this technical review; do not reopen them absent new contrary evidence. Architecture inspected the AT8 additions: pending state and re-entry remain observable, global saving clears on settlement, the original step is completed, the second selection survives, and a second enrolled display updates the open checklist without reload while preserving the sibling section. Engineering reports both tests passed Chromium/WebKit (4/4); Architecture did not independently rerun these browser tests.
+
+The reset epoch `Math.max` correction addresses the demonstrated pre-activation metadata race. It does not establish the cause of every earlier failure. The departure test's afterEach cleanup is appropriate containment of shared-fixture contamination, and holding the Retry error until user recovery is a reasonable deterministic test setup. Neither proves that the remaining departure notice failure is repaired.
+
+**Engineering continuation:** continue diagnosing AT14e in the existing assignment; no new readiness review, Product decision or Architecture approval is needed. Capture the actual queued mutation and its status/retry/error sequence around removal and unroute/online, relevant client connectivity/flush state and the response that should retire it. Reproduce in isolation and, if needed, with its suite predecessor/setup conditions; use bounded focused repetitions with artifacts rather than repeated full-suite attempts. Determine whether the defect is lost wake-up, unexpected server rejection/response, fixture/connectivity state or another evidenced cause; these are investigation possibilities, not asserted diagnoses. Retain the retirement notice and no-transfer assertions. Apply the smallest justified fix and regression, then run both exact final-tree gates including Vite. If it cannot be reproduced after a bounded investigation, report the attempts, improved failure diagnostics and any concrete external blocker; Architecture will decide the remaining validation path. Old native/calendar failures whose artifacts cannot establish a cause need no invented root-cause claim or speculative fixes.
+
+Current evidence: PR passed before the final two test corrections; RC failed; final-tree lint/typecheck and focused departure/Retry cases passed. AT10 remains NOT PASSED. Do not claim acceptance from those focused results. Card remains In Progress; no publication, deployment or live-data operation is authorized.
+
+## Validation direction after bounded investigation at e78aaf5
+
+Architecture inspected the diagnostics-only departure test update and Engineering's recorded investigation. Five isolated Chromium repetitions and the predecessor sequence passed with pending -> retrying -> 409 CONFLICT -> rejected and the expected notice. This does not prove the earlier failure's cause or justify a speculative production patch. The assertions and automatic cleanup remain intact.
+
+**Next step authorized:** run one exact `npm run validate:pr` and one exact `npm run validate:rc` on the final diagnostic tree, including Vite and retaining failure attachments. This is a justified final-tree validation after focused investigation, not an assertion that the prior red gate passed. AT1–AT9 remain closed; AT10 remains NOT PASSED until both commands exit 0. If a gate fails, preserve the diagnostic sequence and investigate that specific failure; do not repeatedly rerun the full suite unchanged. Engineering remains authorized to make a bounded demonstrated fix, verify it with focused regression, and rerun the required gates without seeking another routine Architecture approval. Escalate a concrete external blocker, contract change or persistent unexplained failure with artifacts. If both pass, update the Build Report with the exact tested commit/tree and send it for final acceptance. Earlier unexplained failures remain documented limitations, not fabricated root-cause claims.
+
+## RC calendar investigation after final diagnostic gates
+
+Engineering tested `380ad9b`: exact PR passed (399 unit/integration, 197 browser passes / 1 skip, 12 Vite); RC failed (399 unit/integration, 307 browser passes / 50 skips / 1 failure, Vite not reached). Departure passed in both. Report-only commit `3e24f29` records these results. AT10 remains open; AT1–AT9 remain closed.
+
+The remaining failure is inherited WebKit P0-006B AT11: after filling the calendar end date, the field displayed its saved value before the intentional remote save. Three focused repetitions passed; that does not establish cause. Architecture inspected `SchoolCalendar.tsx`: editing/dirty changes trigger the read effect, that effect sets loading, `!loading && calendar && editing` gates the whole form, and Save uses mutable `calendar.version`. The effect only sets calendar, not draftYears; do not claim a proven draft overwrite from that observation alone.
+
+Engineering should now test this specific transition deterministically: hold/release the reload around entering Edit and the clean-to-dirty transition, observe input mounting/value/focus and the draft's expected version, and retain the remote-save conflict assertion. Demonstrate whether a background read can interrupt an offered editor or change its version basis after editing starts; use request/DOM/input diagnostics if the loss is specific to WebKit date entry. Correct only a demonstrated defect within this existing protected draft behavior. Do not make the test wait away a user-visible input-loss race or remove the value/conflict checks. Focused verification then both exact final-tree gates remain authorized without another routine Architecture permission request. If a bounded controlled test cannot demonstrate the cause, return its evidence rather than speculating. No broader calendar redesign or unrelated changes are authorized.
+
+## Calendar correction and remaining Retry gate case
+
+Engineering's controlled WebKit test demonstrated that the Edit-triggered held calendar read removes the offered editor. Architecture inspected `6c58a9e`: the editor remains mounted during loading and Save uses the version captured on entry to Edit. The held-newer-version/conflict evidence supports the correction; it does not prove the historical intermittent date-loss cause. Engineering reports Chromium/WebKit focused checks passed and exact PR at `6c58a9e` passed (399 unit/integration, 198 browser passes / 1 skip, 12 Vite).
+
+RC did not pass: log records 309 browser passes / 50 skips / 1 failure after 399 unit/integration; its process exit code was not retained and Vite did not run. Remaining case is inherited WebKit R AT10a/AT10b/AT11b/AT11c, Retry at line 862: button detached and the failure snapshot shows a ready pane. Five focused repeats and the predecessor sequence passed; cause remains unproven.
+
+Architecture inspected the test: `armHeld` intercepts one response, then allows subsequent reads through; the recovery barrier is installed only after releasing the late response and observing blank. It cannot capture responses already in flight. This permits a plausible uncontrolled read between the blank assertion and real click, but does not establish which response caused the observed recovery.
+
+**Engineering continuation authorized:** control the relevant person-day responses across the entire stale/blank/Retry transition, including reads started before the recovery barrier, while retaining the deliberately old/late response and all stale-content assertions. Add a request/click witness so the recovery phase proves a real user Retry dispatch and only then releases its designated recovery response; ensure unrelated automatic reads cannot prematurely satisfy that phase. Use response/request diagnostics to distinguish successful automatic recovery from a product rendering defect. Do not force the click, use DOM dispatch in place of it, skip the assertion, or suppress legitimate production recovery. If a product defect is demonstrated, apply the smallest correction. Focused Chromium/WebKit verification then both exact final-tree PR/RC gates remain authorized without another routine handoff. Preserve logs and process exit codes. AT1–AT9 remain closed; AT10 and merge/deployment remain pending.
+
+## Final technical acceptance — 2026-11-11
+
+**Disposition: ACCEPTED — P0-009C revision 1.** Tested code/test commit `dfa62d0`; report-only follow-up `1f4919b`. Architecture inspected the final controlled Retry test, verified that the subsequent diff changes only the Build Report, and read both recorded exit codes and the gate log summaries. No implementation changes followed the passing gates.
+
+- Exact PR: exit **0**, **399** unit/integration, **198** browser passes / **1** skip, **12** Vite passes.
+- Exact RC: exit **0**, **399** unit/integration, **310** browser passes / **50** skips, **12** Vite passes.
+- Evidence: ignored `reports/_local-screenshots/p0-009c-retry-final-{pr,rc}.{log,exit}` and associated browser HTML reports. Architecture verified recorded evidence rather than repeating these full gates.
+
+AT10 is closed. AT1–AT9 retain prior closure. The final test controls the late response and unrelated reads, observes a real trusted Retry click, identifies the subsequent recovery request and verifies ready only after its release; stale-paint and sibling assertions remain. Earlier intermittent failures remain documented; successful final gates do not establish their historical root causes.
+
+**Card:** Find all my lists on the family wall → **Ready to Evaluate**. Product acceptance requires hands-on wall/preview navigation and readable expanded checklists. The larger timeline visual proof remains separate. This acceptance does not publish, merge, deploy, or authorize live-data changes. Next step is Project Lead evaluation and integration authorization; unrelated Product edits remain preserved.

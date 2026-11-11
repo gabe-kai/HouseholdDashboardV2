@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route, type WebSocket } from "@playwright/test";
+import { expect, test, type Page, type Request, type Route, type WebSocket } from "@playwright/test";
 import { wipeSeededE2eServer } from "../helpers/e2e-restart-server";
 import {
   AVERY_ID,
@@ -93,6 +93,13 @@ async function revealStep(page: Page, membershipId: string, name: string) {
 test.describe("P0-009B family wall recovery", () => {
   test.use({ viewport: { width: 1920, height: 1080 } });
 
+  test.afterEach(async ({ page }, testInfo) => {
+    if (!testInfo.title.startsWith("AT14e: departure removes")) return;
+    expect(testInfo.project.use.baseURL).toBeTruthy();
+    await page.close();
+    await wipeSeededE2eServer(testInfo.project.use.baseURL!);
+  });
+
   test("AT14e: departure removes a pending owner's pane without transferring the action", async ({ page, request, browser }, testInfo) => {
     await ensureManagerSession(request);
     const stamp = Date.now().toString(36);
@@ -136,9 +143,33 @@ test.describe("P0-009B family wall recovery", () => {
     await enrollWall(request, page, `Departure ${stamp}`);
     const patPane = page.getByTestId(`family-pane-${personId}`);
     await expect(patPane).toHaveAttribute("data-phase", "ready", { timeout: 20_000 });
+    const events: Array<Record<string, unknown>> = [];
+    const responseBodies: Array<Promise<void>> = [];
+    const isStatus = (url: string) => /\/api\/v1\/display\/occurrences\/[^/]+\/steps\/[^/]+\/status/.test(url);
+    page.on("request", (req) => {
+      if (!isStatus(req.url())) return;
+      const body = req.postDataJSON() as { mutationId?: string; status?: string } | null;
+      events.push({ at: Date.now(), event: "request", url: new URL(req.url()).pathname, mutationId: body?.mutationId, desiredStatus: body?.status });
+    });
+    page.on("requestfailed", (req) => {
+      if (isStatus(req.url())) events.push({ at: Date.now(), event: "requestfailed", error: req.failure()?.errorText });
+    });
+    page.on("response", (res) => {
+      if (isStatus(res.url())) {
+        const entry: Record<string, unknown> = { at: Date.now(), event: "response", status: res.status(), url: new URL(res.url()).pathname };
+        events.push(entry);
+        responseBodies.push(res.text().then((body) => { entry.body = body; }).catch((error: unknown) => { entry.bodyError = String(error); }));
+      }
+    });
+    const snapshot = async (phase: string) => {
+      const connectivity = await page.evaluate(() => ({ online: navigator.onLine, visibility: document.visibilityState }));
+      events.push({ at: Date.now(), phase, connectivity, outbox: await displayOutboxItems(page) });
+    };
+    try {
     await page.route("**/api/v1/display/occurrences/**/status", (route) => route.abort());
     await patPane.getByRole("button", { name: `Mark ${step} done` }).click();
     await expect(page.getByTestId(`family-pending-${personId}`)).toBeVisible();
+    await snapshot("queued");
     const peopleResponse = await request.get("/api/v1/people");
     const person = ((await peopleResponse.json()) as { people: Array<{ id: string; authorityVersion: number; version: number }> }).people.find((row) => row.id === personId);
     expect(person).toBeTruthy();
@@ -153,16 +184,21 @@ test.describe("P0-009B family wall recovery", () => {
     });
     expect(removal.ok(), await removal.text()).toBeTruthy();
     await expect(patPane).toHaveCount(0, { timeout: 20_000 });
+    await snapshot("departed_before_unroute");
     await page.unroute("**/api/v1/display/occurrences/**/status");
     await page.evaluate(() => window.dispatchEvent(new Event("online")));
+    await snapshot("online_dispatched");
     await expect(page.getByTestId("display-retired-notices")).toBeVisible({ timeout: 20_000 });
+    await snapshot("notice_visible");
     await expect.poll(async () => {
       const day = await fetchPersonDay(page, JORDAN_ID);
       return day.occurrences.find((row) => row.title === title)?.steps.find((row) => row.text === step)?.status;
     }, { timeout: 20_000 }).toBe("open");
-    expect(testInfo.project.use.baseURL).toBeTruthy();
-    await page.close();
-    await wipeSeededE2eServer(testInfo.project.use.baseURL!);
+    } finally {
+      await snapshot("final").catch((error: unknown) => events.push({ phase: "final_snapshot_failed", error: String(error) }));
+      await Promise.all(responseBodies);
+      await testInfo.attach("departure-outbox-diagnostics", { body: Buffer.from(JSON.stringify(events, null, 2)), contentType: "application/json" });
+    }
   });
 
   test("AT7a: lost first response retries the same command and flushes a sibling action", async ({ page, request }) => {
@@ -727,7 +763,13 @@ test.describe("P0-009B family wall recovery", () => {
   test("AT10a/AT10b/AT11b/AT11c: stale pane lease, old snapshot, and lost enlargement cannot paint", async ({
     page,
     request,
-  }) => {
+  }, testInfo) => {
+    const inFlight = new Set<Request>();
+    const requestStarted = new Map<Request, number>();
+    const isAveryDay = (url: string) => new URL(url).pathname.endsWith(`/api/v1/display/people/${AVERY_ID}/day`);
+    page.on("request", (req) => { if (isAveryDay(req.url())) { inFlight.add(req); requestStarted.set(req, Date.now()); } });
+    page.on("requestfinished", (req) => inFlight.delete(req));
+    page.on("requestfailed", (req) => inFlight.delete(req));
     await page.addInitScript(() => {
       window.__HD_DISPLAY_PANE_STALE_MS = 1500;
       window.__HD_DISPLAY_NOW_MS = 10_000;
@@ -806,29 +848,110 @@ test.describe("P0-009B family wall recovery", () => {
 
     await page.unroute(`**/api/v1/display/people/${AVERY_ID}/day`);
     const currentBody = await (await page.request.get(`/api/v1/display/people/${AVERY_ID}/day`)).text();
-    const heldLate = await armHeld(page, `**/api/v1/display/people/${AVERY_ID}/day`, currentBody);
+    const events: Array<{ event: string; id?: number; at: number }> = [];
+    let releaseLate = () => undefined as void;
+    let captureLate = () => undefined as void;
+    let deliveredLate = () => undefined as void;
+    let releaseRecovery = () => undefined as void;
+    let deliveredRecovery = () => undefined as void;
+    let releaseOther = () => undefined as void;
+    const lateGate = new Promise<void>((resolve) => { releaseLate = resolve; });
+    const lateCaptured = new Promise<void>((resolve) => { captureLate = resolve; });
+    const lateDelivered = new Promise<void>((resolve) => { deliveredLate = resolve; });
+    const recoveryGate = new Promise<void>((resolve) => { releaseRecovery = resolve; });
+    const recoveryDelivered = new Promise<void>((resolve) => { deliveredRecovery = resolve; });
+    const otherGate = new Promise<void>((resolve) => { releaseOther = resolve; });
+    let sequence = 0;
+    let recoveryId: number | undefined;
+    const requestIds = new Map<Request, number>();
+    let clicks = 0;
+    await page.exposeFunction("__recordFamilyRetry", (trusted: boolean) => {
+      events.push({ event: trusted ? "trusted-retry-click" : "untrusted-retry-click", at: Date.now() });
+      if (trusted) clicks += 1;
+    });
+    await page.evaluate((testId) => {
+      const originalFetch = window.fetch.bind(window);
+      (window as unknown as { __restoreRetryFetch: () => void }).__restoreRetryFetch = () => { window.fetch = originalFetch; };
+      window.fetch = (input, init) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes(`/api/v1/display/people/${testId.replace("family-retry-", "")}/day`) &&
+            (window as unknown as { __hdRetryTrusted?: boolean }).__hdRetryTrusted) {
+          const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+          headers.set("x-test-after-trusted-retry", "1");
+          return originalFetch(input, { ...init, headers });
+        }
+        return originalFetch(input, init);
+      };
+      document.addEventListener("click", (event) => {
+        const target = event.target as Element | null;
+        if (target?.closest(`[data-testid="${testId}"]`)) {
+          (window as unknown as { __hdRetryTrusted: boolean }).__hdRetryTrusted = event.isTrusted;
+          void (window as unknown as { __recordFamilyRetry: (trusted: boolean) => Promise<void> }).__recordFamilyRetry(event.isTrusted);
+        }
+      }, true);
+    }, `family-retry-${AVERY_ID}`);
+    const averyDayMatcher = (url: URL) => url.pathname.endsWith(`/api/v1/display/people/${AVERY_ID}/day`);
+    await page.route(averyDayMatcher, async (route) => {
+      const id = ++sequence;
+      requestIds.set(route.request(), id);
+      const startedAt = requestStarted.get(route.request()) ?? Date.now();
+      events.push({ event: "request", id, at: startedAt });
+      if (id === 1) {
+        captureLate();
+        await lateGate;
+        await route.fulfill({ status: 200, contentType: "application/json", body: currentBody });
+        events.push({ event: "late-delivered", id, at: Date.now() });
+        deliveredLate();
+      } else {
+        const afterTrustedRetry = route.request().headers()["x-test-after-trusted-retry"] === "1";
+        events.push({ event: afterTrustedRetry ? "marked-after-trusted-retry" : "unmarked", id, at: startedAt });
+        if (afterTrustedRetry && recoveryId == null) {
+          recoveryId = id;
+          events.push({ event: "retry-request", id, at: Date.now() });
+          await recoveryGate;
+          await route.continue();
+        } else {
+          events.push({ event: "other-held", id, at: Date.now() });
+          await otherGate;
+          await route.continue();
+        }
+      }
+    });
+    page.on("response", (response) => {
+      if (recoveryId != null && requestIds.get(response.request()) === recoveryId && response.ok()) {
+        events.push({ event: "successful-response", id: recoveryId, at: Date.now() });
+        deliveredRecovery();
+      }
+    });
+    try {
+    // Install the barrier before draining: any request that starts while the
+    // existing reads finish is already controlled by the route above.
+    await expect.poll(() => [...inFlight].filter((req) => !requestIds.has(req)).length).toBe(0);
     await page.evaluate(() => {
       document.dispatchEvent(new Event("visibilitychange"));
     });
-    await heldLate.captured;
+    await lateCaptured;
     await page.evaluate(() => {
       window.__HD_DISPLAY_NOW_MS = 13_101;
     });
-    await heldLate.release();
+    releaseLate();
+    await lateDelivered;
     await expect(page.getByTestId(`family-blank-${AVERY_ID}`)).toBeVisible();
-
-    let releaseRecovery = () => undefined as void;
-    const recoveryGate = new Promise<void>((resolve) => { releaseRecovery = resolve; });
-    const averyDayMatcher = (url: URL) => url.pathname.endsWith(`/api/v1/display/people/${AVERY_ID}/day`);
-    const holdRecovery = async (route: Route) => { await recoveryGate; await route.continue(); };
-    await page.route(averyDayMatcher, holdRecovery);
-    await page.unroute(`**/api/v1/display/people/${AVERY_ID}/day`);
     await clickFamilyControl(page, `family-retry-${AVERY_ID}`);
+    await expect.poll(() => clicks).toBe(1);
+    await expect.poll(() => recoveryId, { timeout: 10_000 }).toBeDefined();
+    await expect(page.getByTestId(`family-blank-${AVERY_ID}`)).toBeVisible();
     await page.evaluate(() => { window.__HD_DISPLAY_NOW_MS = 13_200; });
     releaseRecovery();
+    await recoveryDelivered;
     await expect(page.getByTestId(`family-pane-${AVERY_ID}`)).toHaveAttribute("data-phase", "ready", {
       timeout: 15_000,
     });
+    } finally {
+      releaseLate(); releaseRecovery(); releaseOther();
+      await page.evaluate(() => (window as unknown as { __restoreRetryFetch: () => void }).__restoreRetryFetch());
+      await testInfo.attach("stale-retry-timeline", { body: Buffer.from(JSON.stringify(events, null, 2)), contentType: "application/json" });
+    }
     await page.unrouteAll({ behavior: "wait" });
 
     const refreshedSibling = page.waitForResponse((response) =>

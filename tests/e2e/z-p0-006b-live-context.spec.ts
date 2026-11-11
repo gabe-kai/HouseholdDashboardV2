@@ -261,6 +261,62 @@ test.describe("P0-006B live context and pending recovery", () => {
     await childContext.close();
   });
 
+  test("AT11: a held calendar refresh cannot interrupt an editing draft or change its version", async ({ page }) => {
+    await ensureManagerSession(page.request);
+    const today = await householdToday(page.request);
+    const original = await ensureSchoolCalendarAllDays(page.request, today);
+    await page.goto("/");
+    await expectSignedInAs(page, "Morgan Reed");
+    await page.getByRole("button", { name: "Household", exact: true }).click();
+    await page.getByRole("button", { name: /School calendar/i }).click();
+    await expect(page.getByRole("heading", { name: "School calendar" })).toBeVisible();
+    let release = () => undefined as void;
+    let captured = () => undefined as void;
+    let delivered = () => undefined as void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const started = new Promise<void>((resolve) => { captured = resolve; });
+    const completed = new Promise<void>((resolve) => { delivered = resolve; });
+    let armed = true;
+    let refreshedVersion: number | undefined;
+    await page.route("**/api/v1/school-calendar", async (route) => {
+      if (route.request().method() !== "GET" || !armed) { await route.continue(); return; }
+      armed = false;
+      captured();
+      await held;
+      const response = await route.fetch();
+      refreshedVersion = ((await response.json()) as { calendar: { version: number } }).calendar.version;
+      await route.fulfill({ response });
+      delivered();
+    });
+    try {
+      await page.getByRole("button", { name: "Edit", exact: true }).click();
+      await started;
+      const end = page.locator(".calendar-year-block > label").filter({ hasText: /^End date/ }).locator("input");
+      await expect(end).toBeVisible({ timeout: 3000 });
+      await end.focus();
+      const newEnd = `${Number(today.slice(0, 4)) + 2}-06-15`;
+      await end.fill(newEnd);
+      await expect(end).toBeFocused();
+      await expect(end).toHaveValue(newEnd);
+      const remote = await ensureSchoolCalendarAllDays(page.request, today, [{ name: "Concurrent break", startDate: today, endDate: today }]);
+      expect(remote.calendar.version).toBeGreaterThan(original.calendar.version);
+      release();
+      await completed;
+      expect(refreshedVersion).toBe(remote.calendar.version);
+      await expect(end).toBeVisible();
+      await expect(end).toBeFocused();
+      await expect(end).toHaveValue(newEnd);
+      const saved = page.waitForRequest((req) => req.url().includes("/api/v1/school-calendar") && req.method() === "PUT");
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      const payload = (await saved).postDataJSON() as { expectedVersion: number };
+      expect(payload.expectedVersion).toBe(original.calendar.version);
+      await expect(page.getByRole("alert")).toBeVisible();
+      await expect(end).toHaveValue(newEnd);
+    } finally {
+      release();
+    }
+  });
+
   test("AT11: live school_calendar invalidation, dirty draft, visibility recovery", async ({
     browser,
   }: {

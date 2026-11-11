@@ -158,6 +158,7 @@ export default defineConfig({
         "**/z-p0-008e-setup.spec.ts",
         "**/z-p0-009a-*.spec.ts",
         "**/z-p0-009b-*.spec.ts",
+        "**/z-p0-009c-*.spec.ts",
       ],
       use: { ...devices["Pixel 7"], baseURL: chromiumURL },
     },
@@ -234,6 +235,7 @@ export default defineConfig({
         "**/z-p0-008e-setup.spec.ts",
         "**/z-p0-009a-*.spec.ts",
         "**/z-p0-009b-*.spec.ts",
+        "**/z-p0-009c-*.spec.ts",
       ],
       use: { ...devices["iPhone 13"], baseURL: webkitURL },
     },
@@ -249,6 +251,7 @@ export default defineConfig({
     {
       name: "chromium-009b",
       testMatch: [
+        "**/z-p0-009c-lists.spec.ts",
         "**/z-p0-009b-family-wall.spec.ts",
         "**/z-p0-009b-recovery.spec.ts",
         "**/z-p0-009b-preview.spec.ts",
@@ -293,6 +296,7 @@ export default defineConfig({
     {
       name: "webkit-009b",
       testMatch: [
+        "**/z-p0-009c-lists.spec.ts",
         "**/z-p0-009b-family-wall.spec.ts",
         "**/z-p0-009b-recovery.spec.ts",
         "**/z-p0-009b-preview.spec.ts",

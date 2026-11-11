@@ -86,6 +86,7 @@ export function DisplayPreviewHost(props: {
   const [occurrence, setOccurrence] = useState<DisplayOccurrenceDetail | null>(null);
   const [organization, setOrganization] = useState<DisplayOrganization>("by-person");
   const [detail, setDetail] = useState<DisplayDetailState | null>(null);
+  const personReturnRef = useRef<Extract<DisplayDetailState, { kind: "person" }> | null>(null);
   const [detailUnavailable, setDetailUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [stale, setStale] = useState(false);
@@ -134,6 +135,7 @@ export function DisplayPreviewHost(props: {
   }
 
   function clearContent(): void {
+    personReturnRef.current = null;
     paneEpochRef.current += 1;
     setDashboard(null);
     setPerson(null);
@@ -448,6 +450,7 @@ export function DisplayPreviewHost(props: {
   const loadDetail = useEffectEvent(async () => {
     const current = detailRef.current;
     if (!current) return;
+    const selectedDisplay = props.displayId;
     const startedAt = nowMs();
     const startedWall = Date.now();
     const seq = ++detailSeqRef.current;
@@ -483,9 +486,21 @@ export function DisplayPreviewHost(props: {
         setPerson(null);
       }
     } catch (caught) {
+      if (seq !== detailSeqRef.current || selectedDisplayRef.current !== selectedDisplay) return;
       if (isDenied(caught)) {
         acceptedDetailSeqRef.current = Math.max(acceptedDetailSeqRef.current, seq);
         if ((caught as ApiError).status === 404 || (caught as ApiError).code === "NOT_FOUND") {
+          try {
+            await fetchDisplayPreviewDashboard(selectedDisplay);
+            if (seq !== detailSeqRef.current || selectedDisplayRef.current !== selectedDisplay) return;
+          } catch (verificationError) {
+            if (seq !== detailSeqRef.current || selectedDisplayRef.current !== selectedDisplay) return;
+            clearContent();
+            setError(errorMessage(verificationError));
+            const denial = verificationError as ApiError;
+            if (denial.status === 401 || denial.code === "UNAUTHORIZED") props.onAuthorityLost();
+            return;
+          }
           setPerson(null);
           setOccurrence(null);
           setDetailUnavailable(true);
@@ -633,6 +648,10 @@ export function DisplayPreviewHost(props: {
         return;
       }
       if (message.type === "hd-preview-open-person") {
+        personReturnRef.current = null;
+        setPerson(null);
+        setOccurrence(null);
+        setDetailUnavailable(false);
         setDetail({
           kind: "person",
           membershipId: message.membershipId,
@@ -641,6 +660,10 @@ export function DisplayPreviewHost(props: {
         return;
       }
       if (message.type === "hd-preview-open-occurrence") {
+        if (detailRef.current?.kind === "person") personReturnRef.current = detailRef.current;
+        setPerson(null);
+        setOccurrence(null);
+        setDetailUnavailable(false);
         setDetail({
           kind: "occurrence",
           occurrenceId: message.occurrenceId,
@@ -666,6 +689,13 @@ export function DisplayPreviewHost(props: {
         return;
       }
       if (message.type === "hd-preview-back") {
+        if (detailRef.current?.kind === "occurrence" && personReturnRef.current) {
+          setDetail(personReturnRef.current);
+          personReturnRef.current = null;
+          setOccurrence(null);
+          setDetailUnavailable(false);
+          return;
+        }
         setDetail(null);
         setPerson(null);
         setOccurrence(null);

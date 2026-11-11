@@ -2528,3 +2528,6 @@ html:has(.display-overview-host:not([hidden]) .family-board-host:not([hidden])) 
   }
 }
 
+.family-board-pane.enlarged .family-board-pane-body > .display-section-title {
+  min-height: 48px;
+}

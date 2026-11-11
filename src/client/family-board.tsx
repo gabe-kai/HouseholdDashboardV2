@@ -150,6 +150,7 @@ export function FamilyBoard(props: {
   outbox: DisplayOutboxItem[];
   savedFlashByStep: Record<string, number>;
   canAct: boolean;
+  active?: boolean;
   idleMs: number;
   nowMs: () => number;
   onRetryPane: (membershipId: string) => void;
@@ -168,6 +169,21 @@ export function FamilyBoard(props: {
   const enlargeOriginRef = useRef<string | null>(null);
   const returnFocusRef = useRef<string | null>(null);
   const returnScrollRef = useRef<Record<string, { section: FamilyPaneSection; scrollTop: number }>>({});
+
+  useEffect(() => {
+    if (props.active !== false) return;
+    const pausedAt = props.nowMs();
+    return () => {
+      const elapsed = Math.max(0, props.nowMs() - pausedAt);
+      setBrowse((current) => {
+        const next = Object.fromEntries(Object.entries(current).map(([id, state]) => [id, {
+          ...state, lastActivityAt: state.lastActivityAt > 0 ? state.lastActivityAt + elapsed : state.lastActivityAt,
+        }]));
+        browseRef.current = next;
+        return next;
+      });
+    };
+  }, [props.active]);
 
   useEffect(() => {
     if (enlarged || !returnFocusRef.current) return;
@@ -209,6 +225,7 @@ export function FamilyBoard(props: {
   }
 
   const tickIdle = useEffectEvent(() => {
+    if (props.active === false) return;
     const now = props.nowMs();
     for (const pane of props.panes) {
       const state = browseFor(pane.membershipId, browseRef.current);
@@ -267,6 +284,7 @@ export function FamilyBoard(props: {
           setEnlarged(null);
         }}
         onRetry={() => props.onRetryPane(pane.membershipId)}
+        onOpenOccurrence={props.onOpenUnassigned}
         onStepChange={props.onStepChange}
         onOpenPersonalDetail={props.onOpenPersonalDetail}
       />
@@ -327,6 +345,7 @@ function FamilyPane(props: {
   onEnlarge: () => void;
   onBackFamily: () => void;
   onRetry: () => void;
+  onOpenOccurrence: (occurrenceId: string, originKey: string) => void;
   onStepChange: (
     occurrence: DisplayOccurrenceDetail,
     stepId: string,
@@ -414,6 +433,11 @@ function FamilyPane(props: {
     >
       <header className="family-board-pane-header">
         <h2 className="display-person-name">{pane.displayName}</h2>
+        <button type="button" className="family-board-hit" id={`display-person-${pane.membershipId}`}
+          data-testid={`family-personal-${pane.membershipId}`}
+          onClick={() => props.onOpenPersonalDetail(pane.membershipId, `display-person-${pane.membershipId}`)}>
+          All my lists
+        </button>
         {pane.phase === "ready" && recommended && firstOpenStep ? null : (
           <p className="display-person-status">
             {pane.phase === "loading"
@@ -483,7 +507,7 @@ function FamilyPane(props: {
           </p>
         ) : null}
       </header>
-      {pane.phase === "ready" && recommended && firstOpenStep ? (
+      {!props.enlarged && pane.phase === "ready" && recommended && firstOpenStep ? (
         <div
           className="family-board-current"
           data-testid={`family-current-${pane.membershipId}`}
@@ -554,7 +578,7 @@ function FamilyPane(props: {
             </button>
           </div>
         </div>
-      ) : pane.phase === "ready" && day ? (
+      ) : !props.enlarged && pane.phase === "ready" && day ? (
         <nav className="family-board-pane-nav" aria-label={`${pane.displayName} sections`}>
           <button
             type="button"
@@ -636,7 +660,24 @@ function FamilyPane(props: {
                 {emptyCopy(projection.emptyKind)}
               </p>
             ) : null}
-            {expanded && browse.section !== "next" ? (
+            {props.enlarged ? (
+              <>
+              <h3 className="display-section-title">Your lists today</h3>
+              <ul className="display-work-list" data-testid={`family-expanded-lists-${pane.membershipId}`}>
+                {occurrences.map((occurrence) => (
+                  <li key={occurrence.id}>
+                    <button type="button" className="family-board-hit display-work-row"
+                      id={`family-expanded-work-${occurrence.id}`}
+                      onClick={() => props.onOpenOccurrence(occurrence.id, `family-expanded-work-${occurrence.id}`)}>
+                      <span className="display-work-title">{occurrence.title}</span>
+                      <span className="display-work-meta">{occurrence.state} · {occurrence.progressLabel}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              </>
+            ) : null}
+            {!props.enlarged && expanded && browse.section !== "next" ? (
               <PaneOccurrence
                 occurrence={expanded}
                 emphasize={expanded.id === recommended?.id}
@@ -657,7 +698,7 @@ function FamilyPane(props: {
                 onActivity={props.onActivity}
               />
             ) : null}
-            {browse.section === "next" && recommended ? (
+            {!props.enlarged && browse.section === "next" && recommended ? (
               <PaneOccurrence
                 occurrence={recommended}
                 emphasize
@@ -670,7 +711,7 @@ function FamilyPane(props: {
                 onActivity={props.onActivity}
               />
             ) : null}
-            {browse.section === "upcoming" || browse.section === "more" ? (
+            {!props.enlarged && (browse.section === "upcoming" || browse.section === "more") ? (
               <ul className="display-work-list" data-testid={`family-upcoming-list-${pane.membershipId}`}>
                 {(browse.section === "more"
                   ? [...projection.upcoming, ...projection.more]
@@ -700,7 +741,7 @@ function FamilyPane(props: {
                 ))}
               </ul>
             ) : null}
-            {browse.section === "earlier" ? (
+            {!props.enlarged && browse.section === "earlier" ? (
               <ul className="display-work-list" data-testid={`family-earlier-list-${pane.membershipId}`}>
                 {projection.earlier.map((item) => (
                   <li key={item.id}>
@@ -731,17 +772,6 @@ function FamilyPane(props: {
                 ))}
               </div>
             ) : null}
-            <button
-              type="button"
-              className="family-board-hit"
-              id={`display-person-${pane.membershipId}`}
-              data-testid={`family-personal-${pane.membershipId}`}
-              onClick={() =>
-                props.onOpenPersonalDetail(pane.membershipId, `display-person-${pane.membershipId}`)
-              }
-            >
-              Shared personal work
-            </button>
           </>
         ) : null}
       </div>

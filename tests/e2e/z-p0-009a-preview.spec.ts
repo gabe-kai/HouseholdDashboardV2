@@ -317,7 +317,7 @@ test.describe("P0-009A selected-display preview", () => {
       .locator("button.display-work-row")
       .filter({ hasText: routineTitle })
       .click();
-    await expect(frame.getByText(stepText)).toBeVisible();
+    await expect(frame.getByTestId("display-detail").getByText(stepText)).toBeVisible();
 
     const averyCtx = await browser.newContext();
     const avery = await averyCtx.newPage();
@@ -408,7 +408,7 @@ test.describe("P0-009A selected-display preview", () => {
       .locator("button.display-work-row")
       .filter({ hasText: goneTitle })
       .click();
-    await expect(frame.getByText("Vanish this step")).toBeVisible();
+    await expect(frame.getByTestId("display-detail").getByText("Vanish this step")).toBeVisible();
     const ended = await page.request.post(`/api/v1/routines/${gone.routine.id}/end`, {
       headers: await csrfHeaders(page.request),
       data: {
@@ -649,6 +649,8 @@ test.describe("P0-009A selected-display preview", () => {
       await occSnap.text(),
     );
     await postPreviewBack(page);
+    await expect(frame.getByTestId("display-detail").getByRole("heading", { name: "Avery Reed" })).toBeVisible();
+    await postPreviewBack(page);
     await expect(frame.getByTestId("display-overview")).toBeVisible();
     await averyCard.click();
     await expect(frame.getByTestId("display-detail")).toBeVisible();
@@ -658,6 +660,8 @@ test.describe("P0-009A selected-display preview", () => {
       .filter({ hasText: occTitle })
       .click();
     await heldOccurrence.captured;
+    await postPreviewBack(page);
+    await expect(frame.getByTestId("display-detail").getByRole("heading", { name: "Avery Reed" })).toBeVisible();
     await postPreviewBack(page);
     await expect(frame.getByTestId("display-overview")).toBeVisible();
     await heldOccurrence.release();

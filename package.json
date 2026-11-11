@@ -29,7 +29,7 @@
     "test:e2e:chromium": "playwright install chromium && playwright test --project=chromium --project=chromium-008a --project=chromium-008a-desktop --project=chromium-desktop --project=chromium-display --project=chromium-preview --project=chromium-009b --project=chromium-009b-display && npm run test:e2e:vite",
     "test:e2e:chromium:phone": "playwright test --project=chromium",
     "test:e2e:chromium:phone:pre007": "playwright test --project=chromium --grep-invert \"P0-007|P0-009A|P0-009B\"",
-    "test:e2e:family-wall": "playwright test --project=chromium-009b --project=chromium-009b-display tests/e2e/z-p0-009b-family-wall.spec.ts tests/e2e/z-p0-009b-recovery.spec.ts tests/e2e/z-p0-009b-preview.spec.ts",
+    "test:e2e:family-wall": "playwright test --project=chromium-009b --project=chromium-009b-display tests/e2e/z-p0-009b-family-wall.spec.ts tests/e2e/z-p0-009b-recovery.spec.ts tests/e2e/z-p0-009b-preview.spec.ts tests/e2e/z-p0-009c-lists.spec.ts",
     "test:e2e:preview": "playwright test --project=chromium-preview --project=chromium-desktop --project=chromium-display tests/e2e/z-p0-009a-preview.spec.ts tests/e2e/z-p0-009a-geometry.spec.ts",
     "test:e2e:chromium:phone:007a": "playwright test --project=chromium --grep \"P0-007A\"",
     "test:e2e:chromium:phone:007b": "playwright test --project=chromium --grep \"P0-007B\"",

@@ -194,6 +194,9 @@ export function DisplayApp() {
   const bootstrappingRef = useRef(false);
   const detailRef = useRef(detail);
   const originFocusRef = useRef<string | null>(null);
+  const personReturnRef = useRef<{ membershipId: string; originKey: string } | null>(null);
+  const listReturnFocusRef = useRef<string | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const lastUserInteractionRef = useRef(performance.now());
   const householdDateRef = useRef<string | null>(null);
   /** Display CSRF — memory only; never localStorage. */
@@ -262,6 +265,8 @@ export function DisplayApp() {
     setPersonDetail(null);
     setOccurrenceDetail(null);
     setDetail(null);
+    personReturnRef.current = null;
+    listReturnFocusRef.current = null;
     resetPaneSnapshots();
     paneGenRef.current = {};
     setSession(null);
@@ -465,9 +470,8 @@ export function DisplayApp() {
           setOutbox(items);
           markAuthorized();
           if (
-            occurrenceDetailRef.current?.id === result.occurrence.id ||
-            detailRef.current?.kind === "occurrence" ||
-            detailRef.current?.kind === "routine-person"
+            (detailRef.current?.kind === "occurrence" || detailRef.current?.kind === "routine-person") &&
+            detailRef.current.occurrenceId === result.occurrence.id
           ) {
             const pendingForOcc = items.filter(
               (entry) =>
@@ -699,6 +703,8 @@ export function DisplayApp() {
       if (dateChanged || generationChanged) {
         // Close old-day/old-generation detail before applying the new snapshot.
         setDetail(null);
+        personReturnRef.current = null;
+        listReturnFocusRef.current = null;
         setPersonDetail(null);
         setOccurrenceDetail(null);
         resetPaneSnapshots();
@@ -780,6 +786,8 @@ export function DisplayApp() {
       if (isUnauthorized(error)) {
         clearHouseholdState("Display access ended. Enter a new setup code.");
       }
+    } finally {
+      if (gen === detailGenRef.current) setDetailLoading(false);
     }
   });
 
@@ -1090,6 +1098,11 @@ export function DisplayApp() {
       originFocusRef.current = null;
     }
   }, [detail]);
+  useEffect(() => {
+    if (detail?.kind !== "person" || !personDetail || !listReturnFocusRef.current) return;
+    document.getElementById(listReturnFocusRef.current)?.focus();
+    listReturnFocusRef.current = null;
+  }, [detail, personDetail]);
 
   async function submitClaim(event: FormEvent) {
     event.preventDefault();
@@ -1115,13 +1128,20 @@ export function DisplayApp() {
   }
 
   function openDetail(next: DetailState, originElementId: string) {
-    originFocusRef.current = originElementId;
+    if (next?.kind === "occurrence" && detailRef.current?.kind === "person") {
+      personReturnRef.current = { membershipId: detailRef.current.membershipId, originKey: detailRef.current.originKey };
+      listReturnFocusRef.current = originElementId;
+    } else if (next?.kind !== "occurrence") {
+      personReturnRef.current = null;
+    }
+    if (!personReturnRef.current) originFocusRef.current = originElementId;
     setPendingCue(null);
     setDetail(next);
     setPersonDetail(null);
     setOccurrenceDetail(null);
     const gen = ++detailGenRef.current;
     if (!next) return;
+    setDetailLoading(true);
     if (next.kind === "person") {
       void fetchDisplayPerson(next.membershipId)
         .then((person) => {
@@ -1132,7 +1152,7 @@ export function DisplayApp() {
         .catch((error) => {
           if (gen !== detailGenRef.current) return;
           if (isUnauthorized(error)) clearHouseholdState();
-        });
+        }).finally(() => { if (gen === detailGenRef.current) setDetailLoading(false); });
     } else if (next.kind === "occurrence" || next.kind === "routine-person") {
       void fetchDisplayOccurrence(next.occurrenceId)
         .then((occurrence) => {
@@ -1155,11 +1175,19 @@ export function DisplayApp() {
         .catch((error) => {
           if (gen !== detailGenRef.current) return;
           if (isUnauthorized(error)) clearHouseholdState();
-        });
+        }).finally(() => { if (gen === detailGenRef.current) setDetailLoading(false); });
+    } else {
+      setDetailLoading(false);
     }
   }
 
   function closeDetail() {
+    if (detailRef.current?.kind === "occurrence" && personReturnRef.current) {
+      const parent = personReturnRef.current;
+      personReturnRef.current = null;
+      openDetail({ kind: "person", membershipId: parent.membershipId, originKey: parent.originKey }, parent.originKey);
+      return;
+    }
     detailGenRef.current += 1;
     const leaving = detailRef.current;
     if (
@@ -1378,8 +1406,9 @@ export function DisplayApp() {
               outbox={outbox}
               savedFlashByStep={savedFlashByStep}
               canAct={canAct}
-              loading={loadingDash && !personDetail && !occurrenceDetail}
+              loading={detailLoading}
               onBack={closeDetail}
+              onRetry={() => { if (detailRef.current) openDetail(detailRef.current, detailRef.current.originKey); }}
               onStepChange={(occurrence, stepId, status) =>
                 void queueDisplayStepChange(occurrence, stepId, status)
               }
@@ -1440,6 +1469,7 @@ export function DisplayApp() {
                   outbox={outbox}
                   savedFlashByStep={savedFlashByStep}
                   canAct={canAct}
+                  active={!detail && organization === "by-person"}
                   idleMs={idleMs()}
                   nowMs={displayNow}
                   onRetryPane={(membershipId) => refreshPersonDays([membershipId], true)}

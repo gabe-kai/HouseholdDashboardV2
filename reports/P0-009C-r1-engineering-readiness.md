@@ -1,5 +1,7 @@
 # Engineering readiness — P0-009C r1
 
+> **Final disposition: READY (2026-11-10).** Architecture accepted the consolidated review and authorized proceeding on r1. The previously missing Product direction is committed at `82144ce`, and the brief plus disposition is at `b9d1221` on `brief/p0-009c-person-day-lists-recovery`. The unrelated remaining `PRODUCT.md` changes are preserved. The review below records the original blocker historically.
+
 **Date:** 2026-11-10  
 **Role:** Engineering  
 **Disposition:** BLOCKER — Product direction has not yet been integrated into the planning baseline.  

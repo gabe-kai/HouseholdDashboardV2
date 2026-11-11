@@ -765,8 +765,9 @@ test.describe("P0-009B family wall recovery", () => {
     request,
   }, testInfo) => {
     const inFlight = new Set<Request>();
+    const requestStarted = new Map<Request, number>();
     const isAveryDay = (url: string) => new URL(url).pathname.endsWith(`/api/v1/display/people/${AVERY_ID}/day`);
-    page.on("request", (req) => { if (isAveryDay(req.url())) inFlight.add(req); });
+    page.on("request", (req) => { if (isAveryDay(req.url())) { inFlight.add(req); requestStarted.set(req, Date.now()); } });
     page.on("requestfinished", (req) => inFlight.delete(req));
     page.on("requestfailed", (req) => inFlight.delete(req));
     await page.addInitScript(() => {
@@ -852,14 +853,12 @@ test.describe("P0-009B family wall recovery", () => {
     let captureLate = () => undefined as void;
     let deliveredLate = () => undefined as void;
     let releaseRecovery = () => undefined as void;
-    let captureRecovery = () => undefined as void;
     let deliveredRecovery = () => undefined as void;
     let releaseOther = () => undefined as void;
     const lateGate = new Promise<void>((resolve) => { releaseLate = resolve; });
     const lateCaptured = new Promise<void>((resolve) => { captureLate = resolve; });
     const lateDelivered = new Promise<void>((resolve) => { deliveredLate = resolve; });
     const recoveryGate = new Promise<void>((resolve) => { releaseRecovery = resolve; });
-    const recoveryCaptured = new Promise<void>((resolve) => { captureRecovery = resolve; });
     const recoveryDelivered = new Promise<void>((resolve) => { deliveredRecovery = resolve; });
     const otherGate = new Promise<void>((resolve) => { releaseOther = resolve; });
     let sequence = 0;
@@ -871,6 +870,18 @@ test.describe("P0-009B family wall recovery", () => {
       if (trusted) clicks += 1;
     });
     await page.evaluate((testId) => {
+      const originalFetch = window.fetch.bind(window);
+      (window as unknown as { __restoreRetryFetch: () => void }).__restoreRetryFetch = () => { window.fetch = originalFetch; };
+      window.fetch = (input, init) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes(`/api/v1/display/people/${testId.replace("family-retry-", "")}/day`) &&
+            (window as unknown as { __hdRetryTrusted?: boolean }).__hdRetryTrusted) {
+          const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+          headers.set("x-test-after-trusted-retry", "1");
+          return originalFetch(input, { ...init, headers });
+        }
+        return originalFetch(input, init);
+      };
       document.addEventListener("click", (event) => {
         const target = event.target as Element | null;
         if (target?.closest(`[data-testid="${testId}"]`)) {
@@ -883,23 +894,27 @@ test.describe("P0-009B family wall recovery", () => {
     await page.route(averyDayMatcher, async (route) => {
       const id = ++sequence;
       requestIds.set(route.request(), id);
-      events.push({ event: "request", id, at: Date.now() });
+      const startedAt = requestStarted.get(route.request()) ?? Date.now();
+      events.push({ event: "request", id, at: startedAt });
       if (id === 1) {
         captureLate();
         await lateGate;
         await route.fulfill({ status: 200, contentType: "application/json", body: currentBody });
         events.push({ event: "late-delivered", id, at: Date.now() });
         deliveredLate();
-      } else if (await page.evaluate(() => Boolean((window as unknown as { __hdRetryTrusted?: boolean }).__hdRetryTrusted)) && recoveryId == null) {
-        recoveryId = id;
-        events.push({ event: "retry-request", id, at: Date.now() });
-        captureRecovery();
-        await recoveryGate;
-        await route.continue();
       } else {
-        events.push({ event: "other-held", id, at: Date.now() });
-        await otherGate;
-        await route.continue();
+        const afterTrustedRetry = route.request().headers()["x-test-after-trusted-retry"] === "1";
+        events.push({ event: afterTrustedRetry ? "marked-after-trusted-retry" : "unmarked", id, at: startedAt });
+        if (afterTrustedRetry && recoveryId == null) {
+          recoveryId = id;
+          events.push({ event: "retry-request", id, at: Date.now() });
+          await recoveryGate;
+          await route.continue();
+        } else {
+          events.push({ event: "other-held", id, at: Date.now() });
+          await otherGate;
+          await route.continue();
+        }
       }
     });
     page.on("response", (response) => {
@@ -924,7 +939,7 @@ test.describe("P0-009B family wall recovery", () => {
     await expect(page.getByTestId(`family-blank-${AVERY_ID}`)).toBeVisible();
     await clickFamilyControl(page, `family-retry-${AVERY_ID}`);
     await expect.poll(() => clicks).toBe(1);
-    await recoveryCaptured;
+    await expect.poll(() => recoveryId, { timeout: 10_000 }).toBeDefined();
     await expect(page.getByTestId(`family-blank-${AVERY_ID}`)).toBeVisible();
     await page.evaluate(() => { window.__HD_DISPLAY_NOW_MS = 13_200; });
     releaseRecovery();
@@ -934,6 +949,7 @@ test.describe("P0-009B family wall recovery", () => {
     });
     } finally {
       releaseLate(); releaseRecovery(); releaseOther();
+      await page.evaluate(() => (window as unknown as { __restoreRetryFetch: () => void }).__restoreRetryFetch());
       await testInfo.attach("stale-retry-timeline", { body: Buffer.from(JSON.stringify(events, null, 2)), contentType: "application/json" });
     }
     await page.unrouteAll({ behavior: "wait" });

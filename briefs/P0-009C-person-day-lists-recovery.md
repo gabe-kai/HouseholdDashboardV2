@@ -1,7 +1,7 @@
 # BRIEF P0-009C — Recover Each Person’s Lists on the Wall
 
 **Revision:** 1
-**Status:** FIX REQUIRED
+**Status:** ACCEPTED (technical)
 
 **Product input:** `PRODUCT.md` → Immediate wall follow-up, 2026-11-10. The approved follow-up is committed on the brief branch at `82144ce`; unrelated Product edits remain outside the planning baseline.
 **Inspected baseline:** `main` `a155169`, P0-009B r2 merged via PR #31 and reported deployed.
@@ -22,7 +22,7 @@ From each person's pane, a clearly named action such as **All my lists** opens t
 ## Project card
 
 **Card title:** Find all my lists on the family wall
-**Suggested column:** In Progress
+**Suggested column:** Ready to Evaluate
 **Player-facing goal:** Find and open any of my routines or chores on the wall.
 **Done when:** A person can reach and use their named lists, including finished and later work, from their pane and its expanded view.
 **Tracking relationship:** Contributes to the family-wall outcome; visual timeline acceptance remains separate.
@@ -93,7 +93,7 @@ D-041–D-049, D-051, D-054, D-057–D-061 remain active. Product's newer presen
 
 ## Technical acceptance
 
-Architecture reviewed implementation `3611a31`: **FIX REQUIRED**, unchanged r1. See `reports/P0-009C-r1-architecture-review.md`. Re-review at `d472e88` closes AT1–AT9, including the changed-route AT8 evidence. AT10 remains open: diagnose the departure-notice gate failure and pass final exact PR/RC gates before acceptance. Product evaluation and the separate timeline design remain pending.
+Architecture technically accepted r1 on 2026-11-11 against tested code/test commit `dfa62d0` and report-only follow-up `1f4919b`. AT1–AT10 are closed; both exact final-tree gates passed, including Vite. See `reports/P0-009C-r1-architecture-review.md`. The Project Lead's hands-on evaluation, merge/deployment authorization and separate timeline design remain pending.
 
 ## Revision history
 

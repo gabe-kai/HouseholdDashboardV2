@@ -58,3 +58,15 @@ RC did not pass: log records 309 browser passes / 50 skips / 1 failure after 399
 Architecture inspected the test: `armHeld` intercepts one response, then allows subsequent reads through; the recovery barrier is installed only after releasing the late response and observing blank. It cannot capture responses already in flight. This permits a plausible uncontrolled read between the blank assertion and real click, but does not establish which response caused the observed recovery.
 
 **Engineering continuation authorized:** control the relevant person-day responses across the entire stale/blank/Retry transition, including reads started before the recovery barrier, while retaining the deliberately old/late response and all stale-content assertions. Add a request/click witness so the recovery phase proves a real user Retry dispatch and only then releases its designated recovery response; ensure unrelated automatic reads cannot prematurely satisfy that phase. Use response/request diagnostics to distinguish successful automatic recovery from a product rendering defect. Do not force the click, use DOM dispatch in place of it, skip the assertion, or suppress legitimate production recovery. If a product defect is demonstrated, apply the smallest correction. Focused Chromium/WebKit verification then both exact final-tree PR/RC gates remain authorized without another routine handoff. Preserve logs and process exit codes. AT1–AT9 remain closed; AT10 and merge/deployment remain pending.
+
+## Final technical acceptance — 2026-11-11
+
+**Disposition: ACCEPTED — P0-009C revision 1.** Tested code/test commit `dfa62d0`; report-only follow-up `1f4919b`. Architecture inspected the final controlled Retry test, verified that the subsequent diff changes only the Build Report, and read both recorded exit codes and the gate log summaries. No implementation changes followed the passing gates.
+
+- Exact PR: exit **0**, **399** unit/integration, **198** browser passes / **1** skip, **12** Vite passes.
+- Exact RC: exit **0**, **399** unit/integration, **310** browser passes / **50** skips, **12** Vite passes.
+- Evidence: ignored `reports/_local-screenshots/p0-009c-retry-final-{pr,rc}.{log,exit}` and associated browser HTML reports. Architecture verified recorded evidence rather than repeating these full gates.
+
+AT10 is closed. AT1–AT9 retain prior closure. The final test controls the late response and unrelated reads, observes a real trusted Retry click, identifies the subsequent recovery request and verifies ready only after its release; stale-paint and sibling assertions remain. Earlier intermittent failures remain documented; successful final gates do not establish their historical root causes.
+
+**Card:** Find all my lists on the family wall → **Ready to Evaluate**. Product acceptance requires hands-on wall/preview navigation and readable expanded checklists. The larger timeline visual proof remains separate. This acceptance does not publish, merge, deploy, or authorize live-data changes. Next step is Project Lead evaluation and integration authorization; unrelated Product edits remain preserved.

@@ -19,7 +19,7 @@
 
 ## Current focus
 
-Inspected 2026-11-10: P0-009B r2 is technically accepted, merged via PR #31 at `a155169`, and reported deployed. A read-only post-deployment check found the same installation, epoch, active database, household/account/display counts and passing SQLite integrity; the app backup catalog had zero entries (a separate Railway backup was not verified). The Project Lead rejected the wall presentation; functional Product acceptance remains pending. Architecture has prepared **P0-009C r1** for urgent per-person list recovery and a separate timeline design review. The approved immediate wall direction is committed on the brief branch at `82144ce`; unrelated Product edits remain uncommitted. Engineering implemented r1 at `3611a31`. Architecture re-reviewed correction `d472e88`: AT1–AT9 are closed, including AT8. FIX REQUIRED is limited to AT10. Calendar edit/reload correction `6c58a9e` has controlled regression evidence and a passing PR gate. RC still did not pass: an inherited WebKit Retry interaction detached before click; Engineering is controlling recovery responses to diagnose that remaining gate case. See `reports/P0-009C-r1-architecture-review.md`.
+Inspected 2026-11-10: P0-009B r2 is technically accepted, merged via PR #31 at `a155169`, and reported deployed. A read-only post-deployment check found the same installation, epoch, active database, household/account/display counts and passing SQLite integrity; the app backup catalog had zero entries (a separate Railway backup was not verified). The Project Lead rejected the wall presentation; functional Product acceptance remains pending. Architecture has prepared **P0-009C r1** for urgent per-person list recovery and a separate timeline design review. The approved immediate wall direction is committed on the brief branch at `82144ce`; unrelated Product edits remain uncommitted. Architecture technically accepted P0-009C r1 on 2026-11-11 at tested code/test commit `dfa62d0` (report-only follow-up `1f4919b`); AT1–AT10 are closed and exact PR/RC gates passed including Vite. The recovery is Ready to Evaluate; integration and deployment remain pending. See `reports/P0-009C-r1-architecture-review.md`.
 
 **P0-008E r1** is technically **ACCEPTED** and integrated via PR #28 at `bd05ad0`. **P0-008F r1** is technically accepted and integrated via PR #29 at `1acc4a1`. P0-008's overall Product acceptance remains separate; the reported `/` anomaly remains a separate investigation.
 
@@ -52,7 +52,7 @@ P0-007C's outstanding physical/Product judgments remain distinct from its techni
 | P0-008F - Keep a Household Intact Through Deployment | r1 | ACCEPTED (technical) | Project Lead evaluation | Merged to `main` via PR #29 at `1acc4a1` | Project Lead reports persistent control-store copy and new-household setup; prior-household recovery is not claimed |
 | P0-009A - Preview a Display and Judge the Family Board | r2 | ACCEPTED (technical); preview approved by Project Lead | Integrated foundation | Merged to `main` via PR #30 at `14af09e` | Further refinement may follow; no preview gate blocks B |
 | P0-009B - Actionable Person Panes on the Family Wall | r2 | ACCEPTED (technical); presentation rejected | Product / Architecture | Merged PR #31 at `a155169`; deployed | P0-009C recovery; functional Product evaluation remains pending |
-| P0-009C - Recover Each Person's Lists on the Wall | r1 | FIX REQUIRED | Engineering | `brief/p0-009c-person-day-lists-recovery`; implementation `3611a31` | AT10 WebKit Retry transition and final gates |
+| P0-009C - Recover Each Person's Lists on the Wall | r1 | ACCEPTED (technical) | Project Lead evaluation / integration | `brief/p0-009c-person-day-lists-recovery`; tested `dfa62d0` | Hands-on recovery evaluation; publish/merge authorization |
 
 Suggested states: DRAFT, IN REVIEW, BLOCKED, ESCALATED, READY, IMPLEMENTING, IMPLEMENTED, FIX REQUIRED, ACCEPTED, PRODUCT DECISION.
 
@@ -86,7 +86,7 @@ This table is the short repository-side coordination index. An external project 
 
 ## Next likely handoff
 
-Engineering: close **P0-009C r1** AT10 per the consolidated Architecture review, then return for re-acceptance on the same revision. Separately, Product/Project Lead reviews `docs/p0-009-wall-timeline-design-review.md`; a real fixed-viewport visual proof and decision precede the larger timeline implementation brief.
+Project Lead: evaluate **P0-009C r1** all-lists recovery, then authorize publishing/integration when ready. Technical acceptance is complete. Separately, Product/Project Lead reviews `docs/p0-009-wall-timeline-design-review.md`; a real fixed-viewport visual proof and decision precede the larger timeline implementation brief.
 
 ## Notes for all teams
 

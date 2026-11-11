@@ -100,7 +100,7 @@ test.describe("P0-009B family wall recovery", () => {
     await wipeSeededE2eServer(testInfo.project.use.baseURL!);
   });
 
-  test("AT14e: departure removes a pending owner's pane without transferring the action", async ({ page, request, browser }) => {
+  test("AT14e: departure removes a pending owner's pane without transferring the action", async ({ page, request, browser }, testInfo) => {
     await ensureManagerSession(request);
     const stamp = Date.now().toString(36);
     const personResponse = await request.post("/api/v1/people", {
@@ -143,9 +143,33 @@ test.describe("P0-009B family wall recovery", () => {
     await enrollWall(request, page, `Departure ${stamp}`);
     const patPane = page.getByTestId(`family-pane-${personId}`);
     await expect(patPane).toHaveAttribute("data-phase", "ready", { timeout: 20_000 });
+    const events: Array<Record<string, unknown>> = [];
+    const responseBodies: Array<Promise<void>> = [];
+    const isStatus = (url: string) => /\/api\/v1\/display\/occurrences\/[^/]+\/steps\/[^/]+\/status/.test(url);
+    page.on("request", (req) => {
+      if (!isStatus(req.url())) return;
+      const body = req.postDataJSON() as { mutationId?: string; status?: string } | null;
+      events.push({ at: Date.now(), event: "request", url: new URL(req.url()).pathname, mutationId: body?.mutationId, desiredStatus: body?.status });
+    });
+    page.on("requestfailed", (req) => {
+      if (isStatus(req.url())) events.push({ at: Date.now(), event: "requestfailed", error: req.failure()?.errorText });
+    });
+    page.on("response", (res) => {
+      if (isStatus(res.url())) {
+        const entry: Record<string, unknown> = { at: Date.now(), event: "response", status: res.status(), url: new URL(res.url()).pathname };
+        events.push(entry);
+        responseBodies.push(res.text().then((body) => { entry.body = body; }).catch((error: unknown) => { entry.bodyError = String(error); }));
+      }
+    });
+    const snapshot = async (phase: string) => {
+      const connectivity = await page.evaluate(() => ({ online: navigator.onLine, visibility: document.visibilityState }));
+      events.push({ at: Date.now(), phase, connectivity, outbox: await displayOutboxItems(page) });
+    };
+    try {
     await page.route("**/api/v1/display/occurrences/**/status", (route) => route.abort());
     await patPane.getByRole("button", { name: `Mark ${step} done` }).click();
     await expect(page.getByTestId(`family-pending-${personId}`)).toBeVisible();
+    await snapshot("queued");
     const peopleResponse = await request.get("/api/v1/people");
     const person = ((await peopleResponse.json()) as { people: Array<{ id: string; authorityVersion: number; version: number }> }).people.find((row) => row.id === personId);
     expect(person).toBeTruthy();
@@ -160,13 +184,21 @@ test.describe("P0-009B family wall recovery", () => {
     });
     expect(removal.ok(), await removal.text()).toBeTruthy();
     await expect(patPane).toHaveCount(0, { timeout: 20_000 });
+    await snapshot("departed_before_unroute");
     await page.unroute("**/api/v1/display/occurrences/**/status");
     await page.evaluate(() => window.dispatchEvent(new Event("online")));
+    await snapshot("online_dispatched");
     await expect(page.getByTestId("display-retired-notices")).toBeVisible({ timeout: 20_000 });
+    await snapshot("notice_visible");
     await expect.poll(async () => {
       const day = await fetchPersonDay(page, JORDAN_ID);
       return day.occurrences.find((row) => row.title === title)?.steps.find((row) => row.text === step)?.status;
     }, { timeout: 20_000 }).toBe("open");
+    } finally {
+      await snapshot("final").catch((error: unknown) => events.push({ phase: "final_snapshot_failed", error: String(error) }));
+      await Promise.all(responseBodies);
+      await testInfo.attach("departure-outbox-diagnostics", { body: Buffer.from(JSON.stringify(events, null, 2)), contentType: "application/json" });
+    }
   });
 
   test("AT7a: lost first response retries the same command and flushes a sibling action", async ({ page, request }) => {

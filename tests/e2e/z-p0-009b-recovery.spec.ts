@@ -93,7 +93,14 @@ async function revealStep(page: Page, membershipId: string, name: string) {
 test.describe("P0-009B family wall recovery", () => {
   test.use({ viewport: { width: 1920, height: 1080 } });
 
-  test("AT14e: departure removes a pending owner's pane without transferring the action", async ({ page, request, browser }, testInfo) => {
+  test.afterEach(async ({ page }, testInfo) => {
+    if (!testInfo.title.startsWith("AT14e: departure removes")) return;
+    expect(testInfo.project.use.baseURL).toBeTruthy();
+    await page.close();
+    await wipeSeededE2eServer(testInfo.project.use.baseURL!);
+  });
+
+  test("AT14e: departure removes a pending owner's pane without transferring the action", async ({ page, request, browser }) => {
     await ensureManagerSession(request);
     const stamp = Date.now().toString(36);
     const personResponse = await request.post("/api/v1/people", {
@@ -160,9 +167,6 @@ test.describe("P0-009B family wall recovery", () => {
       const day = await fetchPersonDay(page, JORDAN_ID);
       return day.occurrences.find((row) => row.title === title)?.steps.find((row) => row.text === step)?.status;
     }, { timeout: 20_000 }).toBe("open");
-    expect(testInfo.project.use.baseURL).toBeTruthy();
-    await page.close();
-    await wipeSeededE2eServer(testInfo.project.use.baseURL!);
   });
 
   test("AT7a: lost first response retries the same command and flushes a sibling action", async ({ page, request }) => {

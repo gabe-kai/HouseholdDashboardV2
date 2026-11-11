@@ -110,14 +110,15 @@ test("P0-009C AT1: a pending-sign-in person with no work can open their lists", 
 test("P0-009C AT1: list loading failure offers a working retry", async ({ page, request }) => {
   await ensureManagerSession(request);
   await enrollWall(request, page, `Retry lists ${Date.now().toString(36)}`);
-  let first = true;
+  let failReads = true;
   await page.route(`**/api/v1/display/people/${AVERY_ID}`, async (route) => {
-    if (first) { first = false; await route.fulfill({ status: 500, body: "unavailable" }); }
+    if (failReads) await route.fulfill({ status: 500, body: "unavailable" });
     else await route.continue();
   });
   await page.getByTestId(`family-personal-${AVERY_ID}`).click();
   const detail = page.getByTestId("display-detail");
   await expect(detail.getByTestId("display-detail-unavailable")).toBeVisible();
+  failReads = false;
   await detail.getByRole("button", { name: "Retry" }).click();
   await expect(detail.getByRole("heading", { name: "Avery Reed" })).toBeVisible();
 });
@@ -201,13 +202,53 @@ test("P0-009C AT8: pending list action cannot replace the newly selected checkli
   await detail.getByRole("button", { name: new RegExp(first) }).click();
   await detail.getByRole("button", { name: `Mark Step ${first} done` }).click();
   await captured;
+  await expect(detail.getByTestId(`display-step-${occurrence.steps[0].id}`).getByRole("status")).toContainText(/saving|pending|retry/i);
+  await detail.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(page.getByText("Saving checklist changes…")).toBeVisible();
+  await detail.getByRole("button", { name: new RegExp(first) }).click();
+  await expect(detail.getByTestId(`display-step-${occurrence.steps[0].id}`).getByRole("status")).toContainText(/saving|pending|retry/i);
   await detail.getByRole("button", { name: "Back", exact: true }).click();
   await detail.getByRole("button", { name: new RegExp(second) }).click();
   await expect(detail.getByRole("heading", { name: second })).toBeVisible();
   release();
   await expect.poll(async () => (await fetchPersonDay(page, AVERY_ID)).occurrences.find((row) => row.id === occurrence.id)?.steps[0]?.status).toBe("completed");
+  await expect(page.getByText("Saving checklist changes…")).toHaveCount(0);
   await expect(detail.getByRole("heading", { name: second })).toBeVisible();
   await expect(detail.getByText(`Step ${second}`)).toBeVisible();
+  await detail.getByRole("button", { name: "Back", exact: true }).click();
+  await detail.getByRole("button", { name: new RegExp(first) }).click();
+  await expect(detail.getByRole("button", { name: `Mark Step ${first} done` })).toHaveAttribute("aria-pressed", "true");
+  await expect(detail.getByTestId(`display-step-${occurrence.steps[0].id}`).locator("[data-kind='pending']")).toHaveCount(0);
+});
+
+test("P0-009C AT8: remote change converges in the open checklist and preserves sibling", async ({ page, request, browser }) => {
+  await ensureManagerSession(request);
+  const title = `Remote list ${Date.now().toString(36)}`;
+  await createAssignedRoutine(request, { title, memberId: AVERY_ID, steps: [{ text: `Step ${title}` }] });
+  await enrollWall(request, page, title);
+  await expect(page.getByTestId(`family-pane-${JORDAN_ID}`)).toHaveAttribute("data-phase", "ready");
+  await clickFamilyControl(page, `family-upcoming-${JORDAN_ID}`);
+  const remoteContext = await browser.newContext();
+  const remote = await remoteContext.newPage();
+  await enrollWall(request, remote, `${title} remote`);
+  const day = await fetchPersonDay(remote, AVERY_ID);
+  const occurrence = day.occurrences.find((row) => row.title === title)!;
+  expect(occurrence).toBeTruthy();
+  await page.getByTestId(`family-personal-${AVERY_ID}`).click();
+  const detail = page.getByTestId("display-detail");
+  await detail.getByRole("button", { name: new RegExp(title) }).click();
+  const done = detail.getByRole("button", { name: `Mark Step ${title} done` });
+  await expect(done).toHaveAttribute("aria-pressed", "false");
+  let navigations = 0;
+  page.on("framenavigated", (frame) => { if (frame === page.mainFrame()) navigations += 1; });
+  await completeDisplayStep(remote, occurrence, occurrence.steps[0].id);
+  await expect(done).toHaveAttribute("aria-pressed", "true", { timeout: 20_000 });
+  await expect(detail.getByRole("heading", { name: title })).toBeVisible();
+  expect(navigations).toBe(0);
+  await detail.getByRole("button", { name: "Back", exact: true }).click();
+  await detail.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(page.getByTestId(`family-pane-${JORDAN_ID}`)).toHaveAttribute("data-section", "upcoming");
+  await remoteContext.close();
 });
 
 test("P0-009C AT4/AT6: enlargement exposes names without fetching personal detail", async ({ page, request }, testInfo) => {

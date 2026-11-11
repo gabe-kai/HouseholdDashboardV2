@@ -290,7 +290,9 @@ export function DisplayApp() {
     let nextEpoch = installationEpochRef.current + 1;
     try {
       const meta = await fetchMeta();
-      nextEpoch = meta.installationEpoch;
+      // Reset closes sockets before the replacement epoch is activated. A
+      // metadata read in that interval may still report the old epoch.
+      nextEpoch = Math.max(nextEpoch, meta.installationEpoch);
     } catch {
       /* meta may fail while control is mid-swap; still fence local pending. */
     }

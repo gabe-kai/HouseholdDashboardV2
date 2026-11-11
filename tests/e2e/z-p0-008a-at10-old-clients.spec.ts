@@ -205,6 +205,16 @@ test.describe("P0-008A AT10 old live clients", () => {
       wall.getByRole("status").filter({ hasText: /pending|retry|Saving/i }).first(),
     ).toBeVisible({ timeout: 15_000 });
 
+    // The reset socket can close before the replacement epoch is activated.
+    // Force that ordering by returning the pre-reset metadata to the wall.
+    const oldMeta = await wall.request.get("/api/v1/meta");
+    expect(oldMeta.ok()).toBeTruthy();
+    const oldMetaBody = await oldMeta.text();
+    let staleMetaReads = 0;
+    await wall.route("**/api/v1/meta", async (route) => {
+      staleMetaReads += 1;
+      await route.fulfill({ status: 200, contentType: "application/json", body: oldMetaBody });
+    });
     // Reset from the initiator context while old clients remain live.
     await resetHousehold(page);
 
@@ -218,6 +228,7 @@ test.describe("P0-008A AT10 old live clients", () => {
     await expect(wall.getByTestId("display-retired-notice").first()).toContainText(
       /reset/i,
     );
+    expect(staleMetaReads).toBeGreaterThan(0);
     await expect(wall.getByTestId("display-overview")).toHaveCount(0);
 
     // Old member: release routes and force outbox flush → visible retirement notice.
